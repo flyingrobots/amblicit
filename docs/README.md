@@ -1,5 +1,7 @@
 # Edict Specifications
 
+For an introduction, open the [static Edict website](index.html). See [website hosting](site/README.md) to preview or publish it.
+
 The current specification set is:
 
 - [Topic Shelves](./topics/README.md): current reference chapters and

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Edict is a language for explicit, bounded operations. Write the intent. Check its meaning. Let the destination decide.">
+  <meta name="theme-color" content="#f4f1e9">
+  <meta property="og:title" content="Edict — Intent, with limits.">
+  <meta property="og:description" content="A language for explicit, bounded operations. Explore the compiler, the Echo runtime, and a real application.">
+  <meta property="og:type" content="website">
+  <title>Edict — Intent, with limits.</title>
+  <link rel="icon" href="site/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="site/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="masthead wrap">
+  <a class="wordmark" href="./" aria-label="Edict home"><span class="mark" aria-hidden="true">e.</span> edict</a>
+  <nav aria-label="Main navigation">
+    <a href="#how">How it works</a>
+    <a href="#questions">Go deeper</a>
+    <a class="nav-repo" href="https://github.com/flyingrobots/edict">GitHub <span aria-hidden="true">↗</span></a>
+  </nav>
+</header>
+<main id="main">
+  <section class="hero wrap" aria-labelledby="headline">
+    <div class="hero-copy">
+      <p class="eyebrow"><span class="signal" aria-hidden="true"></span> A language for bounded operations</p>
+      <h1 id="headline">Intent,<br>with <em>limits.</em></h1>
+      <p class="lede">Give an operation a purpose.<br>Make its authority explicit.</p>
+      <p class="intro">Edict describes what an operation can do, the conditions it needs, and the limits it must respect. Humans and agents write the intent. The destination decides whether it may run.</p>
+      <div class="actions"><a class="button" href="https://github.com/flyingrobots/edict">Explore the repository <span aria-hidden="true">↗</span></a><a class="text-link" href="#example">Read some Edict <span aria-hidden="true">↓</span></a></div>
+      <p class="micro">Open source. Under active development. Explicit about its limits.</p>
+    </div>
+    <figure class="intent-diagram" aria-labelledby="diagram-caption">
+      <div class="diagram-label"><span>OPERATION / 001</span><span aria-hidden="true">[ e ]</span></div>
+      <div class="diagram-grid">
+        <div class="diagram-input"><span class="tiny">AUTHOR</span><strong>“Create a greeting.”</strong><span>Human or agent</span></div>
+        <div class="connector" aria-hidden="true">↓</div>
+        <div class="contract"><div class="contract-title"><span class="tiny">THE EXPLICIT CONTRACT</span><span aria-hidden="true">↘</span></div><dl><div><dt>profile</dt><dd>create if absent</dd></div><div><dt>basis</dt><dd>the selected history</dd></div><div><dt>budget</dt><dd>a defined ceiling</dd></div><div><dt>failure</dt><dd>already exists</dd></div></dl></div>
+        <div class="connector" aria-hidden="true">↓</div>
+        <div class="destination"><span class="tiny">DESTINATION</span><strong>Check. Admit. Execute.</strong><span>Supported operation → result or obstruction</span></div>
+      </div>
+      <figcaption id="diagram-caption">A proposal carries meaning.<br>It does not grant itself permission.</figcaption>
+    </figure>
+  </section>
+
+  <section class="thesis">
+    <div class="wrap thesis-inner"><p class="eyebrow">THE IMPORTANT DISTINCTION</p><p>“This program is valid”<br>and <em>“this program may run here”</em><br>are different statements.</p><span class="thesis-note">Edict keeps them separate.</span></div>
+  </section>
+
+  <section class="section wrap" id="how" aria-labelledby="how-title">
+    <div class="section-heading"><p class="eyebrow">01 / THE SYSTEM</p><h2 id="how-title">From intent<br>to an accountable outcome.</h2><p>Edict is the language and compiler. Echo supplies a runtime for supported operations. Each boundary has its own job.</p></div>
+    <ol class="pipeline">
+      <li><span class="step-number">01</span><h3>Describe</h3><p>Name the operation, exact dependencies, input conditions, permitted effects, and resource limits.</p><span class="step-owner">EDICT SOURCE</span></li>
+      <li><span class="step-number">02</span><h3>Check</h3><p>Resolve names. Check types, supported bounds, and effect compatibility. Produce explicit intermediate representations.</p><span class="step-owner">EDICT COMPILER</span></li>
+      <li><span class="step-number">03</span><h3>Verify</h3><p>Translate supported meaning for the target. Check the package and its connection to the semantic artifacts.</p><span class="step-owner">TARGET PROVIDER</span></li>
+      <li><span class="step-number">04</span><h3>Admit &amp; run</h3><p>The host decides permission. Echo evaluates supported programs and returns a result or a typed refusal.</p><span class="step-owner">ECHO RUNTIME</span></li>
+    </ol>
+    <p class="boundary-note"><span aria-hidden="true">↳</span> A successful compile does not promise support from every runtime. A hash identifies bytes; it does not prove safety.</p>
+  </section>
+
+  <section class="example-section" id="example" aria-labelledby="example-title">
+    <div class="wrap example-layout">
+      <div class="example-copy"><p class="eyebrow">02 / READ THE LANGUAGE</p><h2 id="example-title">A small operation.<br>An explicit contract.</h2><p>This operation comes from <a href="https://github.com/flyingrobots/hello-echo">Hello Echo</a>. It creates a greeting only when its cell does not already exist.</p><p>The profile names the operation class. The basis identifies the history it depends on. The budget names its resource ceiling.</p><p>If the cell already exists, the operation reports a declared obstruction. That is a structured refusal, with a name.</p><a class="text-link" href="https://github.com/flyingrobots/hello-echo/blob/ee45716e8839efa14798b3e9e35c87538f456b25/src/hello_echo.edict">See the complete source <span aria-hidden="true">↗</span></a></div>
+      <figure class="code-card"><figcaption><span class="file-icon" aria-hidden="true">◇</span> hello_echo.edict <span class="code-label">SOURCE EXCERPT</span></figcaption>
+<pre tabindex="0" aria-label="Edict createGreeting source excerpt"><code><span class="kw">intent</span> createGreeting(input: CreateGreetingInput)
+  <span class="kw">returns</span> GreetingCreated
+  <span class="kw">profile</span> cell.createIfAbsent
+  <span class="kw">basis</span> input.basis
+  <span class="kw">budget</span> &lt;= cell.smallCreateBudget
+{
+  <span class="kw">let</span> receipt: CellCreateReceipt =
+    cell.createIfAbsent(input)
+    <span class="kw">else</span> {
+      alreadyExists(existing)
+        =&gt; cell.AlreadyExists
+    };
+
+  <span class="kw">return</span> {
+    key: receipt.key,
+    message: input.value,
+  };
+}</code></pre>
+      <div class="code-footer">The full module defines its types and pins its imported lawpack.</div></figure>
+    </div>
+  </section>
+
+  <section class="section wrap" id="in-practice" aria-labelledby="practice-title">
+    <div class="section-heading"><p class="eyebrow">03 / BEYOND THE COMPILER</p><h2 id="practice-title">There is a runtime.<br>And a real starting point.</h2><p>These projects make the boundaries concrete. Their examples record exact versions and the claims each check supports.</p></div>
+    <div class="project-grid">
+      <article class="project"><span class="tag">START HERE</span><h3>Hello Echo<span aria-hidden="true">↗</span></h3><p>The smallest standalone example: Edict source becomes a verified package, then Echo executes it with typed results and durable recovery.</p><a href="https://github.com/flyingrobots/hello-echo">Explore Hello Echo <span aria-hidden="true">↗</span></a></article>
+      <article class="project"><span class="tag neutral">THE RUNTIME</span><h3>Echo<span aria-hidden="true">↗</span></h3><p>Bounded calculation, bounded reads, supported state changes, and coordinated external actions. Each path has different evidence guarantees.</p><a href="https://github.com/flyingrobots/echo">Explore Echo <span aria-hidden="true">↗</span></a></article>
+      <article class="project"><span class="tag neutral">APPLICATION PRESSURE</span><h3>Jim / Jedit<span aria-hidden="true">↗</span></h3><p>A real editor makes the requirements harder. Its documented main path uses Wesley compatibility code; the Edict migration is separate work.</p><a href="https://github.com/flyingrobots/jedit">Explore Jim <span aria-hidden="true">↗</span></a></article>
+    </div>
+  </section>
+
+  <section class="questions-section" id="questions" aria-labelledby="questions-title">
+    <div class="wrap questions-layout"><div class="questions-heading"><p class="eyebrow">04 / A LITTLE DEEPER</p><h2 id="questions-title">Good questions.<br>Bounded answers.</h2><p>Start with the idea. Open the details when you need them.</p><a class="text-link" href="https://github.com/flyingrobots/edict/tree/main/docs">Read the technical docs <span aria-hidden="true">↗</span></a></div>
+    <div class="questions">
+      <details open><summary>Why make another language?</summary><div class="answer"><p>A conventional function signature usually says little about authority. An operation called <code>updateDocument</code> might inherit all the privileges of its process.</p><p>Edict makes more of that contract explicit. The operation states its dependencies, constraints, effects, and limits. The destination keeps control of admission.</p><p>This matters when the operation author and the host have different responsibilities—especially when an agent proposes changes.</p></div></details>
+      <details><summary>Who made it, and when?</summary><div class="answer"><p>James Ross, under <a href="https://github.com/flyingrobots">flyingrobots</a>, initiated the repository on 17 June 2026. The first compiler spine followed on 21 June.</p><p>Hello Echo's compiler and durable execution examples entered history in July 2026. These are development milestones, not evidence of broad production adoption.</p><p>The <a href="https://github.com/flyingrobots/edict/commit/be1d71d7eb3fb7e7b73bd14e77b773041d99300b">original rationale</a> places Edict between application contracts, Continuum's protocol concepts, and a runtime such as Echo.</p></div></details>
+      <details><summary>Where would I use it?</summary><div class="answer"><p>Consider Edict for restricted extensions, agent-authored operations, editor commands, or automation that needs explicit authority and attributable outcomes.</p><p>It is a domain-specific language. It does not replace the host application, user interface, operating system, or arbitrary scripting environment.</p><p>Developers who know capability security, effect systems, or transaction processing will recognize the problem. A project that needs unrestricted libraries immediately may find the current subset too narrow.</p></div></details>
+      <details><summary>What does the compiler actually prove?</summary><div class="answer"><p>It checks supported types, bounds, effects, and constraints. A read-only profile cannot accept a write-class effect.</p><p>For supported unsigned subtraction, an input condition such as <code>lower &lt;= upper</code> can establish that <code>upper - lower</code> cannot underflow.</p><p>That is a conditional guarantee. The runtime must check the actual input condition. Edict does not infer every cost or prove arbitrary mathematical properties.</p><p><a href="https://github.com/flyingrobots/edict/blob/5c7e539f43dcb7d1f44cff00e9cbfeea78a38c0a/docs/topics/compiler-spine/README.md">Inspect the supported compiler subset ↗</a></p></div></details>
+      <details><summary>What are Core IR, lawpacks, and target profiles?</summary><div class="answer"><p><strong>Core IR</strong> is an intermediate representation of operation meaning. It retains types, dependencies, constraints, budgets, and results.</p><p><strong>A lawpack</strong> supplies technical rules and operation contracts. An exact digest identifies the selected content. “Law” here means technical rules.</p><p><strong>A target profile</strong> describes the destination's supported interpretation. Target IR records that interpretation. A target can reject meaning it cannot support.</p></div></details>
+      <details><summary>How does it touch the outside world?</summary><div class="answer"><p>Through explicit requests and authorized adapters. Edict describes the request. Echo coordinates it. The adapter receives only its permitted external authority.</p><p>Hello Echo includes workspace observation and validated patch examples. Their recovery rules preserve ambiguous outcomes instead of inventing success after a crash.</p><p>Pure evaluation and private bounded reads do not automatically produce durable history or receipts. <a href="https://github.com/flyingrobots/hello-echo#hello-effect-workspace-observation">See the external-action examples ↗</a></p></div></details>
+      <details><summary>What is new? What came before?</summary><div class="answer"><p>The ingredients have substantial prior art. Edict's distinctive work is their composition around explicit operations, target interpretation, and destination-owned admission.</p><ul><li><a href="https://homes.cs.washington.edu/~mernst/teaching/6.893/readings/necula-popl97.pdf">Proof-carrying code</a>: a consumer checks evidence against its safety policy.</li><li><a href="https://dafny.org/latest/DafnyRef/DafnyRef">Dafny</a> and <a href="https://fstar-lang.org/">F*</a>: specifications and proofs about programs.</li><li><a href="https://github.com/koka-lang/koka">Koka</a>: effects as part of a type system.</li><li><a href="https://tutorial.ponylang.org/capabilities/object-capabilities.html">Pony</a>: explicit authority through object capabilities.</li><li><a href="https://arxiv.org/abs/2303.03749">Daml</a>: authorized operations and multi-party workflows.</li><li><a href="https://docs.temporal.io/workflow-definition">Temporal</a>: deterministic replay and durable workflows.</li></ul><p>This is a comparison of mechanisms, not a claim that no earlier system combines them.</p></div></details>
+      <details><summary>Could Edict generate Lean proofs?</summary><div class="answer"><p><span class="tag neutral">RESEARCH DIRECTION</span></p><p>Yes, in principle: translate a supported Core subset into formal definitions, generate proof obligations, and have Lean check completed proofs.</p><p>A useful first target is a bounded byte slice. The proof should establish that the exact modeled operation respects its range and output bounds.</p><p>The translator must preserve Edict's meaning. The theorem must refer to the expected operation and assumptions. Exporting a Lean file alone proves nothing.</p><p>This is proposed work, not an implemented Edict exporter. <a href="https://lean-lang.org/doc/reference/latest/ValidatingProofs/">Read about Lean proof validation ↗</a></p></div></details>
+      <details><summary>What should I not assume?</summary><div class="answer"><p>Do not assume every parsed feature compiles, every compiled artifact runs, or every valid operation has permission.</p><p>The current subset is deliberately restricted. Host code, target implementations, external adapters, and their assumptions remain part of the system's trust boundary.</p><p>Start with a version-pinned example. Expand only when its compiler and runtime both support the required behavior.</p></div></details>
+    </div></div>
+  </section>
+
+  <section class="closing wrap" aria-labelledby="closing-title"><p class="eyebrow">ENOUGH THEORY. READ THE CODE.</p><h2 id="closing-title">The intent is explicit.<br><em>The source is open.</em></h2><p>Explore the language, follow an example, or inspect the boundaries for yourself.</p><div class="actions"><a class="button" href="https://github.com/flyingrobots/edict">Go to Edict on GitHub <span aria-hidden="true">↗</span></a><a class="text-link" href="https://github.com/flyingrobots/hello-echo">Start with Hello Echo <span aria-hidden="true">↗</span></a></div></section>
+</main>
+<footer class="wrap footer"><a class="wordmark" href="./"><span class="mark" aria-hidden="true">e.</span> edict</a><p>By <a href="https://github.com/flyingrobots">flyingrobots</a>.<br>Language · compiler · explicit boundaries.</p><details class="source-note"><summary>About these claims</summary><p>This explanation uses Edict <a href="https://github.com/flyingrobots/edict/tree/5c7e539f43dcb7d1f44cff00e9cbfeea78a38c0a">5c7e539</a>, Echo <a href="https://github.com/flyingrobots/echo/tree/a93e9d82e89455ed1fa0b63447c88de544b9da26">a93e9d8</a>, Hello Echo <a href="https://github.com/flyingrobots/hello-echo/tree/ee45716e8839efa14798b3e9e35c87538f456b25">ee45716</a>, and Jim <a href="https://github.com/flyingrobots/jedit/tree/ecefbbb695ddeedaed94e0046c580e2041cca40f">ecefbbb</a>. Source inspection is distinct from independently rerunning the projects' tests. The repository records newer work.</p></details></footer>
+</body>
+</html>

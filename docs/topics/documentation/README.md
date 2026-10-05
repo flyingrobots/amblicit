@@ -35,6 +35,8 @@ the `edict` CLI. [DOCS-REQ-002]
 
 Edict's current documentation set has these roles:
 
+- [Static website](../../index.html): progressive explanation and repository entry point, with native HTML disclosure and no JavaScript dependency. [Hosting instructions](../../site/README.md) describe local preview and branch-based GitHub Pages publication.
+
 - [README.md](../../../README.md): product landing page and high-level
   explanation.
 - [docs/README.md](../../README.md): documentation router.
