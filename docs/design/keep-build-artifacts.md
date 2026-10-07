@@ -9,6 +9,8 @@ date: 2026-10-07
 
 This proposal asks whether Edict should use Keep as an optional artifact store and build cache. It does not change the compiler or enable a storage backend.
 
+Independent critique and author refinements are recorded in the [review note](artifact-proposals-review.md). All implementation and adoption gates remain open.
+
 ## 1. Background Context
 
 Edict currently publishes application outputs through its filesystem build layer. Its library compiler paths use explicit inputs and must not perform hidden storage discovery. Keep supplies content identities and authenticated reconstruction. Its current durable reader requires an admitted, writable, case-sensitive Linux ext4 environment. These are source observations, not a new integration test. [Sources 1–3](#sources)
@@ -19,7 +21,7 @@ Echo has its own physical-content interface. Its main branch has no Keep backend
 | --- | --- |
 | refines | [CLI build boundary](https://github.com/flyingrobots/edict/blob/618aa4f84ff88a0873849f8d9cfa55e1f340ffb9/docs/topics/cli/README.md), [Rust I/O boundary](https://github.com/flyingrobots/edict/blob/618aa4f84ff88a0873849f8d9cfa55e1f340ffb9/docs/topics/rust-standards/README.md#io-boundaries) |
 | supersedes | none |
-| depends_on | none; each implementation slice must establish its stated prerequisites |
+| depends_on | none |
 | related_to | [Encrypted artifacts proposal](encrypted-build-artifacts.md), [provider artifacts](https://github.com/flyingrobots/edict/blob/618aa4f84ff88a0873849f8d9cfa55e1f340ffb9/docs/topics/providers/README.md) |
 
 ## 2. Problem Description
@@ -33,6 +35,8 @@ No benchmark establishes a performance benefit yet. This proposal does not class
 Introduce an Edict-owned artifact-storage interface at the build-driver boundary. Keep-specific handles and receipts stay inside its adapter. Compiler transforms continue to receive already loaded, validated inputs.
 
 The first integration is explicit and optional. The current filesystem path remains the default. A selected required-store mode refuses unsupported platforms, unavailable stores, or insufficient evidence. It does not silently switch backends.
+
+At the cited Keep revision, macOS and Windows host builds cannot use the durable adapter. A Linux VM or container must provide an actually admitted ext4 filesystem. An ordinary Docker container, APFS bind mount, or overlay filesystem does not establish admission. Backend selection needs future versioned configuration; no current CLI flag is claimed.
 
 ### Identity and build-input records
 
@@ -52,6 +56,8 @@ The proposed record contains these logical fields. This table is a design sketch
 
 The build-input manifest includes the compiler identity, source bytes, complete dependency closure, authority facts, provider components, target configuration, and relevant settings. Include ABI, serialization, and cache-policy versions. A source hash alone is not an adequate reuse key.
 
+Bind the effective `ProviderHostLimits`, selected provider schema artifacts and registry mapping, and external-action resource closure explicitly. Fixed defaults can derive from the exact compiler identity; configurable values require explicit manifest fields. A1 must separate reuse-affecting settings from output destinations. It must document which current checks run again on a cache hit and which producer evidence the caller accepts.
+
 A matching input identity cannot prove that a producer actually compiled those inputs. The cache entry also needs a trusted publication boundary or independently checked producer evidence. Required artifact, provider, and consumer checks remain in force. Runtime admission and authorization decisions are never cached as build success.
 
 ### Publication and retrieval
@@ -59,6 +65,8 @@ A matching input identity cannot prove that a producer actually compiled those i
 The adapter first stores immutable artifact bytes. It then establishes the selected retention contract. It publishes the reusable manifest or index reference last. Failed operations may leave owned, unreferenced objects, but must not advertise an incomplete build.
 
 Keep publication and Edict output publication are separate transitions. The integration must define retries, restart recovery, and orphan handling. A successful byte reconstruction does not prove permanent retention or physical power-loss durability.
+
+Cache hits must use the existing output-publication contract. For application output pairs, preserve `write_application_output_pair`, its directory lock, synced staging, and paired rollback. Other artifact roles must use their owning publication path. A reconstructed blob must never bypass those paths with a direct output-directory write.
 
 The retrieval path reconstructs into a private, bounded destination. It validates the successful receipt, exact length, and expected Keep identity. It then decodes the artifact and checks its Edict reference. It exposes the result only after those checks succeed.
 
@@ -90,6 +98,14 @@ flowchart LR
 
 The manifest is the reuse boundary. An orphaned blob does not establish a completed build, and a storage receipt does not grant execution authority.
 
+### Capacity and lifecycle
+
+Define a physical quota before enabling the backend. Account for live and orphaned segments, catalogs, retention metadata, indexes, staging, and rollback copies. Account for artifact-cache data within the project's aggregate build-cache budget. Generated test stores retain their separate test-data limit. A larger retained artifact store requires an explicit capacity decision.
+
+Keep's missing garbage collection and compaction do not permit unbounded accumulation. Stop new publication before the declared budget or free-space floor is reached. Retiring a retention root alone does not prove physical bytes were reclaimed.
+
+Initial cleanup may retire an exclusively owned, disposable cache namespace after readers and writers stop. Preserve referenced artifacts, required evidence, and uncertain recovery state. Do not create replacement stores to evade the aggregate budget. A3 must define accounting and safe cleanup; A4 must establish sustained bounded operation before default adoption.
+
 ## 2c. Alternatives considered and rejected
 
 | Option | Assessment |
@@ -107,13 +123,14 @@ All criteria below are planned. None has a new executable witness from this prop
 | Requirement | Planned observable result |
 | --- | --- |
 | AS-01: Exact retrieval | A stored artifact reconstructs to its exact original bytes and passes its existing Edict validator. |
-| AS-02: Complete input binding | Changing each relevant input invalidates reuse; identical admitted inputs can reuse an entry. |
+| AS-02: Complete input binding | Changing each relevant input, host-limit policy, selected schema mapping, or external-action resource invalidates incompatible reuse. |
 | AS-03: Producer trust | A valid blob with a forged input/output association cannot become a trusted cache hit. |
 | AS-04: Failure visibility | Corruption, truncation, wrong identity, and sink failure publish no partial artifact. |
 | AS-05: Publication recovery | Restart at each index/publication boundary reveals either a complete entry or an explicit incomplete state. |
 | AS-06: Retention honesty | Reads name their admitted view and cannot claim retention beyond established evidence. |
 | AS-07: Compatibility | Existing filesystem builds, package bytes, artifact digests, diagnostics, and consumer checks retain their contracts. |
 | AS-08: Platform refusal | Unsupported storage profiles fail with a stable structured cause. |
+| AS-09: Capacity lifecycle | Repeated ordinary and encrypted exports stop safely at the declared quota; cleanup preserves referenced data and required evidence. |
 
 ## 2e. Test Plan
 
@@ -126,6 +143,7 @@ Reuse guarded workers and shared build admission. Keep generated output within t
 ## 3. Prerequisites
 
 - Identify supported public Keep write, retention, snapshot, and reconstruction APIs at an exact revision. Do not substitute test-only admission for a production backend.
+- A2 is blocked on public, bounded production ingestion. Keep [#82](https://github.com/flyingrobots/keep/issues/82) tracks that gap at the cited revision. A reviewed equivalent public contract can replace this prerequisite explicitly. Edict must not assemble private or test-only publication routines as its production write API.
 - Specify the versioned input manifest, trusted producer boundary, storage interface, and structured refusals.
 - Establish an admitted test filesystem. macOS APFS, Windows, and Docker overlay filesystems must not inherit an ext4 durability claim.
 - Decide which artifact roles the first slice accepts and which current verifier steps can be reused under an explicit policy.
@@ -153,9 +171,9 @@ Proposal completion means the design, alternatives, open decisions, and acceptan
 Execute future work in this order:
 
 1. **A1: Artifact interface and manifest.** Add the optional interface, strict manifest, and input binding with the current filesystem backend. Keep disabled.
-2. **A2: Keep storage and reconstruction.** Add an explicitly selected adapter with platform admission, private retrieval, and honest receipts. Depends on A1.
-3. **A3: Reusable cache publication and recovery.** Add trusted lookup, retention-aware publication, and restart behavior. Depends on A2.
-4. **A4: Adoption decision.** Measure benefit and operational cost before changing any default. Depends on A3 evidence.
+2. **A2: Keep storage and reconstruction.** Add an explicitly selected adapter with actual ext4 admission, private retrieval, and honest receipts. Depends on A1 and the accepted public ingestion prerequisite.
+3. **A3: Reusable cache publication and recovery.** Add trusted lookup, retention-aware publication, restart behavior, physical accounting, and safe cache retirement. Depends on A2.
+4. **A4: Adoption decision.** Measure benefit and establish sustained bounded operation before changing any default. Depends on A3 evidence.
 
 Each implementation issue must have one independently verifiable outcome and leave the existing build path working. These are proposed slices, not newly created tracker issues.
 
@@ -166,6 +184,8 @@ James decides adoption. Edict maintainers own the build interface and native art
 ## 9. Related Issues
 
 Echo [#722](https://github.com/flyingrobots/echo/issues/722) and [#760](https://github.com/flyingrobots/echo/issues/760) concern its separate Keep adoption boundary. They are related work, not recorded prerequisites for this proposal.
+
+Keep [#82](https://github.com/flyingrobots/keep/issues/82) is the proposed upstream ingestion blocker for A2. Keep [#21](https://github.com/flyingrobots/keep/issues/21) tracks compaction/collection work; the initial adapter must remain bounded without claiming that work has landed.
 
 The [encrypted-artifact proposal](encrypted-build-artifacts.md) uses the generic artifact interface and private retrieval boundary. It does not require A2's concrete Keep adapter.
 

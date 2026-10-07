@@ -9,6 +9,8 @@ date: 2026-10-07
 
 This proposal defines an optional confidential-artifact mode. The compiler endpoint encrypts before storage. Only authorized consumer endpoints can decrypt. The storage service does not receive plaintext or decryption keys.
 
+Independent critique and author refinements are recorded in the [review note](artifact-proposals-review.md). All implementation and adoption gates remain open.
+
 ## 1. Background Context
 
 Build artifacts can reveal source logic, business rules, or private build metadata. Exact storage identity protects byte integrity. It does not establish confidentiality, producer trust, or execution authority.
@@ -43,6 +45,8 @@ A recipient's decryption permission does not make that recipient a trusted compi
 Use a reviewed authenticated-encryption library and a versioned, strictly decoded envelope. Freeze the suite, key-wrap method, nonce rules, and compatibility policy before implementation. Do not design a new cipher.
 
 The public envelope carries only the approved version, suite identifier, key-routing information, framing, and ciphertext. Associated data must bind the public header and object context. Associated data is authenticated but remains visible. Nonce handling must satisfy the selected suite's requirements. [RFC 5116](https://www.rfc-editor.org/rfc/rfc5116.html)
+
+Use the vetted library's secret-dependent authentication checks; do not implement manual tag comparisons. Cryptographic authentication failures expose one coarse refusal to untrusted callers. Private diagnostics may retain appropriate detail without exposing key membership or secret contents. Public version, framing, and size errors can retain their stable structured kinds. This proposal does not promise constant-time parsing or timing equivalence for the whole protocol.
 
 The private payload contains the artifact bytes, exact plaintext byte binding, artifact role, native Edict reference, build-input manifest, and producer evidence. An exact byte binding is necessary when a native identity intentionally normalizes representation.
 
@@ -105,6 +109,8 @@ Define recipient enrollment, rotation, recovery, backup, and loss handling. Revo
 
 Use fresh suite-compliant encryption parameters for each new encryption. Reuse an existing admitted ciphertext object when its recipient and policy context still applies. Independently encrypted copies generally lose content-level deduplication. Deterministic or convergent encryption is outside the first proposal and requires a separate leakage review.
 
+Apply the artifact-store quota and lifecycle contract to every ciphertext copy, wrapper, private manifest, index, and staging object. Rotation and retries need peak-storage accounting. Refuse publication when that accounting cannot admit the operation. Do not treat root retirement as physical reclamation or move data to another uncounted store.
+
 Prevent secret contents, plaintext hashes, and source paths from entering persistent diagnostics or remote logs by default. Any authorized local plaintext reveal needs a separate explicit operation. Do not claim that deleting a retention root securely deletes physical media.
 
 ## 2c. Alternatives considered and rejected
@@ -132,12 +138,16 @@ All criteria are planned. No encrypted Edict artifact implementation or security
 | EA-07: Resource bounds | Oversized envelopes and plaintext exceedance refuse within declared allocation, storage, and time budgets. |
 | EA-08: Key lifecycle | Rotation, recovery, unavailable key services, and future-access revocation have explicit tested outcomes. |
 | EA-09: Compatibility | Ordinary artifact bytes, digest domains, and consumers remain unchanged when confidential mode is disabled. |
+| EA-10: Refusal disclosure | Secret-dependent authentication failures and unauthorized key lookups expose no key-membership distinction; public framing and size errors retain their documented kinds. |
+| EA-11: Capacity lifecycle | Fresh encryption, rotation, retries, and partial stages remain within the declared aggregate quota or refuse publication. |
 
 ## 2e. Test Plan
 
 Use existing exact artifact fixtures with test-only keys and a vetted suite's published vectors. Verify plaintext and ciphertext identities independently. Exercise cryptographic refusal after storage identity succeeds, rather than counting only a failed storage hash as an encryption test.
 
 Use malicious manifests, wrong producer evidence, failing output sinks, and interrupted export/retrieval. Inspect owned public outputs, indexes, diagnostics, and log artifacts for deliberately injected secret markers. Bound the confidentiality claim to those paths; a marker scan is not a proof against all side channels.
+
+Test the documented public error classes separately from cryptographic refusal. Review the selected library's authentication behavior. Do not infer whole-protocol constant-time execution from a small timing test.
 
 Use deterministic nonce inputs only in test vectors. Production nonce generation must obey the accepted suite contract. Run RED/GREEN before behavioral changes and the full local gate on stable candidates. Reuse the same 20 GiB build, 4 GiB data, and 128 MiB log budgets. Stop owned child processes when a guard or deadline fails.
 
@@ -171,10 +181,10 @@ Proposal completion means the threat model, ownership, alternatives, prerequisit
 
 Execute future work in this order:
 
-1. **B1: Envelope and policy contract.** Freeze the suite, endpoint model, exact byte binding, producer evidence, and metadata policy. Requires A1's artifact interface.
+1. **B1: Envelope and policy contract.** Freeze the suite, endpoint model, exact byte binding, producer evidence, metadata policy, and refusal disclosure. Requires A1's artifact interface.
 2. **B2: Confidential export.** Encrypt before any public artifact output and refuse missing keys without plaintext fallback. Depends on B1.
 3. **B3: Authorized consumer retrieval.** Authenticate and validate privately before release. Depends on B2's stable envelope; ordinary consumers remain intact.
-4. **B4: Key lifecycle and disclosure controls.** Prove recovery, rotation, recipient policy, index privacy, and safe diagnostics. Depends on B2/B3. Confidential mode remains disabled for general use.
+4. **B4: Key lifecycle and disclosure controls.** Prove recovery, rotation, recipient policy, index privacy, safe diagnostics, and bounded storage growth. Depends on B2/B3. Confidential mode remains disabled for general use.
 5. **B5: Adoption decision.** Run the accepted end-to-end matrix and review its precise limits before enabling any deployment. Depends on B4.
 
 Each slice must build and pass its required checks. B2 and B3 first supply internal, disabled machinery with independent executable evidence. No public confidential-export route activates before the complete producer/consumer and disclosure gates pass. A disabled flag does not excuse incorrect behavior within a slice.
