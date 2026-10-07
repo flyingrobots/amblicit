@@ -18,6 +18,10 @@ The current specification set is:
   obligation-closure resolution.
 - [Obstruction Strands Design Note](./design/obstruction-strands-v0.md):
   non-topic planning note for future repairable obstruction preservation.
+- [Keep Build Artifact Proposal](./design/keep-build-artifacts.md): proposed
+  optional artifact storage and complete-input cache boundary; not implemented.
+- [Encrypted Build Artifact Proposal](./design/encrypted-build-artifacts.md):
+  proposed confidential export and retrieval; not implemented or enabled.
 - [Documentation Standards Topic](./topics/documentation/): reader-task page
   types, documentation coverage, examples, and docs-impact rules.
 - [Release Roadmap](../ROADMAP.md): scheduled alpha milestones, release gates,
