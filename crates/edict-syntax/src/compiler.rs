@@ -1305,6 +1305,7 @@ impl<'a> TypeChecker<'a> {
             Expr::Ident { .. }
             | Expr::Int { .. }
             | Expr::Str { .. }
+            | Expr::Bytes { .. }
             | Expr::Bool { .. }
             | Expr::Digest { .. } => Some(HelperCost::default()),
             Expr::Field { base, .. } | Expr::Unary { operand: base, .. } => {
@@ -3329,6 +3330,7 @@ impl<'a> TypeChecker<'a> {
             Expr::Ident { .. }
             | Expr::Int { .. }
             | Expr::Str { .. }
+            | Expr::Bytes { .. }
             | Expr::Bool { .. }
             | Expr::Digest { .. } => {}
             Expr::Field { base, .. } => {
@@ -3658,6 +3660,7 @@ impl<'a> TypeChecker<'a> {
         let checked = match expr {
             Expr::Ident { name, span } => self.check_ident(name, *span, env),
             Expr::Str { value, .. } => string_value(value),
+            Expr::Bytes { value, .. } => bytes_value(value),
             Expr::Bool { value, .. } => Some(TypedValue {
                 expr: CoreExpr::Const(CoreValue::Bool(*value)),
                 ty: TypeShape {
@@ -4277,6 +4280,7 @@ fn contains_contextual_bare_integer(expr: &Expr) -> bool {
         Expr::Ident { .. }
         | Expr::Int { .. }
         | Expr::Str { .. }
+        | Expr::Bytes { .. }
         | Expr::Bool { .. }
         | Expr::Digest { .. }
         | Expr::Field { .. }
@@ -4394,6 +4398,17 @@ fn string_value(value: &str) -> Option<TypedValue> {
     Some(TypedValue {
         expr: CoreExpr::Const(CoreValue::String(value.to_owned())),
         ty: TypeShape::canonical_structural(kind)?,
+    })
+}
+
+fn bytes_value(value: &[u8]) -> Option<TypedValue> {
+    let length = u64::try_from(value.len()).ok()?;
+    Some(TypedValue {
+        expr: CoreExpr::Const(CoreValue::Bytes(value.to_vec())),
+        ty: TypeShape::canonical_structural(TypeKind::Bytes {
+            min: Some(length),
+            max: length,
+        })?,
     })
 }
 
@@ -4774,6 +4789,7 @@ fn plain_callee_coordinate(expr: &Expr) -> Option<String> {
         Expr::Call { .. }
         | Expr::Int { .. }
         | Expr::Str { .. }
+        | Expr::Bytes { .. }
         | Expr::Bool { .. }
         | Expr::Digest { .. }
         | Expr::Unary { .. }
@@ -4797,6 +4813,7 @@ fn plain_path_root(expr: &Expr) -> Option<&str> {
         Expr::Call { .. }
         | Expr::Int { .. }
         | Expr::Str { .. }
+        | Expr::Bytes { .. }
         | Expr::Bool { .. }
         | Expr::Digest { .. }
         | Expr::Unary { .. }
@@ -4824,6 +4841,7 @@ fn expr_span(expr: &Expr) -> Span {
         Expr::Ident { span, .. }
         | Expr::Int { span, .. }
         | Expr::Str { span, .. }
+        | Expr::Bytes { span, .. }
         | Expr::Bool { span, .. }
         | Expr::Digest { span, .. }
         | Expr::Field { span, .. }

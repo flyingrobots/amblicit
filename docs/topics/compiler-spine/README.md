@@ -37,6 +37,10 @@ enter the same `compiler_context_from_authority_facts` path. [CSPINE-REQ-010]
 
 ## Current Contract
 
+Source byte literals lower to `CoreValue::Bytes` with an exact decoded-length
+type. Equivalent escape spellings produce identical semantic Core digests;
+declared result byte bounds remain enforced. [CSPINE-REQ-049]
+
 Source-owned pure functions compile with signatures collected before bodies,
 isolated lexical frames, ordered immutable bindings and one terminal return.
 Calls stay explicit and retain ordered arguments, including arguments unused
@@ -44,7 +48,6 @@ by the callee. Every definition is checked, including unused definitions.
 The [source-function reference](source-functions.md) explains authority,
 canonical identity, conservative budgeting and target restrictions.
 [CSPINE-REQ-044] [CSPINE-REQ-045]
-
 
 Boolean `&&` and `||` predicates lower to ordered Core `All` and `Any` forms
 where predicate checking is used: input constraints, statement conditionals,

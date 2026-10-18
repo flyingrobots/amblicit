@@ -1326,6 +1326,13 @@ Lexical conformance fixtures must pin these details before parser freeze:
   rejected unless escaped as explicit byte escapes.
 - `string-lit` decodes to Unicode scalar values and does not normalize by
   default.
+- String and byte literals accept `\"`, `\\`, `\n`, `\t`, `\r`, `\0` and
+  `\xHH`. The hexadecimal form consumes exactly two ASCII hexadecimal digits
+  and inserts one octet. A decoded string must remain valid UTF-8; a byte
+  literal may contain any octet. `\u{...}` escapes are not supported in v1.
+  Literal byte length is the decoded payload length, independent of escape
+  spelling. Adjacent `b` and an opening quote form one byte literal token;
+  a separated `b` remains an identifier.
 - Integer underscores may appear only between digits, never at the beginning,
   end, or adjacent to another underscore.
 - Integer width and signedness are hash-significant, so every integer value

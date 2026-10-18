@@ -1614,6 +1614,10 @@ impl Parser {
                 self.idx += 1;
                 Ok(Expr::Str { value, span })
             }
+            TokenKind::Bytes(value) => {
+                self.idx += 1;
+                Ok(Expr::Bytes { value, span })
+            }
             TokenKind::Ident(name) if name == "true" || name == "false" => {
                 self.idx += 1;
                 Ok(Expr::Bool {
@@ -1687,6 +1691,7 @@ fn expr_span(expr: &Expr) -> Span {
         Expr::Ident { span, .. }
         | Expr::Int { span, .. }
         | Expr::Str { span, .. }
+        | Expr::Bytes { span, .. }
         | Expr::Bool { span, .. }
         | Expr::Digest { span, .. }
         | Expr::Field { span, .. }
