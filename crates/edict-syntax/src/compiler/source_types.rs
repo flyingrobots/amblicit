@@ -32,7 +32,16 @@ impl TypeChecker<'_> {
                 return;
             };
             remaining -= weight;
+            let previous_errors = self.errors.len();
             let Some(shape) = self.type_decl_shape(&decl.source) else {
+                if self.errors.len() == previous_errors {
+                    self.errors.push(error(
+                        CompilerStage::TypeCheck,
+                        CompilerErrorKind::UnsupportedSourceShape,
+                        "source type declaration has no lowerable representation",
+                        decl.source.span,
+                    ));
+                }
                 continue;
             };
             // A source alias is a lexical spelling for its target, not another

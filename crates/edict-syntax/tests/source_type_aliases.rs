@@ -109,6 +109,20 @@ fn cyclic_and_missing_source_aliases_have_structured_refusals() {
 }
 
 #[test]
+fn unused_alias_with_no_lowerable_canonical_representation_cannot_disappear() {
+    let source = "package alias.example@1; type Bad = String<max=8,canonical=bogus>;";
+    let failures = compile_to_core(&parse_module(source).unwrap(), &context()).unwrap_err();
+    let failure = failures
+        .iter()
+        .find(|error| error.kind == CompilerErrorKind::UnsupportedSourceShape)
+        .expect("unsupported alias representation must be a compiler refusal");
+    assert_eq!(
+        &source[failure.span.start..failure.span.end],
+        "type Bad = String<max=8,canonical=bogus>;"
+    );
+}
+
+#[test]
 fn source_type_dependency_depth_and_expansion_work_refuse_before_unbounded_expansion() {
     let mut chain = String::from("package alias.example@1; type Layer0 = U64;");
     for index in 1..129 {
