@@ -356,7 +356,13 @@ impl<'a> Lexer<'a> {
                             self.pos += 1;
                         }
                         Some(b'x') => {
+                            let escape_start = self.pos - 1;
                             self.pos += 1;
+                            let span_end = (self.pos..self.src.len())
+                                .take(2)
+                                .take_while(|&index| self.src[index] != b'"')
+                                .last()
+                                .map_or(self.pos, |index| index + 1);
                             let digits = self.src.get(self.pos..self.pos + 2);
                             let value = digits
                                 .and_then(|digits| {
@@ -366,7 +372,7 @@ impl<'a> Lexer<'a> {
                                 })
                                 .ok_or_else(|| LexError {
                                     message: "byte escape requires two hexadecimal digits".into(),
-                                    span: Span::new(self.pos - 2, self.pos),
+                                    span: Span::new(escape_start, span_end),
                                 })?;
                             buf.push(value);
                             self.pos += 2;

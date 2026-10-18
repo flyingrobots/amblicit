@@ -140,3 +140,21 @@ fn byte_literal_length_still_obeys_the_declared_output_bound() {
         .iter()
         .any(|error| error.kind == CompilerErrorKind::TypeMismatch));
 }
+
+#[test]
+fn malformed_hex_escape_spans_include_digits_but_not_the_closing_quote() {
+    for (literal, start, end) in [
+        (r#"b"\xGG""#, 2, 6),
+        (r#"b"\x1""#, 2, 5),
+        (r#"b"\x""#, 2, 4),
+        ("b\"\\x1", 2, 5),
+        (r#""\xG""#, 1, 4),
+    ] {
+        let error = lex(literal).unwrap_err();
+        assert_eq!(
+            (error.span.start, error.span.end),
+            (start, end),
+            "{literal}"
+        );
+    }
+}
