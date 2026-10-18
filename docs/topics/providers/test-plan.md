@@ -170,3 +170,11 @@ Out of scope:
 - The native in-process host does not provide operating-system process
   containment for a Wasmtime or trusted-host implementation fault.
 - No browser-compatible component host exists.
+
+## October 2026 runtime advisory patch
+
+The Wasmtime 48.0.4 dependency fails the advisory gate for the October 14
+component-model advisories. The 48.0.6 patch must clear `cargo deny check
+advisories` and preserve the existing provider invocation, isolation, budget,
+fixture, and dependency-closure tests. This is a dependency patch; no version-only
+unit test substitutes for the advisory scan and runtime witnesses.
