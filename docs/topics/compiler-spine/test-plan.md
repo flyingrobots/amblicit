@@ -28,6 +28,14 @@ Out of scope:
 
 | ID | Status | Requirement | Source |
 | --- | --- | --- | --- |
+| CSPINE-REQ-050 | implemented | Resolve a complete explicit source-module closure by exact package and domain-framed source digest, preserving exact source bytes; refuse invalid, duplicate, missing, substituted, disconnected and cyclic inputs within bounded module, byte and path-depth apertures. | docs/SPEC_edict-language-v1.md |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-091 | implemented | Authenticated source closure | CSPINE-REQ-050 | An independently framed digest vector and real transitive source graph establish identity, order independence, exact source preservation, typed refusals and exact/one-below resource boundaries. | source_digest_matches_an_independently_framed_fixed_vector, source_closure_is_complete_deterministic_and_preserves_exact_bytes, source_closure_rejects_missing_substituted_duplicate_and_disconnected_inputs, source_closure_rejects_cycles_before_treating_any_source_as_authenticated, source_closure_enforces_exact_module_byte_and_depth_apertures, source_closure_reports_invalid_source_and_rejects_duplicate_aliases, source_closure_wire_binds_root_exact_bytes_and_typed_digests, shared_dependency_cache_does_not_hide_a_deeper_import_path, callers_cannot_raise_the_fixed_source_closure_ceilings, source_closure_artifact_inhabits_its_closed_normative_wire_schema | crates/edict-syntax/tests/source_closure.rs, crates/edict-provider-schema/tests/source_closure_schema.rs | Source linking, public application build and provider closure consumption remain separate requirements. |
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
 | CSPINE-REQ-049 | implemented | Source byte literals lower to raw Core bytes with an exact decoded-length type; equivalent escape spellings have equal semantic digests and declared output bounds remain enforced. | issue #249 |
 
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |

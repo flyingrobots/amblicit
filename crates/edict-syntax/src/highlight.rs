@@ -134,6 +134,7 @@ fn is_highlight_keyword(text: &str) -> bool {
             | "target"
             | "core"
             | "capability"
+            | "module"
             | "as"
             | "digest"
             | "fn"

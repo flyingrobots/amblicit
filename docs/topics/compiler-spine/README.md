@@ -37,6 +37,20 @@ enter the same `compiler_context_from_authority_facts` path. [CSPINE-REQ-010]
 
 ## Current Contract
 
+`source_closure::resolve_source_closure` authenticates an explicitly supplied
+root and complete dependency set without filesystem lookup. Module imports pin
+the exact `edict.source/v1` digest of each dependency. The witness retains exact
+UTF-8 bytes and parsed surfaces, rejects invalid, duplicate, missing,
+substituted, disconnected and cyclic source inputs, and bounds unit count,
+aggregate source bytes and every import path. Its canonical closure bytes and
+identity are independent of supplied dependency order. [CSPINE-REQ-050]
+
+Closure authentication grants no execution authority and does not link or
+type-check the units. Public application builds still accept one source;
+`compile_to_core` requires source-module imports to be resolved before use.
+The [source-closure contract](../../SPEC_edict-language-v1.md#source-compilation-closures)
+defines source pins, artifact framing and fixed ceilings.
+
 Source byte literals lower to `CoreValue::Bytes` with an exact decoded-length
 type. Equivalent escape spellings produce identical semantic Core digests;
 declared result byte bounds remain enforced. [CSPINE-REQ-049]
