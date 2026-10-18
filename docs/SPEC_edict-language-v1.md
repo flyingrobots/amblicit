@@ -1357,6 +1357,42 @@ Lexical conformance fixtures must pin these details before parser freeze:
 - Unicode normalization policies such as `canonical=nfc` resolve to a versioned
   normalization profile pinned by digest.
 
+## Source compilation closures
+
+A source-module import uses `use module package@version digest "sha256:..." as alias;`.
+The digest is mandatory. It identifies the exact dependency UTF-8 bytes encoded
+as one canonical CBOR byte string under `edict.source/v1`. The domain-framed
+preimage is `["edict.digest/v1", "edict.source/v1", source-byte-string]`.
+Comments and whitespace are part of source identity. Import digest spelling
+must match the canonical lowercase review rendering during authentication.
+
+`source_closure::resolve_source_closure` accepts one explicit root and all
+explicit dependency sources. It performs no filesystem discovery. The fixed
+ceilings are 64 units including root, 1 MiB of aggregate original source bytes,
+and 32 units on any root-to-leaf import path. Caller apertures may narrow these
+ceilings. Count and aggregate-byte checks precede parsing; parsed package
+coordinates must be unique and source surfaces must validate.
+
+Every module import must resolve within the supplied set, every supplied unit
+must be root-reachable, every import pin must match, and the graph must be
+acyclic. Topology refusal precedes pin comparison. No authenticated witness is
+returned until all checks pass. Shared dependency height is independent of the
+path that first visits it, so a shallow occurrence cannot hide a deeper path.
+
+The witness retains immutable exact sources and parsed surfaces. Its canonical
+artifact follows [edict-source-closure.cddl](abi/edict-source-closure.cddl), with
+common digest framing from [edict-common.cddl](abi/edict-common.cddl). `root`
+selects the entry package. The `modules` map is keyed by exact package
+coordinates; each value contains `source` bytes and a typed `["sha256", bstr32]`
+digest. It embeds no closure self-digest. Its external identity uses the same
+canonical three-element digest frame under `edict.source-closure/v1`.
+Dependency input order does not affect canonical bytes or identity.
+
+This boundary authenticates sources; it does not link or type-check them or
+grant execution authority. The current public application build still accepts
+one source. Standalone `compile_to_core` refuses unresolved module imports as
+`MissingContextFact`, including imports that are not referenced by a declaration.
+
 ## Grammar
 
 This grammar is normative for v1 syntax shape. Operator precedence and exact
@@ -1371,7 +1407,8 @@ import-decl     = shape-import
                 | lawpack-import
                 | target-import
                 | core-import
-                | capability-import ;
+                | capability-import
+                | module-import ;
 
 shape-import    = "use" , "shape" , string-lit , digest-clause? ,
                   "as" , ident , ";" ;
@@ -1383,6 +1420,8 @@ core-import     = "use" , "core" , package-ref , digest-clause? ,
                   "as" , ident , ";" ;
 capability-import = "use" , "capability" , package-ref , digest-clause ,
                     "as" , ident , ";" ;
+module-import   = "use" , "module" , package-ref , digest-clause ,
+                  "as" , ident , ";" ;
 digest-clause   = "digest" , digest-lit ;
 
 declaration     = type-decl

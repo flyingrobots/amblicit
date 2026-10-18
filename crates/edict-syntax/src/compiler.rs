@@ -341,6 +341,16 @@ pub fn resolve_module(
     context: &CompilerContext,
 ) -> Result<ResolvedModule, Vec<CompilerError>> {
     let mut errors = Vec::new();
+    for import in &module.imports {
+        if import.kind == ImportKind::Module {
+            errors.push(error(
+                CompilerStage::Resolve,
+                CompilerErrorKind::MissingContextFact,
+                "source module requires an authenticated source closure before compilation",
+                import.span,
+            ));
+        }
+    }
     let coordinate = package_coordinate(&module.package.path, &module.package.version);
     let imports = resolve_imports(&module.imports);
     let mut types = Vec::new();
@@ -469,7 +479,7 @@ fn core_import_kind(kind: ImportKind) -> Option<CoreImportKind> {
         ImportKind::Target => Some(CoreImportKind::Target),
         ImportKind::Core => Some(CoreImportKind::Core),
         ImportKind::Capability => Some(CoreImportKind::Capability),
-        ImportKind::Shape => None,
+        ImportKind::Shape | ImportKind::Module => None,
     }
 }
 

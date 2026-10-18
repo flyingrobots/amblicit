@@ -25,6 +25,14 @@ Out of scope:
 
 ## Requirements
 
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| SYNTAX-REQ-017 | implemented | Source-module imports preserve an exact package, mandatory digest and lexical alias. Standalone compilation refuses unresolved source modules, including unused imports. | docs/SPEC_edict-language-v1.md |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| SYNTAX-TP-027 | implemented | Source-module import boundary | SYNTAX-REQ-017 | Exact package/digest/alias and full import span survive parsing; missing digest fails with ExpectedKeyword; a standalone compiler cannot discard an unresolved dependency. | source_module_import_highlights_the_contextual_keyword, source_module_import_preserves_exact_package_digest_and_alias, source_module_import_requires_a_digest_clause, unresolved_source_import_cannot_silently_compile_even_when_unused | crates/edict-syntax/tests/source_modules.rs | Closure authentication and linking belong to the compiler-spine plan. |
+
 Byte-literal verification for #249 is recorded below. Source-to-Core literal
 and bound checks belong to the compiler-spine plan.
 

@@ -42,7 +42,10 @@ programs, prove bounds, or itself lower to Core IR. [SYNTAX-REQ-001]
 - A module starts with one `package` declaration, then zero or more imports, then
   declarations. Package and import versions preserve source-significant version
   spelling, including `_beta` style labels. [SYNTAX-REQ-002]
-- Supported imports are `shape`, `lawpack`, `target`, `core`, and `capability`.
+- Supported imports are `shape`, `lawpack`, `target`, `core`, `capability`, and
+  `module`. Source-module imports require a digest clause and preserve the exact
+  package, pin, alias and source span. Standalone compilation rejects unresolved
+  source modules, including unused imports. [SYNTAX-REQ-017]
   A capability import names a digest-bound external operation family for
   `request`; it is not a callable effect import. Digest clauses accept only
   `sha256:` plus 64 hex characters. [SYNTAX-REQ-003]
