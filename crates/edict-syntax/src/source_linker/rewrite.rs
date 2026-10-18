@@ -19,6 +19,7 @@ pub(super) struct Rewrite<'a> {
     units: &'a BTreeMap<String, UnitNames>,
     offset: usize,
     depth: usize,
+    type_depth: usize,
     declaration: usize,
     local: usize,
     type_parameters: BTreeSet<String>,
@@ -34,6 +35,7 @@ impl<'a> Rewrite<'a> {
             units,
             offset,
             depth: 0,
+            type_depth: 0,
             declaration: 0,
             local: 0,
             type_parameters: BTreeSet::new(),
@@ -231,9 +233,14 @@ impl<'a> Rewrite<'a> {
         Ok(())
     }
     fn ty(&mut self, ty: &mut TypeRef, span: Span) -> Result {
-        self.enter(span)?;
+        // Type height counts enclosing constructor edges, independently of the
+        // lexical statement/expression stack. The scalar leaf at 128 is valid.
+        if self.type_depth > MAX_LINK_DEPTH {
+            return Err(self.error(SourceLinkErrorKind::DepthExceeded, span, "source type"));
+        }
+        self.type_depth += 1;
         let result = self.ty_inner(ty, span);
-        self.depth -= 1;
+        self.type_depth -= 1;
         result
     }
     fn ty_inner(&mut self, ty: &mut TypeRef, span: Span) -> Result {

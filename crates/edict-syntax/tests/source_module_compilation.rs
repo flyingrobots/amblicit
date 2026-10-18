@@ -424,3 +424,24 @@ fn excessively_deep_linker_member_paths_and_type_constructors_refuse_structurall
         assert_eq!(failure.coordinate, "app.example@1");
     }
 }
+
+#[test]
+fn linker_preserves_the_compilers_exact_type_constructor_height_boundary() {
+    for depth in [128, 129] {
+        let source = format!(
+            "package app.example@1; type Deep = {}U64{};",
+            "List<".repeat(depth),
+            ",max=1>".repeat(depth)
+        );
+        let closure = resolve_source_closure(&source, &[], SourceClosureLimits::default()).unwrap();
+        let linked = link_source_closure(&closure);
+        if depth == 128 {
+            linked
+                .expect("height 128 must remain linkable")
+                .compile(&context())
+                .unwrap();
+        } else {
+            assert_eq!(linked.unwrap_err().kind, SourceLinkErrorKind::DepthExceeded);
+        }
+    }
+}
