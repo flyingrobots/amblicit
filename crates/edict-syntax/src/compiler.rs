@@ -25,6 +25,7 @@ mod byte_length;
 mod byte_slice;
 mod signature_diagnostic;
 mod source_functions;
+mod source_types;
 pub use signature_diagnostic::{
     EffectSignatureMismatch, SignatureMismatchPosition, SignaturePathSegment,
 };
@@ -799,37 +800,16 @@ impl<'a> TypeChecker<'a> {
         finish(self.errors, module)
     }
 
-    fn check_types(&mut self) {
-        for decl in &self.resolved.types {
-            if !matches!(
-                classify_core_type_reference(&decl.name),
-                Some(CoreTypeReference::Named)
-            ) {
-                self.errors.push(error(
-                    CompilerStage::TypeCheck,
-                    CompilerErrorKind::ReservedTypeIdentity,
-                    format!("type `{}` cannot become a Core named identity", decl.name),
-                    decl.source.span,
-                ));
-                continue;
-            }
-            let Some(shape) = self.type_decl_shape(&decl.source) else {
-                continue;
-            };
-            self.core_types.insert(decl.name.clone(), shape.core_type());
-            self.named_types.insert(decl.name.clone(), shape);
-        }
-    }
-
     fn type_decl_shape(&mut self, decl: &TypeDecl) -> Option<TypeShape> {
         let coord = format!("{}.{}", self.resolved.coordinate, decl.name);
         match &decl.body {
             TypeExpr::Record(fields) => self.record_shape(&coord, fields, decl.span),
-            TypeExpr::Variant(_) | TypeExpr::Ref(_) => {
+            TypeExpr::Ref(ty) => self.type_ref_shape(ty, decl.span),
+            TypeExpr::Variant(_) => {
                 self.errors.push(error(
                     CompilerStage::TypeCheck,
                     CompilerErrorKind::UnsupportedSourceShape,
-                    "only record type declarations are in the initial lowerable subset",
+                    "variant type declarations are outside the current lowerable subset",
                     decl.span,
                 ));
                 None

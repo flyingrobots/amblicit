@@ -37,6 +37,23 @@ enter the same `compiler_context_from_authority_facts` path. [CSPINE-REQ-010]
 
 ## Current Contract
 
+Source `type Alias = Target;` declarations are transparent spellings for
+currently lowerable targets. They introduce no new nominal authority or Core
+type table entry. Aliases retain bounded representations and the exact owning
+contract of an imported nominal type. Forward aliases and record dependencies
+resolve before checking function signatures and intent bodies. [CSPINE-REQ-052]
+
+Source type dependencies are acyclic, with at most 128 declarations on a path
+and at most 128 nested source type constructors. Source reference traversal and
+cumulative source-defined declaration expansion each have a 65,536-unit ceiling.
+A scalar or opaque imported reference costs one expansion unit; list/map/option
+constructors add one plus their children; a record adds one plus its fields.
+References to source-defined types use their complete expansion weight on every
+occurrence. This bounds source-defined DAG expansion before shape construction;
+it is not a physical allocator metric or a replacement for imported-type and
+runtime budgets. Cycles, missing types and exceeded bounds refuse structurally.
+[CSPINE-REQ-052]
+
 `source_closure::resolve_source_closure` authenticates an explicitly supplied
 root and complete dependency set without filesystem lookup. Module imports pin
 the exact `edict.source/v1` digest of each dependency. The witness retains exact
@@ -113,7 +130,7 @@ without its consumer evaluator implementing that call. Successful packaging or
 an accepted verifier report therefore does not establish slice execution,
 input-constraint enforcement, or runtime byte-copy charging.
 
-- The lowerable subset is deliberately narrow: local record type declarations,
+- The lowerable subset is deliberately narrow: local record type declarations and transparent aliases,
   first-order nongeneric source functions, one-parameter intents, `profile`, `basis none` or one input-derived explicit
   basis, `budget <=`, `where` predicates, pure `let` bindings, one annotated
   effectful `let ... else` shape, lowerable `require ... else` obstruction
