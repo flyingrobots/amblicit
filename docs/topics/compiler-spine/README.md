@@ -44,7 +44,13 @@ contract of an imported nominal type. Forward aliases and record dependencies
 resolve before checking function signatures and intent bodies. [CSPINE-REQ-052]
 
 Source type dependencies are acyclic, with at most 128 declarations on a path
-and at most 128 nested source type constructors. Source reference traversal and
+and fully expanded structural height at most 128, including inline constructors,
+cached alias targets and record fields. A scalar has height zero; a list adds
+one and a nonempty record adds one above its greatest field. Height 128 is
+accepted and 129 refuses as `InvalidBound`. Staged `resolve_module` then
+`type_check` also refuses duplicate source type declarations as
+`SurfaceValidation`. Unsupported string canonicalization refuses as
+`UnsupportedSourceShape`, even in an unused alias. Source reference traversal and
 cumulative source-defined declaration expansion each have a 65,536-unit ceiling.
 A scalar or opaque imported reference costs one expansion unit; list/map/option
 constructors add one plus their children; a record adds one plus its fields.

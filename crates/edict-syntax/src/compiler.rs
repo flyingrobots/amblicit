@@ -907,9 +907,12 @@ impl<'a> TypeChecker<'a> {
                 if path.as_slice() == ["ExternalActionRequest"] && args.len() == 1 =>
             {
                 let settlement = self.type_ref_shape(&args[0], span)?;
-                TypeShape::canonical_structural(TypeKind::ExternalActionRequest {
-                    settlement: Box::new(settlement),
-                })
+                self.source_canonical_structural(
+                    TypeKind::ExternalActionRequest {
+                        settlement: Box::new(settlement),
+                    },
+                    span,
+                )
             }
             TypeRef::StringTy(Some(refine)) => self.string_shape(refine, span),
             TypeRef::BytesTy(Some(refine)) => self.bytes_shape(refine, span),
@@ -928,7 +931,7 @@ impl<'a> TypeChecker<'a> {
                     item: Box::new(item),
                     max: *value,
                 };
-                TypeShape::canonical_structural(kind)
+                self.source_canonical_structural(kind, span)
             }
             TypeRef::BytesTy(None)
             | TypeRef::Option(_)
@@ -961,11 +964,20 @@ impl<'a> TypeChecker<'a> {
             .canonical
             .clone()
             .unwrap_or_else(|| "raw-utf8".to_owned());
+        if !matches!(canonical.as_str(), "raw-utf8" | "unicode-scalar-nfc") {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::UnsupportedSourceShape,
+                "unsupported string canonicalization",
+                span,
+            ));
+            return None;
+        }
         let kind = TypeKind::String {
             max: value,
             canonical,
         };
-        TypeShape::canonical_structural(kind)
+        self.source_canonical_structural(kind, span)
     }
 
     fn bytes_shape(&mut self, refine: &BytesRefine, span: Span) -> Option<TypeShape> {
@@ -1000,7 +1012,19 @@ impl<'a> TypeChecker<'a> {
             ));
             return None;
         }
-        TypeShape::canonical_structural(TypeKind::Bytes { min, max: *max })
+        self.source_canonical_structural(TypeKind::Bytes { min, max: *max }, span)
+    }
+
+    fn source_canonical_structural(&mut self, kind: TypeKind, span: Span) -> Option<TypeShape> {
+        TypeShape::canonical_structural(kind).or_else(|| {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::InvalidBound,
+                "expanded source structural type depth exceeded",
+                span,
+            ));
+            None
+        })
     }
 
     fn imported_source_type_shape(&mut self, path: &[String], span: Span) -> Option<TypeShape> {

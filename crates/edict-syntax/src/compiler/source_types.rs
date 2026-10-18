@@ -1,8 +1,8 @@
 //! Dependency-first source types with transparent aliases and bounded expansion.
 use super::{
     classify_core_type_reference, error, CompilerError, CompilerErrorKind, CompilerStage,
-    CoreTypeReference, ResolvedModule, Span, TypeChecker, TypeDecl, TypeExpr, TypeRef,
-    MAX_CORE_TYPE_DEPTH,
+    CoreTypeReference, ResolvedModule, Span, TypeChecker, TypeDecl, TypeExpr, TypeKind, TypeRef,
+    TypeShape, MAX_CORE_TYPE_DEPTH,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -32,9 +32,25 @@ impl TypeChecker<'_> {
                 return;
             };
             remaining -= weight;
+            let previous_errors = self.errors.len();
             let Some(shape) = self.type_decl_shape(&decl.source) else {
+                if self.errors.len() == previous_errors {
+                    self.errors.push(error(
+                        CompilerStage::TypeCheck,
+                        CompilerErrorKind::UnsupportedSourceShape,
+                        "source type declaration has no lowerable representation",
+                        decl.source.span,
+                    ));
+                }
                 continue;
             };
+            if !shape_fits_depth(&shape) {
+                self.errors.push(*bound_failure(
+                    decl.source.span,
+                    "expanded source structural type depth exceeded",
+                ));
+                continue;
+            }
             // A source alias is a lexical spelling for its target, not another
             // nominal contract or a duplicate Core type definition.
             if !matches!(decl.source.body, TypeExpr::Ref(_)) {
@@ -80,10 +96,20 @@ fn declaration_order(resolved: &ResolvedModule) -> Result<Vec<usize>, Box<Compil
                 decl.source.span,
             )));
         }
-        graph.insert(
-            decl.name.clone(),
-            (index, references(&decl.source, &mut work)?),
-        );
+        if graph
+            .insert(
+                decl.name.clone(),
+                (index, references(&decl.source, &mut work)?),
+            )
+            .is_some()
+        {
+            return Err(Box::new(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::SurfaceValidation,
+                "duplicate source type declaration",
+                decl.source.span,
+            )));
+        }
     }
     let mut visiting = BTreeSet::new();
     let mut heights = BTreeMap::new();
@@ -102,9 +128,10 @@ fn declaration_order(resolved: &ResolvedModule) -> Result<Vec<usize>, Box<Compil
 }
 
 fn references(decl: &TypeDecl, work: &mut u64) -> Result<BTreeSet<String>, Box<CompilerError>> {
+    let root_depth = usize::from(!matches!(decl.body, TypeExpr::Ref(_)));
     let mut pending = roots(&decl.body)
         .into_iter()
-        .map(|ty| (ty, 1_usize))
+        .map(|ty| (ty, root_depth))
         .collect::<Vec<_>>();
     let mut references = BTreeSet::new();
     while let Some((ty, depth)) = pending.pop() {
@@ -217,4 +244,28 @@ fn bound_failure(span: Span, message: &str) -> Box<CompilerError> {
         message,
         span,
     ))
+}
+
+// Named edges preserve authority but do not reset structural height. Inspect the
+// expanded shape, including cached alias targets, before caching this declaration.
+fn shape_fits_depth(shape: &TypeShape) -> bool {
+    let mut pending = vec![(shape, 0_usize)];
+    while let Some((shape, depth)) = pending.pop() {
+        if depth > MAX_CORE_TYPE_DEPTH {
+            return false;
+        }
+        match &shape.kind {
+            TypeKind::Nominal { representation, .. } => pending.push((representation, depth + 1)),
+            TypeKind::List { item, .. } => pending.push((item, depth + 1)),
+            TypeKind::ExternalActionRequest { settlement } => pending.push((settlement, depth + 1)),
+            TypeKind::Record(fields) => {
+                pending.extend(fields.values().map(|field| (field, depth + 1)));
+            }
+            TypeKind::Bool
+            | TypeKind::Int { .. }
+            | TypeKind::String { .. }
+            | TypeKind::Bytes { .. } => {}
+        }
+    }
+    true
 }
