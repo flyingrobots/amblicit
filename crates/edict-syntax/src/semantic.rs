@@ -519,6 +519,7 @@ fn validate_expr(expr: &Expr, names: &mut NameEnv, errors: &mut Vec<SemanticErro
         Expr::Ident { .. }
         | Expr::Int { .. }
         | Expr::Str { .. }
+        | Expr::Bytes { .. }
         | Expr::Bool { .. }
         | Expr::Digest { .. } => {}
         Expr::Field { base, .. } | Expr::Unary { operand: base, .. } => {

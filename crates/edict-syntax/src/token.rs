@@ -71,6 +71,8 @@ pub enum TokenKind {
     },
     /// String literal contents (without the surrounding quotes), not normalized.
     Str(String),
+    /// ASCII-spelled byte literal contents, including arbitrary escaped octets.
+    Bytes(Vec<u8>),
 
     // --- punctuation ---
     Semi,
@@ -169,6 +171,10 @@ impl<'a> Lexer<'a> {
                 return Ok(out);
             };
             let kind = match c {
+                b'b' if self.peek2() == Some(b'"') => {
+                    self.pos += 1;
+                    TokenKind::Bytes(self.quoted_bytes(true)?)
+                }
                 b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.ident(),
                 b'0'..=b'9' => self.number()?,
                 b'"' => self.string()?,
@@ -303,20 +309,24 @@ impl<'a> Lexer<'a> {
 
     fn string(&mut self) -> Result<TokenKind, LexError> {
         let open = self.pos;
+        let bytes = self.quoted_bytes(false)?;
+        String::from_utf8(bytes)
+            .map(TokenKind::Str)
+            .map_err(|_| LexError {
+                message: "string literal is not valid UTF-8".into(),
+                span: Span::new(open, self.pos),
+            })
+    }
+
+    fn quoted_bytes(&mut self, ascii_only: bool) -> Result<Vec<u8>, LexError> {
+        let open = self.pos;
         self.pos += 1; // opening quote
-                       // Accumulate raw bytes so multi-byte UTF-8 sequences survive intact,
-                       // then decode once at the close quote (String decodes to Unicode scalar
-                       // values; SPEC - Edict Language v1, Core Types).
         let mut buf: Vec<u8> = Vec::new();
         loop {
             match self.peek() {
                 Some(b'"') => {
                     self.pos += 1;
-                    let s = String::from_utf8(buf).map_err(|_| LexError {
-                        message: "string literal is not valid UTF-8".into(),
-                        span: Span::new(open, self.pos),
-                    })?;
-                    return Ok(TokenKind::Str(s));
+                    return Ok(buf);
                 }
                 Some(b'\\') => {
                     self.pos += 1;
@@ -337,6 +347,30 @@ impl<'a> Lexer<'a> {
                             buf.push(b'\t');
                             self.pos += 1;
                         }
+                        Some(b'r') => {
+                            buf.push(b'\r');
+                            self.pos += 1;
+                        }
+                        Some(b'0') => {
+                            buf.push(0);
+                            self.pos += 1;
+                        }
+                        Some(b'x') => {
+                            self.pos += 1;
+                            let digits = self.src.get(self.pos..self.pos + 2);
+                            let value = digits
+                                .and_then(|digits| {
+                                    let high = char::from(digits[0]).to_digit(16)?;
+                                    let low = char::from(digits[1]).to_digit(16)?;
+                                    u8::try_from((high << 4) | low).ok()
+                                })
+                                .ok_or_else(|| LexError {
+                                    message: "byte escape requires two hexadecimal digits".into(),
+                                    span: Span::new(self.pos - 2, self.pos),
+                                })?;
+                            buf.push(value);
+                            self.pos += 2;
+                        }
                         _ => {
                             return Err(LexError {
                                 message: "invalid string escape".into(),
@@ -344,6 +378,13 @@ impl<'a> Lexer<'a> {
                             });
                         }
                     }
+                }
+                Some(byte) if ascii_only && !byte.is_ascii() => {
+                    return Err(LexError {
+                        message: "byte literals require ASCII source or explicit byte escapes"
+                            .into(),
+                        span: Span::new(self.pos, self.pos + 1),
+                    });
                 }
                 Some(byte) => {
                     buf.push(byte);

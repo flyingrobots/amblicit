@@ -25,6 +25,17 @@ Out of scope:
 
 ## Requirements
 
+Byte-literal verification for #249 is recorded below. Source-to-Core literal
+and bound checks belong to the compiler-spine plan.
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| SYNTAX-REQ-016 | implemented | Parse ASCII-spelled byte literals as one token with raw octets; support quote, backslash, newline, tab, carriage-return, NUL and two-digit hexadecimal escapes; reject malformed escapes and non-ASCII byte source; preserve Unicode strings as valid UTF-8. | issue #249 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| SYNTAX-TP-026 | implemented | Byte literals and escapes | SYNTAX-REQ-016 | Complete prefix span, literal binary octets, lexical refusals and Unicode string preservation are checked independently. | bytes_prefix_is_one_token_with_the_complete_source_span, source_bytes_literals_lower_to_exact_raw_octets, invalid_byte_spellings_fail_at_the_lexical_boundary | crates/edict-syntax/tests/bytes_literals.rs | Inline literal vectors include empty bytes, CR/LF/TAB/NUL, 0x80 and 0xFF. |
+
 | ID | Status | Requirement | Source |
 | --- | --- | --- | --- |
 | SYNTAX-REQ-001 | implemented | `parse_module` returns source AST only; later phases own semantic validation and lowering. | crates/edict-syntax/src/lib.rs |

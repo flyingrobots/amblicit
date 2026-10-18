@@ -28,6 +28,14 @@ Out of scope:
 
 | ID | Status | Requirement | Source |
 | --- | --- | --- | --- |
+| CSPINE-REQ-049 | implemented | Source byte literals lower to raw Core bytes with an exact decoded-length type; equivalent escape spellings have equal semantic digests and declared output bounds remain enforced. | issue #249 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-090 | implemented | Literal octets and bounds | CSPINE-REQ-049 | Literal byte vectors reach Core unchanged, escape spelling does not change semantics, changed octets do, and excessive output length rejects as TypeMismatch. | source_bytes_literals_lower_to_exact_raw_octets, byte_spellings_share_a_semantic_digest_but_different_octets_do_not, byte_literal_length_still_obeys_the_declared_output_bound | crates/edict-syntax/tests/bytes_literals.rs | Decode length rather than source spelling controls the byte bound. |
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
 | CSPINE-REQ-001 | implemented | `resolve_module` resolves module/import coordinates and explicit context facts without collapsing into type checking or lowering. | issue #20 |
 | CSPINE-REQ-002 | implemented | `type_check` produces a typed module boundary distinct from source AST and rejects unresolved or incompatible types. | issue #20 |
 | CSPINE-REQ-003 | implemented | `lower_core` lowers the typed initial subset into structured in-memory Core IR. | issue #20, docs/abi/edict-core.cddl |

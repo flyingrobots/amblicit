@@ -386,6 +386,10 @@ pub enum Expr {
         value: String,
         span: Span,
     },
+    Bytes {
+        value: Vec<u8>,
+        span: Span,
+    },
     Bool {
         value: bool,
         span: Span,

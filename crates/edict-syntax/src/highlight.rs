@@ -64,7 +64,7 @@ fn role_for(kind: &TokenKind) -> HighlightRole {
         }
         TokenKind::Ident(_) => HighlightRole::Identifier,
         TokenKind::Int { .. } => HighlightRole::Number,
-        TokenKind::Str(_) => HighlightRole::String,
+        TokenKind::Str(_) | TokenKind::Bytes(_) => HighlightRole::String,
         TokenKind::Arrow
         | TokenKind::FatArrow
         | TokenKind::Lt

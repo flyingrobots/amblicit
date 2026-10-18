@@ -33,6 +33,12 @@ programs, prove bounds, or itself lower to Core IR. [SYNTAX-REQ-001]
 
 ## Current Contract
 
+- Byte literals such as `b"\r\0\xFF"` preserve raw octets. Both string and byte
+  literals accept `\"`, `\\`, `\n`, `\t`, `\r`, `\0` and `\xHH`; the latter
+  consumes exactly two ASCII hexadecimal digits. Byte source is ASCII only,
+  while string source may contain Unicode and its decoded bytes must be valid
+  UTF-8. Malformed escapes and `\u{...}` are rejected. [SYNTAX-REQ-016]
+
 - A module starts with one `package` declaration, then zero or more imports, then
   declarations. Package and import versions preserve source-significant version
   spelling, including `_beta` style labels. [SYNTAX-REQ-002]
