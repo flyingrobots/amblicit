@@ -28,6 +28,14 @@ Out of scope:
 
 | ID | Status | Requirement | Source |
 | --- | --- | --- | --- |
+| CSPINE-REQ-051 | planned | Compile authenticated source modules with explicit aliases, isolated module/function scopes, complete definition checking, transitive call budgets, deterministic namespace identity and source-local failures; imported intent entries cannot silently become application entries. | docs/SPEC_edict-language-v1.md |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-092 | planned | Source-module compilation | CSPINE-REQ-051 | Actual source exports type-check and lower through Target; same-named definitions and transitive calls remain isolated; undefined library names cannot capture application declarations; invalid unused definitions and imported intent entries refuse with owning source identity. | authenticated_module_type_and_argument_taking_helper_compile_and_lower, transitive_module_calls_and_duplicate_local_names_stay_isolated, library_local_names_do_not_capture_or_conflict_with_application_declarations, undefined_library_functions_and_types_cannot_capture_application_authority, imported_aliases_do_not_implicitly_reexport_transitive_names, invalid_unused_library_definitions_report_their_original_source_location, imported_intent_entries_are_refused_instead_of_silently_dropped | crates/edict-syntax/tests/source_module_compilation.rs | Public application/provider/runtime closure path remains separately required. |
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
 | CSPINE-REQ-050 | implemented | Resolve a complete explicit source-module closure by exact package and domain-framed source digest, preserving exact source bytes; refuse invalid, duplicate, missing, substituted, disconnected and cyclic inputs within bounded module, byte and path-depth apertures. | docs/SPEC_edict-language-v1.md |
 
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
