@@ -38,7 +38,12 @@ impl TypeChecker<'_> {
             // A source alias is a lexical spelling for its target, not another
             // nominal contract or a duplicate Core type definition.
             if !matches!(decl.source.body, TypeExpr::Ref(_)) {
-                self.core_types.insert(decl.name.clone(), shape.core_type());
+                let key = self
+                    .resolved
+                    .source_type_origins
+                    .get(&decl.name)
+                    .map_or_else(|| decl.name.clone(), |origin| origin.table_key.clone());
+                self.core_types.insert(key, shape.core_type());
             }
             weights.insert(decl.name.clone(), weight);
             self.named_types.insert(decl.name.clone(), shape);

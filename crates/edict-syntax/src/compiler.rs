@@ -139,11 +139,34 @@ pub struct CompilerContext {
     pure_functions: BTreeMap<String, PureFunctionFact>,
     pure_helper_costs: BTreeMap<String, PureHelperCostFact>,
     type_shapes: BTreeMap<String, TypeShapeFact>,
+    source_type_origins: BTreeMap<String, SourceTypeOrigin>,
     bounds: BTreeMap<String, BoundFact>,
     budgets: BTreeMap<String, CoreBudget>,
 }
 
 impl CompilerContext {
+    pub(crate) fn with_linked_source_types(
+        mut self,
+        origins: BTreeMap<String, SourceTypeOrigin>,
+    ) -> Self {
+        self.source_type_origins = origins;
+        self
+    }
+
+    pub(crate) fn has_imported_type_coordinate(&self, coordinate: &str) -> bool {
+        self.type_shapes.contains_key(coordinate)
+    }
+
+    pub(crate) fn has_imported_callable_coordinate(&self, coordinate: &str) -> bool {
+        self.pure_functions
+            .values()
+            .any(|fact| fact.coordinate == coordinate)
+            || self
+                .effect_signatures
+                .values()
+                .any(|fact| fact.coordinate == coordinate)
+    }
+
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -259,11 +282,18 @@ pub struct ResolvedModule {
     pub pure_functions: BTreeMap<String, PureFunctionFact>,
     pub pure_helper_costs: BTreeMap<String, PureHelperCostFact>,
     pub type_shapes: BTreeMap<String, TypeShapeFact>,
+    pub(crate) source_type_origins: BTreeMap<String, SourceTypeOrigin>,
     pub bounds: BTreeMap<String, BoundFact>,
     pub budgets: BTreeMap<String, CoreBudget>,
     pub types: Vec<ResolvedTypeDecl>,
     pub source_functions: Vec<FunctionDecl>,
     pub intents: Vec<ResolvedIntent>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SourceTypeOrigin {
+    pub(crate) coordinate: String,
+    pub(crate) table_key: String,
 }
 
 /// Resolved type declaration.
@@ -389,6 +419,7 @@ pub fn resolve_module(
             pure_functions: context.pure_functions.clone(),
             pure_helper_costs: context.pure_helper_costs.clone(),
             type_shapes: context.type_shapes.clone(),
+            source_type_origins: context.source_type_origins.clone(),
             bounds: context.bounds.clone(),
             budgets: context.budgets.clone(),
             types,
@@ -801,7 +832,14 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn type_decl_shape(&mut self, decl: &TypeDecl) -> Option<TypeShape> {
-        let coord = format!("{}.{}", self.resolved.coordinate, decl.name);
+        let coord = self
+            .resolved
+            .source_type_origins
+            .get(&decl.name)
+            .map_or_else(
+                || format!("{}.{}", self.resolved.coordinate, decl.name),
+                |origin| origin.coordinate.clone(),
+            );
         match &decl.body {
             TypeExpr::Record(fields) => self.record_shape(&coord, fields, decl.span),
             TypeExpr::Ref(ty) => self.type_ref_shape(ty, decl.span),

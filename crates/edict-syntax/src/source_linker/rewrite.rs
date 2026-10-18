@@ -92,7 +92,7 @@ impl<'a> Rewrite<'a> {
                             for constraint in &mut field.constraints {
                                 match constraint {
                                     FieldConstraint::Max(bound) | FieldConstraint::Min(bound) => {
-                                        self.bound(bound, field.span)?
+                                        self.bound(bound, field.span)?;
                                     }
                                     FieldConstraint::Pattern(_) | FieldConstraint::Canonical(_) => {
                                     }
@@ -138,7 +138,7 @@ impl<'a> Rewrite<'a> {
                         | IntentClause::Implements(path)
                         | IntentClause::Footprint(path)
                         | IntentClause::Budget(path) => {
-                            self.authority_path(path, definition.span)?
+                            self.authority_path(path, definition.span)?;
                         }
                         IntentClause::Basis(expr) => {
                             if let Some(expr) = expr {
@@ -421,7 +421,7 @@ impl<'a> Rewrite<'a> {
         for entry in entries {
             match entry {
                 RecordEntry::Field { value, .. } | RecordEntry::Spread(value) => {
-                    self.expr(value, env)?
+                    self.expr(value, env)?;
                 }
                 RecordEntry::Shorthand { name, span } => {
                     let label = name.clone();

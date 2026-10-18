@@ -2,9 +2,13 @@
 //! Original sources stay immutable; a separate surface carries hygienic names
 //! and mapped spans. Linking grants no runtime authority.
 use crate::ast::{Decl, ImportKind, Module};
+use crate::compiler::SourceTypeOrigin;
+use crate::core_ir::{classify_core_type_reference, CoreTypeReference};
 use crate::source_closure::SourceClosure;
 use crate::token::{lex, Span, TokenKind};
-use crate::{compile_to_core, CompilerContext, CompilerError, CoreModule};
+use crate::{
+    compile_to_core, CompilerContext, CompilerError, CompilerErrorKind, CompilerStage, CoreModule,
+};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -20,6 +24,7 @@ pub enum SourceLinkErrorKind {
     NameCollision,
     SpanOverflow,
     DepthExceeded,
+    ReservedTypeIdentity,
 }
 /// A source-local linking failure.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -63,6 +68,7 @@ pub struct LinkedSourceClosure<'a> {
     closure: &'a SourceClosure,
     module: Module,
     ranges: Vec<SourceRange>,
+    type_origins: BTreeMap<String, SourceTypeOrigin>,
 }
 impl LinkedSourceClosure<'_> {
     /// Borrow the immutable compiler-owned surface for authority preparation.
@@ -83,7 +89,59 @@ impl LinkedSourceClosure<'_> {
         &self,
         context: &CompilerContext,
     ) -> Result<CoreModule, Vec<SourceCompilerError>> {
-        compile_to_core(&self.module, context).map_err(|failures| {
+        let mut collisions = Vec::new();
+        for (coordinate, unit) in self.closure.modules() {
+            for declaration in &unit.parsed().decls {
+                let declared_type = match declaration {
+                    Decl::Type(definition)
+                        if !matches!(definition.body, crate::ast::TypeExpr::Ref(_)) =>
+                    {
+                        Some((&definition.name, definition.span))
+                    }
+                    Decl::Enum(definition) => Some((&definition.name, definition.span)),
+                    _ => None,
+                };
+                if let Some((name, span)) = declared_type {
+                    let original = format!("{coordinate}.{name}");
+                    if context.has_imported_type_coordinate(&original) {
+                        collisions.push(SourceCompilerError {
+                            coordinate: coordinate.clone(),
+                            error: CompilerError {
+                                stage: CompilerStage::Resolve,
+                                kind: CompilerErrorKind::InvalidCoreTypeIntegrity,
+                                message: "source type redeclares imported authority".into(),
+                                span,
+                                signature_mismatch: None,
+                            },
+                        });
+                    }
+                }
+                if let Decl::Function(function) = declaration {
+                    if context.has_imported_callable_coordinate(&format!(
+                        "{coordinate}.{}",
+                        function.name
+                    )) {
+                        collisions.push(SourceCompilerError {
+                            coordinate: coordinate.clone(),
+                            error: CompilerError {
+                                stage: CompilerStage::Resolve,
+                                kind: CompilerErrorKind::UnresolvedFunction,
+                                message: "source function collides with imported authority".into(),
+                                span: function.span,
+                                signature_mismatch: None,
+                            },
+                        });
+                    }
+                }
+            }
+        }
+        if !collisions.is_empty() {
+            return Err(collisions);
+        }
+        let context = context
+            .clone()
+            .with_linked_source_types(self.type_origins.clone());
+        compile_to_core(&self.module, &context).map_err(|failures| {
             failures
                 .into_iter()
                 .map(|mut error| {
@@ -141,6 +199,7 @@ pub fn link_source_closure(
 ) -> Result<LinkedSourceClosure<'_>, SourceLinkError> {
     let fresh = fresh_namespace(closure)?;
     let units = collect_names(closure, &fresh)?;
+    let type_origins = collect_type_origins(closure, &units);
     let root_name = closure.root_coordinate();
     let root = &closure.modules()[root_name];
     let mut linked = Module {
@@ -206,8 +265,42 @@ pub fn link_source_closure(
         closure,
         module: linked,
         ranges,
+        type_origins,
     })
 }
+fn collect_type_origins(
+    closure: &SourceClosure,
+    units: &BTreeMap<String, UnitNames>,
+) -> BTreeMap<String, SourceTypeOrigin> {
+    let mut origins = BTreeMap::new();
+    for (coordinate, unit) in closure.modules() {
+        for declaration in &unit.parsed().decls {
+            let name = match declaration {
+                Decl::Type(definition)
+                    if !matches!(definition.body, crate::ast::TypeExpr::Ref(_)) =>
+                {
+                    &definition.name
+                }
+                Decl::Enum(definition) => &definition.name,
+                _ => continue,
+            };
+            let original = format!("{coordinate}.{name}");
+            origins.insert(
+                units[coordinate].definitions[name].linked.clone(),
+                SourceTypeOrigin {
+                    coordinate: original.clone(),
+                    table_key: if coordinate == closure.root_coordinate() {
+                        name.clone()
+                    } else {
+                        original
+                    },
+                },
+            );
+        }
+    }
+    origins
+}
+
 fn fresh_namespace(closure: &SourceClosure) -> Result<String, SourceLinkError> {
     // One scan records counters already present in source identifiers. N source
     // identifiers can occupy at most N counters, requiring at most N+1 probes.
@@ -282,6 +375,19 @@ fn collect_names(
             } else {
                 format!("{}G_{name}", names.prefix)
             };
+            if kind == DefinitionKind::Type
+                && !matches!(
+                    classify_core_type_reference(name),
+                    Some(CoreTypeReference::Named)
+                )
+            {
+                return Err(failure(
+                    SourceLinkErrorKind::ReservedTypeIdentity,
+                    coordinate,
+                    span,
+                    name,
+                ));
+            }
             if !generated.insert(linked.clone()) {
                 return Err(failure(
                     SourceLinkErrorKind::NameCollision,
