@@ -212,6 +212,50 @@ Out of scope:
 | CSPINE-TP-057 | implemented | Graph diagnostic ownership | CSPINE-REQ-045 | Recursive and over-depth functions retain their actual declaration spans even when named work; global work exhaustion has no function owner; expression-depth failure identifies its containing function even beside a function named expression. | graph_diagnostic_origin_distinguishes_global_work_from_a_function_named_work, graph_expression_depth_diagnostic_identifies_its_owning_function, source_function_call_depth_accepts_128_and_rejects_129, shared_suffix_depth_is_independent_of_definition_order | crates/edict-syntax/tests/source_functions.rs | Public Core failure kinds and paths remain unchanged. The deep diagnostic unit witness uses an explicit 8 MiB thread; CLI-TP-040 covers the normal CLI process separately, not arbitrary caller stacks. |
 | CSPINE-TP-058 | implemented | Unsupported accounting shapes | CSPINE-REQ-044, CSPINE-REQ-045 | Request-bearing parameters, results, expressions and intent frames in a function-bearing module report UnsupportedSourceShape, including nested nominal/record/list shapes and unused signatures; equivalent function-free controls compile, while genuine numeric overflow retains InvalidBound. | request_value_shapes_are_unsupported_in_source_accounting_not_overflow | crates/edict-syntax/tests/source_functions.rs | Classification fix only; request-bearing source-function accounting remains unsupported. |
 
+## Exact Effect Diagnostic Causes
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| CSPINE-REQ-047 | implemented | A bare exact nongeneric imported effect in an intent body reports EffectWithoutFailureMapping with its domain-mappable failure names or its unsupported no-map binding shape; an unknown explicit effect binding reports MissingContextFact with available effects from its exact imported lawpack owner. | issue #238 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-065 | implemented | Bare effect cause | CSPINE-REQ-047 | The first error kind identifies the missing effect binding/map, retains the call span, and names alreadyExists. | bare_imported_effect_reports_missing_failure_mapping | crates/edict-syntax/tests/effect_diagnostics.rs, fixtures/lawpack/hello-echo/create-greeting.edict, fixtures/lawpack/hello-echo/manifest.cbor, fixtures/lawpack/hello-echo/exports.cbor, fixtures/lawpack/hello-echo/adapter.cbor | Dependent errors remain unchanged until issue #240. |
+| CSPINE-TP-066 | implemented | Unknown exact effect | CSPINE-REQ-047 | Unknown effects in explicit effect bindings retain MissingContextFact and source span, with available authenticated effect names only from the exact imported owner and selected alias. | unknown_effect_lists_its_exact_owner_exports | crates/edict-syntax/tests/effect_diagnostics.rs, fixtures/lawpack/hello-echo/create-greeting.edict, fixtures/lawpack/hello-echo/manifest.cbor, fixtures/lawpack/hello-echo/exports.cbor, fixtures/lawpack/hello-echo/adapter.cbor | Alias changes do not invent ownership. |
+| CSPINE-TP-067 | implemented | Valid effect control | CSPINE-REQ-047 | The source still compiles with a complete typed failure map under either valid alias. | mapped_effect_controls_remain_valid | crates/edict-syntax/tests/effect_diagnostics.rs, fixtures/lawpack/hello-echo/create-greeting.edict, fixtures/lawpack/hello-echo/manifest.cbor, fixtures/lawpack/hello-echo/exports.cbor, fixtures/lawpack/hello-echo/adapter.cbor | Does not add a capability. |
+| CSPINE-TP-068 | implemented | Zero-failure effect cause | CSPINE-REQ-047 | A valid rebound lawpack with no declared effect failures retains the primary kind and call span, reports the unsupported binding shape, and does not recommend an impossible empty else map. | bare_effect_without_declared_failures_reports_binding_limitation | crates/edict-syntax/tests/lawpack.rs, fixtures/lawpack/hello-echo/create-greeting.edict, fixtures/lawpack/hello-echo/manifest.cbor, fixtures/lawpack/hello-echo/exports.cbor, fixtures/lawpack/hello-echo/adapter.cbor | Does not add zero-failure binding syntax. |
+| CSPINE-TP-069 | implemented | Bare unknown call | CSPINE-REQ-047 | A bare unknown coordinate retains UnresolvedFunction and the call span; owner-export guidance requires an explicit effect path. | bare_unknown_call_remains_unresolved_function | crates/edict-syntax/tests/effect_diagnostics.rs, fixtures/lawpack/hello-echo/create-greeting.edict, fixtures/lawpack/hello-echo/manifest.cbor, fixtures/lawpack/hello-echo/exports.cbor, fixtures/lawpack/hello-echo/adapter.cbor | No pure/effect intent is guessed. |
+| CSPINE-TP-070 | implemented | Legacy context export information | CSPINE-REQ-047 | A public context with write classes but no authenticated signatures still compiles its known effect, while an unknown explicit effect reports MissingContextFact and missing export information rather than claiming no exports. | legacy_context_without_signatures_does_not_claim_no_exports | crates/edict-syntax/tests/effect_diagnostics.rs | Legacy context remains a separate accepted compiler boundary. |
+| CSPINE-TP-071 | implemented | Generic effect cause | CSPINE-REQ-047 | Valid generic effect metadata prepares, but both mapped and bare calls report UnsupportedSourceShape before offering unsupported mapping guidance. | generic_effect_reports_unsupported_shape_before_mapping_guidance | crates/edict-syntax/tests/lawpack.rs, fixtures/lawpack/hello-echo/manifest.cbor, fixtures/lawpack/hello-echo/exports.cbor, fixtures/lawpack/hello-echo/adapter.cbor, fixtures/lawpack/hello-echo/create-greeting.edict | No generic-effect feature is added. |
+| CSPINE-TP-072 | implemented | Pure-context cause | CSPINE-REQ-047 | Known semantic effects in source-owned functions and intent basis clauses report UnsupportedSourceShape at the call without recommending a binding that is illegal there. | effect_guidance_refuses_pure_functions_and_intent_clauses | crates/edict-syntax/tests/effect_diagnostics.rs, fixtures/lawpack/hello-echo/create-greeting.edict | Pure execution boundary remains unchanged. |
+| CSPINE-TP-073 | implemented | Context restoration | CSPINE-REQ-047 | A valid source function and mapped intent compile together; removing only the intent mapping retains EffectWithoutFailureMapping rather than a pure-context refusal. | valid_function_does_not_poison_intent_effect_guidance | crates/edict-syntax/tests/lawpack.rs, fixtures/lawpack/hello-echo/create-greeting.edict, fixtures/lawpack/hello-echo/manifest.cbor, fixtures/lawpack/hello-echo/exports.cbor, fixtures/lawpack/hello-echo/adapter.cbor | Authenticated rebound budget avoids the unrelated stock frame-budget defect. |
+| CSPINE-TP-074 | implemented | Authored effect type arguments | CSPINE-REQ-047 | Both mapped and bare nongeneric effects invoked with explicit type arguments report UnsupportedSourceShape at the call rather than unsupported mapping advice. | authored_effect_type_arguments_refuse_mapping_guidance | crates/edict-syntax/tests/lawpack.rs, fixtures/lawpack/hello-echo/create-greeting.edict | Unknown callees retain their existing classification. |
+| CSPINE-TP-075 | implemented | Malformed effect arity | CSPINE-REQ-047 | Zero and multiple arguments on mapped and bare exact effects report UnsupportedSourceShape before mapping guidance; valid arity retains existing classification. | effect_arity_refuses_mapping_guidance | crates/edict-syntax/tests/effect_diagnostics.rs | Does not change effect arity support. |
+| CSPINE-TP-076 | implemented | Profile priority in body expressions | CSPINE-REQ-047 | Forbidden exact effects in direct and nested returns report ProfileEffectMismatch at the call; allowed-profile controls still report missing failure mapping. | bare_return_effect_checks_profile_before_mapping_guidance | crates/edict-syntax/tests/effect_diagnostics.rs | Profile facts remain the authority. |
+| CSPINE-TP-080 | implemented | Bare effect input priority | CSPINE-REQ-047 | Wrong-type and unresolved arguments retain their primary kind and source span before missing-map guidance; valid input still reports EffectWithoutFailureMapping. | bare_effect_arguments_report_primary_input_errors | crates/edict-syntax/tests/effect_diagnostics.rs | Signature compatibility remains unchanged. |
+| CSPINE-TP-081 | implemented | Contextual effect input | CSPINE-REQ-047 | Authenticated scalar and record integer inputs supply contextual typing in both mapped and bare calls; bare valid inputs reach missing-map guidance. | effect_inputs_use_authenticated_contextual_types | crates/edict-syntax/tests/lawpack.rs | No new integer-width support. |
+| CSPINE-TP-082 | implemented | Effect output context | CSPINE-REQ-047 | Incompatible direct and nested return expectations report TypeMismatch; matching expectations reach missing-map guidance. | bare_effect_output_checks_surrounding_expected_type | crates/edict-syntax/tests/effect_diagnostics.rs | No receipt subtyping changes. |
+| CSPINE-TP-083 | implemented | Authenticated empty surface | CSPINE-REQ-047 | A validated lawpack with zero effects reports a known empty authenticated surface, while legacy contexts retain missing-information guidance. | authenticated_empty_effect_surface_is_not_missing_information | crates/edict-syntax/tests/lawpack.rs | Exact imported owner remains required. |
+| CSPINE-TP-084 | implemented | Mappable failure guidance | CSPINE-REQ-047 | Non-domain failures are omitted from map advice; effects with no domain-mappable failures identify the current no-map binding limitation. | failure_guidance_names_only_domain_mappable_coordinates | crates/edict-syntax/tests/lawpack.rs | Does not enable zero-map source bindings. |
+| CSPINE-TP-085 | implemented | Effect predicate expectation | CSPINE-REQ-047 | Non-Boolean effect outputs in direct and conditional predicates report ExpectedPredicate before map advice; Boolean controls compile. | effect_predicates_report_expected_predicate_before_map_guidance | crates/edict-syntax/tests/effect_diagnostics.rs | Input failures and pure-helper checks remain separate. |
+
+## Effect Comparison Diagnostic Priority
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-086 | implemented | Comparison output | CSPINE-REQ-047 | Boolean comparison control compiles; authenticated non-Boolean effect operands in either position report TypeMismatch before failure-map guidance. | effect_comparisons_report_type_mismatch_before_map_guidance | crates/edict-syntax/tests/effect_diagnostics.rs | Preserve ordinary comparison inference. |
+
+## Mixed Failure Authority Guidance
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-087 | implemented | Mixed authority | CSPINE-REQ-047 | A domain-mappable failure remains listed beside each non-domain class; the other coordinate is excluded and the list label states its domain-mappable scope. | mixed_authority_failure_guidance_labels_only_mappable_names | crates/edict-syntax/tests/lawpack.rs | Kind remains EffectWithoutFailureMapping. |
+
+## Effect Comparison Literal Inference
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-088 | implemented | Contextual comparison literals | CSPINE-REQ-047 | Direct authenticated effects beside signed or unsigned bare literals check output compatibility before map guidance; valid numeric outputs preserve literal inference and primary argument/profile errors. | effect_integer_comparisons_report_incompatibility_before_map_guidance, effect_comparison_literals_follow_exported_numeric_output | crates/edict-syntax/tests/effect_diagnostics.rs, crates/edict-syntax/tests/lawpack.rs | Valid numeric control still requires a mapped binding. |
 ## Failed Binding Recovery
 
 | ID | Status | Requirement | Source |
@@ -286,6 +330,48 @@ Out of scope:
 
 | CSPINE-TP-097 | implemented | Direct UTF-8 scan cost | CSPINE-REQ-053 | Direct intent body/guard scans reject insufficient step ceilings, lazy branches use a maximum, repeated calls sum, and a source-helper scan is not charged twice at its call site. | direct_utf8_scans_are_bounded_in_bodies_guards_and_lazy_branches, utf8_helper_scan_is_not_charged_twice_at_its_call_site | crates/edict-syntax/tests/byte_utf8.rs | Allocation and output are unrestricted to isolate execution steps. |
 
+## Effect Result Field Selection
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-127 | implemented | Exported result projection | CSPINE-REQ-047 | Missing and non-record field selectors on authenticated effect outputs report UnknownField or TypeMismatch before mapping advice; valid selectors retain map guidance and preserve enclosing predicate/comparison requirements. | effect_field_selection_validates_the_exported_record_before_map_guidance, effect_field_selection_preserves_predicate_and_comparison_requirements | crates/edict-syntax/tests/effect_diagnostics.rs | Exact selector spans; no invented Core effect value. |
+
+## Effect Operator Families
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-123 | implemented | Operator effect diagnostics | CSPINE-REQ-047 | Exported effect output families are checked before mapping advice for concatenation, length and slicing, including field projections. | effect_operator_families_reject_before_mapping_guidance | crates/edict-syntax/tests/effect_diagnostics.rs | Exact authenticated fixture; valid string projection retains mapping requirement. |
+
+## Effect Subtraction Operands
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-124 | implemented | Unsigned effect operands | CSPINE-REQ-047 | Non-unsigned effect outputs used in subtraction report TypeMismatch before mapping guidance in either operand position. | effect_subtraction_rejects_incompatible_outputs_before_mapping | crates/edict-syntax/tests/effect_diagnostics.rs | Exact authenticated output and field projections; valid pure subtraction control. |
+
+## Matching Concatenation Families
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-125 | implemented | Mixed effect concatenation | CSPINE-REQ-047 | String effect projections and byte operands report TypeMismatch before mapping guidance in either order. | effect_concatenation_requires_matching_operand_families | crates/edict-syntax/tests/effect_diagnostics.rs | Valid byte/string controls; authenticated effect signature. |
+
+## Nested Operator Context
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-126 | implemented | Nested effect operator context | CSPINE-REQ-047 | A string-producing concatenation used as bytes must report its intrinsic type incompatibility before effect mapping advice. | nested_effect_operator_context_preserves_primary_type_error | crates/edict-syntax/tests/effect_diagnostics.rs | Valid string length-independent control; direct length on string establishes expected kind. |
+
+## UTF-8 effect output context
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-128 | implemented | UTF-8 effect operand | CSPINE-REQ-047, CSPINE-REQ-053 | A pure Bytes operand compiles; a record-valued authenticated effect inside isUtf8 reports TypeMismatch before unavailable mapping guidance. | utf8_effect_operand_keeps_primary_byte_type_error | crates/edict-syntax/tests/effect_diagnostics.rs | The intrinsic byte requirement reaches the effect output check. |
+
+## Complete effect expression context
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-172 | implemented | Conditional effect compatibility | CSPINE-REQ-047 | Incompatible inferred branch shapes report TypeMismatch before mapping guidance in either order, including two authenticated effect operands; compatible effects still need a map. | conditional_effect_results_keep_primary_branch_type_errors | crates/edict-syntax/tests/effect_diagnostics.rs | A mapped compatible control compiles. |
+| CSPINE-TP-173 | implemented | Complete concatenation bounds | CSPINE-REQ-047 | The full concatenated bound survives nested expression contexts and both operand orders; a valid bounded shape still reports the missing map. | concatenated_effect_results_keep_complete_output_bounds | crates/edict-syntax/tests/effect_diagnostics.rs | Includes an output bound that fits each operand separately but not their sum, and two authenticated effect operands. |
 ## Independent Concatenation Type Errors
 
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
@@ -396,3 +482,16 @@ CSPINE-REQ-054 remains planned. The implemented rows establish their named fixtu
 | Case ID | Status | Kind | Requirements | Scenario and oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | CSPINE-TP-171 | implemented | Surviving yield annotation | CSPINE-REQ-054 | A poisoned yield arm cannot hide the other arm's independently known mismatch with an available binding annotation, in either arm order. | poisoned_yield_arm_keeps_the_surviving_annotation_mismatch | crates/edict-syntax/tests/binding_recovery.rs | Valid Boolean control; exact surviving value span; no Core from invalid branches. |
+
+## Annotated conditional effect peers
+
+| Case ID | Status | Kind | Requirements | Scenario and oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-174 | implemented | Annotated conditional peers | CSPINE-REQ-047 | Explicit String annotations retain incompatible conditional peer TypeMismatch in both orders before map guidance; compatible bare effects still need a map. | annotated_conditional_effect_results_keep_primary_branch_type_errors | crates/edict-syntax/tests/effect_diagnostics.rs | Retain enclosing annotation and contextual literal inference. |
+
+## Conditional diagnostic probe limits and context
+
+| Case ID | Status | Kind | Requirements | Scenario and oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-175 | implemented | Nested peer work | CSPINE-REQ-047 | A linear chain of 20 invalid effect conditionals finishes within a generous 10-second regression deadline and retains mapping guidance. | nested_effect_conditional_diagnostics_finish_within_deadline | crates/edict-syntax/tests/effect_diagnostics.rs | A denial-of-service regression bound, not a performance benchmark. |
+| CSPINE-TP-176 | implemented | Nested contextual literals | CSPINE-REQ-047 | Authenticated numeric receipt fields and records preserve contextual integer literals inside nested conditional peers; compatible bare effects need mapping. | conditional_effect_peers_preserve_nested_literal_context | crates/edict-syntax/tests/effect_signature_diagnostics.rs | Both branch orders and mapped controls. |

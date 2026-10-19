@@ -2893,6 +2893,33 @@ If these crates temporarily live in the Wesley workspace, they should carry an
 explicit extraction note and must not be imported by `wesley-core` in a way that
 makes Edict, Continuum, or Echo part of generic GraphQL lowering.
 
+### Implemented Effect Diagnostic Boundary
+
+The source compiler distinguishes exact imported semantic effects from pure
+helpers. A bare nongeneric effect in a pure-call position within an intent body reports
+`EffectWithoutFailureMapping` and names the domain-mappable failure variants. Authors
+must use the supported annotated effect binding and its required mapping.
+Bare effect input expressions and their authenticated input types are checked
+before failure-map guidance. Their existing primary error kinds and spans remain.
+Authenticated input types provide context for integer literals. Bare effect
+outputs must satisfy the surrounding expected type. Failure-map advice names
+only domain-mappable coordinates; other failure classes remain platform-owned.
+Generic semantic effects remain unsupported in both bare and mapped calls.
+Explicit effect type arguments also report `UnsupportedSourceShape` in mapped
+and bare forms before failure-map guidance.
+Effects in source-owned pure functions and intent clauses report
+`UnsupportedSourceShape` without recommending a binding that is illegal there.
+An effect with no declared failures reports that bindings without a failure map
+are unsupported; the diagnostic does not suggest an empty `else` map.
+An unknown effect in an explicit effect binding reports `MissingContextFact`
+with available exact-owner exports under the selected source alias. A bare
+unknown call retains `UnresolvedFunction`; an unknown coordinate does not
+establish whether the author intended an effect or a pure helper. This diagnostic guidance does not
+provide a capability or alter effect/profile compatibility. If the context has
+no authenticated export signatures, the diagnostic reports missing information
+rather than asserting an empty lawpack export surface. Dependent-error
+recovery remains a separate compiler behavior.
+
 ### Edict Source Pipeline
 
 ```text

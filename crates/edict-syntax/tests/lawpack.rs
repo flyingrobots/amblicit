@@ -162,6 +162,152 @@ fn direct_bounded_effect_signature_types_enter_source_compilation() {
 }
 
 #[test]
+fn bare_effect_without_declared_failures_reports_binding_limitation() {
+    let mut exports = hello_echo_exports();
+    let effect = first_array_item_mut(field_mut(&mut exports, "effects"));
+    map_mut(field_mut(effect, "effectFailures")).clear();
+    let mut adapter = decode_canonical_cbor(ADAPTER_BYTES).expect("decode adapter");
+    let implementation = first_map_value_mut(field_mut(&mut adapter, "effectImplementations"));
+    map_mut(field_mut(implementation, "failureMappings")).clear();
+    let (bundle, adapter) = bundle_and_adapter(&exports, &adapter);
+    let mapping = "\n    else { alreadyExists(existing) => hello.AlreadyExists }";
+    assert_eq!(CREATE_GREETING_SOURCE.matches(mapping).count(), 1);
+    let source = CREATE_GREETING_SOURCE
+        .replace(
+            MANIFEST_DIGEST.trim(),
+            &bundle.manifest_digest_review_string(),
+        )
+        .replace(mapping, "");
+    let module = parse_module(&source).expect("bare zero-failure effect parses");
+    let preparation = prepare_lawpack_compilation(&module, &bundle, &adapter)
+        .expect("authenticate a zero-failure signature");
+    let errors = compile_to_core(&module, preparation.compiler_context())
+        .expect_err("bare semantic effects remain unsupported");
+    let cause = &errors[0];
+    assert_eq!(cause.kind, CompilerErrorKind::EffectWithoutFailureMapping);
+    assert_eq!(cause.stage, CompilerStage::TypeCheck);
+    assert!(source[cause.span.start..cause.span.end].contains("hello.createGreeting"));
+    assert!(cause.message.contains("no declared failures"));
+    assert!(cause
+        .message
+        .contains("effect bindings without a failure map are not supported"));
+    assert!(!cause.message.contains("with `else`"));
+}
+
+#[test]
+fn generic_effect_reports_unsupported_shape_before_mapping_guidance() {
+    let mut exports = hello_echo_exports();
+    let effect = first_array_item_mut(field_mut(&mut exports, "effects"));
+    replace_field(
+        effect,
+        "typeParameters",
+        CanonicalValue::Array(vec![text("T")]),
+    );
+    let exports_bytes = encode_canonical_cbor(&exports).expect("encode generic exports");
+    let manifest = hello_echo_manifest(digest_value(EXPORTS_COORDINATE, &exports));
+    let manifest_bytes = encode_canonical_cbor(&manifest).expect("encode generic manifest");
+    let bundle = decode_lawpack_bundle(&manifest_bytes, &exports_bytes)
+        .expect("generic effect metadata is valid");
+    let adapter =
+        decode_lawpack_adapter(&bundle, "echo.dpo@1", ADAPTER_BYTES).expect("load exact adapter");
+    let mapped = CREATE_GREETING_SOURCE.replace(
+        MANIFEST_DIGEST.trim(),
+        &bundle.manifest_digest_review_string(),
+    );
+    let mapping = "\n    else { alreadyExists(existing) => hello.AlreadyExists }";
+    assert_eq!(mapped.matches(mapping).count(), 1);
+    for source in [mapped.clone(), mapped.replace(mapping, "")] {
+        let module = parse_module(&source).expect("generic effect source parses");
+        let preparation = prepare_lawpack_compilation(&module, &bundle, &adapter)
+            .expect("generic signature prepares");
+        let errors = compile_to_core(&module, preparation.compiler_context())
+            .expect_err("generic semantic effects remain unsupported");
+        let cause = &errors[0];
+        assert_eq!(cause.kind, CompilerErrorKind::UnsupportedSourceShape);
+        assert_eq!(cause.stage, CompilerStage::TypeCheck);
+        assert!(source[cause.span.start..cause.span.end].contains("hello.createGreeting(input)"));
+        assert!(cause.message.contains("generic semantic effects"));
+        assert!(!cause.message.contains("with `else`"));
+    }
+}
+
+#[test]
+fn authored_effect_type_arguments_refuse_mapping_guidance() {
+    let bundle = decode_lawpack_bundle(MANIFEST_BYTES, EXPORTS_BYTES).expect("load lawpack");
+    let adapter =
+        decode_lawpack_adapter(&bundle, "echo.dpo@1", ADAPTER_BYTES).expect("load exact adapter");
+    let mapped = CREATE_GREETING_SOURCE.replace(
+        "hello.createGreeting(input)",
+        "hello.createGreeting<U64>(input)",
+    );
+    assert_eq!(
+        mapped.matches("hello.createGreeting<U64>(input)").count(),
+        1
+    );
+    let mapping = "\n    else { alreadyExists(existing) => hello.AlreadyExists }";
+    assert_eq!(mapped.matches(mapping).count(), 1);
+    for source in [mapped.clone(), mapped.replace(mapping, "")] {
+        let module = parse_module(&source).expect("authored type arguments parse");
+        let preparation = prepare_lawpack_compilation(&module, &bundle, &adapter)
+            .expect("authenticate nongeneric effect");
+        let errors = compile_to_core(&module, preparation.compiler_context())
+            .expect_err("effect type arguments remain unsupported");
+        let cause = &errors[0];
+        assert_eq!(cause.kind, CompilerErrorKind::UnsupportedSourceShape);
+        assert_eq!(cause.stage, CompilerStage::TypeCheck);
+        assert!(
+            source[cause.span.start..cause.span.end].contains("hello.createGreeting<U64>(input)")
+        );
+        assert!(cause.message.contains("type arguments"));
+        assert!(!cause.message.contains("with `else`"));
+    }
+}
+
+#[test]
+fn valid_function_does_not_poison_intent_effect_guidance() {
+    let mut adapter_value = decode_canonical_cbor(ADAPTER_BYTES).expect("decode control adapter");
+    let budget = field_mut(
+        field_mut(&mut adapter_value, "budgets"),
+        "hello.echo@1.smallCreateBudget",
+    );
+    replace_field(budget, "maxSteps", CanonicalValue::Integer(1024));
+    replace_field(budget, "maxAllocatedBytes", CanonicalValue::Integer(32768));
+    replace_field(budget, "maxOutputBytes", CanonicalValue::Integer(4096));
+    let bundle = bundle_with_adapter(&adapter_value);
+    let adapter_bytes = encode_canonical_cbor(&adapter_value).expect("encode control adapter");
+    let adapter = decode_lawpack_adapter(&bundle, "echo.dpo@1", &adapter_bytes)
+        .expect("authenticate control adapter");
+    let function = "fn identity(value: U64) -> U64 { return value; }\n\n";
+    let source = CREATE_GREETING_SOURCE
+        .replace(
+            MANIFEST_DIGEST.trim(),
+            &bundle.manifest_digest_review_string(),
+        )
+        .replace(
+            "intent createGreeting",
+            &format!("{function}intent createGreeting"),
+        );
+    let module = parse_module(&source).expect("control source parses");
+    let preparation =
+        prepare_lawpack_compilation(&module, &bundle, &adapter).expect("prepare control closure");
+    compile_to_core(&module, preparation.compiler_context())
+        .expect("valid function and mapped intent compile");
+    let mapping = "\n    else { alreadyExists(existing) => hello.AlreadyExists }";
+    assert_eq!(source.matches(mapping).count(), 1);
+    let bare = source.replace(mapping, "");
+    let module = parse_module(&bare).expect("bare control parses");
+    let preparation =
+        prepare_lawpack_compilation(&module, &bundle, &adapter).expect("prepare bare control");
+    let errors = compile_to_core(&module, preparation.compiler_context())
+        .expect_err("bare intent effect still needs its mapping");
+    assert_eq!(
+        errors[0].kind,
+        CompilerErrorKind::EffectWithoutFailureMapping
+    );
+    assert!(errors[0].message.contains("with `else`"));
+}
+
+#[test]
 fn lawpack_effect_signature_requires_exported_type_closure() {
     let mut exports = hello_echo_exports();
     array_mut(field_mut(&mut exports, "types")).clear();
@@ -3436,6 +3582,197 @@ fn map_mut(value: &mut CanonicalValue) -> &mut Vec<(CanonicalValue, CanonicalVal
         panic!("fixture map");
     };
     entries
+}
+
+#[test]
+fn effect_inputs_use_authenticated_contextual_types() {
+    for (input_type, control_arg, literal_arg) in [
+        ("U64", "input", "1"),
+        ("Record<value:U64>", "{ value: input, }", "{ value: 1, }"),
+    ] {
+        let mut exports = hello_echo_exports();
+        let effect = first_array_item_mut(field_mut(&mut exports, "effects"));
+        replace_field(effect, "inputType", text(input_type));
+        replace_field(effect, "outputType", text("U64"));
+        let (bundle, adapter) = bundle_and_adapter(
+            &exports,
+            &decode_canonical_cbor(ADAPTER_BYTES).expect("decode adapter"),
+        );
+        let source = format!(
+            "package examples.literal_effect@1;\nuse lawpack hello.echo@1 digest \"{}\" as hello;\nintent apply(input: U64) returns U64\n profile hello.createGreeting\n basis none\n budget <= hello.smallCreateBudget {{\n let receipt: U64 = hello.createGreeting({control_arg})\n else {{ alreadyExists(existing) => hello.AlreadyExists }};\n return receipt;\n}}",
+            bundle.manifest_digest_review_string()
+        );
+        let compile = |source: &str| {
+            let module = parse_module(source).expect("contextual source parses");
+            let prepared = prepare_lawpack_compilation(&module, &bundle, &adapter)
+                .expect("authenticate contextual signature");
+            compile_to_core(&module, prepared.compiler_context())
+        };
+        compile(&source).expect("typed input control compiles");
+        let literal = source.replace(
+            &format!("hello.createGreeting({control_arg})"),
+            &format!("hello.createGreeting({literal_arg})"),
+        );
+        compile(&literal).expect("signature supplies integer literal context");
+        let mapping = "\n else { alreadyExists(existing) => hello.AlreadyExists }";
+        assert_eq!(literal.matches(mapping).count(), 1);
+        let bare = literal.replace(mapping, "");
+        let errors = compile(&bare).expect_err("valid bare effect still needs mapping");
+        assert_eq!(
+            errors[0].kind,
+            CompilerErrorKind::EffectWithoutFailureMapping
+        );
+    }
+}
+
+#[test]
+fn effect_comparison_literals_follow_exported_numeric_output() {
+    for (width, valid, invalid) in [("U64", "1", "-1"), ("I64", "-1", "9223372036854775808")] {
+        let mut exports = hello_echo_exports();
+        let effect = first_array_item_mut(field_mut(&mut exports, "effects"));
+        replace_field(effect, "inputType", text("U64"));
+        replace_field(effect, "outputType", text(width));
+        let (bundle, adapter) = bundle_and_adapter(
+            &exports,
+            &decode_canonical_cbor(ADAPTER_BYTES).expect("adapter"),
+        );
+        let base = format!("package examples.numeric_compare@1;\nuse lawpack hello.echo@1 digest \"{}\" as hello;\nintent apply(input: U64) returns {width}\n profile hello.createGreeting\n basis none\n budget <= hello.smallCreateBudget {{\n let receipt: {width} = hello.createGreeting(input)\n else {{ alreadyExists(existing) => hello.AlreadyExists }};\n require receipt == {valid} else hello.AlreadyExists;\n return receipt;\n}}", bundle.manifest_digest_review_string());
+        let compile = |source: &str| {
+            let module = parse_module(source).expect("numeric comparison source");
+            let prepared =
+                prepare_lawpack_compilation(&module, &bundle, &adapter).expect("numeric signature");
+            compile_to_core(&module, prepared.compiler_context())
+        };
+        compile(&base).expect("mapped numeric comparison control compiles");
+        for (literal, expected) in [
+            (valid, CompilerErrorKind::EffectWithoutFailureMapping),
+            (invalid, CompilerErrorKind::TypeMismatch),
+        ] {
+            for comparison in [
+                format!("hello.createGreeting(input) == {literal}"),
+                format!("{literal} == hello.createGreeting(input)"),
+            ] {
+                let source = base.replace(&format!("receipt == {valid}"), &comparison);
+                let errors = compile(&source).expect_err("bare effect or bad literal rejects");
+                assert_eq!(
+                    errors[0].kind, expected,
+                    "{width}: {comparison}: {errors:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn authenticated_empty_effect_surface_is_not_missing_information() {
+    let (exports, adapter) = request_only_adapter(Some("hello.echo@1.smallCreateBudget"), true);
+    let (bundle, adapter) = bundle_and_adapter(&exports, &adapter);
+    let source = CREATE_GREETING_SOURCE.replace(
+        MANIFEST_DIGEST.trim(),
+        &bundle.manifest_digest_review_string(),
+    );
+    let module = parse_module(&source).expect("empty-surface fixture parses");
+    let prepared = prepare_lawpack_compilation(&module, &bundle, &adapter)
+        .expect("authenticate empty effect surface");
+    let errors = compile_to_core(&module, prepared.compiler_context())
+        .expect_err("requested effect is not exported");
+    assert_eq!(errors[0].kind, CompilerErrorKind::MissingContextFact);
+    assert!(errors[0]
+        .message
+        .contains("no authenticated effect exports"));
+    assert!(!errors[0]
+        .message
+        .contains("missing authenticated effect export information"));
+}
+
+#[test]
+fn failure_guidance_names_only_domain_mappable_coordinates() {
+    for class in [
+        "participantOwned",
+        "integrityFault",
+        "resourceFault",
+        "internalFault",
+    ] {
+        let mut exports = hello_echo_exports();
+        let effect = first_array_item_mut(field_mut(&mut exports, "effects"));
+        let failure = first_map_value_mut(field_mut(effect, "effectFailures"));
+        replace_field(failure, "authorityClass", text(class));
+        let obstruction = first_array_item_mut(field_mut(&mut exports, "obstructions"));
+        replace_field(obstruction, "authorityClass", text(class));
+        let (bundle, adapter) = bundle_and_adapter(
+            &exports,
+            &decode_canonical_cbor(ADAPTER_BYTES).expect("adapter bytes"),
+        );
+        let source = CREATE_GREETING_SOURCE.replace(
+            MANIFEST_DIGEST.trim(),
+            &bundle.manifest_digest_review_string(),
+        );
+        let mapping = "\n    else { alreadyExists(existing) => hello.AlreadyExists }";
+        assert_eq!(source.matches(mapping).count(), 1);
+        let bare = source.replace(mapping, "");
+        let module = parse_module(&bare).expect("non-domain source parses");
+        let prepared = prepare_lawpack_compilation(&module, &bundle, &adapter)
+            .expect("authenticate failure authority");
+        let errors = compile_to_core(&module, prepared.compiler_context())
+            .expect_err("no-map bindings remain unsupported");
+        assert_eq!(
+            errors[0].kind,
+            CompilerErrorKind::EffectWithoutFailureMapping
+        );
+        assert!(
+            errors[0].message.contains("no domain-mappable failures"),
+            "{class}: {errors:?}"
+        );
+        assert!(!errors[0]
+            .message
+            .contains("declared failures: alreadyExists"));
+        assert!(!errors[0].message.contains("with `else`"));
+    }
+}
+
+#[test]
+fn mixed_authority_failure_guidance_labels_only_mappable_names() {
+    for class in [
+        "participantOwned",
+        "integrityFault",
+        "resourceFault",
+        "internalFault",
+    ] {
+        let mut exports = hello_echo_exports();
+        let effect = first_array_item_mut(field_mut(&mut exports, "effects"));
+        let failures = field_mut(effect, "effectFailures");
+        let mut extra = first_map_value_mut(failures).clone();
+        replace_field(&mut extra, "authorityClass", text(class));
+        map_mut(failures).push((text("platformFailure"), extra));
+        let mut adapter = decode_canonical_cbor(ADAPTER_BYTES).expect("adapter");
+        let implementation = first_map_value_mut(field_mut(&mut adapter, "effectImplementations"));
+        let mappings = field_mut(implementation, "failureMappings");
+        let CanonicalValue::Text(original_target) = first_map_value_mut(mappings) else {
+            panic!("target coordinate")
+        };
+        let target = format!("{original_target}.platform");
+        map_mut(mappings).push((text("platformFailure"), text(&target)));
+        let (bundle, adapter) = bundle_and_adapter(&exports, &adapter);
+        let source = CREATE_GREETING_SOURCE.replace(
+            MANIFEST_DIGEST.trim(),
+            &bundle.manifest_digest_review_string(),
+        );
+        let mapping = "\n    else { alreadyExists(existing) => hello.AlreadyExists }";
+        assert_eq!(source.matches(mapping).count(), 1);
+        let bare = source.replace(mapping, "");
+        let module = parse_module(&bare).expect("mixed-authority source");
+        let prepared = prepare_lawpack_compilation(&module, &bundle, &adapter)
+            .expect("authenticate mixed failures");
+        let errors = compile_to_core(&module, prepared.compiler_context())
+            .expect_err("bare binding needs map");
+        assert_eq!(
+            errors[0].kind,
+            CompilerErrorKind::EffectWithoutFailureMapping
+        );
+        assert!(errors[0].message.contains("alreadyExists"));
+        assert!(!errors[0].message.contains("platformFailure"));
+        assert!(errors[0].message.contains("domain-mappable failures:"));
+    }
 }
 
 #[test]

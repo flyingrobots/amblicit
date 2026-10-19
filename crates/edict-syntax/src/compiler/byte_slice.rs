@@ -1,8 +1,8 @@
 //! Proven half-open slicing over bounded raw bytes.
 use super::{
     error, expr_span, integer_shape, unsigned_subtraction::proven_order, CompilerErrorKind,
-    CompilerStage, CoreExpr, Expr, LocalEnvironment, Span, TypeChecker, TypeKind, TypeRef,
-    TypeShape, TypedValue,
+    CompilerStage, CoreExpr, EffectOutputExpectation, Expr, LocalEnvironment, Span, TypeChecker,
+    TypeKind, TypeRef, TypeShape, TypedValue,
 };
 
 impl TypeChecker<'_> {
@@ -31,7 +31,11 @@ impl TypeChecker<'_> {
             ));
             return None;
         }
-        let bytes = self.check_expr_with_intrinsic_context(bytes, env);
+        let bytes = self.check_expr_with_intrinsic_effect_context(
+            bytes,
+            env,
+            EffectOutputExpectation::Bytes,
+        );
         let max = bytes.as_ref().and_then(|value| {
             if let TypeKind::Bytes { max, .. } = value.ty.kind {
                 Some(max)

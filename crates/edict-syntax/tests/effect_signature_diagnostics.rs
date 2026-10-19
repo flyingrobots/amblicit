@@ -37,6 +37,14 @@ fn compile_with_input_definition(
     source: &str,
     definition: &str,
 ) -> Result<CoreModule, Vec<CompilerError>> {
+    compile_with_definition(source, definition, 0)
+}
+
+fn compile_with_definition(
+    source: &str,
+    definition: &str,
+    type_index: usize,
+) -> Result<CoreModule, Vec<CompilerError>> {
     // Exported String definitions are self-describing and require their policy.
     let mut definition = definition.to_owned();
     for max in [8, 32, 64, 128, 256] {
@@ -49,7 +57,7 @@ fn compile_with_input_definition(
     let CanonicalValue::Array(types) = field_mut(&mut exports, "types") else {
         panic!("types")
     };
-    *field_mut(&mut types[0], "definition") = CanonicalValue::Text(definition.clone());
+    *field_mut(&mut types[type_index], "definition") = CanonicalValue::Text(definition.clone());
     if definition.contains("hello.echo@1.ExpectedKey") {
         for coordinate in ["hello.echo@1.ExpectedKey", "hello.echo@1.ActualKey"] {
             let mut exported = types[0].clone();
@@ -336,4 +344,53 @@ fn nominal_signature_mismatch_names_exact_identity_without_unwrapping() {
         .as_ref()
         .unwrap()
         .contains("hello.echo@1.ActualKey"));
+}
+
+#[test]
+fn conditional_effect_peers_preserve_nested_literal_context() {
+    let base = SOURCE.replace("key: receipt.key,", "key: input.key,");
+    for (annotation, effect, peer) in [
+        (
+            "U64",
+            "hello.createGreeting(input).count",
+            "if true then 1 else 2",
+        ),
+        (
+            "hello.GreetingReceipt",
+            "hello.createGreeting(input)",
+            "{ count: if true then 1 else 2 }",
+        ),
+    ] {
+        for expression in [
+            format!("if true then {effect} else ({peer})"),
+            format!("if true then ({peer}) else {effect}"),
+        ] {
+            let source = base.replace(
+                "  return {",
+                &format!("  let chosen: {annotation} = {expression};\n  return {{"),
+            );
+            let control_expression = expression.replace(
+                effect,
+                if annotation == "U64" {
+                    "receipt.count"
+                } else {
+                    "receipt"
+                },
+            );
+            let control = base.replace(
+                "  return {",
+                &format!("  let chosen: {annotation} = {control_expression};\n  return {{"),
+            );
+            compile_with_definition(&control, "Record<count:U64>", 1)
+                .expect("mapped contextual literals compile");
+            let errors = compile_with_definition(&source, "Record<count:U64>", 1)
+                .expect_err("compatible effect needs a map");
+            assert!(
+                errors
+                    .iter()
+                    .all(|error| error.kind == CompilerErrorKind::EffectWithoutFailureMapping),
+                "{expression}: {errors:?}"
+            );
+        }
+    }
 }

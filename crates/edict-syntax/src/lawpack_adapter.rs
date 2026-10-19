@@ -17,8 +17,8 @@ use crate::compiler::{
 };
 use crate::core_ir::{CoreBudget, ResourceRef};
 use crate::lawpack::{
-    LawpackExecutionClass, LawpackResourceRef, LawpackSemanticEffect, LawpackTargetAdapter,
-    ValidatedLawpackBundle, LAWPACK_API_VERSION,
+    LawpackAuthorityClass, LawpackExecutionClass, LawpackResourceRef, LawpackSemanticEffect,
+    LawpackTargetAdapter, ValidatedLawpackBundle, LAWPACK_API_VERSION,
 };
 use crate::lowerability::WriteClass;
 use crate::target_ir::{
@@ -352,6 +352,19 @@ fn exported_type_shapes(
         .collect()
 }
 
+fn exported_effect_names(
+    bundle: &ValidatedLawpackBundle,
+    alias: &str,
+    prefix: &str,
+) -> Result<BTreeSet<String>, Vec<LawpackAdapterFailure>> {
+    bundle
+        .exports()
+        .effects
+        .iter()
+        .map(|effect| local_coordinate(alias, prefix, &effect.coordinate))
+        .collect()
+}
+
 fn project_effects(
     mut compiler_context: CompilerContext,
     bundle: &ValidatedLawpackBundle,
@@ -361,6 +374,11 @@ fn project_effects(
     prefix: &str,
     type_shapes: &BTreeMap<String, TypeShapeFact>,
 ) -> Result<ProjectedEffects, Vec<LawpackAdapterFailure>> {
+    compiler_context = compiler_context.with_authenticated_effect_exports(
+        alias.to_owned(),
+        lawpack.clone(),
+        exported_effect_names(bundle, alias, prefix)?,
+    );
     let mut obstruction_coordinates = BTreeSet::new();
     let mut effect_lowerings = Vec::new();
     let mut effect_signatures = Vec::new();
@@ -409,6 +427,14 @@ fn project_effects(
                     input_type: exported.input_type.clone(),
                     output_type: exported.output_type.clone(),
                     failure_payload_types: failure_payload_types.clone(),
+                    domain_mappable_failures: exported
+                        .effect_failures
+                        .iter()
+                        .filter(|(_, failure)| {
+                            failure.authority_class == LawpackAuthorityClass::DomainMappable
+                        })
+                        .map(|(name, _)| name.clone())
+                        .collect(),
                 },
             );
         effect_signatures.push(TargetEffectSignatureFact::from_validated_lawpack_export(

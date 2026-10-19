@@ -37,6 +37,48 @@ enter the same `compiler_context_from_authority_facts` path. [CSPINE-REQ-010]
 
 ## Current Contract
 
+A bare call in an intent body that resolves to an exact nongeneric semantic
+effect reports
+`EffectWithoutFailureMapping`, rather than classifying it as an unresolved pure
+helper. The diagnostic names the domain-mappable failures and retains the call span.
+Generic semantic effects and effects in pure contexts, including source-owned
+functions and intent clauses, report `UnsupportedSourceShape` rather than
+recommending an unavailable effect binding. Explicit effect type arguments
+also report `UnsupportedSourceShape` in mapped and bare forms. Effect calls
+with zero or multiple arguments report the same unsupported shape before map guidance. Mapping guidance is enabled only
+while checking an intent body and is restored afterward. Every bare exact
+effect call also checks the current profile permission before map guidance,
+including direct or nested returns.
+For a zero-failure effect, it reports that bindings without a failure map are
+unsupported instead of suggesting an empty `else` map.
+An unknown effect in an explicit effect binding retains `MissingContextFact`
+and lists available effects from its exact imported owner and source alias.
+A bare unknown call retains `UnresolvedFunction`; the compiler does not infer
+whether an unknown coordinate denotes an effect or a pure helper. Unrelated write-class facts do not
+become exported capability guidance. Available names describe authenticated
+signatures in the supplied compiler context. When those signatures are absent,
+the diagnostic reports missing export information; it does not claim the
+lawpack exports nothing. Valid mapped calls remain unchanged.
+Before failure-map guidance, the compiler checks the effect argument and its
+authenticated input type. Wrong types and unresolved argument expressions retain
+their primary diagnostic kinds and spans.
+Authenticated signatures supply contextual input types in mapped and bare calls,
+including scalar and record integer literals. Predicate operands carry a separate
+effect-output requirement, so non-Boolean direct and conditional effect values
+report `ExpectedPredicate` before map guidance. Ordinary nested operand typing
+retains its existing constraints. A bare effect also checks its
+output against any surrounding expected type before map guidance.
+Guidance lists only `domainMappable` failure coordinates. Effects with no such
+coordinates report the current unsupported no-map binding shape. Validated empty
+export surfaces are distinguished from absent authentication information; declared
+but unprojected exports are not described as an empty lawpack.
+[CSPINE-REQ-047]
+
+Conditional expressions check compatible branch shapes, and concatenations retain
+the complete enclosing bound through nested operands, before an authenticated
+effect receives mapping advice. Type-only probes read exact exported shapes;
+they neither authorize an effect nor construct a Core effect value. [CSPINE-REQ-047]
+
 Every ordinary result has a checked canonical-CBOR size bound within the
 intent's `maxOutputBytes`. This check applies without source functions. It
 includes record keys, definite-length headers, fixed-width integer maxima,
@@ -49,6 +91,7 @@ external-action contract. This ordinary-result check does not infer its wire
 size. Ordinary results containing nested opaque requests report
 `UnsupportedSourceShape`. Request-only protocol evidence remains separate from
 canonical result-projection evidence. [CSPINE-REQ-046]
+
 
 `source_linker::link_source_closure` links an authenticated witness into a
 separate immutable compiler-owned surface. `LinkedSourceClosure::compile`
@@ -155,6 +198,8 @@ metadata predicates; sequential calls add and lazy branches use a maximum.
 A helper scan is counted in its function summary and is not charged again at
 the call site. This compiler evidence does not
 execute UTF-8 validation. [CSPINE-REQ-053]
+The byte requirement reaches authenticated effect outputs before failure-mapping
+advice, so a record-valued effect reports its primary `TypeMismatch`. [CSPINE-REQ-047]
 
 `slice(bytes, start, end)` lowers bounded raw bytes and U64 endpoints to
 `core.bytes.slice<OperandType>(bytes,start,end)`. Its result keeps the operand
@@ -361,6 +406,9 @@ Those items remain assigned to later lowerability/admission milestones.
 
 The verification matrix is tracked in [test-plan.md](./test-plan.md).
 
+A direct authenticated bare effect used as a comparison operand is checked against its typed peer before failure-map guidance. The requirement uses symmetric comparability, preserving ordinary comparison compatibility. Existing integer-literal inference remains unchanged. This rule covers direct effect calls; it does not establish general recovery for multiple invalid operands or dependent bindings.
+
+When the peer of a direct authenticated effect comparison is an unsuffixed integer literal, the compiler validates the effect's guards and exported output first. Non-integer outputs report TypeMismatch. Numeric outputs provide the peer literal's width and range check before failure-map guidance. Signed and unsigned literal inference otherwise retains its existing rules.
 ## Failed binding recovery
 
 The compiler keeps lexical failure markers separate from typed local values. A failed let binding removes any value for that name in its scope and marks dependent uses as unavailable. Cloned branch environments retain those markers without leaking them back to the outer scope. No failure marker has a Core value, local reference, or type. Source-level shadowing remains rejected by surface validation; the explicit public type-check phase also recovers safely on an invalid shadowed AST.
@@ -389,6 +437,15 @@ This is an implementation-crate Rust API addition: code constructing `CompilerEr
 
 [CSPINE-REQ-048]
 
+Field selectors on authenticated bare effect results are checked against the exported record shape before mapping advice. Chained selectors retain their enclosing expected value, predicate, or comparison requirement. Missing fields report UnknownField; selection from a non-record reports TypeMismatch. The span identifies the failing selector. Valid result selections still require an explicit mapped effect binding, and no effect result is synthesized in Core.
+
+Concatenation checks authenticated effect outputs for string-or-bytes membership before mapping advice. Length and slice require bytes. These requirements also follow exported field projections; a valid projected string still requires effect failure mapping.
+
+Unsigned subtraction checks authenticated effect outputs for U32/U64 and any available expected operand type before mapping advice. Exported field projections retain the same requirement. Accepted pure subtraction still requires its existing no-underflow proof.
+
+For concatenation with a direct or field-projected effect operand, the opposite operand is checked against the authenticated output family before mapping advice. A diagnostic-only compiler copy checks the peer when the left effect has no value; only independent errors leave that copy. No effect output is fabricated as a typed value.
+
+Enclosing string or bytes requirements propagate through concatenation operands, including nested concatenations. Length and slice therefore reject a string concatenation before advising how to map an effect within it; known pure operands retain the same family requirement.
 Source and imported helper calls retain independent supplied-argument diagnostics
 after an argument-count mismatch. Known parameter positions retain their type
 context; extra arguments are checked without inventing an expected type. Invalid
@@ -420,3 +477,7 @@ in both terminal and continuing failure arms. A duplicate explicit value or
 shorthand is still checked, while poisoned-name reads remain suppressed. Any
 duplicate keeps the complete payload map invalid; checked values do not make
 that map eligible for Core publication.
+
+Explicitly annotated pure conditional expressions retain both the enclosing type and authenticated effect peer compatibility before failure-map guidance, as exercised by CSPINE-TP-174.
+
+Conditional effect diagnostic probes preserve available enclosing types, including nested literal conditionals and record fields. Probes traverse peer expressions without launching further conditional peer probes. The twenty-level invalid-source deadline regression catches the previous repeated-probe explosion; this is a regression bound rather than a general compilation-time guarantee (CSPINE-TP-175 and CSPINE-TP-176).
