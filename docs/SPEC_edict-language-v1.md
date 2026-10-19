@@ -1672,6 +1672,39 @@ Semantic grammar rules:
 
 Edict v1 defines a small deterministic type universe.
 
+### Source aliases and declaration dependencies
+
+A source declaration `type Alias = Target;` is transparent. It resolves to the
+target's existing type coordinate and bounded representation. It creates no
+additional nominal contract or Core type table entry. In particular, an alias
+of a digest-bound imported nominal type preserves that exact contract and does
+not permit substitution of its raw storage representation.
+
+The current compiler resolves acyclic source aliases and record dependencies
+before checking function signatures or intent bodies. Declaration ordering does
+not change the resulting canonical Core. Alias targets must already belong to
+the currently lowerable type subset; this does not introduce generic,
+recursive or variant lowering.
+
+Source type dependency paths have a ceiling of 128 declarations. Fully expanded
+structural height, including inline constructors, cached alias targets and
+record fields, follows the Core height rule below: height 128 is accepted and
+129 refuses as `InvalidBound`. A traversal of source type reference occurrences
+has 65,536 work units.
+Cumulative source-defined declaration expansion also has 65,536 units: scalar
+and opaque imported references cost one; containers add one plus child weights;
+records add one plus field weights. A reference to another source declaration
+uses that declaration's complete expanded weight at every occurrence. These
+checks precede expanded shape construction. Imported representation checks and
+runtime budgets remain separate.
+
+Missing types refuse as `UnresolvedType`, cycles as `InvalidCoreTypeIntegrity`,
+and depth/work exhaustion as `InvalidBound`. Shared dependency heights are
+context-independent, so an earlier cached occurrence cannot hide a deeper path.
+Duplicate source type declarations also refuse as `SurfaceValidation` through
+the public staged `resolve_module` then `type_check` API. Unsupported string
+canonicalization refuses as `UnsupportedSourceShape`, including unused aliases.
+
 ### Scalar Types
 
 - `Bool`
