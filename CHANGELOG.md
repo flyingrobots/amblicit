@@ -8,6 +8,10 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Lower proven same-width U32/U64 sums to `core.integer.add` and independently
+  validate no-overflow bounds at the Target IR boundary. Unproved sums refuse
+  rather than wrapping; provider and runtime acceptance remain separate.
+
 - Preserve primary conditional-branch and complete concatenation-bound errors before failure-map guidance, including nested expressions and the UTF-8 byte predicate.
 
 - Check effect output families for concatenation, length, slicing and unsigned subtraction before failure-mapping advice, including exported field projections and mismatched string/byte concatenation peers and nested concatenation family requirements.

@@ -31,6 +31,7 @@ mod source_types;
 pub use signature_diagnostic::{
     EffectSignatureMismatch, SignatureMismatchPosition, SignaturePathSegment,
 };
+mod unsigned_addition;
 mod unsigned_subtraction;
 
 use crate::lowerability::WriteClass;
@@ -4088,7 +4089,7 @@ impl<'a> TypeChecker<'a> {
                 lhs,
                 rhs,
                 span,
-            } => self.check_concat(lhs, rhs, env, expectation, *span),
+            } => self.check_addition_or_concat(lhs, rhs, env, expectation, *span),
             Expr::Binary {
                 op: BinOp::Sub,
                 lhs,
@@ -4743,10 +4744,19 @@ impl<'a> TypeChecker<'a> {
                 lhs,
                 rhs,
                 ..
-            } => diagnostic_concat_shape(
-                &self.diagnostic_shape_inner(lhs, env)?,
-                &self.diagnostic_shape_inner(rhs, env)?,
-            ),
+            } => self.diagnostic_addition_shape(lhs, rhs, env),
+            Expr::Binary {
+                op: BinOp::Sub,
+                lhs,
+                rhs,
+                ..
+            } => self
+                .diagnostic_shape_inner(lhs, env)
+                .and_then(|shape| match shape.kind {
+                    TypeKind::Int { .. } => Some(shape),
+                    _ => None,
+                })
+                .or_else(|| self.diagnostic_shape_inner(rhs, env)),
             Expr::If { then, els, .. } => compatible_shape(
                 &self.diagnostic_shape_inner(then, env)?,
                 &self.diagnostic_shape_inner(els, env)?,

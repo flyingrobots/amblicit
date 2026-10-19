@@ -267,6 +267,14 @@ input-constraint enforcement, or runtime byte-copy charging.
   | Digest-bound imported lawpack alias | Bounds supplied by the exported definition | Nominal exported coordinate |
 
   [CSPINE-REQ-019] [CSPINE-REQ-021] [CSPINE-REQ-033]
+- Same-width `U32`/`U64` addition lowers to `core.integer.add<T>(left, right)`
+  when literal bounds, zero identity, or dominating input constraints establish
+  that the sum fits its width. Conjunctions contribute upper bounds; disjunctions
+  and negations do not. Nested sums compose those bounds. Unproved overflow
+  refuses instead of wrapping. Signed and mixed-width sums are outside this
+  subset. Bounded string and byte concatenation keep their existing meaning.
+  This is source-to-Core behavior, not a provider/runtime acceptance claim.
+  [CSPINE-REQ-055]
 - Same-width `U32`/`U64` subtraction lowers to
   `core.integer.subtract<T>(left, right)` when the operands are identical,
   the subtrahend is zero, literal operands are ordered, or a checked input
