@@ -16,6 +16,22 @@ pub(super) fn diagnostic_shape(left: &TypeShape, right: &TypeShape) -> Option<Ty
 }
 
 impl TypeChecker<'_> {
+    pub(super) fn diagnostic_addition_shape(
+        &mut self,
+        lhs: &Expr,
+        rhs: &Expr,
+        env: &LocalEnvironment,
+    ) -> Option<TypeShape> {
+        let left = self.diagnostic_shape_inner(lhs, env);
+        let right = self.diagnostic_shape_inner(rhs, env);
+        match (left, right) {
+            (Some(left), Some(right)) => diagnostic_shape(&left, &right),
+            (Some(known), None) if is_bare_integer_literal(rhs) => unsigned_shape(known),
+            (None, Some(known)) if is_bare_integer_literal(lhs) => unsigned_shape(known),
+            _ => None,
+        }
+    }
+
     pub(super) fn check_addition_or_concat(
         &mut self,
         lhs: &Expr,
@@ -152,6 +168,11 @@ impl TypeChecker<'_> {
             ty: left.ty,
         })
     }
+}
+
+fn unsigned_shape(shape: TypeShape) -> Option<TypeShape> {
+    matches!(&shape.kind, TypeKind::Int { width } if width == "U32" || width == "U64")
+        .then_some(shape)
 }
 
 fn constant(expr: &CoreExpr) -> Option<u64> {

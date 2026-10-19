@@ -66,6 +66,20 @@ fn nested_unsigned_addition_infers_its_width_without_an_annotation() {
     }
 }
 
+#[test]
+fn nested_bare_literals_inherit_an_unsigned_peers_width() {
+    for width in ["U32", "U64"] {
+        for expression in ["(input.left + 1) + 2", "2 + (1 + input.left)"] {
+            let core = compile_with_annotation(width, "where input.left <= 10", expression, false)
+                .expect("the known operand supplies the nested literals width");
+            assert_eq!(
+                lower_to_target_ir(&core, &facts()).status,
+                TargetLoweringStatus::Lowered
+            );
+        }
+    }
+}
+
 fn facts() -> TargetIrLoweringFacts {
     TargetIrLoweringFacts {
         target_profile: ResourceRef {

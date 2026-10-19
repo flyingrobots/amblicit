@@ -4744,10 +4744,7 @@ impl<'a> TypeChecker<'a> {
                 lhs,
                 rhs,
                 ..
-            } => unsigned_addition::diagnostic_shape(
-                &self.diagnostic_shape_inner(lhs, env)?,
-                &self.diagnostic_shape_inner(rhs, env)?,
-            ),
+            } => self.diagnostic_addition_shape(lhs, rhs, env),
             Expr::If { then, els, .. } => compatible_shape(
                 &self.diagnostic_shape_inner(then, env)?,
                 &self.diagnostic_shape_inner(els, env)?,
