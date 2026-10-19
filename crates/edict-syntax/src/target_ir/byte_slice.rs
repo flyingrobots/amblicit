@@ -1,7 +1,7 @@
 //! Independent signature and input-domain checks for raw byte slicing.
 use super::{
     expression_type_coordinate, resolved_core_type, unsigned_subtraction::proven_order, BTreeMap,
-    CoreExpr, CoreModule, CoreType, InputConstraint, LocalRef, TargetPureFunctionFact,
+    CoreExpr, CoreModule, CorePredicate, CoreType, LocalRef, TargetPureFunctionFact,
 };
 
 pub(super) const OPERATION: &str = "core.bytes.slice";
@@ -31,7 +31,7 @@ pub(super) fn type_coordinate(
 pub(super) fn is_total(
     type_args: &[String],
     args: &[CoreExpr],
-    constraints: &[InputConstraint],
+    constraints: &[&CorePredicate],
 ) -> bool {
     let ([coordinate], [bytes, start, end]) = (type_args, args) else {
         return false;
