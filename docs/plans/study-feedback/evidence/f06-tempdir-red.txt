@@ -1,0 +1,28 @@
+   Compiling edict-syntax v0.11.0-alpha.1 (/work/edict/crates/edict-syntax)
+   Compiling edict-provider-schema v0.11.0-alpha.1 (/work/edict/crates/edict-provider-schema)
+   Compiling edict-provider-host-wasmtime v0.11.0-alpha.1 (/work/edict/crates/edict-provider-host-wasmtime)
+   Compiling edict-cli v0.11.0-alpha.1 (/work/edict/crates/edict-cli)
+    Finished `test` profile [unoptimized] target(s) in 4.65s
+     Running tests/configurable_causal_cell.rs (/cache/target/debug/deps/configurable_causal_cell-3abdf7b078f42465)
+
+running 1 test
+test configurable_cell_test_directories_cleanup_on_unwind ... FAILED
+
+failures:
+
+---- configurable_cell_test_directories_cleanup_on_unwind stdout ----
+
+thread 'configurable_cell_test_directories_cleanup_on_unwind' (287) panicked at crates/edict-cli/tests/configurable_causal_cell.rs:577:9:
+simulated assertion failure
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'configurable_cell_test_directories_cleanup_on_unwind' (287) panicked at crates/edict-cli/tests/configurable_causal_cell.rs:584:5:
+owned test tree must be removed during unwinding
+
+
+failures:
+    configurable_cell_test_directories_cleanup_on_unwind
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p edict-cli --test configurable_causal_cell`

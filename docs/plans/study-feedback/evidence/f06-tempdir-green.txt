@@ -1,0 +1,24 @@
+ Downloading crates ...
+  Downloaded tempfile v3.27.0
+  Downloaded fastrand v2.5.0
+   Compiling edict-syntax v0.11.0-alpha.1 (/work/edict/crates/edict-syntax)
+   Compiling fastrand v2.5.0
+   Compiling tempfile v3.27.0
+   Compiling edict-provider-schema v0.11.0-alpha.1 (/work/edict/crates/edict-provider-schema)
+   Compiling edict-provider-host-wasmtime v0.11.0-alpha.1 (/work/edict/crates/edict-provider-host-wasmtime)
+   Compiling edict-cli v0.11.0-alpha.1 (/work/edict/crates/edict-cli)
+    Finished `test` profile [unoptimized] target(s) in 4.84s
+     Running tests/configurable_causal_cell.rs (/cache/target/debug/deps/configurable_causal_cell-d3f664e4b6ba4a77)
+
+running 8 tests
+test configurable_cell_command_refuses_invalid_arguments ... ok
+test configurable_cell_limits_reject_inconsistent_and_overflowing_parameters ... ok
+test configurable_cell_command_renders_compilable_source ... ok
+test configurable_cell_budgets_match_maximum_unicode_encoding ... ok
+test configurable_cell_real_provider_accepts_both_variants ... ignored, requires the pinned real Echo package in EDICT_F06_PROVIDER
+test configurable_cell_test_directories_cleanup_on_unwind ... ok
+test configurable_cell_documents_author_repeatable_valid_closures ... ok
+test configurable_cell_public_authoring_matches_in_memory_artifacts ... ok
+
+test result: ok. 7 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

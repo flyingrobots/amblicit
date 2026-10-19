@@ -19,6 +19,7 @@ versions still track specification maturity rather than a released product.
 - Label filtered effect failure guidance as domain-mappable failures; mixed authority classes remain excluded from the advised map.
 
 - Check direct bare effect comparison outputs against their peer before failure-map guidance, preserving symmetric comparison rules.
+- Add an application-owned configurable-cell example command and how-to with checked Unicode/byte limits, derived result budgets, repeatable public lawpack/application builds, and pinned Echo provider witnesses.
 - Retain a surviving yield arm's known annotation mismatch after its peer fails; keep UTF-8 operand errors visible under unavailable outer annotations.
 
 - Retain independent explicit-value and shorthand diagnostics on duplicate obstruction payload keys.

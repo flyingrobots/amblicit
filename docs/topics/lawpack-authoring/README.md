@@ -338,3 +338,35 @@ fields, output ownership, output size, output drift, and publication failure.
 Edict does not discover application semantics from schemas or fixtures, invoke
 a provider, build an executable package, admit an operation, or create a runtime
 receipt on this path.
+
+## Configurable cell document generator
+
+Follow [Author a causal-cell lawpack with your own limits](../../how-to/configurable-causal-cell.md)
+to generate the documents and run the public build commands.
+
+The application-owned support modules under
+`crates/edict-cli/examples/configurable_causal_cell/` derive a complete
+`edict.lawpack-build/v1` document from explicit key/value scalar bounds and a
+replacement-byte cap. Edict derives local resource identities during authoring;
+the helper does not edit CBOR or calculate replacement digest pins itself.
+
+The public-authoring witness covers a 256-byte cap with 64 value scalars and a
+4,096-byte cap with 1,024 value scalars. It publishes each document in two
+separate directories and compares every emitted artifact with the public
+in-memory authoring result. Changing the semantic bounds changes the manifest
+identity. The result budget includes maximum UTF-8 expansion and canonical CBOR
+headers. The allocation field is an explicit reservation, not an inferred
+runtime allocation proof.
+
+The generated rules, compatibility and fixture resources are declarations;
+their digest identities do not establish independent assurance or runtime
+execution. These authoring witnesses do not prove provider acceptance or Echo
+execution. Application-build and provider cases are tracked in the test plan.
+
+The configurable-cell helper enforces its scalar-to-byte-cap relationship before
+authoring. The pinned v1 Echo provider also accepts independently declared
+smaller byte caps when documents and pins are reauthored; its successful build
+is not a general parameter-consistency check. The explicit real-provider test
+checks that the emitted program retains that smaller cap and that restoring the
+original documents restores the exact package and report. See the
+[recipe](../../how-to/configurable-causal-cell.md) for the boundary and invocation.

@@ -1,0 +1,47 @@
+   Compiling edict-syntax v0.11.0-alpha.1 (/work/edict/crates/edict-syntax)
+   Compiling edict-provider-schema v0.11.0-alpha.1 (/work/edict/crates/edict-provider-schema)
+   Compiling edict-provider-host-wasmtime v0.11.0-alpha.1 (/work/edict/crates/edict-provider-host-wasmtime)
+   Compiling edict-cli v0.11.0-alpha.1 (/work/edict/crates/edict-cli)
+warning: variant `Encoding` is never constructed
+ --> crates/edict-cli/tests/../examples/configurable_causal_cell/command.rs:8:5
+  |
+3 | pub enum CommandError {
+  |          ------------ variant in this enum
+...
+8 |     Encoding,
+  |     ^^^^^^^^
+  |
+  = note: `CommandError` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `edict-cli` (test "configurable_causal_cell") generated 1 warning
+    Finished `test` profile [unoptimized] target(s) in 4.70s
+     Running tests/configurable_causal_cell.rs (/cache/target/debug/deps/configurable_causal_cell-3abdf7b078f42465)
+
+running 2 tests
+test configurable_cell_command_refuses_invalid_arguments ... FAILED
+test configurable_cell_command_renders_compilable_source ... FAILED
+
+failures:
+
+---- configurable_cell_command_refuses_invalid_arguments stdout ----
+
+thread 'configurable_cell_command_refuses_invalid_arguments' (276) panicked at crates/edict-cli/tests/configurable_causal_cell.rs:242:5:
+assertion `left == right` failed
+  left: Err(Usage)
+ right: Err(InvalidNumber)
+
+---- configurable_cell_command_renders_compilable_source stdout ----
+
+thread 'configurable_cell_command_renders_compilable_source' (277) panicked at crates/edict-cli/tests/configurable_causal_cell.rs:198:72:
+called `Result::unwrap()` on an `Err` value: Usage
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    configurable_cell_command_refuses_invalid_arguments
+    configurable_cell_command_renders_compilable_source
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p edict-cli --test configurable_causal_cell`
