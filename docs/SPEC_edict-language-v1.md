@@ -1388,10 +1388,34 @@ digest. It embeds no closure self-digest. Its external identity uses the same
 canonical three-element digest frame under `edict.source-closure/v1`.
 Dependency input order does not affect canonical bytes or identity.
 
-This boundary authenticates sources; it does not link or type-check them or
-grant execution authority. The current public application build still accepts
-one source. Standalone `compile_to_core` refuses unresolved module imports as
-`MissingContextFact`, including imports that are not referenced by a declaration.
+Source authentication does not grant execution authority. The separate
+`source_linker::link_source_closure` API creates an immutable compiler-owned
+linked surface while retaining the original witness. Its `compile` method
+accepts explicit compiler facts and reports failures against original package
+coordinates and source-local byte spans.
+
+Source imports expose a dependency's own type and pure-function declarations
+through its explicit alias, without implicit transitive re-exports. Every
+linked definition is checked, including unused definitions. Library functions
+and types resolve only in their own lexical module. Compiler names are fresh
+and deterministic; root intent entry names and runtime record/member labels
+remain authored. Imported intent entries refuse as `ImportedIntent`. Built-in
+`ExternalActionRequest` constructors and capability request callees remain
+supported. Authored namespace calls, including `core.*`, require an import
+owned by the same source module.
+
+A source record retains its module-owned `package@version.Type` coordinate
+across importing applications. Root record table keys retain original local
+names. Renaming MUST NOT bypass reserved-type checks or original-coordinate
+collisions with imported callable/type authority. Aliases remain transparent.
+Type traversal accepts constructor height 128 and refuses 129 independently
+of lexical statement/expression frames; active lexical traversal and flattened
+member paths have fixed limits of 128.
+
+The current public application build still accepts one source. Public provider
+consumption of the source-closure artifact is not implemented. Standalone
+`compile_to_core` refuses unresolved module imports as `MissingContextFact`,
+including imports that are not referenced by a declaration.
 
 ## Grammar
 

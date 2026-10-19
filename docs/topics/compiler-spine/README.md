@@ -37,6 +37,33 @@ enter the same `compiler_context_from_authority_facts` path. [CSPINE-REQ-010]
 
 ## Current Contract
 
+`source_linker::link_source_closure` links an authenticated witness into a
+separate immutable compiler-owned surface. `LinkedSourceClosure::compile`
+accepts explicit compiler context facts and maps compiler failures back to the
+original package and source-local byte span. Original source bytes and closure
+identity remain unchanged. [CSPINE-REQ-051]
+
+Source-module aliases expose only the named dependency's own types and pure
+functions. They do not implicitly re-export transitive imports. Every unit's
+definitions are checked, including unused functions. A library cannot capture
+an application's declarations, and library parameters/local bindings cannot
+collide with unrelated application names. Imported intent entries refuse as
+`ImportedIntent`; the root owns application entry declarations. [CSPINE-REQ-051]
+
+The linker chooses deterministic fresh compiler names for declarations,
+external import aliases and lexical bindings, preserving root entry names,
+field labels and runtime member access. Source-owned record identities remain
+`package@version.Type`, independent of the importing application; root record
+table keys retain their original source names. Source declarations cannot use
+renaming to shadow reserved types or redeclare imported callable/type authority.
+Type-constructor height is limited to 128 independently of statement/expression
+frames; active lexical traversal and flattened member paths are also bounded.
+Built-in `ExternalActionRequest` types and bare capability request callees
+remain supported. Authored namespace calls, including `core.*`, require an
+import owned by that same source module. These checks grant no runtime
+authority. Public application/provider closure
+consumption remains a separate requirement. [CSPINE-REQ-051]
+
 Source `type Alias = Target;` declarations are transparent spellings for
 currently lowerable targets. They introduce no new nominal authority or Core
 type table entry. Aliases retain bounded representations and the exact owning
