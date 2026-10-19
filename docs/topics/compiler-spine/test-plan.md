@@ -257,6 +257,28 @@ Out of scope:
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | CSPINE-TP-088 | implemented | Contextual comparison literals | CSPINE-REQ-047 | Direct authenticated effects beside signed or unsigned bare literals check output compatibility before map guidance; valid numeric outputs preserve literal inference and primary argument/profile errors. | effect_integer_comparisons_report_incompatibility_before_map_guidance, effect_comparison_literals_follow_exported_numeric_output | crates/edict-syntax/tests/effect_diagnostics.rs, crates/edict-syntax/tests/lawpack.rs | Valid numeric control still requires a mapped binding. |
 
+## Return Encoding Budget
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| CSPINE-REQ-046 | implemented | Every accepted intent with an ordinary canonical result has a checked return-size bound within maxOutputBytes, independently of source functions. UTF-8, CBOR headers, record keys, nominal representations, lists, and arithmetic overflow participate. Request-only protocol returns retain their separate existing contract. Nested opaque result shapes reject explicitly. | issue #231 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-059 | implemented | Output budget | CSPINE-REQ-046 | Exact-fit output compiles; one byte below its maximum reports InvalidBound. The cases cover all supported output families, nested shapes, and header transitions without source functions. | return_budget_exact_fit_accepts_and_one_byte_less_rejects | crates/edict-syntax/tests/return_budget.rs | Includes four-byte Unicode scalar expansion. |
+| CSPINE-TP-060 | implemented | Bound overflow | CSPINE-REQ-046 | A string multiplication, payload/header addition, list multiplication, list-header addition, or record accumulation overflow reports InvalidBound before Core exists. | return_budget_overflow_rejects_before_core | crates/edict-syntax/tests/return_budget.rs | Independent of source-function accounting. |
+| CSPINE-TP-061 | implemented | Unsupported output | CSPINE-REQ-046 | An ordinary result containing opaque requests reports UnsupportedSourceShape instead of claiming a canonical bound. Request-only protocol returns and request-bearing inputs with bounded ordinary outputs remain accepted. | return_budget_refuses_opaque_requests_but_preserves_bounded_outputs | crates/edict-syntax/tests/return_budget.rs | No request runtime encoding is inferred. |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-062 | implemented | Nominal encoding bound | CSPINE-REQ-046 | The exact authenticated nominal representation fits at 26 bytes and rejects at 25. | return_budget_preserves_imported_nominal_representation_bounds | crates/edict-syntax/tests/return_budget.rs | Nominal authority remains intact. |
+| CSPINE-TP-063 | implemented | Canonical encoder witness | CSPINE-REQ-046 | The worst-case Unicode record has 16,662 canonical bytes, fits at that budget, and rejects one byte below it. | return_budget_unicode_record_maximum_matches_canonical_encoder | crates/edict-syntax/tests/return_budget.rs | Uses the independent public canonical encoder. |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-064 | implemented | Imported integer families | CSPINE-REQ-046 | Every accepted Core integer width fits at its canonical maximum and rejects one byte below it, including authenticated I8/U8/I16/U16 exports. | return_budget_supports_every_accepted_imported_integer_width | crates/edict-syntax/tests/return_budget.rs | Does not broaden source builtin scalar syntax. |
+
+
 ## Effect Signature Mismatch Detail
 
 | ID | Status | Requirement | Source |

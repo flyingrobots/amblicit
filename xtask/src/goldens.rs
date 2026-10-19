@@ -194,7 +194,7 @@ fn core_golden_context() -> CompilerContext {
             CoreBudget {
                 max_steps: 64,
                 max_allocated_bytes: 4096,
-                max_output_bytes: 1024,
+                max_output_bytes: 4096,
             },
         )
         .with_budget(

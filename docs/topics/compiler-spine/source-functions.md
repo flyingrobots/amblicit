@@ -92,6 +92,11 @@ records include field-key cells and UTF-8 key bytes. Strings reserve up to four
 UTF-8 bytes per scalar. Input validation/copy, output validation/encoding
 scratch and a conservative definite-length CBOR output maximum are included.
 CBOR integer/header bounds reserve at most nine bytes; Boolean output is one.
+The independent ordinary-result check uses exact definite-length header widths
+and declared integer widths. Both checks must pass. The source-function estimate
+can be more conservative; it does not replace the universal ordinary-result
+check. Portable value-storage cells are 64 bytes. These cells are accounting
+units, not host pointer widths or a proof of physical backend allocation.
 These are conservative compiler accounting units, not a claim about any
 backend's physical allocator or an exact instruction count.
 

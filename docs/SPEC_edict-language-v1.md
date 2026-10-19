@@ -2939,6 +2939,22 @@ Edict source
   -> compute Core IR hash
 ```
 
+### Implemented Ordinary Result Budget Boundary
+
+The source compiler checks the declared ordinary result's canonical-CBOR maximum
+against `maxOutputBytes` before it emits Core. This applies without source
+functions. The check includes exact definite-length headers, field keys,
+fixed-width integer maxima, bounded lists, and nominal representations.
+`String<max=N>` permits up to `4 * N` UTF-8 bytes. Overflow or an output maximum
+above the selected budget reports `InvalidBound`.
+
+Direct `ExternalActionRequest` results retain the separate request-only protocol
+contract. This pass does not assign them an ordinary result-projection encoding
+maximum. Nested opaque request shapes in ordinary results report
+`UnsupportedSourceShape`. Source-function accounting retains its existing
+separate restrictions and conservative costs. This check does not add complete
+primitive allocation inference or runtime input validation.
+
 ### GraphQL/Wesley Source Profile Pipeline
 
 Wesley may also compile GraphQL and `weslaw` into Edict-compatible source

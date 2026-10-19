@@ -1,0 +1,1 @@
+PASS: staged/unstaged deletions, rename, missing addition, modifications and untracked bytes

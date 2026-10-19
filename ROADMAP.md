@@ -7,6 +7,50 @@ plan that keeps those artifacts visible from the repository.
 Dates are target dates, not promises. A release can move, but the GitHub
 milestone and this roadmap must move together.
 
+## Author Study Repair Plan
+
+This plan addresses confirmed flaws in the [author study](docs/studies/2026-10-06-edict-feedback.md).
+The [claim audit](docs/plans/study-feedback/AUDIT.md) states source facts and evidence limits.
+The [independent review reconciliation](docs/plans/study-feedback/REVIEW.md) records agy's feedback and accepted revisions.
+These tasks complete the study response. They do not complete the separate release roadmap.
+
+The compiler needs safe ordinary-result bounds, useful effect errors, and controlled recovery.
+The CLI needs structured build records with distinct transport and source coordinates.
+The documentation needs current runtime boundaries, digest guidance, and an application-owned cell recipe.
+Echo must first implement projected compare-and-set and verified key limits.
+Keep storage adoption remains separate work. Keep content identity is not an Echo attachment-value digest.
+
+Execute the tasks in this sequence. Sequence does not imply a prerequisite edge.
+F02 is a tracking container. Its three children own all implementation work.
+F01 keeps required positive-fixture corrections with the compiler check, so its merge leaves the full gate runnable.
+
+- [ ] [F01: Enforce canonical return-size bounds for every intent](docs/plans/study-feedback/F01.md) — [#231](https://github.com/flyingrobots/edict/issues/231).
+- [ ] [F02A: Identify missing effect mappings and unknown exports](docs/plans/study-feedback/F02A.md) — [#238](https://github.com/flyingrobots/edict/issues/238).
+- [x] [F02B: Identify the incompatible field in effect signatures](docs/plans/study-feedback/F02B.md) — [#239](https://github.com/flyingrobots/edict/issues/239), [PR246](https://github.com/flyingrobots/edict/pull/246), main `e60411f`.
+- [ ] [F02C: Suppress errors that depend on failed compiler bindings](docs/plans/study-feedback/F02C.md) — [#240](https://github.com/flyingrobots/edict/issues/240).
+- [x] [F03: Emit structured compiler diagnostics for application builds](docs/plans/study-feedback/F03.md) — [#233](https://github.com/flyingrobots/edict/issues/233); [PR #245](https://github.com/flyingrobots/edict/pull/245), merged as `618aa4f84ff88a0873849f8d9cfa55e1f340ffb9`.
+- [x] [F04: Correct README safety guarantees and compiler/runtime status](docs/plans/study-feedback/F04.md) — [#229](https://github.com/flyingrobots/edict/issues/229); [PR #242](https://github.com/flyingrobots/edict/pull/242), merged as `392ecdc7ae1335a76f96106dad16893d75815a55`.
+- [x] [F05: Explain the lawpack import digest and digest-mismatch error](docs/plans/study-feedback/F05.md) — [#234](https://github.com/flyingrobots/edict/issues/234); [PR #244](https://github.com/flyingrobots/edict/pull/244), merged as `67adee201d9da9d8bae608f3906474a6f31314f9`.
+- [ ] [F06: Document a configurable Echo-executable causal-cell lawpack](docs/plans/study-feedback/F06.md) — [#235](https://github.com/flyingrobots/edict/issues/235).
+- [ ] [E01: Lower and verify projected compare-and-set Edict operations](docs/plans/study-feedback/E01.md) — [#763](https://github.com/flyingrobots/echo/issues/763).
+- [ ] [E02: Enforce declared Unicode key bounds in projected Edict operations](docs/plans/study-feedback/E02.md) — [#764](https://github.com/flyingrobots/echo/issues/764).
+- [ ] [F08: Preserve and enforce causal-cell key bounds at the Echo boundary](docs/plans/study-feedback/F08.md) — [#237](https://github.com/flyingrobots/edict/issues/237).
+- [ ] [F07: Add an executable causal-cell compare-and-set capability](docs/plans/study-feedback/F07.md) — [#236](https://github.com/flyingrobots/edict/issues/236).
+
+The executable graph has twelve tasks: ten Edict tasks and two Echo prerequisites.
+F06 requires F01. F07 requires F01, E01, and E02. F08 requires E02.
+No other unconditional implementation edge exists. Shared files do not establish prerequisites.
+E01 and E02 must each preserve any contract already merged by the other.
+Keep adoption issues Echo #722 and #760 are related work, not prerequisites for these existing operation paths.
+These external edges are plan decisions. They do not assert native GitHub dependency records or merged prerequisites.
+
+Behavior changes require RED, GREEN, and `cargo xtask verify` on the stable candidate.
+Every implementation PR requires Code Lawyer, current-head agy-review, required bot review, green CI, and no actionable findings.
+A plan review is not implementation approval. The retained plan verdict is REQUEST CHANGES; revisions are reconciled without claiming reapproval.
+Record each merged PR and integration commit before marking a task complete.
+
+The [F02C current review handoff](docs/plans/study-feedback/F02C.md#current-review-handoff-2026-10-08) reconciles the published recovery fixes and remaining acceptance work. Passing its focused tests and CI does not close the task or replace independent review.
+
 ## Release Gates
 
 Every release cut must satisfy these gates on the release commit:

@@ -8,6 +8,7 @@ const SOURCE: &str = include_str!("../../../fixtures/lawpack/hello-echo/create-g
 const MANIFEST: &[u8] = include_bytes!("../../../fixtures/lawpack/hello-echo/manifest.cbor");
 const EXPORTS: &[u8] = include_bytes!("../../../fixtures/lawpack/hello-echo/exports.cbor");
 const ADAPTER: &[u8] = include_bytes!("../../../fixtures/lawpack/hello-echo/adapter.cbor");
+const MANIFEST_DIGEST: &str = include_str!("../../../fixtures/lawpack/hello-echo/manifest.sha256");
 
 use edict_syntax::{CanonicalValue, SignatureMismatchPosition, SignaturePathSegment};
 use sha2::{Digest, Sha256};
@@ -71,10 +72,8 @@ fn compile_with_input_definition(
     for byte in bundle.manifest_digest() {
         write!(import_digest, "{byte:02x}").expect("format digest");
     }
-    let source = source.replace(
-        "sha256:aff1c3580f4b817bf3db9af8e6ca8e15ef7d57dea578b71deaf3a249f863c5af",
-        &import_digest,
-    );
+    assert_eq!(source.matches(MANIFEST_DIGEST.trim()).count(), 1);
+    let source = source.replace(MANIFEST_DIGEST.trim(), &import_digest);
     let module = parse_module(&source).expect("signature fixture parses");
     let adapter = decode_lawpack_adapter(&bundle, "echo.dpo@1", ADAPTER).expect("adapter");
     let preparation = prepare_lawpack_compilation(&module, &bundle, &adapter).expect("preparation");

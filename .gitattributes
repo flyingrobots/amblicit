@@ -1,0 +1,2 @@
+# Preserve terminal blank lines in literal command output; other checks remain.
+docs/plans/study-feedback/evidence/*.txt whitespace=-blank-at-eof

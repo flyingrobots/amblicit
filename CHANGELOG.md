@@ -8,6 +8,8 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Preserve primary conditional-branch and complete concatenation-bound errors before failure-map guidance, including nested expressions and the UTF-8 byte predicate.
+
 - Check effect output families for concatenation, length, slicing and unsigned subtraction before failure-mapping advice, including exported field projections and mismatched string/byte concatenation peers and nested concatenation family requirements.
 
 - Check authenticated effect result field paths and their enclosing type constraints before failure-map guidance.
@@ -17,6 +19,9 @@ versions still track specification maturity rather than a released product.
 - Label filtered effect failure guidance as domain-mappable failures; mixed authority classes remain excluded from the advised map.
 
 - Check direct bare effect comparison outputs against their peer before failure-map guidance, preserving symmetric comparison rules.
+
+- Correct the retained study validation helper to remove staged deletions and old rename paths from copied validation snapshots.
+
 
 - Signature mismatch spans identify exactly the effect call, excluding its enclosing binding and failure handler.
 
@@ -44,6 +49,17 @@ versions still track specification maturity rather than a released product.
   Unknown-effect `MissingContextFact` diagnostics list available exact-owner
   effects under the selected alias. This changes primary guidance only; effect
   authority, signature compatibility, and dependent-error recovery remain unchanged.
+
+- Check every ordinary intent result against its declared canonical-CBOR output
+  budget, including UTF-8 expansion, exact headers, nested records/lists, and
+  nominal representations. Oversized or overflowing results now report
+  `InvalidBound` without requiring source functions. Direct external-action
+  request results retain their separate protocol boundary; opaque requests
+  nested in ordinary results reject. Corrected positive fixture budgets and
+  regenerated their dependent digest closures. Old producer locks remain
+  frozen; new compiler/old lawpack combinations can reject impossible results.
+  No runtime input-validation or complete allocation claim is added.
+
 
 - Application builds emit individual structured parser and compiler diagnostics
   with byte spans and separate source file/line/scalar-column locations. Existing

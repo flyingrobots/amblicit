@@ -194,3 +194,12 @@ because Markdown syntax passes. Review should ask whether the intended reader ca
 complete the page's primary job without source archaeology. [DOCS-REQ-006]
 
 The verification matrix is tracked in [test-plan.md](./test-plan.md).
+
+## Literal Execution Evidence
+
+Literal command output under `docs/plans/study-feedback/evidence/` retains its
+original bytes, including terminal blank lines. The scoped Git attribute
+permits that EOF form for these `.txt` artifacts. Ordinary source retains its
+EOF whitespace check. Evidence indexes distinguish failed, partial, superseded,
+and passed runs; a retained file is not automatically a passing claim.
+[DOCS-REQ-008]

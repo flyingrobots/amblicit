@@ -1,0 +1,26 @@
+"""Execute guard refusal behavior under optimized Python without launching work."""
+import ast
+from pathlib import Path
+
+source = Path(__file__).with_name("guard-runner.py.txt").read_text()
+parsed = ast.parse(source)
+selected = []
+for node in parsed.body:
+    if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "GiB" for t in node.targets):
+        selected.append(node)
+    if isinstance(node, ast.FunctionDef) and node.name in {"check", "guard"}:
+        selected.append(node)
+namespace = {}
+exec(compile(ast.Module(body=selected, type_ignores=[]), "guard", "exec", optimize=2), namespace)
+gib = 1024**3
+valid = dict(host_free=100*gib, vm_free=100*gib, build=0, data=0, logs=0, layer=237568)
+namespace["guard"](valid)
+for key, bad in [("host_free",0), ("vm_free",0), ("build",20*gib), ("data",4*gib-128*1024**2), ("logs",124*1024**2), ("layer",237569)]:
+    case = dict(valid)
+    case[key] = bad
+    try:
+        namespace["guard"](case)
+    except RuntimeError:
+        continue
+    raise AssertionError("optimized guard accepted an invalid " + key)
+print("PASS: optimized guard refused all six limit violations")

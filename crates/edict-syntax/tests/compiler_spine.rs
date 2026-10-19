@@ -221,7 +221,7 @@ fn hello_context() -> CompilerContext {
             CoreBudget {
                 max_steps: 64,
                 max_allocated_bytes: 4096,
-                max_output_bytes: 1024,
+                max_output_bytes: 4096,
             },
         )
 }
@@ -2238,7 +2238,15 @@ fn branch_yield_lists_join_item_and_length_bounds_independently() {
 
     for source in [source.to_owned(), mirrored] {
         let module = parse_module(&source).expect("fieldwise list join source parses");
-        compile_to_core(&module, &pure_context())
+        let context = pure_context().with_budget(
+            "p.tiny",
+            CoreBudget {
+                max_steps: 8,
+                max_allocated_bytes: 1024,
+                max_output_bytes: 1064,
+            },
+        );
+        compile_to_core(&module, &context)
             .expect("opposing list item and length bounds join independently");
     }
 }

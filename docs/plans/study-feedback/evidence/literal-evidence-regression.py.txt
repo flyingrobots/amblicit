@@ -1,0 +1,32 @@
+"""Check Git whitespace behavior for literal logs and ordinary source."""
+import subprocess
+import tempfile
+from pathlib import Path
+
+source_root = Path(__file__).resolve().parents[4]
+attributes = source_root / ".gitattributes"
+with tempfile.TemporaryDirectory(prefix="edict-literal-evidence-") as directory:
+    root = Path(directory)
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, check=False)
+    if git("init", "--quiet").returncode:
+        raise RuntimeError("temporary Git fixture could not initialize")
+    if attributes.exists():
+        (root / ".gitattributes").write_bytes(attributes.read_bytes())
+    log = root / "docs/plans/study-feedback/evidence/probe.txt"
+    code = root / "src/probe.rs"
+    log.parent.mkdir(parents=True)
+    code.parent.mkdir()
+    log.write_text("observed output\n")
+    code.write_text("fn main() {}\n")
+    if git("add", ".").returncode or git("-c", "user.name=validation", "-c", "user.email=validation@example.invalid", "commit", "--quiet", "-m", "initial fixture").returncode:
+        raise RuntimeError("temporary Git fixture could not record baseline")
+    log.write_text("observed output\n\n")
+    log_result = git("diff", "--check", "--", str(log.relative_to(root)))
+    if log_result.returncode != 0:
+        raise AssertionError("literal execution output must permit a terminal blank line: " + log_result.stdout)
+    code.write_text("fn main() {}\n\n")
+    code_result = git("diff", "--check", "--", str(code.relative_to(root)))
+    if code_result.returncode == 0:
+        raise AssertionError("ordinary source must retain its EOF whitespace check")
+print("PASS: literal output preserved; source whitespace check remains active")

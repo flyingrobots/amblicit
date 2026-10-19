@@ -1,0 +1,27 @@
+   Compiling edict-syntax v0.11.0-alpha.1 (/work/edict/crates/edict-syntax)
+    Finished `test` profile [unoptimized] target(s) in 2.06s
+     Running tests/byte_concat.rs (/cache/target/debug/deps/byte_concat-a79d75e390535c4b)
+
+running 7 tests
+test byte_concat_rejects_narrow_destinations_and_wrong_operand_families ... ok
+test byte_concat_order_and_nesting_are_explicit_in_core_identity ... ok
+test byte_concat_rejects_overflowing_static_sum_without_wrapping ... ok
+test existing_string_concat_remains_unchanged ... ok
+test target_rejects_byte_concat_overflow_and_nominal_unwrapping ... ok
+test target_rejects_forged_byte_concat_calls ... ok
+test bounded_byte_concat_preserves_order_coordinates_and_summed_maximum ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/return_budget.rs (/cache/target/debug/deps/return_budget-5c382101c80058c3)
+
+running 6 tests
+test return_budget_refuses_opaque_requests_but_preserves_bounded_outputs ... ok
+test return_budget_overflow_rejects_before_core ... ok
+test return_budget_unicode_record_maximum_matches_canonical_encoder ... ok
+test return_budget_supports_every_accepted_imported_integer_width ... ok
+test return_budget_preserves_imported_nominal_representation_bounds ... ok
+test return_budget_exact_fit_accepts_and_one_byte_less_rejects ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
