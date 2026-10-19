@@ -479,3 +479,5 @@ duplicate keeps the complete payload map invalid; checked values do not make
 that map eligible for Core publication.
 
 Explicitly annotated pure conditional expressions retain both the enclosing type and authenticated effect peer compatibility before failure-map guidance, as exercised by CSPINE-TP-174.
+
+Conditional effect diagnostic probes preserve available enclosing types, including nested literal conditionals and record fields. Probes traverse peer expressions without launching further conditional peer probes. The twenty-level invalid-source deadline regression catches the previous repeated-probe explosion; this is a regression bound rather than a general compilation-time guarantee (CSPINE-TP-175 and CSPINE-TP-176).

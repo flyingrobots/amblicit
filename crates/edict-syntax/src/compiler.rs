@@ -958,6 +958,7 @@ struct TypeChecker<'a> {
     inferred_yield_shapes: BTreeMap<usize, TypeShape>,
     inferred_yield_envs: BTreeMap<usize, LocalEnvironment>,
     expected_type_unavailable: bool,
+    checking_diagnostic_peer: bool,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -977,6 +978,7 @@ impl<'a> TypeChecker<'a> {
             inferred_yield_shapes: BTreeMap::new(),
             inferred_yield_envs: BTreeMap::new(),
             expected_type_unavailable: false,
+            checking_diagnostic_peer: false,
         }
     }
 
@@ -4654,7 +4656,14 @@ impl<'a> TypeChecker<'a> {
                 }
             }
             EffectOutputExpectation::ConditionalPeer { peer, next } => {
-                let expected = is_bare_integer_literal(peer).then_some(projected);
+                // A peer probe already traverses both branches. Recursively
+                // launching peer probes here would multiply that work.
+                if self.checking_diagnostic_peer {
+                    return self.check_effect_shape(effect, projected, *next, env, span);
+                }
+                let expected = next
+                    .value()
+                    .or_else(|| contains_contextual_bare_integer(peer).then_some(projected));
                 let peer_shape = match self.check_effect_conditional_peer(peer, env, expected) {
                     DiagnosticPeerShape::Known(shape) => shape,
                     DiagnosticPeerShape::Unknown => return Some(()),
@@ -4684,6 +4693,7 @@ impl<'a> TypeChecker<'a> {
     ) -> DiagnosticPeerShape {
         let mut probe = self.clone();
         probe.errors.clear();
+        probe.checking_diagnostic_peer = true;
         let shape = probe
             .check_expr_with_expected(peer, env, expected)
             .map(|value| value.ty);

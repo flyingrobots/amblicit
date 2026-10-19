@@ -488,3 +488,10 @@ CSPINE-REQ-054 remains planned. The implemented rows establish their named fixtu
 | Case ID | Status | Kind | Requirements | Scenario and oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | CSPINE-TP-174 | implemented | Annotated conditional peers | CSPINE-REQ-047 | Explicit String annotations retain incompatible conditional peer TypeMismatch in both orders before map guidance; compatible bare effects still need a map. | annotated_conditional_effect_results_keep_primary_branch_type_errors | crates/edict-syntax/tests/effect_diagnostics.rs | Retain enclosing annotation and contextual literal inference. |
+
+## Conditional diagnostic probe limits and context
+
+| Case ID | Status | Kind | Requirements | Scenario and oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-175 | implemented | Nested peer work | CSPINE-REQ-047 | A linear chain of 20 invalid effect conditionals finishes within a generous 10-second regression deadline and retains mapping guidance. | nested_effect_conditional_diagnostics_finish_within_deadline | crates/edict-syntax/tests/effect_diagnostics.rs | A denial-of-service regression bound, not a performance benchmark. |
+| CSPINE-TP-176 | implemented | Nested contextual literals | CSPINE-REQ-047 | Authenticated numeric receipt fields and records preserve contextual integer literals inside nested conditional peers; compatible bare effects need mapping. | conditional_effect_peers_preserve_nested_literal_context | crates/edict-syntax/tests/effect_signature_diagnostics.rs | Both branch orders and mapped controls. |

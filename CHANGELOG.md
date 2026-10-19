@@ -959,6 +959,8 @@ versions still track specification maturity rather than a released product.
 
 ### Fixed
 
+- Preserve nested conditional literal context in effect diagnostics and prevent recursive peer-probe work multiplication.
+
 - Rejected Core canonical encoding when an import resource digest is unresolved,
   preventing floating imports from entering the canonical preimage.
 - Excluded source-local import alias spelling from Core canonical bytes.

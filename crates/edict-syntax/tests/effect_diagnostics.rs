@@ -638,3 +638,25 @@ fn concatenated_effect_results_keep_complete_output_bounds() {
         );
     }
 }
+
+#[test]
+fn nested_effect_conditional_diagnostics_finish_within_deadline() {
+    let mut expression = "input.key".to_owned();
+    for _ in 0..20 {
+        expression = format!("if true then hello.createGreeting(input).key else ({expression})");
+    }
+    let source = SOURCE.replace(
+        "  return {",
+        &format!("  let chosen = {expression};\n  return {{"),
+    );
+    let (send, receive) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || send.send(compile(&source)).unwrap());
+    let result = receive
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("linear-size invalid source must not cause exponential diagnostic work");
+    worker.join().unwrap();
+    let errors = result.expect_err("bare effects still require maps");
+    assert!(errors
+        .iter()
+        .all(|error| error.kind == CompilerErrorKind::EffectWithoutFailureMapping));
+}
