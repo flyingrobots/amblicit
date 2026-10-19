@@ -76,3 +76,27 @@ The four injected faults produced five assertion failures across the two test
 binaries (exit `101`). With production source restored, the commands pass three
 syntax witnesses and one public CLI witness. Compiler output identity is the
 oracle; these tests do not execute helper bodies, loops, or provider packages.
+
+## Configurable Causal-Cell Example
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| LAUTH-REQ-009 | implemented | An application-owned helper derives consistent causal-cell types, byte caps and budgets, and public authoring/application builds consume both stock-byte-cap and 4 KiB variants without modifying shared fixture generators. | docs/plans/study-feedback/F06.md |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| LAUTH-TP-018 | implemented | Parameter contract | LAUTH-REQ-009 | Reject zero, overflow and scalar/byte inconsistencies including 65 scalars/256 bytes and 64 scalars/255 bytes; compare exact allocated bytes against the encoded worst-case basis/key/value input plus output and replacement bytes; derive deterministic documents for 256-byte/64-scalar and 4096-byte/1024-scalar values. | configurable_cell_budgets_match_maximum_unicode_encoding, configurable_cell_limits_reject_inconsistent_and_overflowing_parameters, configurable_cell_documents_author_repeatable_valid_closures | crates/edict-cli/tests/configurable_causal_cell.rs | Budget and document generation each observed RED/GREEN; public authoring reproduces their artifact closure. |
+| LAUTH-TP-019 | implemented | Public authoring/build | LAUTH-REQ-009 | Public lawpack and application builds accept both variants, reproduce exact artifacts across directories, and refuse stale pins or undersized output budgets. | configurable_cell_public_authoring_matches_in_memory_artifacts, configurable_cell_real_provider_accepts_both_variants, configurable_cell_command_renders_compilable_source, configurable_cell_command_refuses_invalid_arguments | crates/edict-cli/tests/configurable_causal_cell.rs | Real-provider test requires explicit EDICT_F06_PROVIDER and --ignored; default suite alone does not execute it. |
+| LAUTH-TP-020 | implemented | Provider boundary | LAUTH-REQ-009 | Pinned provider builds both consistent variants; repinned zero caps and aliased fields reject at their actual boundaries. A smaller independent byte cap is accepted and retained in the emitted program; helper tests enforce the recipe's scalar/byte relationship. | configurable_cell_real_provider_accepts_both_variants, configurable_cell_budgets_match_maximum_unicode_encoding, configurable_cell_limits_reject_inconsistent_and_overflowing_parameters | crates/edict-cli/tests/configurable_causal_cell.rs | Explicit EDICT_F06_PROVIDER and --ignored required. Rejection of arbitrary inconsistent metadata is not a v1 provider guarantee; see the correction in F06.md. |
+
+The provider witness executes the public lowerer and verifier, checks the emitted
+one-byte program cap after reauthoring and repinning, and restores the original
+package/report bytes. Zero-cap schema refusal and aliased-field lowerer refusal
+preserve prior outputs. The first smaller-cap experiment contradicted the prior
+blanket refusal hypothesis. Parameter consistency remains enforced by the helper;
+compilation and provider verification do not prove execution or general ingress
+validation. The evidence and plan preserve this correction explicitly.
+
+| Case ID | Status | Kind | Requirements | Scenario and oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| LAUTH-TP-021 | implemented | Test workspace lifetime | LAUTH-REQ-009 | Owned public-build test directories are unique and removed on unwinding, without deleting another live workspace. | configurable_cell_test_directories_cleanup_on_unwind | crates/edict-cli/tests/configurable_causal_cell.rs | PR248 review finding; no runtime behavior change. |

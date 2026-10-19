@@ -47,3 +47,45 @@ snapshot, optimized-guard and whitespace probes followed by `cargo xtask verify`
 The topic plan records the Python evidence-registration limitation explicitly;
 this run does not claim Rust-test coverage for the Python probe. Two earlier
 full-gate attempts failed on the new topic row metadata, not on snapshot behavior.
+
+## F06 configurable-cell witnesses
+
+The helper was developed with separate RED/GREEN cycles for checked budget
+arithmetic, authored document generation and command rendering. Later public
+build and provider probes characterize existing compiler/provider behavior.
+
+| Evidence | Observed outcome | Scope |
+| --- | --- | --- |
+| [limits RED](f06-limits-red.txt), [limits GREEN](f06-limits-green.txt) | Stub failures, then passing assertions | Unicode expansion, CBOR overhead, checked arithmetic |
+| [document RED](f06-document-red.txt), [document GREEN](f06-document-green.txt) | Stub failure, then passing authoring checks | Consistent repeatable lawpack artifacts |
+| [command RED](f06-command-red.txt), [command GREEN](f06-command-green.txt) | Stub failures, then passing rendering checks | Generated compilable source and typed argument refusals |
+| [provider hypothesis](f06-provider-scalar-hypothesis.txt) | Expected refusal contradicted by exit zero | Reauthored independent byte cap is accepted |
+| [independent cap](f06-provider-independent-cap.txt) | One explicit provider test passed | Both variants, separate directories, emitted cap inspection, exact restoration |
+
+The failed provider hypothesis is not implementation RED. The scope correction
+is recorded in [F06](../F06.md); no runtime execution is claimed.
+
+[Full validation](f06-full-verify.txt): `cargo xtask verify` passed, followed by
+the explicit pinned-provider test (one passed, six filtered out). The release
+date checker reported the preexisting v0.1.0-alpha.1 missing policy surface as
+an advisory; the gate exited zero.
+
+## F06 review: temporary workspace ownership
+
+[RED](f06-tempdir-red.txt) reproduces the old manual-directory lifetime: a
+caught assertion panic leaves its artifact tree behind. [GREEN](f06-tempdir-green.txt)
+checks automatic cleanup during unwinding, distinct live workspace paths,
+preservation of a peer workspace and cleanup on normal drop. Both public-build
+loops use the same `tempfile::TempDir` helper. The dependency is test-only; it
+does not enter compiler/runtime production dependencies.
+
+The first GREEN test command passed, but its guard's subsequent lockfile export
+failed because Docker copy could not access the tmpfs path. That whole guarded
+run is not counted as a successful gate. A later full gate identified the
+provider-fixture source fingerprint change from Cargo.lock; regeneration used
+the pinned generator and changed only inventory sourceDigest, with all component
+bytes unchanged. Interrupted measurement runs are also excluded from GREEN.
+
+[Final verification](f06-tempdir-verify.txt): full `cargo xtask verify` and the
+explicit real-provider test passed after regeneration. Seven ordinary tests
+pass; the explicit provider test passes with seven filtered out.
