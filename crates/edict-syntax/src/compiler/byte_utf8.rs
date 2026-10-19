@@ -1,7 +1,7 @@
 //! The bounded Bytes UTF-8 predicate prelude.
 use super::{
-    error, BTreeMap, CompilerErrorKind, CompilerStage, CoreExpr, Expr, LocalRef, Span, TypeChecker,
-    TypeKind, TypeRef, TypeShape, TypedValue,
+    error, expression_identity, BTreeMap, CompilerErrorKind, CompilerStage, CoreExpr, Expr,
+    HelperCost, LocalRef, Span, TypeChecker, TypeKind, TypeRef, TypeShape, TypedValue,
 };
 
 impl TypeChecker<'_> {
@@ -11,6 +11,7 @@ impl TypeChecker<'_> {
         args: &[Expr],
         env: &BTreeMap<String, (LocalRef, TypeShape)>,
         span: Span,
+        source: &Expr,
     ) -> Option<TypedValue> {
         let [argument] = args else {
             self.errors.push(error(
@@ -39,6 +40,20 @@ impl TypeChecker<'_> {
                 span,
             ));
             return None;
+        }
+        if self.resolved.source_functions.is_empty() {
+            let TypeKind::Bytes { max, .. } = &value.ty.kind else {
+                return None;
+            };
+            // Helper-bearing modules already record this scan in their complete
+            // expression costs. The legacy intent path still needs its scan bound.
+            self.source_expression_costs.insert(
+                expression_identity(source),
+                HelperCost {
+                    steps: *max,
+                    ..HelperCost::default()
+                },
+            );
         }
         Some(TypedValue {
             expr: CoreExpr::Call {

@@ -2120,6 +2120,11 @@ The Edict Core prelude is intentionally small:
   nominal unwrapping are not accepted by this specialization. Compiler and
   Target support establish typing and authority, not runtime execution evidence.
   A prefix slice passed to this predicate still needs its own bounds proof.
+  Direct scans contribute the operand byte maximum to the static intent step
+  bound, including metadata predicates. Sequential scans add; lazy alternatives
+  use the maximum branch cost. Source-helper summaries already include their
+  scans and are not charged twice at the call site. Runtime metering also
+  charges the selected profile's expression, value and validation work.
 - `slice(bytes: Bytes<max=N>, start: U64, end: U64) -> Bytes<max=N>`
   selects the half-open byte range `[start,end)` only when the compiler proves
   `start <= end <= len(bytes)` (`EDICT-LANG-BYTE-SLICE-001`). The bytes remain

@@ -11,7 +11,7 @@ fn context() -> CompilerContext {
         .with_budget(
             "p.small",
             CoreBudget {
-                max_steps: 64,
+                max_steps: 4_194_304,
                 max_allocated_bytes: 4096,
                 max_output_bytes: 1024,
             },
@@ -253,4 +253,69 @@ fn byte_utf8_source_function_budget_includes_bounded_scan() {
     let core = compile_to_core(&parsed, &generous).unwrap();
     let report = lower_to_target_ir(&core, &facts());
     assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+}
+
+fn scan_budget(steps: u64) -> CompilerContext {
+    CompilerContext::new()
+        .with_operation_profile("p.read", "continuum.profile.read-only/v1")
+        .with_budget(
+            "p.small",
+            CoreBudget {
+                max_steps: steps,
+                max_allocated_bytes: u64::MAX,
+                max_output_bytes: u64::MAX,
+            },
+        )
+}
+#[test]
+fn direct_utf8_scans_are_bounded_in_bodies_guards_and_lazy_branches() {
+    let simple = source("Bytes<max=1024>", "isUtf8(input.bytes)", "Bool");
+    let conditional = source(
+        "Bytes<max=1024>",
+        "if input.flag then isUtf8(input.bytes) else isUtf8(input.other)",
+        "Bool",
+    )
+    .replace(
+        "other: Bytes<max=1024>,",
+        "other: Bytes<max=1024>, flag: Bool,",
+    );
+    let guarded = simple
+        .replace(
+            "budget <= p.small {",
+            "budget <= p.small where isUtf8(input.bytes) {",
+        )
+        .replace(
+            "let valid: Bool = isUtf8(input.bytes);",
+            "let valid: Bool = true;",
+        );
+    for text in [&simple, &conditional, &guarded] {
+        let module = parse_module(text).unwrap();
+        let errors = compile_to_core(&module, &scan_budget(100)).unwrap_err();
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.kind == CompilerErrorKind::InvalidBound),
+            "{errors:?}"
+        );
+        compile_to_core(&module, &scan_budget(1600))
+            .expect("one complete scan or one selected conditional branch fits");
+    }
+    let repeated = simple.replace(
+        "return { valid };",
+        "let second = isUtf8(input.other); return { valid };",
+    );
+    let errors =
+        compile_to_core(&parse_module(&repeated).unwrap(), &scan_budget(1600)).unwrap_err();
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.kind == CompilerErrorKind::InvalidBound),
+        "{errors:?}"
+    );
+}
+#[test]
+fn utf8_helper_scan_is_not_charged_twice_at_its_call_site() {
+    let text="package utf8.cost@1; fn inspect(value:Bytes<max=1024>) -> Bool {return isUtf8(value);} type Input={bytes:Bytes<max=1024>,}; intent measure(input:Input) returns Bool profile p.read basis none budget <= p.small {let valid = inspect(input.bytes); return valid;}";
+    compile_to_core(&parse_module(text).unwrap(), &scan_budget(1600))
+        .expect("single helper scan fits; duplicate scan accounting would exceed this ceiling");
 }

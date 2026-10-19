@@ -136,7 +136,11 @@ arguments, retaining its exact coordinate in `core.bytes.isUtf8<OperandType>`
 and returning Bool. It is a reserved prelude name, including through authenticated
 source-module linking. Wrong operand families, signatures and result types reject.
 The source-function cost bound includes operand validation and conservative scan
-work using the complete bounded operand storage. This compiler evidence does not
+work using the complete bounded operand storage. Direct intent calls also
+contribute their declared byte maximum to the static step bound, including
+metadata predicates; sequential calls add and lazy branches use a maximum.
+A helper scan is counted in its function summary and is not charged again at
+the call site. This compiler evidence does not
 execute UTF-8 validation. [CSPINE-REQ-053]
 
 `slice(bytes, start, end)` lowers bounded raw bytes and U64 endpoints to
