@@ -63,3 +63,13 @@ and identities. This fixture does not yet bind the projected result during
 Echo execution. Edict corroborates the target-configuration reference but
 deliberately leaves its Echo-specific semantics and runtime evaluation to the
 Echo-owned target provider.
+
+## Result Budget Compatibility
+
+The stock output budget is 2,048 bytes. `GreetingCreated` has a worst-case
+canonical size of 1,299 bytes when its bounded strings use four-byte scalars.
+The application compiler rejects an ordinary result above its selected budget.
+The corrected budget changes adapter, manifest, Core, Target IR, and result
+projection identities. Use the regenerated source import and complete closure.
+This change does not update an external consumer's frozen producer lock or prove
+runtime compatibility for a different producer pair.

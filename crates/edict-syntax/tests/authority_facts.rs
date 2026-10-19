@@ -37,7 +37,7 @@ fn file_backed_authority_facts_compile_bounded_hello() {
     );
     assert_eq!(intent.core_evaluation_budget.max_steps, 64);
     assert_eq!(intent.core_evaluation_budget.max_allocated_bytes, 4096);
-    assert_eq!(intent.core_evaluation_budget.max_output_bytes, 1024);
+    assert_eq!(intent.core_evaluation_budget.max_output_bytes, 4096);
 }
 
 #[test]
@@ -536,7 +536,7 @@ fn lawpack_budget_facts() -> &'static str {
           "source": "hello.tinyBudget",
           "maxSteps": 64,
           "maxAllocatedBytes": 4096,
-          "maxOutputBytes": 1024
+          "maxOutputBytes": 4096
         }
       ]
     }"#

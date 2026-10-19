@@ -8,6 +8,8 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Retain a surviving yield arm's known annotation mismatch after its peer fails; keep UTF-8 operand errors visible under unavailable outer annotations.
+
 - Retain independent explicit-value and shorthand diagnostics on duplicate obstruction payload keys.
 
 - Reject overflowing string concatenation bounds with InvalidBound, including independent operands visited during error recovery.
@@ -24,11 +26,24 @@ versions still track specification maturity rather than a released product.
 
 - Recover failed lexical let bindings without reporting dependent name errors or inventing Core values. Preserve independent record siblings and non-record annotation mismatches, branches, annotated yield branches, logical/comparison/concatenation operands, require failure arms and later source-function statements; distinguish failed returns from absent returns. Preserve contextual-yield type context in both branch orders and conditional siblings, closed-record key mismatches, poisoned reason-root suppression, subtraction siblings and duplicate payload names. Preserve later helper arguments and independent invalid-annotation initializer errors, and poison failed external-action request binders. Check independent request clauses even after an earlier clause or annotation fails. Retain independent argument errors when imported parameter types are unavailable. Prevent poisoned callee roots from resolving outer helpers while preserving independent argument errors. Retain independent byte-slice operands, loop-body failures and obstruction-map errors after unavailable effect inputs. Keep intrinsic concatenation, byte-input and comparison-width errors visible through unavailable outer annotations. The complete recovery requirement still awaits its production-path audit and final review.
 
+- Correct the retained study validation helper to remove staged deletions and old rename paths from copied validation snapshots.
+
+
 - Signature mismatch spans identify exactly the effect call, excluding its enclosing binding and failure handler.
 
 - Add typed first-difference detail to explicit effect signature `TypeMismatch` diagnostics, retaining the kind and call span. Build diagnostics expose optional `signatureMismatch` metadata; strict schema consumers must update their schema. `edict-syntax::CompilerError` struct-literal users must initialize its new optional field.
 
 ### Changed
+
+- Check every ordinary intent result against its declared canonical-CBOR output
+  budget, including UTF-8 expansion, exact headers, nested records/lists, and
+  nominal representations. Oversized or overflowing results now report
+  `InvalidBound` without requiring source functions. Direct external-action
+  request results retain their separate protocol boundary; opaque requests
+  nested in ordinary results reject. Corrected positive fixture budgets and
+  regenerated their dependent digest closures. Old producer locks remain
+  frozen; new compiler/old lawpack combinations can reject impossible results.
+  No runtime input-validation or complete allocation claim is added.
 
 - Application builds emit individual structured parser and compiler diagnostics
   with byte spans and separate source file/line/scalar-column locations. Existing

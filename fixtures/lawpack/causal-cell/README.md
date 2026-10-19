@@ -47,3 +47,14 @@ digest and consumes those imported record types, compiles it to Core, and
 requires successful Target IR lowering. The
 source witness is deliberately not published as fixture authority; it proves
 the generated portable closure remains usable by a real Edict application.
+
+## Result Budget Compatibility
+
+The stock adapter uses `maxOutputBytes=2048`. Its application witness can return
+64 key scalars and 256 message scalars, with a 1,299-byte canonical maximum.
+String limits count Unicode scalars. The existing `maxReplacementBytes=256`
+remains a runtime byte cap; this change does not broaden replacement writes.
+The budget change produces new adapter and manifest domain digests. Import the
+matching manifest sidecar. Existing Hello Echo producer pins remain historical
+compatibility witnesses. A new compiler rejects an old lawpack budget when the
+application's declared ordinary result cannot fit it.

@@ -1,0 +1,22 @@
+   Compiling edict-syntax v0.11.0-alpha.1 (/work/edict/crates/edict-syntax)
+    Finished `test` profile [unoptimized] target(s) in 1.99s
+     Running tests/return_budget.rs (/cache/target/debug/deps/return_budget-5c382101c80058c3)
+
+running 1 test
+test return_budget_supports_every_accepted_imported_integer_width ... FAILED
+
+failures:
+
+---- return_budget_supports_every_accepted_imported_integer_width stdout ----
+
+thread 'return_budget_supports_every_accepted_imported_integer_width' (138) panicked at crates/edict-syntax/tests/return_budget.rs:175:14:
+every accepted Core integer width has a canonical bound: [CompilerError { stage: TypeCheck, kind: UnsupportedSourceShape, message: "return type `bounds.example@1.Small` has no supported canonical encoding bound", span: Span { start: 154, end: 268 } }]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    return_budget_supports_every_accepted_imported_integer_width
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p edict-syntax --test return_budget`

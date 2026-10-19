@@ -1,0 +1,50 @@
+   Compiling edict-syntax v0.11.0-alpha.1 (/work/edict/crates/edict-syntax)
+    Finished `test` profile [unoptimized] target(s) in 2.24s
+     Running tests/return_budget.rs (/cache/target/debug/deps/return_budget-5c382101c80058c3)
+
+running 5 tests
+test return_budget_exact_fit_accepts_and_one_byte_less_rejects ... FAILED
+test return_budget_refuses_opaque_requests_but_preserves_bounded_outputs ... FAILED
+test return_budget_preserves_imported_nominal_representation_bounds ... FAILED
+test return_budget_overflow_rejects_before_core ... FAILED
+test return_budget_unicode_record_maximum_matches_canonical_encoder ... FAILED
+
+failures:
+
+---- return_budget_exact_fit_accepts_and_one_byte_less_rejects stdout ----
+
+thread 'return_budget_exact_fit_accepts_and_one_byte_less_rejects' (129) panicked at crates/edict-syntax/tests/return_budget.rs:60:14:
+an output maximum one byte above the budget must fail: CoreModule { api_version: "edict.core/v1", coordinate: "return_budget.example@1", imports: [], types: {}, functions: {}, intents: {"run": CoreIntent { input: "Bool", output: "Bool", required_operation_profile: "continuum.profile.read-only/v1", basis: None, input_constraints: [], core_evaluation_budget: CoreBudget { max_steps: 4096, max_allocated_bytes: 1048576, max_output_bytes: 0 }, body: CoreBlock { locals: [LocalRef { id: "arg.0", alpha_name: "$arg0", ty: "Bool" }], nodes: [], result: Local { reference: LocalRef { id: "arg.0", alpha_name: "$arg0", ty: "Bool" } } } }}, required_core_capabilities: [] }
+
+---- return_budget_refuses_opaque_requests_but_preserves_bounded_outputs stdout ----
+
+thread 'return_budget_refuses_opaque_requests_but_preserves_bounded_outputs' (132) panicked at crates/edict-syntax/tests/return_budget.rs:95:63:
+opaque output rejects: CoreModule { api_version: "edict.core/v1", coordinate: "return_budget.example@1", imports: [], types: {}, functions: {}, intents: {"run": CoreIntent { input: "List<edict.external-action.request/v1<U64>,max=0>", output: "List<edict.external-action.request/v1<U64>,max=0>", required_operation_profile: "continuum.profile.read-only/v1", basis: None, input_constraints: [], core_evaluation_budget: CoreBudget { max_steps: 4096, max_allocated_bytes: 1048576, max_output_bytes: 4096 }, body: CoreBlock { locals: [LocalRef { id: "arg.0", alpha_name: "$arg0", ty: "List<edict.external-action.request/v1<U64>,max=0>" }], nodes: [], result: Local { reference: LocalRef { id: "arg.0", alpha_name: "$arg0", ty: "List<edict.external-action.request/v1<U64>,max=0>" } } } }}, required_core_capabilities: [] }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- return_budget_preserves_imported_nominal_representation_bounds stdout ----
+
+thread 'return_budget_preserves_imported_nominal_representation_bounds' (131) panicked at crates/edict-syntax/tests/return_budget.rs:121:79:
+called `Result::unwrap_err()` on an `Ok` value: CoreModule { api_version: "edict.core/v1", coordinate: "return_budget.example@1", imports: [CoreImport { kind: Lawpack, resource: ResourceRef { coordinate: "bounds.example@1", digest: Some("sha256:1111111111111111111111111111111111111111111111111111111111111111") }, alias: Some("bounds") }], types: {"bounds.example@1.Key": Nominal { contract: "bounds.example@1.Key", representation: "Bytes<exact=24>" }}, functions: {}, intents: {"run": CoreIntent { input: "bounds.example@1.Key", output: "bounds.example@1.Key", required_operation_profile: "continuum.profile.read-only/v1", basis: None, input_constraints: [], core_evaluation_budget: CoreBudget { max_steps: 4096, max_allocated_bytes: 1048576, max_output_bytes: 25 }, body: CoreBlock { locals: [LocalRef { id: "arg.0", alpha_name: "$arg0", ty: "bounds.example@1.Key" }], nodes: [], result: Local { reference: LocalRef { id: "arg.0", alpha_name: "$arg0", ty: "bounds.example@1.Key" } } } }}, required_core_capabilities: [] }
+
+---- return_budget_overflow_rejects_before_core stdout ----
+
+thread 'return_budget_overflow_rejects_before_core' (130) panicked at crates/edict-syntax/tests/return_budget.rs:80:58:
+size overflow rejects: CoreModule { api_version: "edict.core/v1", coordinate: "return_budget.example@1", imports: [], types: {}, functions: {}, intents: {"run": CoreIntent { input: "String<max=18446744073709551615,canonical=raw-utf8>", output: "String<max=18446744073709551615,canonical=raw-utf8>", required_operation_profile: "continuum.profile.read-only/v1", basis: None, input_constraints: [], core_evaluation_budget: CoreBudget { max_steps: 4096, max_allocated_bytes: 1048576, max_output_bytes: 18446744073709551615 }, body: CoreBlock { locals: [LocalRef { id: "arg.0", alpha_name: "$arg0", ty: "String<max=18446744073709551615,canonical=raw-utf8>" }], nodes: [], result: Local { reference: LocalRef { id: "arg.0", alpha_name: "$arg0", ty: "String<max=18446744073709551615,canonical=raw-utf8>" } } } }}, required_core_capabilities: [] }
+
+---- return_budget_unicode_record_maximum_matches_canonical_encoder stdout ----
+
+thread 'return_budget_unicode_record_maximum_matches_canonical_encoder' (133) panicked at crates/edict-syntax/tests/return_budget.rs:146:86:
+called `Result::unwrap_err()` on an `Ok` value: CoreModule { api_version: "edict.core/v1", coordinate: "return_budget.example@1", imports: [], types: {"Result": Record { fields: {"descriptor": "String<max=4096,canonical=raw-utf8>", "key": "String<max=64,canonical=raw-utf8>"} }}, functions: {}, intents: {"run": CoreIntent { input: "return_budget.example@1.Result", output: "return_budget.example@1.Result", required_operation_profile: "continuum.profile.read-only/v1", basis: None, input_constraints: [], core_evaluation_budget: CoreBudget { max_steps: 4096, max_allocated_bytes: 1048576, max_output_bytes: 16661 }, body: CoreBlock { locals: [LocalRef { id: "arg.0", alpha_name: "$arg0", ty: "return_budget.example@1.Result" }], nodes: [], result: Local { reference: LocalRef { id: "arg.0", alpha_name: "$arg0", ty: "return_budget.example@1.Result" } } } }}, required_core_capabilities: [] }
+
+
+failures:
+    return_budget_exact_fit_accepts_and_one_byte_less_rejects
+    return_budget_overflow_rejects_before_core
+    return_budget_preserves_imported_nominal_representation_bounds
+    return_budget_refuses_opaque_requests_but_preserves_bounded_outputs
+    return_budget_unicode_record_maximum_matches_canonical_encoder
+
+test result: FAILED. 0 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p edict-syntax --test return_budget`

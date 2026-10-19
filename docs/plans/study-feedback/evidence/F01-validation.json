@@ -1,0 +1,104 @@
+{
+  "task": "F01",
+  "issue": "https://github.com/flyingrobots/edict/issues/231",
+  "initial_red": {
+    "command": "cargo test --locked -p edict-syntax --test return_budget",
+    "exit": 101,
+    "source_parent": "ac656c4996a89b4e091bf65dadc6bf8c8a53ed65",
+    "tests_failed": 3,
+    "note": "Tests existed before implementation. Request-only exception was subsequently preserved."
+  },
+  "final_tests_red_on_parent": {
+    "command": "EDICT_PARENT_WITNESS=1 guard.py f01-red-parent cargo test --locked -p edict-syntax --test return_budget",
+    "source_parent": "313442b",
+    "exit": 101,
+    "tests_failed": 5
+  },
+  "green": {
+    "command": "cargo test --locked -p edict-syntax --test byte_concat --test return_budget && cargo xtask verify",
+    "source_commit": "cfcf61e597abb5ab6bb392af143a18093879d66f",
+    "log": "f01-admitted-final.txt",
+    "result": "12 focused regressions and full workspace gate passed",
+    "note": "Exact admitted command; broader syntax tests also occur inside cargo xtask verify."
+  },
+  "full_gate": {
+    "command": "cargo xtask verify",
+    "exit": 0,
+    "log": "f01-verify-superseded-cache-sensitive.txt",
+    "note": "Superseded by final_candidate, which verifies the committed candidate with explicit workspace invalidation and strict measurement failures."
+  },
+  "resources": {
+    "worker": "edict-validation",
+    "image": "rust:1.96.0",
+    "cache_volume": "edict-build-cache",
+    "cpu": 4,
+    "memory_gib": 12,
+    "build_limit_gib": 20,
+    "data_limit_gib": 4,
+    "log_limit_mib": 128,
+    "timeout_seconds": 2400,
+    "measured_build_accounted_bytes": 3256713216,
+    "measured_data_bytes": 12345344,
+    "measured_host_logs_bytes": 1038979,
+    "host_free_bytes": 730171899904,
+    "vm_free_bytes": 693917229056,
+    "root_layer_baseline_bytes": 237568,
+    "enforcement": "readonly root; /work 128MiB, /tmp 512MiB, /data 3GiB exec tmpfs; fail-closed 2-second aggregate monitor; 3 x 1MiB Docker logs",
+    "cargo_journal_reservation_bytes": 134217728
+  },
+  "source_sha256": {
+    "crates/edict-syntax/src/compiler.rs": "651f97862034bdfa36a7495c447c95d688a4334e3ad51a317a3ea4697256fcf2",
+    "crates/edict-syntax/src/compiler/return_budget.rs": "b965c862b948386ef5f03b816931fe8ff27f14b76c6e0fc15b4364de340bb825",
+    "crates/edict-syntax/tests/return_budget.rs": "e76bdb5f226c0c536dfaa1a2cd0f4a177a00748c6c5ecf468ce129f128ae1bb3",
+    "xtask/src/goldens.rs": "18e03827599ae295ffd8ba597bd45263e52caf35c6767d6fa0ce7eef687f5cca",
+    "xtask/src/lawpack_goldens.rs": "c4a7bbfac4bb4aebb6d79adaf76521108ef921bf25666d913d31bd00bd3a1a1a"
+  },
+  "limits": [
+    "No new runtime ingress/schema enforcement claim.",
+    "No whole-program primitive allocation claim.",
+    "Direct ExternalActionRequest outputs retain their separate existing protocol boundary.",
+    "Old pinned producer witnesses remain frozen; corrected fixture digests are intentionally new."
+  ],
+  "final_candidate": {
+    "source_commit": "cfcf61e597abb5ab6bb392af143a18093879d66f",
+    "command": "cargo test --locked -p edict-syntax --test byte_concat --test return_budget && cargo xtask verify",
+    "exit": 0,
+    "default_feature_regressions": "12 passed (7 byte_concat and 5 return_budget)",
+    "full_gate": "passed on committed source",
+    "log": "f01-admitted-final.txt",
+    "cache_discipline": "Invalidate all six owned workspace packages and xtask before each source snapshot. Retain third-party dependency artifacts. A timestamp-stale default-feature result was rejected; this fresh run supersedes it.",
+    "measurement_discipline": "du and df failures propagate. A monitoring exception stops the entire owned worker."
+  },
+  "guard_sha256": "11455d63b43e8b1ff79c25f209d482c05595323456f9ca726cb3414e61752c40",
+  "guard_optimization": {
+    "command": "python3 -O docs/plans/study-feedback/evidence/guard-optimization-regression.py.txt",
+    "red_log": "pr241-guard-red.txt",
+    "green_log": "pr241-guard-green.txt",
+    "green_result": "optimized code refuses all six limit violations",
+    "fix_commit": "386d8d2"
+  },
+  "reviewed_revision": {
+    "source_commit": "a89260c",
+    "command": "python3 -O docs/plans/study-feedback/evidence/guard-optimization-regression.py.txt && python3 docs/plans/study-feedback/evidence/literal-evidence-regression.py.txt && cargo test --locked -p edict-syntax --test byte_concat --test return_budget && cargo xtask verify",
+    "exit": 0,
+    "log": "pr241-reviewed-full-gate.txt",
+    "focused_count": 13,
+    "source_changes": [
+      "All eight imported Core integer widths retain encoding bounds.",
+      "List-header and record accumulation overflow cases are covered.",
+      "Each overflow source-template mutation matches exactly once."
+    ],
+    "guard_changes": [
+      "Optimized Python retains explicit safety exceptions.",
+      "A 128MiB conservative Cargo journal reservation remains within the existing aggregate build budget.",
+      "Deleted tracked source paths are omitted and removed from the owned disposable snapshot."
+    ],
+    "runtime_claims": "No new runtime ingress validation or Keep operation integration."
+  },
+  "reviewed_source_sha256": {
+    "crates/edict-syntax/src/compiler.rs": "651f97862034bdfa36a7495c447c95d688a4334e3ad51a317a3ea4697256fcf2",
+    "crates/edict-syntax/src/compiler/return_budget.rs": "014a6ed7a0a113f10720a956505a4c1b0c9dca36672b09929b46fc2348bbcd1f",
+    "crates/edict-syntax/tests/return_budget.rs": "97495be170005326317c079523b324354f5137c7831a1ccdc766361268f476fa",
+    "xtask/tests/literal_evidence.rs": "001cd8bc314c6807e9e2735c95a463d4b049db036049b7a88870234f16f3dbc2"
+  }
+}

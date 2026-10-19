@@ -76,3 +76,13 @@ Out of scope:
 - Automated coverage checking does not yet map public surfaces to page types.
 - Executable tutorial harnesses are deferred until Edict has a user-facing CLI
   surface.
+
+## Literal Execution Evidence
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| DOCS-REQ-008 | implemented | Literal command logs retain terminal blank lines under a scoped Git attribute; ordinary source retains its EOF whitespace rejection. | .gitattributes, docs/plans/study-feedback/evidence/README.md |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| DOCS-TP-009 | implemented | Literal evidence preservation | DOCS-REQ-008 | Git accepts the exact log terminal blank line and returns status 2 for the same EOF defect in ordinary source. | literal_execution_evidence_retains_source_whitespace_checks | xtask/tests/literal_evidence.rs, .gitattributes | Exercises Git behavior over the stable attribute artifact, not prose or file existence. Initial Python Docker witness observed RED before the scoped attribute. |

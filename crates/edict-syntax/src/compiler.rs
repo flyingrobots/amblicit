@@ -24,6 +24,7 @@ mod byte_concat;
 mod byte_length;
 mod byte_slice;
 mod byte_utf8;
+mod return_budget;
 mod signature_diagnostic;
 mod source_functions;
 mod source_types;
@@ -1174,9 +1175,14 @@ impl<'a> TypeChecker<'a> {
             .iter()
             .map(|constraint| constraint.predicate.clone())
             .collect();
+        let body_error_count = self.errors.len();
         let body = self.check_body(intent, &output_shape, &mut env, &mut locals);
         self.input_proof_constraints.clear();
         let body = body?;
+        if self.errors.len() != body_error_count {
+            return None;
+        }
+        self.check_return_budget(intent, &output_shape)?;
         if !self.resolved.source_functions.is_empty()
             || self.source_expression_costs.len() > recorded_costs
         {

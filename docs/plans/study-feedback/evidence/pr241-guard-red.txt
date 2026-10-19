@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/work/edict/docs/plans/study-feedback/evidence/guard-optimization-regression.py.txt", line 25, in <module>
+    raise AssertionError("optimized guard accepted an invalid " + key)
+AssertionError: optimized guard accepted an invalid host_free
