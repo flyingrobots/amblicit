@@ -804,7 +804,14 @@ enum EffectOutputExpectation<'a> {
     Value(Option<&'a TypeShape>),
     Predicate,
     Concatenation,
-    ConcatenationPeer(&'a Expr),
+    ConcatenationPeer {
+        peer: &'a Expr,
+        next: &'a Self,
+    },
+    ConditionalPeer {
+        peer: &'a Expr,
+        next: &'a Self,
+    },
     String,
     Bytes,
     Unsigned(Option<&'a TypeShape>),
@@ -823,7 +830,8 @@ impl<'a> EffectOutputExpectation<'a> {
             Self::Value(shape) | Self::Unsigned(shape) => shape,
             Self::Predicate
             | Self::Concatenation
-            | Self::ConcatenationPeer(_)
+            | Self::ConcatenationPeer { .. }
+            | Self::ConditionalPeer { .. }
             | Self::String
             | Self::Bytes
             | Self::Comparison(_)
@@ -861,7 +869,7 @@ impl<'a> EffectOutputExpectation<'a> {
             Self::Value(Some(expected)) if !compatible(expected, output) => {
                 Some(CompilerErrorKind::TypeMismatch)
             }
-            Self::Concatenation | Self::ConcatenationPeer(_)
+            Self::Concatenation | Self::ConcatenationPeer { .. }
                 if !matches!(
                     output.kind,
                     TypeKind::String { .. } | TypeKind::Bytes { .. }
@@ -893,6 +901,12 @@ impl<'a> EffectOutputExpectation<'a> {
             _ => None,
         }
     }
+}
+
+enum DiagnosticPeerShape {
+    Known(TypeShape),
+    Unknown,
+    Rejected,
 }
 
 #[derive(Debug, Clone)]
@@ -4404,7 +4418,18 @@ impl<'a> TypeChecker<'a> {
         span: Span,
     ) -> Option<()> {
         let output = self.effect_output_shape(effect, signature, span)?;
-        let (projected, terminal) = match expectation.project(&output) {
+        self.check_effect_shape(effect, &output, expectation, env, span)
+    }
+
+    fn check_effect_shape(
+        &mut self,
+        effect: &str,
+        output: &TypeShape,
+        expectation: EffectOutputExpectation<'_>,
+        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        span: Span,
+    ) -> Option<()> {
+        let (projected, terminal) = match expectation.project(output) {
             Ok(projection) => projection,
             Err((kind, span, name)) => {
                 self.errors.push(error(
@@ -4428,10 +4453,135 @@ impl<'a> TypeChecker<'a> {
         if let EffectOutputExpectation::ComparisonLiteral(peer) = terminal {
             self.check_expr_with_expected(peer, env, Some(projected))?;
         }
-        if let EffectOutputExpectation::ConcatenationPeer(peer) = terminal {
-            self.check_effect_concat_peer(projected, peer, env)?;
+        match terminal {
+            EffectOutputExpectation::ConcatenationPeer { peer, next } => {
+                self.check_effect_concat_peer(projected, peer, env)?;
+                if let Some(peer_shape) = self.diagnostic_expr_shape(peer, env) {
+                    let Some(combined) = diagnostic_concat_shape(projected, &peer_shape) else {
+                        self.errors.push(error(
+                            CompilerStage::TypeCheck,
+                            CompilerErrorKind::InvalidBound,
+                            "concatenation maximum exceeds its bounded domain",
+                            span,
+                        ));
+                        return None;
+                    };
+                    self.check_effect_shape(effect, &combined, *next, env, span)?;
+                }
+            }
+            EffectOutputExpectation::ConditionalPeer { peer, next } => {
+                let expected = is_bare_integer_literal(peer).then_some(projected);
+                let peer_shape = match self.check_effect_conditional_peer(peer, env, expected) {
+                    DiagnosticPeerShape::Known(shape) => shape,
+                    DiagnosticPeerShape::Unknown => return Some(()),
+                    DiagnosticPeerShape::Rejected => return None,
+                };
+                let Some(joined) = compatible_shape(projected, &peer_shape) else {
+                    self.errors.push(error(
+                        CompilerStage::TypeCheck,
+                        CompilerErrorKind::TypeMismatch,
+                        "conditional branches do not have compatible bounded types",
+                        span,
+                    ));
+                    return None;
+                };
+                self.check_effect_shape(effect, &joined, *next, env, span)?;
+            }
+            _ => {}
         }
         Some(())
+    }
+
+    fn check_effect_conditional_peer(
+        &mut self,
+        peer: &Expr,
+        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        expected: Option<&TypeShape>,
+    ) -> DiagnosticPeerShape {
+        let mut probe = self.clone();
+        probe.errors.clear();
+        let shape = probe
+            .check_expr_with_expected(peer, env, expected)
+            .map(|value| value.ty);
+        probe
+            .errors
+            .retain(|error| error.kind != CompilerErrorKind::EffectWithoutFailureMapping);
+        if !probe.errors.is_empty() {
+            self.errors.extend(probe.errors);
+            return DiagnosticPeerShape::Rejected;
+        }
+        shape
+            .or_else(|| self.diagnostic_expr_shape(peer, env))
+            .map_or(DiagnosticPeerShape::Unknown, DiagnosticPeerShape::Known)
+    }
+
+    fn diagnostic_expr_shape(
+        &self,
+        expr: &Expr,
+        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+    ) -> Option<TypeShape> {
+        // This fork reads authenticated signatures only. It cannot authorize
+        // effects or fabricate a Core expression for an unbound effect.
+        let mut probe = self.clone();
+        probe.diagnostic_shape_inner(expr, env)
+    }
+
+    fn diagnostic_shape_inner(
+        &mut self,
+        expr: &Expr,
+        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+    ) -> Option<TypeShape> {
+        match expr {
+            Expr::Field { base, field, .. } => {
+                let base = self.diagnostic_shape_inner(base, env)?;
+                let TypeKind::Record(fields) = base.kind else {
+                    return None;
+                };
+                fields.get(field).cloned()
+            }
+            Expr::Call { callee, span, .. } => {
+                let coordinate = plain_callee_coordinate(callee)?;
+                if let Some(signature) = self.resolved.effect_signatures.get(&coordinate).cloned() {
+                    if self.fact_matches_source_import(
+                        &coordinate,
+                        &signature.coordinate,
+                        &signature.lawpack,
+                    ) {
+                        return self.effect_output_shape(&coordinate, &signature, *span);
+                    }
+                }
+                self.infer_expr_shape(expr, env)
+            }
+            Expr::Binary {
+                op: BinOp::Add,
+                lhs,
+                rhs,
+                ..
+            } => diagnostic_concat_shape(
+                &self.diagnostic_shape_inner(lhs, env)?,
+                &self.diagnostic_shape_inner(rhs, env)?,
+            ),
+            Expr::If { then, els, .. } => compatible_shape(
+                &self.diagnostic_shape_inner(then, env)?,
+                &self.diagnostic_shape_inner(els, env)?,
+            ),
+            Expr::Record { entries, .. } => {
+                let fields = entries
+                    .iter()
+                    .map(|entry| match entry {
+                        RecordEntry::Field { name, value } => {
+                            Some((name.clone(), self.diagnostic_shape_inner(value, env)?))
+                        }
+                        RecordEntry::Shorthand { name, .. } => {
+                            Some((name.clone(), env.get(name)?.1.clone()))
+                        }
+                        RecordEntry::Spread(_) => None,
+                    })
+                    .collect::<Option<BTreeMap<_, _>>>()?;
+                TypeShape::canonical_structural(TypeKind::Record(fields))
+            }
+            _ => self.infer_expr_shape(expr, env),
+        }
     }
 
     fn check_effect_concat_peer(
@@ -4527,24 +4677,34 @@ impl<'a> TypeChecker<'a> {
     ) -> Option<TypedValue> {
         let expected = expectation.value();
         let predicate = self.check_predicate(cond, env)?;
+        let then_expectation = EffectOutputExpectation::ConditionalPeer {
+            peer: els,
+            next: &expectation,
+        };
+        let else_expectation = EffectOutputExpectation::ConditionalPeer {
+            peer: then,
+            next: &expectation,
+        };
         let (then_value, else_value) = match expected {
             Some(expected) => (
                 self.check_expr_with_expected(then, env, Some(expected))?,
                 self.check_expr_with_expected(els, env, Some(expected))?,
             ),
             None if is_bare_integer_literal(then) => {
-                let else_value = self.check_expr_with_effect_expectation(els, env, expectation)?;
+                let else_value =
+                    self.check_expr_with_effect_expectation(els, env, else_expectation)?;
                 let then_value = self.check_expr_with_expected(then, env, Some(&else_value.ty))?;
                 (then_value, else_value)
             }
             None if is_bare_integer_literal(els) => {
-                let then_value = self.check_expr_with_effect_expectation(then, env, expectation)?;
+                let then_value =
+                    self.check_expr_with_effect_expectation(then, env, then_expectation)?;
                 let else_value = self.check_expr_with_expected(els, env, Some(&then_value.ty))?;
                 (then_value, else_value)
             }
             None => (
-                self.check_expr_with_effect_expectation(then, env, expectation)?,
-                self.check_expr_with_effect_expectation(els, env, expectation)?,
+                self.check_expr_with_effect_expectation(then, env, then_expectation)?,
+                self.check_expr_with_effect_expectation(els, env, else_expectation)?,
             ),
         };
 
@@ -4694,11 +4854,18 @@ impl<'a> TypeChecker<'a> {
             EffectOutputExpectation::Value(Some(shape)) => match shape.kind {
                 TypeKind::Bytes { .. } => EffectOutputExpectation::Bytes,
                 TypeKind::String { .. } => EffectOutputExpectation::String,
-                _ => EffectOutputExpectation::ConcatenationPeer(rhs),
+                _ => EffectOutputExpectation::Concatenation,
             },
-            _ => EffectOutputExpectation::ConcatenationPeer(rhs),
+            _ => EffectOutputExpectation::Concatenation,
         };
-        let left = self.check_expr_with_effect_expectation(lhs, env, operand_expectation)?;
+        let left = self.check_expr_with_effect_expectation(
+            lhs,
+            env,
+            EffectOutputExpectation::ConcatenationPeer {
+                peer: rhs,
+                next: &expectation,
+            },
+        )?;
         if let Some(kind) = operand_expectation.rejection(&left.ty) {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
@@ -4708,12 +4875,14 @@ impl<'a> TypeChecker<'a> {
             ));
             return None;
         }
-        let family = match left.ty.kind {
-            TypeKind::Bytes { .. } => EffectOutputExpectation::Bytes,
-            TypeKind::String { .. } => EffectOutputExpectation::String,
-            _ => EffectOutputExpectation::Concatenation,
-        };
-        let right = self.check_expr_with_effect_expectation(rhs, env, family)?;
+        let right = self.check_expr_with_effect_expectation(
+            rhs,
+            env,
+            EffectOutputExpectation::ConcatenationPeer {
+                peer: lhs,
+                next: &expectation,
+            },
+        )?;
         if matches!(
             (&left.ty.kind, &right.ty.kind),
             (TypeKind::Bytes { .. }, TypeKind::Bytes { .. })
@@ -5482,4 +5651,23 @@ fn finish<T>(errors: Vec<CompilerError>, value: T) -> Result<T, Vec<CompilerErro
     } else {
         Err(errors)
     }
+}
+
+fn diagnostic_concat_shape(left: &TypeShape, right: &TypeShape) -> Option<TypeShape> {
+    let kind = match (&left.kind, &right.kind) {
+        (TypeKind::Bytes { max: left, .. }, TypeKind::Bytes { max: right, .. }) => {
+            TypeKind::Bytes {
+                min: None,
+                max: left.checked_add(*right)?,
+            }
+        }
+        (TypeKind::String { max: left, .. }, TypeKind::String { max: right, .. }) => {
+            TypeKind::String {
+                max: left.checked_add(*right)?,
+                canonical: "raw-utf8".into(),
+            }
+        }
+        _ => return None,
+    };
+    TypeShape::canonical_structural(kind)
 }

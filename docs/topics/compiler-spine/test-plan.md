@@ -324,3 +324,10 @@ Out of scope:
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | CSPINE-TP-128 | implemented | UTF-8 effect operand | CSPINE-REQ-047, CSPINE-REQ-053 | A pure Bytes operand compiles; a record-valued authenticated effect inside isUtf8 reports TypeMismatch before unavailable mapping guidance. | utf8_effect_operand_keeps_primary_byte_type_error | crates/edict-syntax/tests/effect_diagnostics.rs | The intrinsic byte requirement reaches the effect output check. |
+
+## Complete effect expression context
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-172 | implemented | Conditional effect compatibility | CSPINE-REQ-047 | Incompatible inferred branch shapes report TypeMismatch before mapping guidance in either order, including two authenticated effect operands; compatible effects still need a map. | conditional_effect_results_keep_primary_branch_type_errors | crates/edict-syntax/tests/effect_diagnostics.rs | A mapped compatible control compiles. |
+| CSPINE-TP-173 | implemented | Complete concatenation bounds | CSPINE-REQ-047 | The full concatenated bound survives nested expression contexts and both operand orders; a valid bounded shape still reports the missing map. | concatenated_effect_results_keep_complete_output_bounds | crates/edict-syntax/tests/effect_diagnostics.rs | Includes an output bound that fits each operand separately but not their sum, and two authenticated effect operands. |

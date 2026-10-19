@@ -74,6 +74,11 @@ export surfaces are distinguished from absent authentication information; declar
 but unprojected exports are not described as an empty lawpack.
 [CSPINE-REQ-047]
 
+Conditional expressions check compatible branch shapes, and concatenations retain
+the complete enclosing bound through nested operands, before an authenticated
+effect receives mapping advice. Type-only probes read exact exported shapes;
+they neither authorize an effect nor construct a Core effect value. [CSPINE-REQ-047]
+
 `source_linker::link_source_closure` links an authenticated witness into a
 separate immutable compiler-owned surface. `LinkedSourceClosure::compile`
 accepts explicit compiler context facts and maps compiler failures back to the

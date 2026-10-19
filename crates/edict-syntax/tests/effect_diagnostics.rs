@@ -525,3 +525,80 @@ fn utf8_effect_operand_keeps_primary_byte_type_error() {
     assert!(invalid[cause.span.start..cause.span.end].contains("hello.createGreeting(input)"));
     assert!(!cause.message.contains("with `else`"));
 }
+
+#[test]
+fn conditional_effect_results_keep_primary_branch_type_errors() {
+    let insert = |expression: &str| {
+        SOURCE.replace(
+            "  return {",
+            &format!("  let chosen = {expression};\n  return {{"),
+        )
+    };
+    compile(&insert("if true then receipt.key else input.key"))
+        .expect("mapped compatible branch control");
+    for expression in [
+        "if true then hello.createGreeting(input).key else true",
+        "if true then true else hello.createGreeting(input).key",
+        "if true then hello.createGreeting(input).key else hello.createGreeting(input)",
+        "if true then hello.createGreeting(input) else hello.createGreeting(input).key",
+    ] {
+        let errors = compile(&insert(expression)).expect_err("incompatible conditional");
+        assert_eq!(
+            errors[0].kind,
+            CompilerErrorKind::TypeMismatch,
+            "{expression}: {errors:?}"
+        );
+        assert!(!errors[0].message.contains("with `else`"));
+    }
+    for expression in [
+        "if true then hello.createGreeting(input).key else input.key",
+        "if true then input.key else hello.createGreeting(input).key",
+        "if true then hello.createGreeting(input).key else hello.createGreeting(input).key",
+    ] {
+        assert_eq!(
+            compile(&insert(expression)).expect_err("compatible effects still need maps")[0].kind,
+            CompilerErrorKind::EffectWithoutFailureMapping
+        );
+    }
+}
+
+#[test]
+fn concatenated_effect_results_keep_complete_output_bounds() {
+    let insert = |bound: u64, expression: &str| {
+        SOURCE.replace(
+            "  return {",
+            &format!("  let chosen: String<max={bound}> = {expression};\n  return {{"),
+        )
+    };
+    compile(&insert(65, "receipt.key + \"x\"")).expect("mapped exact-bound concatenation control");
+    for (bound, expression) in [
+        (1, "hello.createGreeting(input).key + \"x\""),
+        (64, "hello.createGreeting(input).key + \"x\""),
+        (64, "\"x\" + hello.createGreeting(input).key"),
+        (65, "(hello.createGreeting(input).key + \"x\") + \"y\""),
+        (65, "\"y\" + (\"x\" + hello.createGreeting(input).key)"),
+        (
+            127,
+            "hello.createGreeting(input).key + hello.createGreeting(input).key",
+        ),
+    ] {
+        let errors =
+            compile(&insert(bound, expression)).expect_err("complete output exceeds bound");
+        assert_eq!(
+            errors[0].kind,
+            CompilerErrorKind::TypeMismatch,
+            "{expression}: {errors:?}"
+        );
+        assert!(!errors[0].message.contains("with `else`"));
+    }
+    for (bound, expression) in [
+        (65, "hello.createGreeting(input).key + \"x\""),
+        (66, "(hello.createGreeting(input).key + \"x\") + \"y\""),
+    ] {
+        assert_eq!(
+            compile(&insert(bound, expression)).expect_err("bounded effects still need maps")[0]
+                .kind,
+            CompilerErrorKind::EffectWithoutFailureMapping
+        );
+    }
+}
