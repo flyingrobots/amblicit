@@ -23,8 +23,8 @@ Out of scope:
 | ID | Status | Requirement | Source |
 | --- | --- | --- | --- |
 | PUBRUST-REQ-001 | implemented | One curated package exposes Edict source checking, stable diagnostic kinds, and canonical artifact identity operations without re-exporting the implementation module tree. | issue #189 |
-| PUBRUST-REQ-002 | planned | The facade's package inventory is explicit, reproducible, and remains non-publishing until a separately approved publication policy exists. | issue #189 |
-| PUBRUST-REQ-003 | planned | A clean external consumer can compile against the facade without an undocumented repository-relative dependency. | issue #189 |
+| PUBRUST-REQ-002 | planned | The facade's package inventory is explicit, reproducible, and remains non-publishing until a separately approved publication policy exists. | issue #204 |
+| PUBRUST-REQ-003 | planned | A clean external consumer can compile against the facade without an undocumented repository-relative dependency. | issue #204 |
 | PUBRUST-REQ-004 | implemented | Release preparation advances the facade package version and exact implementation dependency together. | xtask/src/release_prep.rs |
 | PUBRUST-REQ-005 | implemented | The facade exposes the checked numeric foundation without leaking Bunny saturating operators or implying source/IR support. | docs/SPEC_edict-language-v1.md |
 

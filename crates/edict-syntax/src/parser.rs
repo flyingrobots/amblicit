@@ -493,8 +493,10 @@ impl Parser {
             ImportKind::Core
         } else if self.eat_kw("capability") {
             ImportKind::Capability
+        } else if self.eat_kw("module") {
+            ImportKind::Module
         } else {
-            return self.err("expected import kind (shape|lawpack|target|core|capability)");
+            return self.err("expected import kind (shape|lawpack|target|core|capability|module)");
         };
 
         let (package, shape_path) = if kind == ImportKind::Shape {
@@ -503,7 +505,10 @@ impl Parser {
             (Some(self.package_ref()?), None)
         };
 
-        let digest = if self.eat_kw("digest") {
+        let digest = if kind == ImportKind::Module {
+            self.expect_kw("digest")?;
+            Some(self.digest_lit()?)
+        } else if self.eat_kw("digest") {
             Some(self.digest_lit()?)
         } else {
             None
@@ -1614,6 +1619,10 @@ impl Parser {
                 self.idx += 1;
                 Ok(Expr::Str { value, span })
             }
+            TokenKind::Bytes(value) => {
+                self.idx += 1;
+                Ok(Expr::Bytes { value, span })
+            }
             TokenKind::Ident(name) if name == "true" || name == "false" => {
                 self.idx += 1;
                 Ok(Expr::Bool {
@@ -1687,6 +1696,7 @@ fn expr_span(expr: &Expr) -> Span {
         Expr::Ident { span, .. }
         | Expr::Int { span, .. }
         | Expr::Str { span, .. }
+        | Expr::Bytes { span, .. }
         | Expr::Bool { span, .. }
         | Expr::Digest { span, .. }
         | Expr::Field { span, .. }

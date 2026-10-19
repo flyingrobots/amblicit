@@ -7,6 +7,7 @@
 mod byte_concat;
 mod byte_length;
 mod byte_slice;
+mod byte_utf8;
 pub(crate) mod execution_order;
 mod totality;
 mod unsigned_subtraction;
@@ -1188,6 +1189,13 @@ fn expression_has_closed_authority(
             callee,
             type_args,
             args,
+        } if callee == byte_utf8::OPERATION => {
+            byte_utf8::type_coordinate(core, pure_functions, type_args, args, available).is_some()
+        }
+        CoreExpr::Call {
+            callee,
+            type_args,
+            args,
         } if callee == byte_slice::OPERATION => {
             byte_slice::type_coordinate(core, pure_functions, type_args, args, available).is_some()
         }
@@ -1269,6 +1277,7 @@ fn expression_fits_declared_type(
         CoreExpr::Call { callee, .. }
             if callee == byte_concat::OPERATION
                 || callee == byte_length::OPERATION
+                || callee == byte_utf8::OPERATION
                 || callee == byte_slice::OPERATION
                 || callee == unsigned_subtraction::OPERATION =>
         {
@@ -1597,6 +1606,13 @@ fn expression_type_coordinate(
             args,
         } if callee == byte_length::OPERATION => {
             byte_length::type_coordinate(core, pure_functions, type_args, args, available)
+        }
+        CoreExpr::Call {
+            callee,
+            type_args,
+            args,
+        } if callee == byte_utf8::OPERATION => {
+            byte_utf8::type_coordinate(core, pure_functions, type_args, args, available)
         }
         CoreExpr::Call {
             callee,

@@ -378,6 +378,16 @@ bounds repeated validation through nested conditional predicates; public tests
 also reject an unavailable local hidden in the innermost length call. These
 checks do not claim a bound on every compiler pass. [TIR-REQ-048] [TIR-REQ-049]
 
+## Byte UTF-8 predicate boundary
+
+`core.bytes.isUtf8<OperandType>(bytes)` retains exactly one structural byte
+coordinate and one operand, producing Bool. Target validation independently
+checks the operand's authority, exact coordinate and result compatibility.
+Forged arity, substituted coordinates, foreign locals and non-Boolean binding
+results refuse with `InvalidCoreIdentity` and no artifact. A nested slice still
+requires the existing totality proof in its evaluation scope. These checks do
+not claim provider or runtime UTF-8 execution. [TIR-REQ-055]
+
 ## Byte-slice boundary
 
 `core.bytes.slice<OperandType>(bytes,start,end)` takes one exact structural byte
@@ -388,8 +398,15 @@ endpoint widths and the conservative result bound.
 
 A separate Target-owned totality walk requires `start <= end <= len(bytes)`
 from exact conjunctive input evidence or unconditional equal/zero relations.
-It traverses all expression-bearing intent locations, using no input assumptions
-for basis or input-predicate evaluation. Forged signatures, missing proofs,
+Within an ordered `All`, each child must be total before its predicate becomes
+proof for later children. The walker retains borrowed predicate references,
+not cloned Core trees. Reordering a partial expression before its proof refuses
+with `InvalidCoreIdentity`. This scope is confined to the conjunction: separate
+input constraints retain their canonical set encoding and cannot justify one
+another or the earlier basis. [TIR-TP-084]
+It traverses all expression-bearing intent locations. Basis predicates and each
+separate input predicate start without assumptions from other input constraints.
+Forged signatures, missing proofs,
 foreign locals and incorrect proof scope reject with `InvalidCoreIdentity` and
 no artifact. This walk is shared with subtraction, while the Target proof
 routine remains independent from the source compiler. [TIR-REQ-051]

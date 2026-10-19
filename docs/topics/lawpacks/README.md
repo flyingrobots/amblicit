@@ -134,7 +134,11 @@ The current executable Rust surfaces touching lawpacks are:
   preserves those references but does not interpret their target-owned
   semantics. [LAWPACKS-REQ-019]
   `prepare_lawpack_compilation` then derives compiler and Target IR facts
-  through the source import's exact alias and manifest digest.
+  through every matching source import's exact alias and manifest digest.
+  Linked source modules may import the same lawpack through distinct aliases.
+  Every matching import must authenticate against the exact manifest; a valid
+  first alias cannot hide a later substituted digest. Canonical pure-helper
+  Target IR facts remain unique across aliases.
   [LAWPACKS-REQ-008] [LAWPACKS-REQ-017] [LAWPACKS-REQ-018]
 - The same preparation resolves every non-generic semantic effect's input and
   output plus every declared failure payload through its exact exported bounded

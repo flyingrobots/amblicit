@@ -36,7 +36,7 @@ pub use contract_pack::{
     ProviderContractPack, ProviderContractPackFailure, ProviderContractPackFailureKind,
     ProviderContractPackInput, ProviderContractPackManifest, ProviderContractPackResource,
     ProviderContractRootBinding, PROVIDER_CONTRACT_PACK_API_VERSION,
-    PROVIDER_CONTRACT_PACK_COORDINATE, PROVIDER_CONTRACT_PACK_LICENSE,
+    PROVIDER_CONTRACT_PACK_COORDINATE, PROVIDER_CONTRACT_PACK_LICENSE, SOURCE_CLOSURE_CDDL_ROOT,
     TARGET_IR_ARTIFACT_CDDL_ROOT,
 };
 
