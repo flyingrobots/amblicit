@@ -318,3 +318,9 @@ Out of scope:
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | CSPINE-TP-126 | implemented | Nested effect operator context | CSPINE-REQ-047 | A string-producing concatenation used as bytes must report its intrinsic type incompatibility before effect mapping advice. | nested_effect_operator_context_preserves_primary_type_error | crates/edict-syntax/tests/effect_diagnostics.rs | Valid string length-independent control; direct length on string establishes expected kind. |
+
+## UTF-8 effect output context
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-128 | implemented | UTF-8 effect operand | CSPINE-REQ-047, CSPINE-REQ-053 | A pure Bytes operand compiles; a record-valued authenticated effect inside isUtf8 reports TypeMismatch before unavailable mapping guidance. | utf8_effect_operand_keeps_primary_byte_type_error | crates/edict-syntax/tests/effect_diagnostics.rs | The intrinsic byte requirement reaches the effect output check. |

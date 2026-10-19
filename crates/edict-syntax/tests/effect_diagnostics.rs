@@ -510,3 +510,18 @@ fn nested_effect_operator_context_preserves_primary_type_error() {
         );
     }
 }
+
+#[test]
+fn utf8_effect_operand_keeps_primary_byte_type_error() {
+    let valid = SOURCE.replace(
+        "  let receipt:",
+        "  let valid = isUtf8(b\"ok\");\n  let receipt:",
+    );
+    compile(&valid).expect("pure byte UTF-8 control compiles");
+    let invalid = valid.replace("isUtf8(b\"ok\")", "isUtf8(hello.createGreeting(input))");
+    let errors = compile(&invalid).expect_err("record effect output is not Bytes");
+    let cause = &errors[0];
+    assert_eq!(cause.kind, CompilerErrorKind::TypeMismatch);
+    assert!(invalid[cause.span.start..cause.span.end].contains("hello.createGreeting(input)"));
+    assert!(!cause.message.contains("with `else`"));
+}

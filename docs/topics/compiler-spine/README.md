@@ -179,6 +179,8 @@ metadata predicates; sequential calls add and lazy branches use a maximum.
 A helper scan is counted in its function summary and is not charged again at
 the call site. This compiler evidence does not
 execute UTF-8 validation. [CSPINE-REQ-053]
+The byte requirement reaches authenticated effect outputs before failure-mapping
+advice, so a record-valued effect reports its primary `TypeMismatch`. [CSPINE-REQ-047]
 
 `slice(bytes, start, end)` lowers bounded raw bytes and U64 endpoints to
 `core.bytes.slice<OperandType>(bytes,start,end)`. Its result keeps the operand
