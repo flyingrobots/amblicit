@@ -1,7 +1,7 @@
 //! The bounded Bytes specialization of the language's length prelude.
 use super::{
-    error, BTreeMap, CompilerErrorKind, CompilerStage, CoreExpr, EffectOutputExpectation, Expr,
-    LocalRef, Span, TypeChecker, TypeKind, TypeRef, TypeShape, TypedValue,
+    error, CompilerErrorKind, CompilerStage, CoreExpr, EffectOutputExpectation, Expr,
+    LocalEnvironment, Span, TypeChecker, TypeKind, TypeRef, TypeShape, TypedValue,
 };
 
 impl TypeChecker<'_> {
@@ -9,7 +9,7 @@ impl TypeChecker<'_> {
         &mut self,
         type_args: &[TypeRef],
         args: &[Expr],
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         span: Span,
     ) -> Option<TypedValue> {
         let [argument] = args else {
@@ -30,8 +30,11 @@ impl TypeChecker<'_> {
             ));
             return None;
         }
-        let value =
-            self.check_expr_with_effect_expectation(argument, env, EffectOutputExpectation::Bytes)?;
+        let value = self.check_expr_with_intrinsic_effect_context(
+            argument,
+            env,
+            EffectOutputExpectation::Bytes,
+        )?;
         if !matches!(value.ty.kind, TypeKind::Bytes { .. }) {
             self.errors.push(error(
                 CompilerStage::TypeCheck,

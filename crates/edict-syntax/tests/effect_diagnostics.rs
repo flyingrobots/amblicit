@@ -563,6 +563,42 @@ fn conditional_effect_results_keep_primary_branch_type_errors() {
 }
 
 #[test]
+fn annotated_conditional_effect_results_keep_primary_branch_type_errors() {
+    let insert = |expression: &str| {
+        SOURCE.replace(
+            "  return {",
+            &format!("  let chosen: String<max=64> = {expression};\n  return {{"),
+        )
+    };
+    compile(&insert("if true then receipt.key else input.key"))
+        .expect("mapped compatible branch control");
+    for expression in [
+        "if true then hello.createGreeting(input).key else true",
+        "if true then true else hello.createGreeting(input).key",
+        "if true then hello.createGreeting(input).key else hello.createGreeting(input)",
+        "if true then hello.createGreeting(input) else hello.createGreeting(input).key",
+    ] {
+        let errors = compile(&insert(expression)).expect_err("incompatible conditional");
+        assert_eq!(
+            errors[0].kind,
+            CompilerErrorKind::TypeMismatch,
+            "{expression}: {errors:?}"
+        );
+        assert!(!errors[0].message.contains("with `else`"));
+    }
+    for expression in [
+        "if true then hello.createGreeting(input).key else input.key",
+        "if true then input.key else hello.createGreeting(input).key",
+        "if true then hello.createGreeting(input).key else hello.createGreeting(input).key",
+    ] {
+        assert_eq!(
+            compile(&insert(expression)).expect_err("compatible effects still need maps")[0].kind,
+            CompilerErrorKind::EffectWithoutFailureMapping
+        );
+    }
+}
+
+#[test]
 fn concatenated_effect_results_keep_complete_output_bounds() {
     let insert = |bound: u64, expression: &str| {
         SOURCE.replace(

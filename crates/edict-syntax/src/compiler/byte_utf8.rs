@@ -1,8 +1,8 @@
 //! The bounded Bytes UTF-8 predicate prelude.
 use super::{
-    error, expression_identity, BTreeMap, CompilerErrorKind, CompilerStage, CoreExpr,
-    EffectOutputExpectation, Expr, HelperCost, LocalRef, Span, TypeChecker, TypeKind, TypeRef,
-    TypeShape, TypedValue,
+    error, expression_identity, CompilerErrorKind, CompilerStage, CoreExpr,
+    EffectOutputExpectation, Expr, HelperCost, LocalEnvironment, Span, TypeChecker, TypeKind,
+    TypeRef, TypeShape, TypedValue,
 };
 
 impl TypeChecker<'_> {
@@ -10,7 +10,7 @@ impl TypeChecker<'_> {
         &mut self,
         type_args: &[TypeRef],
         args: &[Expr],
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         span: Span,
         source: &Expr,
     ) -> Option<TypedValue> {
@@ -32,8 +32,11 @@ impl TypeChecker<'_> {
             ));
             return None;
         }
-        let value =
-            self.check_expr_with_effect_expectation(argument, env, EffectOutputExpectation::Bytes)?;
+        let value = self.check_expr_with_intrinsic_effect_context(
+            argument,
+            env,
+            EffectOutputExpectation::Bytes,
+        )?;
         if !matches!(value.ty.kind, TypeKind::Bytes { .. }) {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
