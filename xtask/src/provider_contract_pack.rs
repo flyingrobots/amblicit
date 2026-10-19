@@ -16,9 +16,9 @@ const RESULT_PROJECTION_CDDL: &str = "docs/abi/edict-result-projection.cddl";
 const TARGET_IR_CDDL: &str = "docs/abi/edict-target-ir.cddl";
 
 pub(crate) const CONTRACT_PACK_CDDL: &str =
-    "fixtures/provider-contracts/source-functions-v1/edict-provider-contracts.cddl";
+    "fixtures/provider-contracts/source-modules-v1/edict-provider-contracts.cddl";
 pub(crate) const CONTRACT_PACK_MANIFEST: &str =
-    "fixtures/provider-contracts/source-functions-v1/manifest.json";
+    "fixtures/provider-contracts/source-modules-v1/manifest.json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ProviderContractPackMode {
@@ -38,6 +38,7 @@ pub(crate) fn provider_contract_pack(
     let authority_facts_cddl = read(root, AUTHORITY_FACTS_CDDL)?;
     let result_projection_cddl = read(root, RESULT_PROJECTION_CDDL)?;
     let target_ir_cddl = read(root, TARGET_IR_CDDL)?;
+    let source_closure_cddl = read(root, "docs/abi/edict-source-closure.cddl")?;
     let pack = assemble_provider_contract_pack(ProviderContractPackInput {
         common_cddl: &common_cddl,
         core_cddl: &core_cddl,
@@ -47,6 +48,7 @@ pub(crate) fn provider_contract_pack(
         authority_facts_cddl: &authority_facts_cddl,
         result_projection_cddl: &result_projection_cddl,
         target_ir_cddl: &target_ir_cddl,
+        source_closure_cddl: Some(&source_closure_cddl),
         contract_resources: canonical_target_profile_contract_resources(),
     })
     .map_err(|failures| format!("assemble provider contract pack: {failures:?}"))?;
