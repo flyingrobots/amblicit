@@ -37,8 +37,8 @@ release milestone is selected by this frontier update.
 The next acceptance boundary is the real Jedit-owned application build in
 [Jedit #296](https://github.com/flyingrobots/jedit/issues/296), with source and
 its authored lawpack in [Jedit #302](https://github.com/flyingrobots/jedit/pull/302).
-Edict [#192](https://github.com/flyingrobots/edict/issues/192) owns the remaining
-compiler acceptance evidence. GitHub carries current checklists and PR state;
+Edict [#192](https://github.com/flyingrobots/edict/issues/192) is closed; its
+bounded compiler foundation is landed. GitHub carries current checklists and PR state;
 the topic shelves describe implemented contracts.
 
 Delivered compiler and library foundations:
@@ -57,24 +57,32 @@ Delivered compiler and library foundations:
 
 Remaining work:
 
-1. Close the remaining #192 mutation-evidence gaps against the landed compiler,
-   while retaining the actual consumer's deterministic public-build witness.
-2. Advance the Jedit application and the exact Echo provider candidate through
-   their own acceptance gates. The source in Jedit #302 currently constructs a
-   typed boundary result; it does not yet implement the rope mutation.
-   [Echo #724](https://github.com/flyingrobots/echo/pull/724) is the provider
-   candidate, and [Echo #684](https://github.com/flyingrobots/echo/issues/684)
-   owns generic bounded-program interpretation. Package acceptance does not
-   establish runtime execution or a settled Tick.
+1. Preserve the deterministic public compiler, independent verifier and runtime
+   package witness for the real consumer. Authenticated source modules,
+   byte literals and UTF-8 validation landed through Edict
+   [#250](https://github.com/flyingrobots/edict/pull/250),
+   [#252](https://github.com/flyingrobots/edict/pull/252) through
+   [#256](https://github.com/flyingrobots/edict/pull/256), and
+   [#258](https://github.com/flyingrobots/edict/pull/258).
+2. Continue the full application acceptance in Jedit #296. The merged Jedit
+   #302 now implements a pure flat-text replacement reference with compiler,
+   verifier and runtime evidence. It does not complete the persistent rope,
+   authored graph effects, admission, settled Tick or fresh-engine recovery.
+   Echo's generic runtime foundations have advanced beyond the historical
+   [#724](https://github.com/flyingrobots/echo/pull/724) candidate. The open
+   [#921](https://github.com/flyingrobots/echo/pull/921) bridge work follows
+   merged [#917](https://github.com/flyingrobots/echo/pull/917); its draft
+   implementation and resource limits remain subject to acceptance. Package
+   acceptance alone does not establish stateful execution.
 3. Prove the facade's independent package closure in
    [#204](https://github.com/flyingrobots/edict/issues/204), without publication.
 
 The separate complete-lawpack-closure dependency remains
 [Echo #693](https://github.com/flyingrobots/echo/issues/693) for
 [Edict #171](https://github.com/flyingrobots/edict/issues/171).
-The pure-helper call-graph concern in
-[#203](https://github.com/flyingrobots/edict/issues/203) remains a focused
-reproduction follow-up; it does not reopen merged PR #201.
+The pure-helper call-graph follow-up
+[#203](https://github.com/flyingrobots/edict/issues/203) is closed; it does not
+reopen merged PR #201.
 
 Automated comparison of frontier references with GitHub state is planned in
 [#205](https://github.com/flyingrobots/edict/issues/205). This correction does
