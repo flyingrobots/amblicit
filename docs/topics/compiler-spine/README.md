@@ -361,6 +361,26 @@ Those items remain assigned to later lowerability/admission milestones.
 
 The verification matrix is tracked in [test-plan.md](./test-plan.md).
 
+## Failed binding recovery
+
+The compiler keeps lexical failure markers separate from typed local values. A failed let binding removes any value for that name in its scope and marks dependent uses as unavailable. Cloned branch environments retain those markers without leaking them back to the outer scope. No failure marker has a Core value, local reference, or type. Source-level shadowing remains rejected by surface validation; the explicit public type-check phase also recovers safely on an invalid shadowed AST.
+
+When one yield arm fails, a surviving arm still reports its independently known mismatch with an available binding annotation. Records continue checking independent siblings after a failed value. Statement branches are checked even when their condition fails, and annotated yield branches and concatenation operands are checked independently. Invalid composites produce no typed value. A syntactically present failed return differs from an absent return, preventing a redundant missing-return error. A truly absent return retains its error.
+
+Obstruction payload shorthand suppresses dependent reads of failed locals while genuinely unknown names still fail. Logical and comparison predicate operands, require failure arms and source-function statements retain their independently checkable causes after earlier failures. A record containing an unavailable field still reports an incompatible non-record annotation. These checks collect diagnostics without constructing missing Core parts.
+
+Both real contextual-yield branches and pure-conditional arms are checked despite earlier failures. Scalar and record yields retain peer literal-width context in either branch order despite unrelated statement errors. Shape probes remain observational and never publish diagnostics or replace authoritative branch checks. Authored record and payload keys retain their identity independently of successfully typed values; missing or extra closed-record fields and duplicate payload fields remain diagnosable. Unsigned subtraction keeps independently checkable operand errors without inventing an underflow proof.
+
+Invalid annotations retain independently checkable initializer errors in intent, source-function and yield bindings. A scoped unavailable-context check suppresses only unsuffixed integer-width errors that need that missing annotation; explicit suffix range failures and later independent statements retain their errors. Imported arguments with unavailable parameter types retain independent expression errors without acquiring a substitute expected type. Later source/imported helper arguments are checked after a failed peer, and failed external-action requests poison their binders. Request annotations, operations, authority, basis, budgets and resource references are checked independently before a request node is constructed. No missing annotation supplies a substitute type or authorizes a binding. At the public type-check boundary, poisoned callee roots cannot fall through to source or imported helper resolution; their argument expressions still retain independent failures.
+
+Byte slices check all operands before constructing a value or proving bounds. Failed loop iterators retain independent body errors with their binder unavailable; when the iterator type is known but its bound fails, body diagnostics use the real item type without constructing a loop. Failed effect inputs and invalid receipt annotations still permit independent obstruction-map checks using existing effect facts and discarded diagnostic locals. A rejected effect profile also preserves independent binding diagnostics; its arguments and receipt annotation are checked, and no effect local or Core node is constructed for the rejected profile.
+
+Intrinsic concatenation and byte-input requirements remain active even when an outer annotation is unavailable. The UTF-8 predicate uses the same intrinsic byte requirement as length and slice, so an invalid outer annotation cannot suppress a non-byte operand error. Missing outer context does not make integer operands admissible to concatenation, slice or length. Direct numeric predicates retain their existing ExpectedPredicate refusal. Comparison operands retain their intrinsic width requirements through unavailable outer annotations, including conditional and record contexts.
+
+The complete recovery requirement remains planned. Implemented cases establish only their named evidence. The test plan records the complete requirement as planned and names the implemented cases; passing those cases does not establish the remaining paths.
+
+[CSPINE-REQ-054]
+
 ## Effect signature mismatch detail
 
 Explicit mapped effect bindings report `TypeMismatch` at the exact call span when their argument or receipt annotation differs from the exact exported signature. `CompilerError.signature_mismatch` identifies the source effect, input or receipt boundary, typed structural path, and expected/actual self-describing bounded types. Record fields use lexical depth-first first-difference order. List-length incompatibility identifies the list itself; a compatible length with an incompatible item descends through a `listItem` segment. Nominal types retain their distinct coordinates. A missing field has no actual type; an extra field has no expected type. Compatibility rules are unchanged, and independent later errors remain visible.
@@ -368,3 +388,35 @@ Explicit mapped effect bindings report `TypeMismatch` at the exact call span whe
 This is an implementation-crate Rust API addition: code constructing `CompilerError` with a struct literal must initialize `signature_mismatch`, usually to `None`. The curated facade adds no named re-export of the new context types. Bare-call classification and dependent-error suppression remain separate work.
 
 [CSPINE-REQ-048]
+
+Source and imported helper calls retain independent supplied-argument diagnostics
+after an argument-count mismatch. Known parameter positions retain their type
+context; extra arguments are checked without inventing an expected type. Invalid
+calls produce no Core value. [CSPINE-TP-164]
+
+When helper resolution fails, supplied arguments still retain independent
+diagnostics without an expected parameter type. Poisoned dependencies remain
+suppressed and the compiler constructs no call. [CSPINE-TP-165]
+
+Supported branch-yield bindings check effect profiles while checking each
+branch, rather than rejecting the whole binding during a recursive preflight.
+A disallowed mapped effect leaves independent sibling diagnostics visible;
+predicate and yielded-value profile checks still reject disallowed effects.
+[CSPINE-TP-166]
+
+Duplicate failure-map keys reject the complete map while retaining independent
+arm diagnostics. Every source arm is checked, including a duplicate that would
+otherwise be overwritten by key indexing. These diagnostic checks allocate no
+obstruction locals and publish no recovered map; valid maps retain their
+existing canonical ordering and Core output.
+
+String concatenation uses checked maximum-bound addition and reports
+`InvalidBound` if the sum exceeds U64. This also applies when recovery visits
+an independent concatenation after another operand failed; no wrapped bound or
+recovered value is constructed. A sum equal to U64's maximum remains representable.
+
+Duplicate obstruction payload fields retain independent value/name diagnostics
+in both terminal and continuing failure arms. A duplicate explicit value or
+shorthand is still checked, while poisoned-name reads remain suppressed. Any
+duplicate keeps the complete payload map invalid; checked values do not make
+that map eligible for Core publication.

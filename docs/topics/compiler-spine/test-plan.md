@@ -212,6 +212,26 @@ Out of scope:
 | CSPINE-TP-057 | implemented | Graph diagnostic ownership | CSPINE-REQ-045 | Recursive and over-depth functions retain their actual declaration spans even when named work; global work exhaustion has no function owner; expression-depth failure identifies its containing function even beside a function named expression. | graph_diagnostic_origin_distinguishes_global_work_from_a_function_named_work, graph_expression_depth_diagnostic_identifies_its_owning_function, source_function_call_depth_accepts_128_and_rejects_129, shared_suffix_depth_is_independent_of_definition_order | crates/edict-syntax/tests/source_functions.rs | Public Core failure kinds and paths remain unchanged. The deep diagnostic unit witness uses an explicit 8 MiB thread; CLI-TP-040 covers the normal CLI process separately, not arbitrary caller stacks. |
 | CSPINE-TP-058 | implemented | Unsupported accounting shapes | CSPINE-REQ-044, CSPINE-REQ-045 | Request-bearing parameters, results, expressions and intent frames in a function-bearing module report UnsupportedSourceShape, including nested nominal/record/list shapes and unused signatures; equivalent function-free controls compile, while genuine numeric overflow retains InvalidBound. | request_value_shapes_are_unsupported_in_source_accounting_not_overflow | crates/edict-syntax/tests/source_functions.rs | Classification fix only; request-bearing source-function accounting remains unsupported. |
 
+## Failed Binding Recovery
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| CSPINE-REQ-054 | planned | Failed lexical bindings suppress dependent errors while independent sibling/statement errors remain visible; failed returns differ from absent returns and poisoned values never lower into Core. | issue #240 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-130 | implemented | Compatibility and failed call | CSPINE-REQ-054 | Valid exact Core bytes are retained; failed mapped call plus dependent receipt use emits only its primary kind. | valid_recovery_control_retains_exact_core_bytes, failed_effect_and_dependent_receipt_report_only_the_cause | crates/edict-syntax/tests/binding_recovery.rs | No successful Core from invalid input. |
+| CSPINE-TP-131 | implemented | Chained recovery | CSPINE-REQ-054 | Failed locals propagate through aliases and nested record/field expressions without invented names or types. | poisoned_locals_propagate_through_chained_and_nested_bindings | crates/edict-syntax/tests/binding_recovery.rs | Keep original cause span. |
+| CSPINE-TP-132 | implemented | Independent errors | CSPINE-REQ-054 | Independent sibling expression and type errors and later binding mismatches survive poisoned uses. | poisoned_record_sibling_does_not_hide_independent_expression_error, poisoned_record_sibling_does_not_hide_an_independent_type_mismatch, independent_later_binding_errors_survive_recovery | crates/edict-syntax/tests/binding_recovery.rs | Preserve exact independent origins. |
+| CSPINE-TP-133 | implemented | Branch scope and shadowing | CSPINE-REQ-054 | Failed shadows cannot fall through to valid outer values; branch poison cannot escape its scope or hide an unknown outer name. | failed_shadow_does_not_use_outer_value_or_escape_its_branch, failed_branch_local_does_not_poison_an_unknown_outer_name | crates/edict-syntax/tests/binding_recovery.rs | Front-end shadow rejection is preserved; the explicit public type-check phase verifies failed-shadow recovery. Outer typed binding remains independently checkable. |
+| CSPINE-TP-134 | implemented | Return presence | CSPINE-REQ-054 | Failed syntactically present returns do not add missing-return errors; truly absent returns preserve the existing error. | failed_return_is_distinct_from_a_genuinely_absent_return | crates/edict-syntax/tests/binding_recovery.rs | No fabricated result. |
+
+## Independent Branch And Operand Recovery
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-135 | implemented | Independent branches and operands | CSPINE-REQ-054 | Poisoned conditions, concatenation operands and failed yield branches do not prevent independent sibling diagnostics. | poisoned_condition_does_not_hide_independent_branch_errors, poisoned_concatenation_does_not_hide_an_independent_operand_error, failed_yield_branch_does_not_hide_an_independent_other_branch | crates/edict-syntax/tests/binding_recovery.rs | Invalid subexpressions do not produce Core. |
+
 ## Return Encoding Budget
 
 | ID | Status | Requirement | Source |
@@ -232,6 +252,7 @@ Out of scope:
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | CSPINE-TP-064 | implemented | Imported integer families | CSPINE-REQ-046 | Every accepted Core integer width fits at its canonical maximum and rejects one byte below it, including authenticated I8/U8/I16/U16 exports. | return_budget_supports_every_accepted_imported_integer_width | crates/edict-syntax/tests/return_budget.rs | Does not broaden source builtin scalar syntax. |
+
 
 ## Effect Signature Mismatch Detail
 
@@ -264,3 +285,114 @@ Out of scope:
 | CSPINE-TP-096 | implemented | UTF-8 primitive typing | CSPINE-REQ-053 | Bytes/exact/empty operands lower with Boolean projections; wrong signatures, foreign operands and unproven slices refuse. | byte_utf8_call_retains_operand_identity_and_boolean_projection, byte_utf8_rejects_wrong_operands_signatures_and_result_type, byte_utf8_target_refuses_forged_signature_or_operand_authority, byte_utf8_predicate_accepts_proven_prefix_and_rejects_unproven_slice, byte_utf8_prelude_name_cannot_be_shadowed, byte_utf8_source_function_budget_includes_bounded_scan, linker_preserves_utf8_prelude_with_an_imported_byte_alias | crates/edict-syntax/tests/byte_utf8.rs, crates/edict-syntax/tests/source_module_compilation.rs | Runtime byte validation is separate evidence. |
 
 | CSPINE-TP-097 | implemented | Direct UTF-8 scan cost | CSPINE-REQ-053 | Direct intent body/guard scans reject insufficient step ceilings, lazy branches use a maximum, repeated calls sum, and a source-helper scan is not charged twice at its call site. | direct_utf8_scans_are_bounded_in_bodies_guards_and_lazy_branches, utf8_helper_scan_is_not_charged_twice_at_its_call_site | crates/edict-syntax/tests/byte_utf8.rs | Allocation and output are unrestricted to isolate execution steps. |
+
+## Independent Concatenation Type Errors
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-137 | implemented | Independent operand type | CSPINE-REQ-054 | A Boolean concatenation operand beside a poisoned local retains its own TypeMismatch at the Boolean expression. | poisoned_concatenation_does_not_hide_an_independent_operand_type_error | crates/edict-syntax/tests/binding_recovery.rs | Do not infer a type for the failed peer. |
+
+## Recovery Review Regressions
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-138 | implemented | Obstruction shorthand | CSPINE-REQ-054 | A poisoned shorthand emits no dependent identifier error; genuinely unknown shorthand still fails and a valid payload compiles. | poisoned_obstruction_shorthand_keeps_only_its_cause | crates/edict-syntax/tests/binding_recovery.rs | PR247 Codex and agy finding. |
+| CSPINE-TP-139 | implemented | Failed yield predicate | CSPINE-REQ-054 | Both annotated yield branches report independent errors after a poisoned condition; valid yield still compiles. | poisoned_yield_condition_keeps_both_branch_errors | crates/edict-syntax/tests/binding_recovery.rs | Do not construct a branch without a valid predicate. |
+| CSPINE-TP-140 | implemented | Logical predicate siblings | CSPINE-REQ-054 | Both AND/OR operands retain independent diagnostics; valid predicates retain their existing Core semantics. | poisoned_logical_operand_keeps_the_independent_peer | crates/edict-syntax/tests/binding_recovery.rs | Compile-time traversal does not change runtime short circuiting. |
+| CSPINE-TP-141 | implemented | Source function recovery | CSPINE-REQ-054 | Failed function locals suppress dependent uses while later independent locals remain diagnosed; a present failed return is not reported absent. | source_function_failed_locals_preserve_later_causes | crates/edict-syntax/tests/binding_recovery.rs | Invalid functions cannot produce Core. |
+| CSPINE-TP-142 | implemented | Require failure arms | CSPINE-REQ-054 | Failed predicates do not hide terminal/continuing payload causes; invalid continuing reason and payload are checked independently. | poisoned_require_predicate_keeps_failure_payload_causes, invalid_require_reason_keeps_independent_payload_cause | crates/edict-syntax/tests/binding_recovery.rs | No Core require is built from missing parts. |
+| CSPINE-TP-143 | implemented | Record family mismatch | CSPINE-REQ-054 | A record containing a poisoned field still reports its independent non-record annotation mismatch; the same record remains compatible with a record annotation. | poisoned_record_retains_non_record_annotation_mismatch | crates/edict-syntax/tests/binding_recovery.rs | PR247 Codex finding, separate from field-width failures. |
+| CSPINE-TP-144 | implemented | Comparison siblings | CSPINE-REQ-054 | Every comparison operator checks an independently invalid peer after a poisoned operand; valid typed-integer comparisons still compile. | poisoned_comparison_operand_keeps_independent_peer | crates/edict-syntax/tests/binding_recovery.rs | Do not infer a missing peer type or invent a literal width. |
+| CSPINE-TP-145 | implemented | Pure conditional recovery | CSPINE-REQ-054 | Poisoned predicates and first branches retain independent errors in both arms, with and without annotations; independently incompatible surviving arms retain TypeMismatch at their own span. | poisoned_pure_conditionals_preserve_independent_arms, poisoned_conditional_arm_keeps_independent_expected_type_error | crates/edict-syntax/tests/binding_recovery.rs | No conditional value is constructed from unavailable parts. |
+| CSPINE-TP-146 | implemented | Contextual yield siblings | CSPINE-REQ-054 | Failed independent statements in both unannotated yield branches retain their causes through complementary-record and single-bare-literal inference. | contextual_yield_inference_preserves_both_branch_causes | crates/edict-syntax/tests/binding_recovery.rs | Valid contextual inference controls compile; probes never substitute for real branch checks. |
+| CSPINE-TP-147 | implemented | Poisoned reason roots | CSPINE-REQ-054 | A poisoned local used as a continuing reason root emits no dependent refusal while independent payload failures survive; live locals remain forbidden as reason coordinates. | poisoned_reason_roots_keep_only_independent_causes | crates/edict-syntax/tests/binding_recovery.rs | Stable literal coordinates retain normal behavior. |
+| CSPINE-TP-148 | implemented | Closed record keys | CSPINE-REQ-054 | Authored record keys retain their identity despite poisoned values; missing required and poisoned extra keys report independent TypeMismatch. | poisoned_record_retains_missing_required_field_mismatch, poisoned_record_retains_poisoned_extra_field_mismatch | crates/edict-syntax/tests/binding_recovery.rs | Present poisoned keys are not misreported as missing. |
+| CSPINE-TP-149 | implemented | Unsigned subtraction siblings | CSPINE-REQ-054 | Missing operands do not hide independent peer name/type failures; known width context is retained and no underflow proof is invented. | poisoned_subtraction_operand_preserves_independent_peer | crates/edict-syntax/tests/binding_recovery.rs | Existing subtraction proof and valid constant controls remain required. |
+| CSPINE-TP-150 | implemented | Payload duplicate keys | CSPINE-REQ-054 | An unavailable first payload field still reserves its authored name; later explicit/shorthand duplicates retain DuplicateObstructionPayloadField. | poisoned_payload_fields_retain_duplicate_key_errors | crates/edict-syntax/tests/binding_recovery.rs | Valid unique and live duplicate controls retain their existing behavior. |
+| CSPINE-TP-151 | implemented | Call argument siblings | CSPINE-REQ-054 | Failed source/imported helper arguments do not hide later independent name or type errors; invalid calls never construct Core. | source_call_arguments_preserve_later_causes, imported_call_arguments_preserve_later_causes | crates/edict-syntax/tests/binding_recovery.rs | Imported control explicitly injects trusted compiler facts; it is not a runtime/provider witness. |
+| CSPINE-TP-152 | implemented | Failed request binders | CSPINE-REQ-054 | A failed request initializer poisons its binder; dependent return errors are suppressed while independent later failures survive. | failed_request_binding_suppresses_dependent_return_only | crates/edict-syntax/tests/binding_recovery.rs | Valid request compilation and existing protocol tests remain required. |
+| CSPINE-TP-153 | implemented | Missing annotation context | CSPINE-REQ-054 | Invalid annotations retain independent initializer causes in intent/function/yield bindings; unavailable contextual literal widths add no dependent noise, while suffixed range errors remain independent. | invalid_annotations_preserve_independent_initializer_causes, invalid_annotation_yields_preserve_both_branch_causes, unavailable_annotations_do_not_invent_literal_width | crates/edict-syntax/tests/binding_recovery.rs | No binding/value is accepted using the unavailable annotation. |
+| CSPINE-TP-154 | implemented | Byte slice operands | CSPINE-REQ-054 | Unavailable bytes or start operands do not hide independently invalid endpoints; known operand families and U64 endpoints retain their own errors. | poisoned_slice_operands_preserve_independent_causes | crates/edict-syntax/tests/binding_recovery.rs | Valid empty slice proves bounds without inventing a peer value. |
+| CSPINE-TP-155 | implemented | Unavailable loop iterator | CSPINE-REQ-054 | A failed iterator does not hide independent body errors; the loop binder is unavailable only within its body, and invalid loop nodes are never constructed. | poisoned_loop_iterators_preserve_independent_body_causes | crates/edict-syntax/tests/binding_recovery.rs | Valid bounded-list controls retain their existing iteration and cost behavior. |
+| CSPINE-TP-156 | implemented | Independent effect maps | CSPINE-REQ-054 | Known effect maps retain duplicate-arm errors after unavailable inputs; invalid receipt annotations do not hide independent initializer/map failures. | failed_effect_inputs_preserve_independent_map_errors | crates/edict-syntax/tests/binding_recovery.rs | Existing exact signature mismatch and valid mapped-effect controls remain required. |
+| CSPINE-TP-157 | implemented | Intrinsic operand families | CSPINE-REQ-054 | An unavailable outer annotation does not suppress intrinsically invalid predicate, concatenation or bytes operands. | unavailable_outer_annotations_preserve_intrinsic_family_errors | crates/edict-syntax/tests/binding_recovery.rs | Missing literal width remains suppressed only where a valid missing annotation could supply it. |
+
+CSPINE-REQ-054 remains planned. The implemented rows establish their named fixtures, including byte slices, failed loop iterators/bounds and independent effect maps. They do not certify untested production paths or variants.
+
+## Independent Request Clauses
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-158 | implemented | Request clause recovery | CSPINE-REQ-054 | Failed request annotation or operation does not hide independent authority, basis or budget errors; no invalid request lowers. | failed_request_clauses_preserve_independent_causes | crates/edict-syntax/tests/binding_recovery.rs | Valid digest-locked request control and exact kind/span vectors. |
+
+## Unavailable Imported Parameter Context
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-159 | implemented | Imported argument recovery | CSPINE-REQ-054 | Unavailable imported parameter types retain independent argument errors without inventing bare literal widths. | unavailable_imported_parameter_preserves_argument_causes | crates/edict-syntax/tests/binding_recovery.rs | Explicit trusted compiler facts; compiler boundary only. |
+
+## Poisoned Callee Recovery
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-160 | implemented | Callee shadow recovery | CSPINE-REQ-054 | Poisoned callee roots do not resolve outer source/imported helpers; independent argument errors remain visible. | poisoned_callees_do_not_resolve_outer_helpers | crates/edict-syntax/tests/binding_recovery.rs | Public type-check boundary; surface validation is separate. |
+
+## Mirrored Contextual Yield Recovery
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-161 | implemented | Yield width recovery | CSPINE-REQ-054 | A valid typed then-yield supplies else literal context despite unrelated branch errors, for scalar and record yields. | contextual_yield_inference_preserves_both_branch_causes | crates/edict-syntax/tests/binding_recovery.rs | Both branch orders, valid controls and exact independent origins. |
+
+## Predicate Intrinsic Context
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-162 | implemented | Comparison width recovery | CSPINE-REQ-054 | Missing outer annotations cannot suppress independent comparison operand width errors. | unavailable_annotations_preserve_comparison_width_errors | crates/edict-syntax/tests/binding_recovery.rs | Direct, conditional and record contexts; typed controls and exact kinds. |
+
+## Rejected Effect Profile Recovery
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-163 | implemented | Effect profile recovery | CSPINE-REQ-054 | A known disallowed effect profile does not hide an independently unresolved argument; valid effect control compiles and a profile-only failure emits only ProfileEffectMismatch. | disallowed_effect_profile_preserves_independent_binding_errors | crates/edict-syntax/tests/binding_recovery.rs | Explicit read-only compiler profile fact with the authenticated existing lawpack. |
+
+## Helper Arity Recovery
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-164 | implemented | Helper argument count | CSPINE-REQ-054 | Source/imported calls retain independent supplied-argument errors after an arity mismatch; poisoned arguments add no dependent error and extra bare literals acquire no invented width. | source_call_arity_failure_keeps_argument_causes, imported_call_arity_failure_keeps_argument_causes | crates/edict-syntax/tests/binding_recovery.rs | Valid controls, missing/excess argument cases, exact kinds and origins. |
+
+## Unresolved Helper Recovery
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-165 | implemented | Missing helper | CSPINE-REQ-054 | Missing helper resolution retains an independent unknown argument, suppresses poisoned-name cascades, and does not invent a width for a bare integer argument. | unresolved_helper_preserves_independent_argument_errors | crates/edict-syntax/tests/binding_recovery.rs | Valid authenticated control; exact error kinds and independent argument span. |
+
+## Yield Profile Recovery
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-166 | implemented | Yield profile recovery | CSPINE-REQ-054 | Rejected profiles on mapped effects in yield branches preserve independent sibling failures and suppress dependent yielded bindings. | rejected_profile_in_yield_branch_keeps_independent_causes | crates/edict-syntax/tests/binding_recovery.rs | Valid two-branch authenticated control; exact error kinds and peer span. |
+
+| Case ID | Status | Kind | Requirements | Scenario and oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-167 | implemented | Duplicate handler recovery | CSPINE-REQ-054 | A duplicate failure key must not hide an independently unsupported binder or target payload in either arm order; the invalid binding never becomes Core. | duplicate_obstruction_maps_preserve_independent_arm_errors | crates/edict-syntax/tests/binding_recovery.rs | Valid control and single-arm error controls distinguish duplicate-caused suppression. |
+
+| Case ID | Status | Kind | Requirements | Scenario and oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-168 | implemented | Independent bound overflow | CSPINE-REQ-054 | Visiting an independent string concatenation after a poisoned operand reports InvalidBound on overflowing maximums rather than panicking or wrapping. | independent_string_bound_overflow_is_a_diagnostic | crates/edict-syntax/tests/binding_recovery.rs | Exact U64 maximum-sum control, direct overflow and both poisoned operand orders; exact independent expression span. |
+
+| Case ID | Status | Kind | Requirements | Scenario and oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-169 | implemented | Duplicate payload recovery | CSPINE-REQ-054 | A duplicate obstruction payload key retains an independently unresolved explicit value or shorthand name in terminal and continuing failure arms. | duplicate_payload_fields_preserve_independent_value_errors | crates/edict-syntax/tests/binding_recovery.rs | Valid unique payload controls; exact error kinds and value origin. |
+
+## UTF-8 recovery integration
+
+| Case ID | Status | Kind | Requirements | Scenario and oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-170 | implemented | UTF-8 intrinsic family | CSPINE-REQ-054, CSPINE-REQ-053 | A valid bounded byte predicate compiles; a non-byte argument keeps its TypeMismatch even when the binding annotation is unavailable. | unavailable_outer_annotations_preserve_utf8_family_errors | crates/edict-syntax/tests/binding_recovery.rs | A missing outer type cannot make an integer a valid byte operand. |
+
+## Surviving yield type evidence
+
+| Case ID | Status | Kind | Requirements | Scenario and oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-171 | implemented | Surviving yield annotation | CSPINE-REQ-054 | A poisoned yield arm cannot hide the other arm's independently known mismatch with an available binding annotation, in either arm order. | poisoned_yield_arm_keeps_the_surviving_annotation_mismatch | crates/edict-syntax/tests/binding_recovery.rs | Valid Boolean control; exact surviving value span; no Core from invalid branches. |
