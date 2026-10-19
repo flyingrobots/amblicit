@@ -68,7 +68,7 @@ fn result_call(core: &CoreModule) -> &str {
         }
     );
     assert_eq!(args.len(), 1);
-    assert!(type_args.is_empty());
+    assert_eq!(type_args.as_slice(), []);
     callee
 }
 
