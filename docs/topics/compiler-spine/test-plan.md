@@ -231,3 +231,15 @@ Out of scope:
 | CSPINE-TP-089 | implemented | Exact call span | CSPINE-REQ-048 | Both input and receipt mismatches identify exactly the call expression byte range, excluding the binding annotation, failure handler and semicolon. | input_signature_error_identifies_first_incompatible_field, receipt_signature_error_identifies_first_incompatible_field | crates/edict-syntax/tests/effect_signature_diagnostics.rs | Containment is insufficient evidence. |
 
 | CSPINE-TP-095 | implemented | Conjunctive proof scope | CSPINE-REQ-038, CSPINE-REQ-041 | A checked conjunction prefix proves later bounded slices/subtraction; self, future, disjunctive, basis, separate-constraint and cross-intent evidence still refuse. | conjunctive_prefix_guards_prove_later_slices_and_unsigned_differences | crates/edict-syntax/tests/byte_slice.rs | Separate input constraints remain canonical sets; only ordered conjunction children carry prefix proof. |
+
+## Bounded byte UTF-8 predicate
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| CSPINE-REQ-053 | implemented | isUtf8 preserves bounded byte operand identity and produces Bool; Target independently rejects forged signatures, and guarded prefix slices require prior bounds. | EDICT-LANG-BYTE-UTF8-001 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-096 | implemented | UTF-8 primitive typing | CSPINE-REQ-053 | Bytes/exact/empty operands lower with Boolean projections; wrong signatures, foreign operands and unproven slices refuse. | byte_utf8_call_retains_operand_identity_and_boolean_projection, byte_utf8_rejects_wrong_operands_signatures_and_result_type, byte_utf8_target_refuses_forged_signature_or_operand_authority, byte_utf8_predicate_accepts_proven_prefix_and_rejects_unproven_slice, byte_utf8_prelude_name_cannot_be_shadowed, byte_utf8_source_function_budget_includes_bounded_scan, linker_preserves_utf8_prelude_with_an_imported_byte_alias | crates/edict-syntax/tests/byte_utf8.rs, crates/edict-syntax/tests/source_module_compilation.rs | Runtime byte validation is separate evidence. |
+
+| CSPINE-TP-097 | implemented | Direct UTF-8 scan cost | CSPINE-REQ-053 | Direct intent body/guard scans reject insufficient step ceilings, lazy branches use a maximum, repeated calls sum, and a source-helper scan is not charged twice at its call site. | direct_utf8_scans_are_bounded_in_bodies_guards_and_lazy_branches, utf8_helper_scan_is_not_charged_twice_at_its_call_site | crates/edict-syntax/tests/byte_utf8.rs | Allocation and output are unrestricted to isolate execution steps. |

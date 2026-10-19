@@ -23,6 +23,7 @@ use crate::core_ir::{
 mod byte_concat;
 mod byte_length;
 mod byte_slice;
+mod byte_utf8;
 mod signature_diagnostic;
 mod source_functions;
 mod source_types;
@@ -1089,6 +1090,7 @@ impl<'a> TypeChecker<'a> {
 
     fn check_intent(&mut self, intent: &ResolvedIntent) -> Option<TypedIntent> {
         self.input_proof_constraints.clear();
+        let recorded_costs = self.source_expression_costs.len();
         let source = &intent.source;
         if source.params.len() != 1 {
             self.errors.push(error(
@@ -1144,7 +1146,9 @@ impl<'a> TypeChecker<'a> {
         let body = self.check_body(intent, &output_shape, &mut env, &mut locals);
         self.input_proof_constraints.clear();
         let body = body?;
-        if !self.resolved.source_functions.is_empty() {
+        if !self.resolved.source_functions.is_empty()
+            || self.source_expression_costs.len() > recorded_costs
+        {
             self.check_helper_cost_budget(intent)?;
         }
 
@@ -3719,11 +3723,7 @@ impl<'a> TypeChecker<'a> {
             Expr::Bytes { value, .. } => bytes_value(value),
             Expr::Bool { value, .. } => Some(TypedValue {
                 expr: CoreExpr::Const(CoreValue::Bool(*value)),
-                ty: TypeShape {
-                    coord: "Bool".to_owned(),
-                    kind: TypeKind::Bool,
-                    preserve_named_identity: false,
-                },
+                ty: TypeShape::canonical_structural(TypeKind::Bool)?,
             }),
             Expr::Int {
                 value,
@@ -3754,15 +3754,18 @@ impl<'a> TypeChecker<'a> {
                 type_args,
                 args,
                 span,
-            } => {
-                if matches!(callee.as_ref(), Expr::Ident { name, .. } if name == "len") {
+            } => match callee.as_ref() {
+                Expr::Ident { name, .. } if name == "len" => {
                     self.check_byte_length(type_args, args, env, *span)
-                } else if matches!(callee.as_ref(), Expr::Ident { name, .. } if name == "slice") {
-                    self.check_byte_slice(type_args, args, env, *span)
-                } else {
-                    self.check_pure_call(callee, type_args, args, env, expected, *span)
                 }
-            }
+                Expr::Ident { name, .. } if name == "isUtf8" => {
+                    self.check_byte_utf8(type_args, args, env, *span, expr)
+                }
+                Expr::Ident { name, .. } if name == "slice" => {
+                    self.check_byte_slice(type_args, args, env, *span)
+                }
+                _ => self.check_pure_call(callee, type_args, args, env, expected, *span),
+            },
             Expr::If {
                 cond,
                 then,
