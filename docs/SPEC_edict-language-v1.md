@@ -1422,10 +1422,8 @@ Type traversal accepts constructor height 128 and refuses 129 independently
 of lexical statement/expression frames; active lexical traversal and flattened
 member paths have fixed limits of 128.
 
-The current public application build still accepts one source. Public provider
-consumption of the source-closure artifact is not implemented. Standalone
-`compile_to_core` refuses unresolved module imports as `MissingContextFact`,
-including imports that are not referenced by a declaration.
+Standalone `compile_to_core` refuses unresolved module imports as
+`MissingContextFact`, including imports that are not referenced by a declaration.
 
 ## Grammar
 
