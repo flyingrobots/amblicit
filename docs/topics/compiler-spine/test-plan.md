@@ -28,6 +28,39 @@ Out of scope:
 
 | ID | Status | Requirement | Source |
 | --- | --- | --- | --- |
+| CSPINE-REQ-051 | implemented | Compile authenticated source modules with explicit aliases, isolated module/function scopes, complete definition checking, transitive call budgets, deterministic namespace identity and source-local failures; imported intent entries cannot silently become application entries. | docs/SPEC_edict-language-v1.md |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-092 | implemented | Source-module compilation | CSPINE-REQ-051 | Actual source exports type-check and lower through Target; transitive definitions and lexical bindings remain isolated; module-owned records keep identity across applications; unknown names, original authority collisions, invalid unused definitions and imported intent entries refuse with original source identity; type height 128 links/compiles and 129 refuses. | authenticated_module_type_and_argument_taking_helper_compile_and_lower, transitive_module_calls_and_duplicate_local_names_stay_isolated, library_local_names_do_not_capture_or_conflict_with_application_declarations, undefined_library_functions_and_types_cannot_capture_application_authority, imported_aliases_do_not_implicitly_reexport_transitive_names, invalid_unused_library_definitions_report_their_original_source_location, imported_intent_entries_are_refused_instead_of_silently_dropped, module_hygiene_cannot_launder_reserved_source_type_names, module_hygiene_does_not_hide_original_source_function_authority_collisions, exported_record_type_identity_is_owned_by_its_source_module_across_applications, source_module_record_definitions_cannot_redeclare_imported_nominal_authority, source_identifiers_matching_old_compiler_names_remain_ordinary_local_bindings, module_alias_and_function_names_do_not_rewrite_runtime_field_labels, linking_is_repeatable_and_preserves_the_authenticated_source_artifact, excessively_deep_linker_member_paths_and_type_constructors_refuse_structurally, linker_preserves_the_compilers_exact_type_constructor_height_boundary | crates/edict-syntax/tests/source_module_compilation.rs | Type traversal must accept height 128 and refuse 129 without consuming unrelated lexical frame depth. Public application/provider/runtime closure path remains separately required. |
+| CSPINE-TP-094 | implemented | Linked request compatibility and lexical authority | CSPINE-REQ-051 | Built-in ExternalActionRequest constructors and capability request callees remain valid through linking; an undeclared core namespace cannot capture an application lawpack import. | linker_preserves_builtin_request_constructors_and_rewrites_their_type_arguments, linked_root_preserves_capability_request_operations, library_core_paths_require_their_own_import_instead_of_capturing_the_root | crates/edict-syntax/tests/source_module_compilation.rs | Request construction remains separate from runtime execution. |
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| CSPINE-REQ-052 | implemented | Transparent aliases retain currently supported underlying type representations and imported nominal authority; forward source type dependencies resolve deterministically, with typed refusals for cycles, unresolved types, excessive dependency depth and source-defined expansion work. | docs/SPEC_edict-language-v1.md |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-093 | implemented | Transparent aliases and forward types | CSPINE-REQ-052 | Alias versus expanded source has equal Core identity; forward records reorder identically; a nominal alias keeps its exact imported contract and refuses raw-byte substitution; cycles and expansion/depth exhaustion refuse structurally. | source_scalar_and_bounded_byte_aliases_are_semantically_transparent, forward_aliases_and_records_resolve_independently_of_declaration_order, aliases_preserve_an_imported_nominal_contract_without_laundering_it, cyclic_and_missing_source_aliases_have_structured_refusals, source_type_dependency_depth_and_expansion_work_refuse_before_unbounded_expansion, source_type_depth_checks_cached_shared_paths_at_the_exact_boundary, source_defined_expansion_work_accepts_exactly_65536_cells_and_refuses_one_more, unused_alias_with_no_lowerable_canonical_representation_cannot_disappear, structural_constructor_edges_accept_the_exact_core_height_boundary, structural_depth_composes_through_cached_aliases_and_record_fields, staged_type_checking_cannot_overwrite_an_earlier_duplicate_declaration, reference_traversal_accepts_65536_occurrences_and_refuses_one_more | crates/edict-syntax/tests/source_type_aliases.rs | Recursive types remain a separate capability requirement. |
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| CSPINE-REQ-050 | implemented | Resolve a complete explicit source-module closure by exact package and domain-framed source digest, preserving exact source bytes; refuse invalid, duplicate, missing, substituted, disconnected and cyclic inputs within bounded module, byte and path-depth apertures. | docs/SPEC_edict-language-v1.md |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-091 | implemented | Authenticated source closure | CSPINE-REQ-050 | An independently framed digest vector and real transitive source graph establish identity, order independence, exact source preservation, typed refusals and exact/one-below resource boundaries. | source_digest_matches_an_independently_framed_fixed_vector, source_closure_is_complete_deterministic_and_preserves_exact_bytes, source_closure_rejects_missing_substituted_duplicate_and_disconnected_inputs, source_closure_rejects_cycles_before_treating_any_source_as_authenticated, source_closure_enforces_exact_module_byte_and_depth_apertures, source_closure_reports_invalid_source_and_rejects_duplicate_aliases, source_closure_wire_binds_root_exact_bytes_and_typed_digests, shared_dependency_cache_does_not_hide_a_deeper_import_path, callers_cannot_raise_the_fixed_source_closure_ceilings, source_closure_artifact_inhabits_its_closed_normative_wire_schema | crates/edict-syntax/tests/source_closure.rs, crates/edict-provider-schema/tests/source_closure_schema.rs | Source linking, public application build and provider closure consumption remain separate requirements. |
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| CSPINE-REQ-049 | implemented | Source byte literals lower to raw Core bytes with an exact decoded-length type; equivalent escape spellings have equal semantic digests and declared output bounds remain enforced. | issue #249 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-090 | implemented | Literal octets and bounds | CSPINE-REQ-049 | Literal byte vectors reach Core unchanged, escape spelling does not change semantics, changed octets do, and excessive output length rejects as TypeMismatch. | source_bytes_literals_lower_to_exact_raw_octets, byte_spellings_share_a_semantic_digest_but_different_octets_do_not, byte_literal_length_still_obeys_the_declared_output_bound | crates/edict-syntax/tests/bytes_literals.rs | Decode length rather than source spelling controls the byte bound. |
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
 | CSPINE-REQ-001 | implemented | `resolve_module` resolves module/import coordinates and explicit context facts without collapsing into type checking or lowering. | issue #20 |
 | CSPINE-REQ-002 | implemented | `type_check` produces a typed module boundary distinct from source AST and rejects unresolved or incompatible types. | issue #20 |
 | CSPINE-REQ-003 | implemented | `lower_core` lowers the typed initial subset into structured in-memory Core IR. | issue #20, docs/abi/edict-core.cddl |
@@ -242,11 +275,25 @@ Out of scope:
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | CSPINE-TP-089 | implemented | Exact call span | CSPINE-REQ-048 | Both input and receipt mismatches identify exactly the call expression byte range, excluding the binding annotation, failure handler and semicolon. | input_signature_error_identifies_first_incompatible_field, receipt_signature_error_identifies_first_incompatible_field | crates/edict-syntax/tests/effect_signature_diagnostics.rs | Containment is insufficient evidence. |
 
+| CSPINE-TP-095 | implemented | Conjunctive proof scope | CSPINE-REQ-038, CSPINE-REQ-041 | A checked conjunction prefix proves later bounded slices/subtraction; self, future, disjunctive, basis, separate-constraint and cross-intent evidence still refuse. | conjunctive_prefix_guards_prove_later_slices_and_unsigned_differences | crates/edict-syntax/tests/byte_slice.rs | Separate input constraints remain canonical sets; only ordered conjunction children carry prefix proof. |
+
+## Bounded byte UTF-8 predicate
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| CSPINE-REQ-053 | implemented | isUtf8 preserves bounded byte operand identity and produces Bool; Target independently rejects forged signatures, and guarded prefix slices require prior bounds. | EDICT-LANG-BYTE-UTF8-001 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-096 | implemented | UTF-8 primitive typing | CSPINE-REQ-053 | Bytes/exact/empty operands lower with Boolean projections; wrong signatures, foreign operands and unproven slices refuse. | byte_utf8_call_retains_operand_identity_and_boolean_projection, byte_utf8_rejects_wrong_operands_signatures_and_result_type, byte_utf8_target_refuses_forged_signature_or_operand_authority, byte_utf8_predicate_accepts_proven_prefix_and_rejects_unproven_slice, byte_utf8_prelude_name_cannot_be_shadowed, byte_utf8_source_function_budget_includes_bounded_scan, linker_preserves_utf8_prelude_with_an_imported_byte_alias | crates/edict-syntax/tests/byte_utf8.rs, crates/edict-syntax/tests/source_module_compilation.rs | Runtime byte validation is separate evidence. |
+
+| CSPINE-TP-097 | implemented | Direct UTF-8 scan cost | CSPINE-REQ-053 | Direct intent body/guard scans reject insufficient step ceilings, lazy branches use a maximum, repeated calls sum, and a source-helper scan is not charged twice at its call site. | direct_utf8_scans_are_bounded_in_bodies_guards_and_lazy_branches, utf8_helper_scan_is_not_charged_twice_at_its_call_site | crates/edict-syntax/tests/byte_utf8.rs | Allocation and output are unrestricted to isolate execution steps. |
+
 ## Effect Result Field Selection
 
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| CSPINE-TP-096 | implemented | Exported result projection | CSPINE-REQ-047 | Missing and non-record field selectors on authenticated effect outputs report UnknownField or TypeMismatch before mapping advice; valid selectors retain map guidance and preserve enclosing predicate/comparison requirements. | effect_field_selection_validates_the_exported_record_before_map_guidance, effect_field_selection_preserves_predicate_and_comparison_requirements | crates/edict-syntax/tests/effect_diagnostics.rs | Exact selector spans; no invented Core effect value. |
+| CSPINE-TP-127 | implemented | Exported result projection | CSPINE-REQ-047 | Missing and non-record field selectors on authenticated effect outputs report UnknownField or TypeMismatch before mapping advice; valid selectors retain map guidance and preserve enclosing predicate/comparison requirements. | effect_field_selection_validates_the_exported_record_before_map_guidance, effect_field_selection_preserves_predicate_and_comparison_requirements | crates/edict-syntax/tests/effect_diagnostics.rs | Exact selector spans; no invented Core effect value. |
 
 ## Effect Operator Families
 

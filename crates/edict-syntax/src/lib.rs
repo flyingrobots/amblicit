@@ -88,6 +88,8 @@ pub mod provider_invocation;
 pub mod provider_lowering;
 pub mod result_projection;
 pub mod semantic;
+pub mod source_closure;
+pub mod source_linker;
 pub mod target_ir;
 pub mod target_profile;
 pub mod target_profile_contract_resources;

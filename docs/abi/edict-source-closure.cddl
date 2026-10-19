@@ -1,0 +1,21 @@
+; edict.source-closure/v1. Assemble with edict-common.cddl for sha256-digest.
+; The canonical encoder owns field ordering. No self-digest is embedded.
+source-closure = {
+  apiVersion: "edict.source-closure/v1",
+  root: tstr,
+  modules: { 1*64 tstr => source-closure-module },
+}
+
+source-closure-module = {
+  digest: sha256-digest,
+  source: bstr,
+}
+
+; Additional semantic constraints:
+; - keys are the exact package coordinates parsed from UTF-8 source bytes;
+; - root names a retained module;
+; - every supplied module is root-reachable through digest-bound module imports;
+; - module digest is edict.source/v1 over canonical CBOR bstr(source);
+; - every import agrees with the corresponding module digest;
+; - imports are acyclic, aliases are unique, and source surfaces validate;
+; - total original source bytes <= 1048576, import path depth <= 32 units.

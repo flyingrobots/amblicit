@@ -27,61 +27,67 @@ Every release cut must satisfy these gates on the release commit:
 The crate remains `publish = false` until package policy and API stability are
 deliberately changed.
 
-## Current Frontier: Provider Artifact Pipeline Alpha
+## Current Frontier: Bounded Application Build Evidence
 
-Milestone: `Provider Artifact Pipeline Alpha`
+The Provider Artifact Pipeline Alpha milestone is complete. Its
+[closed milestone](https://github.com/flyingrobots/edict/milestone/15) is
+historical delivery evidence, not the current work queue. No new versioned
+release milestone is selected by this frontier update.
 
-Goalpost: #138
+The next acceptance boundary is the real Jedit-owned application build in
+[Jedit #296](https://github.com/flyingrobots/jedit/issues/296), with source and
+its authored lawpack in [Jedit #302](https://github.com/flyingrobots/jedit/pull/302).
+Edict [#192](https://github.com/flyingrobots/edict/issues/192) is closed; its
+bounded compiler foundation is landed. GitHub carries current checklists and PR state;
+the topic shelves describe implemented contracts.
 
-Completed frontier issues: #139, #140, #145, #146, #148
+Delivered compiler and library foundations:
 
-Current frontier issue: #147 under #141
+- Digest-bound pure helpers, bounded loops, conditional values, and explicit
+  branch results: [compiler spine](docs/topics/compiler-spine/README.md).
+- Complete Core type integrity, generic pure Target IR, and validated result
+  projections: [Core IR](docs/topics/core-ir/README.md),
+  [Target IR](docs/topics/target-ir/README.md), and
+  [result projection](docs/topics/result-projections/README.md).
+- Public application-owned lawpack authoring:
+  [lawpack authoring](docs/topics/lawpack-authoring/README.md).
+- The curated Rust facade requested in
+  [#189](https://github.com/flyingrobots/edict/issues/189):
+  [public Rust API](docs/topics/public-rust-api/README.md).
 
-Release labels: `release:lawpacks`, `release:target-profiles`,
-`release:target-ir`, `release:bundles`
+Remaining work:
 
-Scope:
+1. Preserve the deterministic public compiler, independent verifier and runtime
+   package witness for the real consumer. Authenticated source modules,
+   byte literals and UTF-8 validation landed through Edict
+   [#250](https://github.com/flyingrobots/edict/pull/250),
+   [#252](https://github.com/flyingrobots/edict/pull/252) through
+   [#256](https://github.com/flyingrobots/edict/pull/256), and
+   [#258](https://github.com/flyingrobots/edict/pull/258).
+2. Continue the full application acceptance in Jedit #296. The merged Jedit
+   #302 now implements a pure flat-text replacement reference with compiler,
+   verifier and runtime evidence. It does not complete the persistent rope,
+   authored graph effects, admission, settled Tick or fresh-engine recovery.
+   Echo's generic runtime foundations have advanced beyond the historical
+   [#724](https://github.com/flyingrobots/echo/pull/724) candidate. The open
+   [#921](https://github.com/flyingrobots/echo/pull/921) bridge work follows
+   merged [#917](https://github.com/flyingrobots/echo/pull/917); its draft
+   implementation and resource limits remain subject to acceptance. Package
+   acceptance alone does not establish stateful execution.
+3. Prove the facade's independent package closure in
+   [#204](https://github.com/flyingrobots/edict/issues/204), without publication.
 
-- Provider manifest and provenance vocabulary for generated lawpack,
-  target-profile, authority-facts, provider-manifest, review, and generated
-  artifact-profile entries.
-- Provider-owned lowerer and verifier component role declarations.
-- Digest-locked generated semantic-source and generator provenance.
-- Generic envelope validation before any WIT provider host or runtime-specific
-  provider implementation.
-- Explicit in-process Echo and git-warp lowerer compatibility adapters with
-  direct-path Target IR byte/digest and bundle-identity parity evidence.
-- A parser-checked `edict:target-provider@1.0.0` WIT envelope with explicit
-  protocol versions, digest-bound inputs, authority-separated lowerer/verifier
-  output roles, optional logical paths, typed refusal, deterministic response
-  limits, and host-computed output identity.
-- Pure validation of host-authored lowerer/verifier input contracts and
-  WIT-shaped requests/results, including an explicitly injected deterministic
-  owning-schema capability, canonical domain-bound digests, exact
-  role/path/diagnostic contracts, response limits, limit independence, and
-  sealed all-or-nothing host output manifests.
-- Capability-denied component invocation with deterministic replay, stable
-  mismatch identity, failure recovery, concurrency isolation, named ambient
-  capability denial, and reviewed Target IR parity across processes.
+The separate complete-lawpack-closure dependency remains
+[Echo #693](https://github.com/flyingrobots/echo/issues/693) for
+[Edict #171](https://github.com/flyingrobots/edict/issues/171).
+The pure-helper call-graph follow-up
+[#203](https://github.com/flyingrobots/edict/issues/203) is closed; it does not
+reopen merged PR #201.
 
-Exit gates:
-
-- #139, #140, #141, and #142 land or have reviewed scope splits.
-- Existing in-tree target lowering can be represented through provider-shaped
-  wrappers without changing Target IR canonical bytes or semantic bundle
-  identity.
-- WIT provider hosting passes only explicit, digest-locked inputs to provider
-  components and validates returned envelopes before bundle assembly.
-- Echo-owned provider implementation issues exist once the Edict provider ABI is
-  concrete enough to scope them accurately.
-
-Non-goals:
-
-- No Echo-specific lawpack semantics in Edict.
-- No Wesley execution or lawpack generation inside Edict.
-- No runtime execution.
-- No admission or registration.
-- No provider filesystem or network discovery.
+Automated comparison of frontier references with GitHub state is planned in
+[#205](https://github.com/flyingrobots/edict/issues/205). This correction does
+not claim that enforcement exists. Runtime execution, admission, registry
+publication, and release tagging require their own evidence and decisions.
 
 ## v0.1.0-alpha.1 - Front-End Alpha
 

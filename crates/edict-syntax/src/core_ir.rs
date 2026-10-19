@@ -588,12 +588,11 @@ fn render_self_describing_core_type_at_depth(ty: &CoreType, depth: usize) -> Opt
 }
 
 fn canonical_core_type_reference_at_depth(reference: &str, depth: usize) -> Option<String> {
-    match classify_core_type_reference_at_depth(reference, depth)? {
-        CoreTypeReference::Intrinsic(ty) | CoreTypeReference::Structural(ty) => {
-            render_self_describing_core_type_at_depth(&ty, depth)
-        }
-        CoreTypeReference::Named => Some(reference.to_owned()),
-    }
+    // Classification accepts only canonical spellings and validates every child
+    // at this occurrence depth. Rendering that parsed subtree again repeats the
+    // same recursive validation at each parent without changing any bytes.
+    classify_core_type_reference_at_depth(reference, depth)?;
+    Some(reference.to_owned())
 }
 
 /// Whether a Core type-table key is a valid named identity.

@@ -74,6 +74,73 @@ export surfaces are distinguished from absent authentication information; declar
 but unprojected exports are not described as an empty lawpack.
 [CSPINE-REQ-047]
 
+`source_linker::link_source_closure` links an authenticated witness into a
+separate immutable compiler-owned surface. `LinkedSourceClosure::compile`
+accepts explicit compiler context facts and maps compiler failures back to the
+original package and source-local byte span. Original source bytes and closure
+identity remain unchanged. [CSPINE-REQ-051]
+
+Source-module aliases expose only the named dependency's own types and pure
+functions. They do not implicitly re-export transitive imports. Every unit's
+definitions are checked, including unused functions. A library cannot capture
+an application's declarations, and library parameters/local bindings cannot
+collide with unrelated application names. Imported intent entries refuse as
+`ImportedIntent`; the root owns application entry declarations. [CSPINE-REQ-051]
+
+The linker chooses deterministic fresh compiler names for declarations,
+external import aliases and lexical bindings, preserving root entry names,
+field labels and runtime member access. Source-owned record identities remain
+`package@version.Type`, independent of the importing application; root record
+table keys retain their original source names. Source declarations cannot use
+renaming to shadow reserved types or redeclare imported callable/type authority.
+Type-constructor height is limited to 128 independently of statement/expression
+frames; active lexical traversal and flattened member paths are also bounded.
+Built-in `ExternalActionRequest` types and bare capability request callees
+remain supported. Authored namespace calls, including `core.*`, require an
+import owned by that same source module. These checks grant no runtime
+authority. Public application/provider closure
+consumption remains a separate requirement. [CSPINE-REQ-051]
+
+Source `type Alias = Target;` declarations are transparent spellings for
+currently lowerable targets. They introduce no new nominal authority or Core
+type table entry. Aliases retain bounded representations and the exact owning
+contract of an imported nominal type. Forward aliases and record dependencies
+resolve before checking function signatures and intent bodies. [CSPINE-REQ-052]
+
+Source type dependencies are acyclic, with at most 128 declarations on a path
+and fully expanded structural height at most 128, including inline constructors,
+cached alias targets and record fields. A scalar has height zero; a list adds
+one and a nonempty record adds one above its greatest field. Height 128 is
+accepted and 129 refuses as `InvalidBound`. Staged `resolve_module` then
+`type_check` also refuses duplicate source type declarations as
+`SurfaceValidation`. Unsupported string canonicalization refuses as
+`UnsupportedSourceShape`, even in an unused alias. Source reference traversal and
+cumulative source-defined declaration expansion each have a 65,536-unit ceiling.
+A scalar or opaque imported reference costs one expansion unit; list/map/option
+constructors add one plus their children; a record adds one plus its fields.
+References to source-defined types use their complete expansion weight on every
+occurrence. This bounds source-defined DAG expansion before shape construction;
+it is not a physical allocator metric or a replacement for imported-type and
+runtime budgets. Cycles, missing types and exceeded bounds refuse structurally.
+[CSPINE-REQ-052]
+
+`source_closure::resolve_source_closure` authenticates an explicitly supplied
+root and complete dependency set without filesystem lookup. Module imports pin
+the exact `edict.source/v1` digest of each dependency. The witness retains exact
+UTF-8 bytes and parsed surfaces, rejects invalid, duplicate, missing,
+substituted, disconnected and cyclic source inputs, and bounds unit count,
+aggregate source bytes and every import path. Its canonical closure bytes and
+identity are independent of supplied dependency order. [CSPINE-REQ-050]
+
+Closure authentication grants no execution authority and does not link or
+type-check the units. Public application builds still accept one source;
+`compile_to_core` requires source-module imports to be resolved before use.
+The [source-closure contract](../../SPEC_edict-language-v1.md#source-compilation-closures)
+defines source pins, artifact framing and fixed ceilings.
+
+Source byte literals lower to `CoreValue::Bytes` with an exact decoded-length
+type. Equivalent escape spellings produce identical semantic Core digests;
+declared result byte bounds remain enforced. [CSPINE-REQ-049]
 
 Source-owned pure functions compile with signatures collected before bodies,
 isolated lexical frames, ordered immutable bindings and one terminal return.
@@ -82,7 +149,6 @@ by the callee. Every definition is checked, including unused definitions.
 The [source-function reference](source-functions.md) explains authority,
 canonical identity, conservative budgeting and target restrictions.
 [CSPINE-REQ-044] [CSPINE-REQ-045]
-
 
 Boolean `&&` and `||` predicates lower to ordered Core `All` and `Any` forms
 where predicate checking is used: input constraints, statement conditionals,
@@ -102,6 +168,18 @@ The target validates the emitted primitive independently; compilation alone
 does not establish runtime support or execution evidence.
 [CSPINE-REQ-040]
 
+`isUtf8(bytes)` takes one bounded structural byte operand and no authored type
+arguments, retaining its exact coordinate in `core.bytes.isUtf8<OperandType>`
+and returning Bool. It is a reserved prelude name, including through authenticated
+source-module linking. Wrong operand families, signatures and result types reject.
+The source-function cost bound includes operand validation and conservative scan
+work using the complete bounded operand storage. Direct intent calls also
+contribute their declared byte maximum to the static step bound, including
+metadata predicates; sequential calls add and lazy branches use a maximum.
+A helper scan is counted in its function summary and is not charged again at
+the call site. This compiler evidence does not
+execute UTF-8 validation. [CSPINE-REQ-053]
+
 `slice(bytes, start, end)` lowers bounded raw bytes and U64 endpoints to
 `core.bytes.slice<OperandType>(bytes,start,end)`. Its result keeps the operand
 maximum and drops positive minimum/exact length, since empty slices are valid.
@@ -109,8 +187,11 @@ Operand type failures point to the wrong byte or endpoint expression; two wrong
 endpoints receive separate `TypeMismatch` diagnostics. [CSPINE-REQ-042]
 The compiler requires exact evidence of `start <= end <= len(bytes)` from
 conjunctive input constraints or unconditional equal/zero relationships. It
-does not infer aliases, transitive orders, or flow-sensitive guard facts, and
-constraints cannot justify earlier basis or constraint evaluation. Missing
+does not infer aliases, transitive orders, or branch-local facts. Within an
+ordered `&&` predicate, checked left predicates may establish the domain of
+later predicates. Separate input constraints remain a canonical set and cannot
+justify one another or the earlier basis. Conjunction proof facts do not escape
+into another expression. Missing
 proof rejects with `UnsupportedSourceShape`; wrong operands or output bounds
 reject with `TypeMismatch`. Raw byte slicing has no UTF-8 semantics.
 [CSPINE-REQ-041]
@@ -134,7 +215,7 @@ without its consumer evaluator implementing that call. Successful packaging or
 an accepted verifier report therefore does not establish slice execution,
 input-constraint enforcement, or runtime byte-copy charging.
 
-- The lowerable subset is deliberately narrow: local record type declarations,
+- The lowerable subset is deliberately narrow: local record type declarations and transparent aliases,
   first-order nongeneric source functions, one-parameter intents, `profile`, `basis none` or one input-derived explicit
   basis, `budget <=`, `where` predicates, pure `let` bindings, one annotated
   effectful `let ... else` shape, lowerable `require ... else` obstruction
@@ -169,8 +250,10 @@ input-constraint enforcement, or runtime byte-copy charging.
   `core.integer.subtract<T>(left, right)` when the operands are identical,
   the subtrahend is zero, literal operands are ordered, or a checked input
   constraint directly establishes the required order. Conjunctions supply
-  evidence; disjunctions and negations do not. Evidence becomes available only
-  for the intent body and is cleared between intents, including failed bodies.
+  evidence; disjunctions and negations do not. Within `&&`, the checked left
+  predicate can prove the right operand's domain. These temporary facts are
+  restored afterward; completed input constraints also justify the intent body.
+  Evidence is cleared between intents, including failed bodies.
   Signed and mixed-width subtraction remain outside this subset. This is a
   source-to-Core contract, not target execution support. [CSPINE-REQ-038]
 - An explicit basis expression is checked in the pure pre-body environment

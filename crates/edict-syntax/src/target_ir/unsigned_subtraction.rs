@@ -1,7 +1,7 @@
 //! Target-owned totality check over untrusted Core, independent of the compiler proof.
 use super::{
-    expression_type_coordinate, BTreeMap, CoreExpr, CoreModule, CorePredicate, CoreValue,
-    InputConstraint, LocalRef, TargetPureFunctionFact,
+    expression_type_coordinate, BTreeMap, CoreExpr, CoreModule, CorePredicate, CoreValue, LocalRef,
+    TargetPureFunctionFact,
 };
 use crate::core_ir::CompareOp;
 
@@ -32,14 +32,14 @@ pub(super) fn type_coordinate(
 pub(super) fn proven_order(
     left: &CoreExpr,
     right: &CoreExpr,
-    constraints: &[InputConstraint],
+    constraints: &[&CorePredicate],
 ) -> bool {
     left == right
         || constant(right) == Some(0)
         || matches!((constant(left), constant(right)), (Some(a), Some(b)) if a >= b)
         || constraints
             .iter()
-            .any(|constraint| proves_order(&constraint.predicate, left, right))
+            .any(|constraint| proves_order(constraint, left, right))
 }
 
 fn constant(value: &CoreExpr) -> Option<u64> {

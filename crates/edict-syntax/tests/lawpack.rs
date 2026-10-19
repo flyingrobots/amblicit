@@ -3774,3 +3774,59 @@ fn mixed_authority_failure_guidance_labels_only_mappable_names() {
         assert!(errors[0].message.contains("domain-mappable failures:"));
     }
 }
+
+#[test]
+fn linked_modules_prepare_each_authenticated_lawpack_alias() {
+    use edict_syntax::source_closure::{
+        resolve_source_closure, source_module_digest, SourceClosureLimits,
+    };
+    use edict_syntax::source_linker::link_source_closure;
+    let mut exports = typed_helper_exports(true);
+    // The operation budget must contain the helper's separate cost allowance.
+    for helper in array_mut(field_mut(&mut exports, "pureFunctions")) {
+        replace_field(helper, "costTemplate", text("hello.echo@1.identityBudget"));
+    }
+    let adapter_value = exact_u64_pure_helper_adapter();
+    let (bundle, adapter) = bundle_and_adapter(&exports, &adapter_value);
+    let digest = bundle.manifest_digest_review_string();
+    let library = format!("package library.keys@1; use lawpack hello.echo@1 digest \"{digest}\" as local; fn identity(value: local.GreetingKey) -> local.GreetingKey {{ return local.identityKey(value); }}");
+    let pin = source_module_digest(&library).expect("module pin");
+    let source = typed_helper_source(&bundle)
+        .replacen(
+            "type Input",
+            &format!("use module library.keys@1 digest \"{pin}\" as keys; type Input"),
+            1,
+        )
+        .replace(
+            "hello.identityKey(input.value)",
+            "keys.identity(input.value)",
+        );
+    let closure = resolve_source_closure(&source, &[&library], SourceClosureLimits::default())
+        .expect("closure");
+    let linked = link_source_closure(&closure).expect("link");
+    let preparation = prepare_lawpack_compilation(linked.module(), &bundle, &adapter)
+        .expect("all linked aliases prepare");
+    let core = linked
+        .compile(preparation.compiler_context())
+        .expect("compile imported helper and type");
+    let target = lower_to_target_ir(&core, preparation.target_ir_facts());
+    assert_eq!(target.status, TargetLoweringStatus::Lowered, "{target:?}");
+    assert_eq!(
+        preparation.target_ir_facts().pure_functions.len(),
+        bundle.exports().pure_functions.len(),
+        "canonical helper facts must not duplicate per alias"
+    );
+    // A matching first import must never hide a substituted later import.
+    let mut substituted = linked.module().clone();
+    substituted
+        .imports
+        .last_mut()
+        .expect("library import")
+        .digest = Some(format!("sha256:{}", "0".repeat(64)));
+    let errors = prepare_lawpack_compilation(&substituted, &bundle, &adapter)
+        .expect_err("authenticate every alias");
+    assert_eq!(
+        adapter_failure_kinds(&errors),
+        vec![LawpackAdapterFailureKind::SourceImportMismatch]
+    );
+}
