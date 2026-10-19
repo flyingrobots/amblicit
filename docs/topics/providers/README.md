@@ -114,13 +114,22 @@ Controls whose nested rule graph is opaque through the schema dependency, such
 as `.cbor`, reject with a stable unsupported-control failure rather than being
 accepted without a complete closure proof.
 The checked Rust-neutral artifacts live under
-[`fixtures/provider-contracts/source-functions-v1/`](../../../fixtures/provider-contracts/source-functions-v1/):
+[`fixtures/provider-contracts/source-modules-v1/`](../../../fixtures/provider-contracts/source-modules-v1/):
 one self-contained Apache-2.0 CDDL file and one deterministic manifest mapping
 logical contracts and provider artifact domains to exact roots. The prior
-[function-free v1 publication](../../../fixtures/provider-contracts/v1/) remains
-unchanged for explicitly pinned consumers. Source-function consumers select the
-new exact schema and manifest bytes; this does not grant executable backend
-support. Neither
+[function-free v1 publication](../../../fixtures/provider-contracts/v1/) and
+[source-function publication](../../../fixtures/provider-contracts/source-functions-v1/)
+remain byte-identical for explicitly pinned consumers. The source-module
+publication adds the `source-closure` root and `edict.source-closure/v1` domain.
+It validates the closed envelope and typed module digests, including actual
+source-closure encoder output; it refuses a legacy source byte string under
+that domain. Import pins, root membership, reachability, topology and aggregate
+byte/depth limits remain separate semantic checks of the source-closure API.
+
+Assembly selects that extension only when `source_closure_cddl` is explicitly
+supplied. Omitting it reproduces the prior source-function publication exactly.
+Consumers select exact schema/manifest bytes; schema selection does not grant
+executable backend support or select a new provider automatically. Neither
 assembly nor validation discovers repository files, registries, or networks;
 the `xtask` command is the explicit repository adapter that reads source files
 and writes or checks the reviewed artifacts. Pack instance validation is

@@ -7,6 +7,7 @@ use cddl_cat::cbor::validate_cbor;
 use cddl_cat::context::BasicContext;
 use cddl_cat::flatten::flatten_from_str;
 use cddl_cat::ivt::{Control, Node, Rule, RulesByName};
+use edict_syntax::source_closure::SOURCE_CLOSURE_DIGEST_DOMAIN;
 use edict_syntax::{
     encode_canonical_cbor, validate_target_profile_contract_resources, CanonicalValue,
     ProviderArtifactSchemaValidationErrorKind, TargetProfileContractResource,
@@ -77,6 +78,8 @@ pub struct ProviderContractPackInput<'a> {
     pub authority_facts_cddl: &'a [u8],
     pub result_projection_cddl: &'a [u8],
     pub target_ir_cddl: &'a [u8],
+    /// Explicitly select source-closure publication; None retains earlier bytes.
+    pub source_closure_cddl: Option<&'a [u8]>,
     pub contract_resources: Vec<TargetProfileContractResource>,
 }
 
@@ -293,29 +296,10 @@ impl ProviderContractPack {
 pub fn assemble_provider_contract_pack(
     input: ProviderContractPackInput<'_>,
 ) -> Result<ProviderContractPack, Vec<ProviderContractPackFailure>> {
-    let ProviderContractPackInput {
-        common_cddl,
-        core_cddl,
-        lawpack_cddl,
-        lawpack_adapter_cddl,
-        target_profile_cddl,
-        authority_facts_cddl,
-        result_projection_cddl,
-        target_ir_cddl,
-        contract_resources,
-    } = input;
-    let fragments = [
-        ("edict-common.cddl", common_cddl),
-        ("edict-core.cddl", core_cddl),
-        ("edict-lawpack.cddl", lawpack_cddl),
-        ("edict-lawpack-adapter.cddl", lawpack_adapter_cddl),
-        ("edict-target-profile.cddl", target_profile_cddl),
-        ("edict-authority-facts.cddl", authority_facts_cddl),
-        ("edict-result-projection.cddl", result_projection_cddl),
-        ("edict-target-ir.cddl", target_ir_cddl),
-    ];
+    let fragments = schema_fragments(&input);
+    let with_source_closure = input.source_closure_cddl.is_some();
     let mut failures = validate_fragments(&fragments);
-    let resources = match validate_target_profile_contract_resources(contract_resources) {
+    let resources = match validate_target_profile_contract_resources(input.contract_resources) {
         Ok(resources) => Some(resources.resources().to_vec()),
         Err(resource_failures) => {
             failures.extend(resource_failures.into_iter().map(map_resource_failure));
@@ -370,7 +354,7 @@ pub fn assemble_provider_contract_pack(
             };
             failures.push(failure(kind, subject));
         }
-        for root in all_roots() {
+        for root in all_roots(with_source_closure) {
             if !context.rules.contains_key(root) {
                 failures.push(failure(
                     ProviderContractPackFailureKind::SchemaRootMissing,
@@ -393,13 +377,31 @@ pub fn assemble_provider_contract_pack(
         sort_failures(&mut failures);
         return Err(failures);
     };
-    let manifest = build_manifest(schema_bytes, resources);
+    let manifest = build_manifest(schema_bytes, resources, with_source_closure);
     Ok(ProviderContractPack { manifest, context })
+}
+
+fn schema_fragments<'a>(input: &ProviderContractPackInput<'a>) -> Vec<(&'static str, &'a [u8])> {
+    let mut fragments = vec![
+        ("edict-common.cddl", input.common_cddl),
+        ("edict-core.cddl", input.core_cddl),
+        ("edict-lawpack.cddl", input.lawpack_cddl),
+        ("edict-lawpack-adapter.cddl", input.lawpack_adapter_cddl),
+        ("edict-target-profile.cddl", input.target_profile_cddl),
+        ("edict-authority-facts.cddl", input.authority_facts_cddl),
+        ("edict-result-projection.cddl", input.result_projection_cddl),
+        ("edict-target-ir.cddl", input.target_ir_cddl),
+    ];
+    if let Some(source_closure) = input.source_closure_cddl {
+        fragments.push(("edict-source-closure.cddl", source_closure));
+    }
+    fragments
 }
 
 fn build_manifest(
     schema_bytes: Vec<u8>,
     resources: Vec<TargetProfileContractResource>,
+    with_source_closure: bool,
 ) -> ProviderContractPackManifest {
     assert!(
         bindings_are_strictly_sorted_by_key(&CONTRACT_BINDINGS),
@@ -409,26 +411,40 @@ fn build_manifest(
         bindings_are_strictly_sorted_by_key(&DOMAIN_BINDINGS),
         "DOMAIN_BINDINGS must stay sorted and unique by domain",
     );
+    let mut contracts = CONTRACT_BINDINGS
+        .into_iter()
+        .map(|(contract, root_rule)| ProviderContractRootBinding {
+            contract: contract.to_owned(),
+            root_rule: root_rule.to_owned(),
+        })
+        .collect::<Vec<_>>();
+    let mut domains = DOMAIN_BINDINGS
+        .into_iter()
+        .map(|(domain, root_rule)| ProviderContractDomainBinding {
+            domain: domain.to_owned(),
+            root_rule: root_rule.to_owned(),
+        })
+        .collect::<Vec<_>>();
+    if with_source_closure {
+        contracts.push(ProviderContractRootBinding {
+            contract: "source-closure".into(),
+            root_rule: "source-closure".into(),
+        });
+        domains.push(ProviderContractDomainBinding {
+            domain: SOURCE_CLOSURE_DIGEST_DOMAIN.into(),
+            root_rule: "source-closure".into(),
+        });
+        contracts.sort_unstable();
+        domains.sort_unstable();
+    }
     ProviderContractPackManifest {
         api_version: PROVIDER_CONTRACT_PACK_API_VERSION.to_owned(),
         coordinate: PROVIDER_CONTRACT_PACK_COORDINATE.to_owned(),
         license: PROVIDER_CONTRACT_PACK_LICENSE.to_owned(),
         schema_sha256: Sha256::digest(&schema_bytes).into(),
         schema_bytes,
-        contracts: CONTRACT_BINDINGS
-            .into_iter()
-            .map(|(contract, root_rule)| ProviderContractRootBinding {
-                contract: contract.to_owned(),
-                root_rule: root_rule.to_owned(),
-            })
-            .collect(),
-        domains: DOMAIN_BINDINGS
-            .into_iter()
-            .map(|(domain, root_rule)| ProviderContractDomainBinding {
-                domain: domain.to_owned(),
-                root_rule: root_rule.to_owned(),
-            })
-            .collect(),
+        contracts,
+        domains,
         resources: resources.into_iter().map(pack_resource).collect(),
     }
 }
@@ -587,8 +603,11 @@ fn assemble_schema_bytes(fragments: &[(&str, &[u8])]) -> Vec<u8> {
     output
 }
 
-fn all_roots() -> impl Iterator<Item = &'static str> {
-    CONTRACT_BINDINGS.into_iter().map(|(_contract, root)| root)
+fn all_roots(with_source_closure: bool) -> impl Iterator<Item = &'static str> {
+    CONTRACT_BINDINGS
+        .into_iter()
+        .map(|(_contract, root)| root)
+        .chain(with_source_closure.then_some("source-closure"))
 }
 
 enum SchemaClosureFailure {
