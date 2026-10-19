@@ -32,7 +32,25 @@ fn configurable_cell_budgets_match_maximum_unicode_encoding() {
         let encoded = encode_canonical_cbor(&value).unwrap();
         assert_eq!(budget.output, u64::try_from(encoded.len()).unwrap());
         assert_eq!(budget.write, replacement_bytes + 64);
-        assert!(budget.allocated >= budget.output + replacement_bytes);
+        let input = CanonicalValue::Map(vec![
+            (
+                CanonicalValue::Text("basis".into()),
+                CanonicalValue::Text("😀".repeat(128)),
+            ),
+            (
+                CanonicalValue::Text("key".into()),
+                CanonicalValue::Text("😀".repeat(usize::try_from(key_scalars).unwrap())),
+            ),
+            (
+                CanonicalValue::Text("value".into()),
+                CanonicalValue::Text("😀".repeat(usize::try_from(value_scalars).unwrap())),
+            ),
+        ]);
+        let input_len = u64::try_from(encode_canonical_cbor(&input).unwrap().len()).unwrap();
+        assert_eq!(
+            budget.allocated,
+            input_len + budget.output + replacement_bytes
+        );
         assert_eq!(limits.budgets(), Ok(budget), "calculation is deterministic");
     }
 }
@@ -58,15 +76,18 @@ fn configurable_cell_limits_reject_inconsistent_and_overflowing_parameters() {
     ] {
         assert_eq!(limits.budgets(), Err(LimitError::Zero));
     }
-    assert_eq!(
-        Limits {
-            key_scalars: 64,
-            value_scalars: 256,
-            replacement_bytes: 256
-        }
-        .budgets(),
-        Err(LimitError::ScalarBytesExceedCap)
-    );
+    for (value_scalars, replacement_bytes) in [(256, 256), (65, 256), (64, 255)] {
+        assert_eq!(
+            Limits {
+                key_scalars: 64,
+                value_scalars,
+                replacement_bytes
+            }
+            .budgets(),
+            Err(LimitError::ScalarBytesExceedCap),
+            "{value_scalars} scalars against {replacement_bytes} bytes"
+        );
+    }
     for limits in [
         Limits {
             key_scalars: u64::MAX,
@@ -137,8 +158,6 @@ fn configurable_cell_documents_author_repeatable_valid_closures() {
 #[test]
 fn configurable_cell_public_authoring_matches_in_memory_artifacts() {
     use edict_syntax::{author_lawpack, LawpackAuthoringDefinition};
-    use std::io::Write;
-    use std::process::{Command, Stdio};
     for (value_scalars, replacement_bytes) in [(64, 256), (1024, 4096)] {
         let doc = document::document(Limits {
             key_scalars: 64,
@@ -157,16 +176,7 @@ fn configurable_cell_public_authoring_matches_in_memory_artifacts() {
                 serde_json::to_vec(&doc).unwrap(),
             )
             .unwrap();
-            let mut child = Command::new(env!("CARGO_BIN_EXE_edict"))
-                .current_dir(&root)
-                .env_remove(edict_cli::MAX_STDIN_BYTES_ENV)
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .unwrap();
-            child.stdin.take().unwrap().write_all(b"{\"schema\":\"edict.compiler.settings/v1\",\"type\":\"compilerSettings\",\"operation\":\"build\",\"lawpack\":\"edict.lawpack.json\"}\n").unwrap();
-            let output = child.wait_with_output().unwrap();
+            let output = run_public_build(&root, "lawpack", "edict.lawpack.json");
             assert_eq!(output.status.code(), Some(0), "public build: {output:?}");
             assert!(output.stderr.is_empty(), "{output:?}");
             for artifact in expected.artifacts() {
