@@ -73,3 +73,17 @@ Out of scope:
 - No automated tool can prove that a contributor actually observed RED before
   implementation. The report or pull request body remains the evidence for that
   sequencing.
+
+## Study Validation Snapshot
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| TESTS-REQ-008 | gap | The retained study validation helper overlays current source on its committed snapshot without resurrecting staged or unstaged deletions. | docs/plans/study-feedback/evidence/guard-runner.py.txt |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TESTS-TP-008 | gap | Snapshot fidelity | TESTS-REQ-008 | A real Git snapshot matches modified and untracked bytes, removes staged/unstaged deletions and old rename paths, and omits an added-then-missing path. | docs/plans/study-feedback/evidence/snapshot-deletion-regression.py.txt | docs/plans/study-feedback/evidence/snapshot-deletion-regression.py.txt | Python probe passes in Docker; registration remains a gap because the contract checker recognizes only Rust test functions. |
+
+The Python snapshot probe is executable and has observed RED/GREEN evidence.
+REQ-008 and TP-008 remain `gap` for automatic contract-graph evidence registration;
+this does not label the source correction unimplemented or claim Rust coverage.

@@ -85,3 +85,18 @@ test selection covers unit, integration, and documentation tests, so the gate
 does not repeat workspace doctests as a second pass. [TESTS-REQ-007]
 
 The verification matrix is tracked in [test-plan.md](./test-plan.md).
+
+## Study validation snapshots
+
+The retained study helper overlays current files onto a committed snapshot. It
+combines HEAD-relative deletions (with rename detection disabled) and missing
+index paths, so staged deletions, rename sources, and added-then-missing files
+cannot reappear in the validation source. The executable snapshot regression
+uses an isolated Git fixture and checks the resulting file set and bytes:
+
+```text
+python3 docs/plans/study-feedback/evidence/snapshot-deletion-regression.py.txt
+```
+
+Run this probe inside the bounded Docker validation worker. It verifies the
+retained study helper; it does not establish a general snapshot service.

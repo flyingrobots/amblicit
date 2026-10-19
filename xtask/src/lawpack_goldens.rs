@@ -963,7 +963,7 @@ fn causal_cell_adapter(configuration_digest: [u8; 32]) -> CanonicalValue {
                 map([
                     ("maxSteps", CanonicalValue::Integer(16)),
                     ("maxAllocatedBytes", CanonicalValue::Integer(2_048)),
-                    ("maxOutputBytes", CanonicalValue::Integer(512)),
+                    ("maxOutputBytes", CanonicalValue::Integer(2_048)),
                 ]),
             )]),
         ),
@@ -1355,7 +1355,7 @@ fn hello_echo_adapter(target_configuration_digest: [u8; 32]) -> CanonicalValue {
                 map([
                     ("maxSteps", CanonicalValue::Integer(16)),
                     ("maxAllocatedBytes", CanonicalValue::Integer(2_048)),
-                    ("maxOutputBytes", CanonicalValue::Integer(512)),
+                    ("maxOutputBytes", CanonicalValue::Integer(2_048)),
                 ]),
             )]),
         ),

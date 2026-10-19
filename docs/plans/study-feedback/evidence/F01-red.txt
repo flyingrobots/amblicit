@@ -1,0 +1,82 @@
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded generic-array v0.14.7
+  Downloaded crypto-common v0.1.7
+  Downloaded quote v1.0.46
+  Downloaded cfg-if v1.0.4
+  Downloaded cpufeatures v0.2.17
+  Downloaded block-buffer v0.10.4
+  Downloaded version_check v0.9.5
+  Downloaded digest v0.10.7
+  Downloaded proc-macro2 v1.0.106
+  Downloaded bunny-num v0.6.0
+  Downloaded itoa v1.0.18
+  Downloaded sha2 v0.10.9
+  Downloaded zmij v1.0.21
+  Downloaded unicode-ident v1.0.24
+  Downloaded serde_derive v1.0.228
+  Downloaded serde_core v1.0.228
+  Downloaded serde v1.0.228
+  Downloaded memchr v2.8.2
+  Downloaded typenum v1.20.1
+  Downloaded serde_json v1.0.150
+  Downloaded syn v2.0.118
+  Downloaded libc v0.2.186
+   Compiling version_check v0.9.5
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.46
+   Compiling typenum v1.20.1
+   Compiling generic-array v0.14.7
+   Compiling unicode-ident v1.0.24
+   Compiling serde_core v1.0.228
+   Compiling libc v0.2.186
+   Compiling zmij v1.0.21
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling syn v2.0.118
+   Compiling serde v1.0.228
+   Compiling serde_json v1.0.150
+   Compiling digest v0.10.7
+   Compiling cpufeatures v0.2.17
+   Compiling memchr v2.8.2
+   Compiling itoa v1.0.18
+   Compiling cfg-if v1.0.4
+   Compiling sha2 v0.10.9
+   Compiling bunny-num v0.6.0
+   Compiling serde_derive v1.0.228
+   Compiling edict-syntax v0.11.0-alpha.1 (/work/edict/crates/edict-syntax)
+    Finished `test` profile [unoptimized] target(s) in 7.67s
+     Running tests/return_budget.rs (/cache/target/debug/deps/return_budget-5c382101c80058c3)
+
+running 3 tests
+test return_budget_exact_fit_accepts_and_one_byte_less_rejects ... FAILED
+test return_budget_refuses_opaque_requests_but_preserves_bounded_outputs ... FAILED
+test return_budget_overflow_rejects_before_core ... FAILED
+
+failures:
+
+---- return_budget_exact_fit_accepts_and_one_byte_less_rejects stdout ----
+
+thread 'return_budget_exact_fit_accepts_and_one_byte_less_rejects' (518) panicked at crates/edict-syntax/tests/return_budget.rs:44:14:
+an output maximum one byte above the budget must fail: CoreModule { api_version: "edict.core/v1", coordinate: "return_budget.example@1", imports: [], types: {}, functions: {}, intents: {"run": CoreIntent { input: "Bool", output: "Bool", required_operation_profile: "continuum.profile.read-only/v1", basis: None, input_constraints: [], core_evaluation_budget: CoreBudget { max_steps: 4096, max_allocated_bytes: 1048576, max_output_bytes: 0 }, body: CoreBlock { locals: [LocalRef { id: "arg.0", alpha_name: "$arg0", ty: "Bool" }], nodes: [], result: Local { reference: LocalRef { id: "arg.0", alpha_name: "$arg0", ty: "Bool" } } } }}, required_core_capabilities: [] }
+
+---- return_budget_refuses_opaque_requests_but_preserves_bounded_outputs stdout ----
+
+thread 'return_budget_refuses_opaque_requests_but_preserves_bounded_outputs' (520) panicked at crates/edict-syntax/tests/return_budget.rs:68:63:
+opaque output rejects: CoreModule { api_version: "edict.core/v1", coordinate: "return_budget.example@1", imports: [], types: {}, functions: {}, intents: {"run": CoreIntent { input: "edict.external-action.request/v1<U64>", output: "edict.external-action.request/v1<U64>", required_operation_profile: "continuum.profile.read-only/v1", basis: None, input_constraints: [], core_evaluation_budget: CoreBudget { max_steps: 4096, max_allocated_bytes: 1048576, max_output_bytes: 4096 }, body: CoreBlock { locals: [LocalRef { id: "arg.0", alpha_name: "$arg0", ty: "edict.external-action.request/v1<U64>" }], nodes: [], result: Local { reference: LocalRef { id: "arg.0", alpha_name: "$arg0", ty: "edict.external-action.request/v1<U64>" } } } }}, required_core_capabilities: [] }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- return_budget_overflow_rejects_before_core stdout ----
+
+thread 'return_budget_overflow_rejects_before_core' (519) panicked at crates/edict-syntax/tests/return_budget.rs:59:67:
+size overflow rejects: CoreModule { api_version: "edict.core/v1", coordinate: "return_budget.example@1", imports: [], types: {}, functions: {}, intents: {"run": CoreIntent { input: "String<max=18446744073709551615,canonical=raw-utf8>", output: "String<max=18446744073709551615,canonical=raw-utf8>", required_operation_profile: "continuum.profile.read-only/v1", basis: None, input_constraints: [], core_evaluation_budget: CoreBudget { max_steps: 4096, max_allocated_bytes: 1048576, max_output_bytes: 18446744073709551615 }, body: CoreBlock { locals: [LocalRef { id: "arg.0", alpha_name: "$arg0", ty: "String<max=18446744073709551615,canonical=raw-utf8>" }], nodes: [], result: Local { reference: LocalRef { id: "arg.0", alpha_name: "$arg0", ty: "String<max=18446744073709551615,canonical=raw-utf8>" } } } }}, required_core_capabilities: [] }
+
+
+failures:
+    return_budget_exact_fit_accepts_and_one_byte_less_rejects
+    return_budget_overflow_rejects_before_core
+    return_budget_refuses_opaque_requests_but_preserves_bounded_outputs
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p edict-syntax --test return_budget`

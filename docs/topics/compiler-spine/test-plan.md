@@ -212,6 +212,27 @@ Out of scope:
 | CSPINE-TP-057 | implemented | Graph diagnostic ownership | CSPINE-REQ-045 | Recursive and over-depth functions retain their actual declaration spans even when named work; global work exhaustion has no function owner; expression-depth failure identifies its containing function even beside a function named expression. | graph_diagnostic_origin_distinguishes_global_work_from_a_function_named_work, graph_expression_depth_diagnostic_identifies_its_owning_function, source_function_call_depth_accepts_128_and_rejects_129, shared_suffix_depth_is_independent_of_definition_order | crates/edict-syntax/tests/source_functions.rs | Public Core failure kinds and paths remain unchanged. The deep diagnostic unit witness uses an explicit 8 MiB thread; CLI-TP-040 covers the normal CLI process separately, not arbitrary caller stacks. |
 | CSPINE-TP-058 | implemented | Unsupported accounting shapes | CSPINE-REQ-044, CSPINE-REQ-045 | Request-bearing parameters, results, expressions and intent frames in a function-bearing module report UnsupportedSourceShape, including nested nominal/record/list shapes and unused signatures; equivalent function-free controls compile, while genuine numeric overflow retains InvalidBound. | request_value_shapes_are_unsupported_in_source_accounting_not_overflow | crates/edict-syntax/tests/source_functions.rs | Classification fix only; request-bearing source-function accounting remains unsupported. |
 
+## Return Encoding Budget
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| CSPINE-REQ-046 | implemented | Every accepted intent with an ordinary canonical result has a checked return-size bound within maxOutputBytes, independently of source functions. UTF-8, CBOR headers, record keys, nominal representations, lists, and arithmetic overflow participate. Request-only protocol returns retain their separate existing contract. Nested opaque result shapes reject explicitly. | issue #231 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-059 | implemented | Output budget | CSPINE-REQ-046 | Exact-fit output compiles; one byte below its maximum reports InvalidBound. The cases cover all supported output families, nested shapes, and header transitions without source functions. | return_budget_exact_fit_accepts_and_one_byte_less_rejects | crates/edict-syntax/tests/return_budget.rs | Includes four-byte Unicode scalar expansion. |
+| CSPINE-TP-060 | implemented | Bound overflow | CSPINE-REQ-046 | A string multiplication, payload/header addition, list multiplication, list-header addition, or record accumulation overflow reports InvalidBound before Core exists. | return_budget_overflow_rejects_before_core | crates/edict-syntax/tests/return_budget.rs | Independent of source-function accounting. |
+| CSPINE-TP-061 | implemented | Unsupported output | CSPINE-REQ-046 | An ordinary result containing opaque requests reports UnsupportedSourceShape instead of claiming a canonical bound. Request-only protocol returns and request-bearing inputs with bounded ordinary outputs remain accepted. | return_budget_refuses_opaque_requests_but_preserves_bounded_outputs | crates/edict-syntax/tests/return_budget.rs | No request runtime encoding is inferred. |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-062 | implemented | Nominal encoding bound | CSPINE-REQ-046 | The exact authenticated nominal representation fits at 26 bytes and rejects at 25. | return_budget_preserves_imported_nominal_representation_bounds | crates/edict-syntax/tests/return_budget.rs | Nominal authority remains intact. |
+| CSPINE-TP-063 | implemented | Canonical encoder witness | CSPINE-REQ-046 | The worst-case Unicode record has 16,662 canonical bytes, fits at that budget, and rejects one byte below it. | return_budget_unicode_record_maximum_matches_canonical_encoder | crates/edict-syntax/tests/return_budget.rs | Uses the independent public canonical encoder. |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-064 | implemented | Imported integer families | CSPINE-REQ-046 | Every accepted Core integer width fits at its canonical maximum and rejects one byte below it, including authenticated I8/U8/I16/U16 exports. | return_budget_supports_every_accepted_imported_integer_width | crates/edict-syntax/tests/return_budget.rs | Does not broaden source builtin scalar syntax. |
+
 ## Effect Signature Mismatch Detail
 
 | ID | Status | Requirement | Source |

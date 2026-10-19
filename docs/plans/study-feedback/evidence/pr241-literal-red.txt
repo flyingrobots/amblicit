@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/work/edict/docs/plans/study-feedback/evidence/literal-evidence-regression.py.txt", line 27, in <module>
+    raise AssertionError("literal execution output must permit a terminal blank line: " + log_result.stdout)
+AssertionError: literal execution output must permit a terminal blank line: docs/plans/study-feedback/evidence/probe.txt:2: new blank line at EOF.
+
