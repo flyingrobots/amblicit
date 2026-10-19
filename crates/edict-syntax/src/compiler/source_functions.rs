@@ -378,7 +378,7 @@ impl TypeChecker<'_> {
                 rhs,
                 ..
             } => vec![lhs, rhs],
-            Expr::Call { callee, args, .. } if matches!(callee.as_ref(), Expr::Ident { name, .. } if name == "len" || name == "slice") => {
+            Expr::Call { callee, args, .. } if matches!(callee.as_ref(), Expr::Ident { name, .. } if name == "len" || name == "slice" || name == "isUtf8") => {
                 args.iter().collect()
             }
             _ => Vec::new(),
@@ -397,6 +397,26 @@ impl TypeChecker<'_> {
                 },
                 span,
             )?;
+        }
+        if let Expr::Call { callee, args, .. } = expr {
+            if matches!(callee.as_ref(), Expr::Ident { name, .. } if name == "isUtf8") {
+                // Full bounded operand storage conservatively bounds the UTF-8 scan,
+                // as it already does for byte comparison work below.
+                let steps = args
+                    .first()
+                    .and_then(|argument| {
+                        self.source_value_bounds.get(&expression_identity(argument))
+                    })
+                    .map_or(0, |bound| bound.1);
+                own = self.checked_helper_cost_add(
+                    own,
+                    HelperCost {
+                        steps,
+                        ..HelperCost::default()
+                    },
+                    span,
+                )?;
+            }
         }
         if matches!(expr, Expr::Binary { op: BinOp::Add, .. })
             || matches!(expr, Expr::Call { callee, .. } if matches!(callee.as_ref(), Expr::Ident { name, .. } if name == "slice"))

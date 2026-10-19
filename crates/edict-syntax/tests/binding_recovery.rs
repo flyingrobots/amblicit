@@ -1493,3 +1493,25 @@ fn duplicate_payload_fields_preserve_independent_value_errors() {
         }
     }
 }
+
+#[test]
+fn unavailable_outer_annotations_preserve_utf8_family_errors() {
+    let valid = "package recovery.utf8@1; intent evaluate(input: Bytes<max=4>) returns Bool profile p.read basis none budget <= p.large { let chosen = isUtf8(input); return chosen; }";
+    compile_function_recovery(valid).expect("bounded UTF-8 predicate control");
+    let invalid = valid.replace("isUtf8(input)", "isUtf8(0)");
+    let errors = compile_function_recovery(&invalid).expect_err("UTF-8 needs bytes");
+    assert_eq!(
+        errors.iter().map(|e| e.kind).collect::<Vec<_>>(),
+        [CompilerErrorKind::TypeMismatch]
+    );
+    let missing = invalid.replace("let chosen =", "let chosen: MissingRecoveryType =");
+    let errors = compile_function_recovery(&missing)
+        .expect_err("missing outer type cannot suppress an independent UTF-8 operand error");
+    assert_eq!(
+        errors.iter().map(|e| e.kind).collect::<Vec<_>>(),
+        [
+            CompilerErrorKind::UnresolvedType,
+            CompilerErrorKind::TypeMismatch
+        ]
+    );
+}

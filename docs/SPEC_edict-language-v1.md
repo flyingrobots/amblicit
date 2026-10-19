@@ -1326,6 +1326,13 @@ Lexical conformance fixtures must pin these details before parser freeze:
   rejected unless escaped as explicit byte escapes.
 - `string-lit` decodes to Unicode scalar values and does not normalize by
   default.
+- String and byte literals accept `\"`, `\\`, `\n`, `\t`, `\r`, `\0` and
+  `\xHH`. The hexadecimal form consumes exactly two ASCII hexadecimal digits
+  and inserts one octet. A decoded string must remain valid UTF-8; a byte
+  literal may contain any octet. `\u{...}` escapes are not supported in v1.
+  Literal byte length is the decoded payload length, independent of escape
+  spelling. Adjacent `b` and an opening quote form one byte literal token;
+  a separated `b` remains an identifier.
 - Integer underscores may appear only between digits, never at the beginning,
   end, or adjacent to another underscore.
 - Integer width and signedness are hash-significant, so every integer value
@@ -1350,6 +1357,74 @@ Lexical conformance fixtures must pin these details before parser freeze:
 - Unicode normalization policies such as `canonical=nfc` resolve to a versioned
   normalization profile pinned by digest.
 
+## Source compilation closures
+
+A source-module import uses `use module package@version digest "sha256:..." as alias;`.
+The digest is mandatory. It identifies the exact dependency UTF-8 bytes encoded
+as one canonical CBOR byte string under `edict.source/v1`. The domain-framed
+preimage is `["edict.digest/v1", "edict.source/v1", source-byte-string]`.
+Comments and whitespace are part of source identity. Import digest spelling
+must match the canonical lowercase review rendering during authentication.
+
+`source_closure::resolve_source_closure` accepts one explicit root and all
+explicit dependency sources. It performs no filesystem discovery. The fixed
+ceilings are 64 units including root, 1 MiB of aggregate original source bytes,
+and 32 units on any root-to-leaf import path. Caller apertures may narrow these
+ceilings. Count and aggregate-byte checks precede parsing; parsed package
+coordinates must be unique and source surfaces must validate.
+
+Every module import must resolve within the supplied set, every supplied unit
+must be root-reachable, every import pin must match, and the graph must be
+acyclic. Topology refusal precedes pin comparison. No authenticated witness is
+returned until all checks pass. Shared dependency height is independent of the
+path that first visits it, so a shallow occurrence cannot hide a deeper path.
+
+The witness retains immutable exact sources and parsed surfaces. Its canonical
+artifact follows [edict-source-closure.cddl](abi/edict-source-closure.cddl), with
+common digest framing from [edict-common.cddl](abi/edict-common.cddl). `root`
+selects the entry package. The `modules` map is keyed by exact package
+coordinates; each value contains `source` bytes and a typed `["sha256", bstr32]`
+digest. It embeds no closure self-digest. Its external identity uses the same
+canonical three-element digest frame under `edict.source-closure/v1`.
+Dependency input order does not affect canonical bytes or identity.
+
+The application manifest's `sources` array supplies this same explicit closure:
+the first path selects the root and later paths supply dependencies. Source
+paths remain confined to the manifest root and canonical path duplicates are
+refused. A single source with no module import retains the legacy canonical
+source-byte-string artifact. Module builds supply the new closure artifact,
+domain and auxiliary kind to both provider invocations; provider support for
+that form is required. Parse, linking and compilation failures retain original
+file paths and source-local byte spans. An error without a source ownership
+witness stays in the summary rather than acquiring a guessed file location.
+
+Source authentication does not grant execution authority. The separate
+`source_linker::link_source_closure` API creates an immutable compiler-owned
+linked surface while retaining the original witness. Its `compile` method
+accepts explicit compiler facts and reports failures against original package
+coordinates and source-local byte spans.
+
+Source imports expose a dependency's own type and pure-function declarations
+through its explicit alias, without implicit transitive re-exports. Every
+linked definition is checked, including unused definitions. Library functions
+and types resolve only in their own lexical module. Compiler names are fresh
+and deterministic; root intent entry names and runtime record/member labels
+remain authored. Imported intent entries refuse as `ImportedIntent`. Built-in
+`ExternalActionRequest` constructors and capability request callees remain
+supported. Authored namespace calls, including `core.*`, require an import
+owned by the same source module.
+
+A source record retains its module-owned `package@version.Type` coordinate
+across importing applications. Root record table keys retain original local
+names. Renaming MUST NOT bypass reserved-type checks or original-coordinate
+collisions with imported callable/type authority. Aliases remain transparent.
+Type traversal accepts constructor height 128 and refuses 129 independently
+of lexical statement/expression frames; active lexical traversal and flattened
+member paths have fixed limits of 128.
+
+Standalone `compile_to_core` refuses unresolved module imports as
+`MissingContextFact`, including imports that are not referenced by a declaration.
+
 ## Grammar
 
 This grammar is normative for v1 syntax shape. Operator precedence and exact
@@ -1364,7 +1439,8 @@ import-decl     = shape-import
                 | lawpack-import
                 | target-import
                 | core-import
-                | capability-import ;
+                | capability-import
+                | module-import ;
 
 shape-import    = "use" , "shape" , string-lit , digest-clause? ,
                   "as" , ident , ";" ;
@@ -1376,6 +1452,8 @@ core-import     = "use" , "core" , package-ref , digest-clause? ,
                   "as" , ident , ";" ;
 capability-import = "use" , "capability" , package-ref , digest-clause ,
                     "as" , ident , ";" ;
+module-import   = "use" , "module" , package-ref , digest-clause ,
+                  "as" , ident , ";" ;
 digest-clause   = "digest" , digest-lit ;
 
 declaration     = type-decl
@@ -1625,6 +1703,39 @@ Semantic grammar rules:
 ## Core Types
 
 Edict v1 defines a small deterministic type universe.
+
+### Source aliases and declaration dependencies
+
+A source declaration `type Alias = Target;` is transparent. It resolves to the
+target's existing type coordinate and bounded representation. It creates no
+additional nominal contract or Core type table entry. In particular, an alias
+of a digest-bound imported nominal type preserves that exact contract and does
+not permit substitution of its raw storage representation.
+
+The current compiler resolves acyclic source aliases and record dependencies
+before checking function signatures or intent bodies. Declaration ordering does
+not change the resulting canonical Core. Alias targets must already belong to
+the currently lowerable type subset; this does not introduce generic,
+recursive or variant lowering.
+
+Source type dependency paths have a ceiling of 128 declarations. Fully expanded
+structural height, including inline constructors, cached alias targets and
+record fields, follows the Core height rule below: height 128 is accepted and
+129 refuses as `InvalidBound`. A traversal of source type reference occurrences
+has 65,536 work units.
+Cumulative source-defined declaration expansion also has 65,536 units: scalar
+and opaque imported references cost one; containers add one plus child weights;
+records add one plus field weights. A reference to another source declaration
+uses that declaration's complete expanded weight at every occurrence. These
+checks precede expanded shape construction. Imported representation checks and
+runtime budgets remain separate.
+
+Missing types refuse as `UnresolvedType`, cycles as `InvalidCoreTypeIntegrity`,
+and depth/work exhaustion as `InvalidBound`. Shared dependency heights are
+context-independent, so an earlier cached occurrence cannot hide a deeper path.
+Duplicate source type declarations also refuse as `SurfaceValidation` through
+the public staged `resolve_module` then `type_check` API. Unsupported string
+canonicalization refuses as `UnsupportedSourceShape`, including unused aliases.
 
 ### Scalar Types
 
@@ -1999,6 +2110,21 @@ The Edict Core prelude is intentionally small:
 - `len(value) -> U64` (Unicode scalar count for `String`, byte count for
   `Bytes`, element count for `List`/`Map`; see Refined Scalar Types,
   `EDICT-LANG-LEN-001`)
+- `isUtf8(bytes: Bytes<max=N>) -> Bool` validates a complete UTF-8 byte
+  sequence (`EDICT-LANG-BYTE-UTF8-001`). Empty bytes and embedded NUL are valid;
+  incomplete sequences, overlong encodings, surrogate encodings and code points
+  above U+10FFFF are invalid. It neither normalizes nor repairs bytes. The
+  source prelude takes one bounded structural byte operand and no authored type
+  arguments; it lowers to `core.bytes.isUtf8<OperandType>(bytes)` with a Bool
+  result. The exact operand coordinate is retained. String values and implicit
+  nominal unwrapping are not accepted by this specialization. Compiler and
+  Target support establish typing and authority, not runtime execution evidence.
+  A prefix slice passed to this predicate still needs its own bounds proof.
+  Direct scans contribute the operand byte maximum to the static intent step
+  bound, including metadata predicates. Sequential scans add; lazy alternatives
+  use the maximum branch cost. Source-helper summaries already include their
+  scans and are not charged twice at the call site. Runtime metering also
+  charges the selected profile's expression, value and validation work.
 - `slice(bytes: Bytes<max=N>, start: U64, end: U64) -> Bytes<max=N>`
   selects the half-open byte range `[start,end)` only when the compiler proves
   `start <= end <= len(bytes)` (`EDICT-LANG-BYTE-SLICE-001`). The bytes remain
@@ -2092,8 +2218,13 @@ The implemented byte-slice proof uses exact operands in conjunctive intent
 input constraints, identical endpoints, unsigned zero lower bounds, and ordered
 unsigned literals. The upper endpoint must be ordered against `len` of the
 same byte expression and exact operand coordinate. It does not infer alias,
-transitive, negated, disjunctive, or branch-local relationships. Input constraints
-justify body evaluation only, never their own evaluation or the earlier basis.
+transitive, negated, disjunctive, or branch-local relationships. Separate input
+constraints form a canonical set and cannot justify one another or the earlier
+basis. Within an ordered `&&` predicate, the checked left predicate establishes
+positive proof for evaluation of its right predicate, including nested
+conjunctions (`EDICT-LANG-GUARD-ORDER-001`). A predicate cannot use its own or
+a later predicate's facts. These temporary facts do not escape that conjunction.
+After all input constraints hold, they justify body evaluation.
 An unproven slice rejects before Core with `UnsupportedSourceShape`; wrong
 operand families or endpoint widths reject with `TypeMismatch`.
 

@@ -1,9 +1,10 @@
 # Source-function provider contract publication
 
 This publication adds the optional nonempty Core `functions` table. Its
-`edict-provider-contracts.cddl` and `manifest.json` are generated together by
-`cargo xtask provider-contract-pack --write`; `--check` and `cargo xtask verify`
-reproduce this current publication.
+`edict-provider-contracts.cddl` and `manifest.json` are preserved together as
+an exact publication. The current generator writes the separate
+[source-module publication](../source-modules-v1/README.md). Assembly without
+the optional source-closure fragment still reproduces this pair exactly.
 
 Consumers select these exact explicit bytes and verify the manifest's schema
 SHA-256 and embedded byte identity. The API/domain coordinates retain v1; the

@@ -31,6 +31,8 @@ pub enum ImportKind {
     Core,
     /// Digest-bound external operation family available only to `request`.
     Capability,
+    /// Digest-bound source compilation unit, resolved before Core lowering.
+    Module,
 }
 
 /// An `use <kind> ... [digest "..."] as <alias>;` import.
@@ -384,6 +386,10 @@ pub enum Expr {
     },
     Str {
         value: String,
+        span: Span,
+    },
+    Bytes {
+        value: Vec<u8>,
         span: Span,
     },
     Bool {

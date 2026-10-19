@@ -1,4 +1,5 @@
 //! Application build failures preserve each source diagnostic through the public binary.
+use std::fmt::Write as _;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -475,4 +476,222 @@ fn application_signature_mismatch_has_structured_field_context() {
     validate_stream(&stream);
     assert!(!root.join(".build/application").exists());
     fs::remove_dir_all(root).expect("remove owned fixture");
+}
+
+fn write_module_application(root: &Path, libraries: &[(&str, &str, &str)]) -> PathBuf {
+    let config = write_external_action_application(root);
+    let source_path = root.join("src/observe-workspace.edict");
+    let mut source = fs::read_to_string(&source_path).expect("root source");
+    let mut imports = String::new();
+    let mut sources = vec![json!("src/observe-workspace.edict")];
+    for (coordinate, name, library) in libraries {
+        let pin =
+            edict_syntax::source_closure::source_module_digest(library).expect("source digest");
+        writeln!(
+            imports,
+            "use module {coordinate} digest \"{pin}\" as {name};"
+        )
+        .expect("format import");
+        let path = format!("src/{name}.edict");
+        fs::write(root.join(&path), library).expect("library source");
+        sources.push(json!(path));
+    }
+    source = source.replacen(
+        "package examples.workspace_observer@1;",
+        &format!("package examples.workspace_observer@1;\n{imports}"),
+        1,
+    );
+    fs::write(&source_path, source).expect("importing root source");
+    let mut manifest: Value =
+        serde_json::from_slice(&fs::read(&config).expect("config")).expect("JSON");
+    manifest["sources"] = json!(sources);
+    fs::write(
+        &config,
+        serde_json::to_vec(&manifest).expect("encode config"),
+    )
+    .expect("module config");
+    config
+}
+
+#[test]
+fn application_build_emits_original_library_locations_across_modules() {
+    let root = temp_tree("module-compiler");
+    let first = "package library.first@1;\r\n// 🦀\r\nfn broken() -> U64 { return true; }";
+    let second = "package library.second@1;\nfn broken() -> U64 { return false; }";
+    // Manifest dependency order is deliberately the reverse of package order.
+    let config = write_module_application(
+        &root,
+        &[
+            ("library.second@1", "second", second),
+            ("library.first@1", "first", first),
+        ],
+    );
+    let output = build(&config);
+    assert_eq!(output.status.code(), Some(2));
+    let stream = records(&output.stderr);
+    summary(&stream, "ApplicationCompilationFailed");
+    for (name, source, anchor) in [
+        ("first", first, "return true"),
+        ("second", second, "return false"),
+    ] {
+        let path = root.join(format!("src/{name}.edict"));
+        let canonical = fs::canonicalize(&path)
+            .expect("canonical path")
+            .display()
+            .to_string();
+        let cause = stream
+            .iter()
+            .find(|record| {
+                record["kind"] == "TypeMismatch" && record["sourceLocation"]["path"] == canonical
+            })
+            .expect("original-library mismatch");
+        assert_location(
+            cause,
+            &path,
+            source,
+            source.find(anchor).expect("literal anchor"),
+        );
+    }
+    let causes = stream
+        .iter()
+        .filter(|record| record.get("sourceLocation").is_some())
+        .count();
+    assert_eq!(
+        stream.last().expect("terminal record")["errors"],
+        causes + 1
+    );
+    validate_stream(&stream);
+    assert!(!root.join(".build/application").exists());
+    fs::remove_dir_all(root).expect("remove fixture");
+}
+
+#[test]
+fn application_build_reports_dependency_parse_and_link_failures_at_original_paths() {
+    for (label, library, summary_kind, stage, kind, anchor) in [
+        (
+            "parse",
+            "package library.bad@1;\nfn broken() -> U64 { return ; }",
+            "InvalidApplicationSource",
+            "parse",
+            "ExpectedToken",
+            "; }",
+        ),
+        (
+            "link",
+            "package library.bad@1;\nfn broken() -> U64 { return missing(); }",
+            "ApplicationSourceLinkingFailed",
+            "resolve",
+            "UnresolvedName",
+            "missing",
+        ),
+    ] {
+        let root = temp_tree(label);
+        let config = write_module_application(&root, &[("library.bad@1", "bad", library)]);
+        let output = build(&config);
+        assert_eq!(output.status.code(), Some(2));
+        let stream = records(&output.stderr);
+        summary(&stream, summary_kind);
+        let cause = stream
+            .iter()
+            .find(|record| record["stage"] == stage && record["kind"] == kind)
+            .unwrap_or_else(|| panic!("expected {stage}/{kind}: {stream:?}"));
+        assert_location(
+            cause,
+            &root.join("src/bad.edict"),
+            library,
+            library.find(anchor).expect("diagnostic anchor"),
+        );
+        assert_eq!(stream.last().expect("terminal record")["errors"], 2);
+        validate_stream(&stream);
+        assert!(!root.join(".build/application").exists());
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+}
+
+#[test]
+fn application_module_surface_failures_preserve_original_locations() {
+    for in_root in [false, true] {
+        let root = temp_tree("module-surface");
+        let library = "package library.bad@1;\r\n// 🦀\r\nfn repeated() -> U64 { return 1; }\r\nfn repeated() -> U64 { return 2; }";
+        let config = write_module_application(&root, &[("library.bad@1", "bad", library)]);
+        let path = if in_root {
+            root.join("src/observe-workspace.edict")
+        } else {
+            root.join("src/bad.edict")
+        };
+        if in_root {
+            let mut source = fs::read_to_string(&path).expect("root source");
+            source.push_str(
+                "\nfn repeated() -> U64 { return 1; }\nfn repeated() -> U64 { return 2; }",
+            );
+            fs::write(&path, source).expect("invalid root source");
+            // Keep the dependency valid so both cases test their own file.
+            let valid = "package library.bad@1; fn valid() -> U64 { return 1; }";
+            let pin = edict_syntax::source_closure::source_module_digest(valid).expect("valid pin");
+            let old = edict_syntax::source_closure::source_module_digest(library).expect("old pin");
+            fs::write(root.join("src/bad.edict"), valid).expect("valid dependency");
+            let source = fs::read_to_string(&path)
+                .expect("root source")
+                .replace(&old.to_string(), &pin.to_string());
+            fs::write(&path, source).expect("pin dependency");
+        }
+        let source = fs::read_to_string(&path).expect("original source");
+        let module = edict_syntax::parse_module(&source).expect("parsable surface error");
+        let errors = edict_syntax::validate_surface(&module).expect_err("duplicate declaration");
+        let output = build(&config);
+        assert_eq!(output.status.code(), Some(2));
+        let stream = records(&output.stderr);
+        summary(&stream, "ApplicationCompilationFailed");
+        for error in errors {
+            let record = stream
+                .iter()
+                .find(|r| {
+                    r["kind"] == "SurfaceValidation" && r["span"]["start"] == error.span.start
+                })
+                .unwrap_or_else(|| panic!("missing surface diagnostic: {stream:?}"));
+            assert_eq!(record["message"], error.message);
+            assert_location(record, &path, &source, error.span.start);
+        }
+        validate_stream(&stream);
+        assert!(!root.join(".build/application").exists());
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+}
+
+#[test]
+fn application_module_build_prepares_shared_lawpack_aliases() {
+    for substituted in [false, true] {
+        let root = temp_tree("module-lawpack");
+        let digest = if substituted {
+            format!("sha256:{}", "0".repeat(64))
+        } else {
+            include_str!("../../../fixtures/lawpack/workspace-snapshot/manifest.sha256")
+                .trim()
+                .to_owned()
+        };
+        let library = format!("package library.shared@1; use lawpack workspace.snapshot@1 digest \"{digest}\" as local; type Value = U64;");
+        let config = write_module_application(&root, &[("library.shared@1", "shared", &library)]);
+        let output = build(&config);
+        if substituted {
+            assert_eq!(output.status.code(), Some(2));
+            let stream = records(&output.stderr);
+            summary(&stream, "InvalidApplicationClosure");
+            validate_stream(&stream);
+            assert!(!root.join(".build/application").exists());
+        } else {
+            assert_eq!(
+                output.status.code(),
+                Some(0),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let core =
+                fs::read(root.join(".build/application/core.cbor")).expect("public compiled Core");
+            let target = fs::read(root.join(".build/application/target-ir.cbor"))
+                .expect("public lowered Target IR");
+            edict_syntax::decode_canonical_cbor(&core).expect("canonical Core");
+            edict_syntax::decode_canonical_cbor(&target).expect("canonical Target IR");
+        }
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
 }

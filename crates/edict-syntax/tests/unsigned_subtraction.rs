@@ -216,7 +216,7 @@ fn unsigned_difference_cannot_use_guards_to_evaluate_basis_or_guards() {
     );
     let text = source(
         "U64",
-        "where input.lower <= input.upper && input.upper - input.lower >= 0u64",
+        "where input.upper - input.lower >= 0u64 && input.lower <= input.upper",
         "input.upper - input.lower",
     );
     rejects(

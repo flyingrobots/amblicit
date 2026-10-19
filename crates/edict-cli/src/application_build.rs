@@ -1,3 +1,6 @@
+mod source_inputs;
+use source_inputs::{LoadedSources, SourceArtifact};
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 use std::fs::{self, OpenOptions};
@@ -12,8 +15,8 @@ use edict_provider_host_wasmtime::{
 use edict_provider_schema::{ProviderArtifactSchemaRegistry, ResolvedProviderSchemaArtifact};
 use edict_syntax::{
     bind_target_provider_manifest, compile_to_core, decode_canonical_cbor, decode_lawpack_adapter,
-    decode_lawpack_bundle, digest_canonical_artifact, encode_canonical_cbor, encode_core_module,
-    encode_target_ir_artifact, lower_to_target_ir, parse_module, prepare_lawpack_compilation,
+    decode_lawpack_bundle, digest_canonical_artifact, encode_core_module,
+    encode_target_ir_artifact, lower_to_target_ir, prepare_lawpack_compilation,
     select_provider_component, validate_lawpack_dependency_graph,
     validate_provider_lowering_request, validate_provider_verification_request,
     verify_result_projection, CanonicalValue, ProviderArtifact, ProviderArtifactBinding,
@@ -48,7 +51,7 @@ const MAX_EXTERNAL_ACTION_RESOURCES: usize = 192;
 pub(crate) struct ApplicationBuildFailure {
     pub(crate) kind: &'static str,
     pub(crate) message: String,
-    pub(crate) source_diagnostics: Option<ApplicationSourceDiagnostics>,
+    pub(crate) source_diagnostics: Option<Vec<ApplicationSourceDiagnostics>>,
 }
 
 #[derive(Debug)]
@@ -62,6 +65,7 @@ pub(crate) struct ApplicationSourceDiagnostics {
 pub(crate) enum ApplicationSourceError {
     Parse(edict_syntax::ParseError),
     Compiler(edict_syntax::CompilerError),
+    Linker(edict_syntax::source_linker::SourceLinkError),
 }
 
 impl ApplicationSourceError {
@@ -69,6 +73,7 @@ impl ApplicationSourceError {
         match self {
             Self::Parse(error) => error.span,
             Self::Compiler(error) => error.span,
+            Self::Linker(error) => error.span,
         }
     }
 }
@@ -165,7 +170,7 @@ struct ProviderInvocationContext<'a> {
     loaded: &'a LoadedLawpack,
     adapter: &'a edict_syntax::ValidatedLawpackAdapter,
     configuration: &'a edict_syntax::LawpackResourceRef,
-    source_bytes: &'a [u8],
+    source: &'a SourceArtifact,
     target_ir_bytes: &'a [u8],
     result_projection: &'a ResultProjectionArtifact,
 }
@@ -194,38 +199,18 @@ pub(crate) fn build_application(config_path: &Path) -> Result<(), ApplicationBui
     let external_action_resources =
         load_external_action_resources(&root, &config.external_action_resources)?;
 
-    let source = config.sources.first().ok_or_else(|| {
-        failure(
-            "InvalidApplicationConfig",
-            "the application build requires exactly one Edict source",
-        )
-    })?;
-    let source_path = confined_existing_path(
-        &root,
-        source,
-        "sources",
-        "ApplicationSourceReadFailed",
-        "Edict source",
-    )?;
-    let source_bytes = read(&source_path, "ApplicationSourceReadFailed", "Edict source")?;
-    let source = std::str::from_utf8(&source_bytes).map_err(|error| {
-        failure(
-            "InvalidApplicationSource",
-            format!(
-                "Edict source `{}` is not UTF-8: {error}",
-                source_path.display()
-            ),
-        )
-    })?;
-    let module = parse_module(source).map_err(|error| {
-        source_failure(
-            "InvalidApplicationSource",
-            "Edict application source did not parse",
-            &source_path,
-            source,
-            vec![ApplicationSourceError::Parse(error)],
-        )
-    })?;
+    let sources = LoadedSources::load(&root, &config.sources)?;
+    let linked = sources
+        .closure
+        .as_ref()
+        .map(edict_syntax::source_linker::link_source_closure)
+        .transpose()
+        .map_err(|error| sources.link_failure(error))?;
+    let module = linked
+        .as_ref()
+        .map_or(&sources.root_module, |linked| linked.module());
+    let source_path = &sources.root_path;
+    let source = sources.root_source.as_str();
 
     let mut loaded_lawpacks = Vec::with_capacity(config.lawpacks.len());
     for lawpack in &config.lawpacks {
@@ -307,24 +292,30 @@ pub(crate) fn build_application(config_path: &Path) -> Result<(), ApplicationBui
         ));
     }
     let preparation =
-        prepare_lawpack_compilation(&module, &loaded.bundle, &adapter).map_err(|failures| {
+        prepare_lawpack_compilation(module, &loaded.bundle, &adapter).map_err(|failures| {
             failure(
                 "InvalidApplicationClosure",
                 format!("source and lawpack closure do not corroborate: {failures:?}"),
             )
         })?;
-    let core = compile_to_core(&module, preparation.compiler_context()).map_err(|errors| {
-        source_failure(
-            "ApplicationCompilationFailed",
-            "Edict application did not compile to Core",
-            &source_path,
-            source,
-            errors
-                .into_iter()
-                .map(ApplicationSourceError::Compiler)
-                .collect(),
-        )
-    })?;
+    let core = if let Some(linked) = &linked {
+        linked
+            .compile(preparation.compiler_context())
+            .map_err(|errors| sources.compiler_failure(errors))?
+    } else {
+        compile_to_core(module, preparation.compiler_context()).map_err(|errors| {
+            source_failure(
+                "ApplicationCompilationFailed",
+                "Edict application did not compile to Core",
+                source_path,
+                source,
+                errors
+                    .into_iter()
+                    .map(ApplicationSourceError::Compiler)
+                    .collect(),
+            )
+        })?
+    };
     if core.coordinate != config.coordinate {
         return Err(failure(
             "ApplicationCoordinateMismatch",
@@ -425,13 +416,7 @@ pub(crate) fn build_application(config_path: &Path) -> Result<(), ApplicationBui
         )
     })?;
 
-    let source_artifact_bytes = encode_canonical_cbor(&CanonicalValue::Bytes(source_bytes))
-        .map_err(|error| {
-            failure(
-                "ApplicationEncodingFailed",
-                format!("source canonical encoding failed: {error}"),
-            )
-        })?;
+    let source_artifact = sources.artifact()?;
 
     let lowerer_artifact =
         unique_artifact(&provider_manifest, ProviderArtifactKind::Lowerer, None)?;
@@ -461,7 +446,7 @@ pub(crate) fn build_application(config_path: &Path) -> Result<(), ApplicationBui
         loaded,
         adapter: &adapter,
         configuration,
-        source_bytes: &source_artifact_bytes,
+        source: &source_artifact,
         target_ir_bytes: &target_ir_bytes,
         result_projection,
     };
@@ -1021,10 +1006,13 @@ fn validate_application_manifest(
             "application coordinate, target profile, provider package, and output directory must be non-empty",
         ));
     }
-    if config.sources.len() != 1 {
+    if config.sources.is_empty()
+        || config.sources.len()
+            > edict_syntax::source_closure::SourceClosureLimits::default().max_modules
+    {
         return Err(failure(
             "InvalidApplicationConfig",
-            "the application build currently requires exactly one Edict source",
+            "the application build requires a root source and at most 63 explicit dependencies",
         ));
     }
     if config.lawpacks.is_empty() {
@@ -1346,7 +1334,7 @@ fn invoke_lowerer(
         invocation.adapter,
         invocation.configuration,
         invocation.coordinate,
-        invocation.source_bytes,
+        invocation.source,
         invocation.target_ir_bytes,
         invocation.result_projection,
     )?;
@@ -1451,7 +1439,7 @@ fn invoke_verifier(
         invocation.adapter,
         invocation.configuration,
         invocation.coordinate,
-        invocation.source_bytes,
+        invocation.source,
         package_bytes,
         invocation.result_projection,
     )?;
@@ -1525,7 +1513,7 @@ fn lowering_inputs(
     adapter: &edict_syntax::ValidatedLawpackAdapter,
     configuration: &edict_syntax::LawpackResourceRef,
     coordinate: &str,
-    source_bytes: &[u8],
+    source: &SourceArtifact,
     target_ir_bytes: &[u8],
     result_projection: &ResultProjectionArtifact,
 ) -> Result<Vec<ProviderSemanticInput>, ApplicationBuildFailure> {
@@ -1562,10 +1550,10 @@ fn lowering_inputs(
             )?,
             semantic_input(
                 "04-source",
-                ProviderSemanticInputKind::Auxiliary("edict-source".to_owned()),
+                ProviderSemanticInputKind::Auxiliary(source.kind.to_owned()),
                 coordinate,
-                SOURCE_DOMAIN,
-                source_bytes,
+                source.domain,
+                &source.bytes,
             )?,
             semantic_input(
                 "05-target-configuration",
@@ -1591,7 +1579,7 @@ fn verification_inputs(
     adapter: &edict_syntax::ValidatedLawpackAdapter,
     configuration: &edict_syntax::LawpackResourceRef,
     coordinate: &str,
-    source_bytes: &[u8],
+    source: &SourceArtifact,
     package_bytes: &[u8],
     result_projection: &ResultProjectionArtifact,
 ) -> Result<Vec<ProviderSemanticInput>, ApplicationBuildFailure> {
@@ -1635,10 +1623,10 @@ fn verification_inputs(
             )?,
             semantic_input(
                 "05-source",
-                ProviderSemanticInputKind::Auxiliary("edict-source".to_owned()),
+                ProviderSemanticInputKind::Auxiliary(source.kind.to_owned()),
                 coordinate,
-                SOURCE_DOMAIN,
-                source_bytes,
+                source.domain,
+                &source.bytes,
             )?,
             semantic_input(
                 "06-target-configuration",
@@ -2571,11 +2559,11 @@ fn source_failure(
     ApplicationBuildFailure {
         kind,
         message: message.to_owned(),
-        source_diagnostics: Some(ApplicationSourceDiagnostics {
+        source_diagnostics: Some(vec![ApplicationSourceDiagnostics {
             path: path.to_path_buf(),
             source: source.to_owned(),
             errors,
-        }),
+        }]),
     }
 }
 
@@ -2607,7 +2595,8 @@ mod tests {
         validate_external_action_artifacts, with_result_projection_input,
         write_external_action_outputs, write_outputs, ApplicationBuildKind,
         ApplicationExternalActionResource, ApplicationLawpack, ApplicationManifest,
-        ApplicationTarget, ExternalActionResourceKind, LoadedExternalActionResource, LoadedLawpack,
+        ApplicationSourceError, ApplicationTarget, ExternalActionResourceKind,
+        LoadedExternalActionResource, LoadedLawpack, LoadedSources,
         EXTERNAL_ACTION_RESOURCE_DIGEST_DOMAIN, MAX_EXTERNAL_ACTION_RESOURCES,
         RESULT_PROJECTION_ROLE,
     };
@@ -2794,6 +2783,259 @@ mod tests {
             first_target
         );
         test_ok(fs::remove_dir_all(root), "remove public build tree");
+    }
+
+    fn write_source_module_fixture(root: &std::path::Path) -> (String, String, Vec<PathBuf>) {
+        let library = "package library.values@1; type Value = U64;".to_owned();
+        let pin = test_ok(
+            edict_syntax::source_closure::source_module_digest(&library),
+            "source module digest",
+        );
+        let source = format!("package application.root@1; use module library.values@1 digest \"{pin}\" as values; type Value = values.Value;");
+        test_ok(fs::create_dir_all(root.join("src")), "source directory");
+        test_ok(
+            fs::write(root.join("src/root.edict"), &source),
+            "root source",
+        );
+        test_ok(
+            fs::write(root.join("src/values.edict"), &library),
+            "dependency source",
+        );
+        (
+            source,
+            library,
+            vec!["src/root.edict".into(), "src/values.edict".into()],
+        )
+    }
+
+    #[test]
+    fn application_sources_preserve_exact_legacy_and_authenticated_artifacts() {
+        let root = test_ok(
+            fs::canonicalize(temp_tree("source-artifacts")),
+            "canonical root",
+        );
+        let (source, library, paths) = write_source_module_fixture(&root);
+        let loaded = test_ok(
+            LoadedSources::load(&root, &paths),
+            "load explicit source closure",
+        );
+        let artifact = test_ok(loaded.artifact(), "module source artifact");
+        assert_eq!(artifact.kind, "edict-source-closure");
+        assert_eq!(artifact.domain, "edict.source-closure/v1");
+        let closure = test_ok(
+            edict_syntax::source_closure::resolve_source_closure(
+                &source,
+                &[&library],
+                edict_syntax::source_closure::SourceClosureLimits::default(),
+            ),
+            "independent closure witness",
+        );
+        assert_eq!(artifact.bytes, closure.canonical_bytes());
+        let legacy = "package application.root@1; // exact UTF-8 🦀\r\n type Value = U64;";
+        test_ok(fs::write(root.join(&paths[0]), legacy), "legacy source");
+        let loaded = test_ok(
+            LoadedSources::load(&root, &paths[..1]),
+            "load legacy source",
+        );
+        let artifact = test_ok(loaded.artifact(), "legacy artifact");
+        assert_eq!(artifact.kind, "edict-source");
+        assert_eq!(artifact.domain, "edict.source/v1");
+        assert_eq!(
+            test_ok(
+                decode_canonical_cbor(&artifact.bytes),
+                "decode legacy bytes"
+            ),
+            CanonicalValue::Bytes(legacy.as_bytes().to_vec())
+        );
+        test_ok(fs::remove_dir_all(root), "remove source artifact tree");
+    }
+
+    #[test]
+    fn application_sources_refuse_missing_substituted_disconnected_and_duplicate_units() {
+        for case in [
+            "missing",
+            "substituted",
+            "disconnected",
+            "duplicate-path",
+            "duplicate-coordinate",
+        ] {
+            let root = test_ok(fs::canonicalize(temp_tree(case)), "canonical root");
+            let (_, library, mut paths) = write_source_module_fixture(&root);
+            let expected = match case {
+                "missing" => {
+                    paths.pop();
+                    "InvalidApplicationSourceClosure"
+                }
+                "substituted" => {
+                    test_ok(
+                        fs::write(root.join(&paths[1]), format!("{library} // substituted")),
+                        "substituted source",
+                    );
+                    "InvalidApplicationSourceClosure"
+                }
+                "disconnected" => {
+                    test_ok(
+                        fs::write(
+                            root.join("src/unused.edict"),
+                            "package library.unused@1; type Value = U64;",
+                        ),
+                        "disconnected source",
+                    );
+                    paths.push("src/unused.edict".into());
+                    "InvalidApplicationSourceClosure"
+                }
+                "duplicate-path" => {
+                    paths.push(paths[1].clone());
+                    "DuplicateApplicationSource"
+                }
+                "duplicate-coordinate" => {
+                    test_ok(
+                        fs::write(root.join("src/alias.edict"), library),
+                        "duplicate package",
+                    );
+                    paths.push("src/alias.edict".into());
+                    "InvalidApplicationSourceClosure"
+                }
+                _ => unreachable!("declared case"),
+            };
+            let Err(error) = LoadedSources::load(&root, &paths) else {
+                panic!("must reject {case}")
+            };
+            assert_eq!(error.kind, expected, "{case}");
+            assert!(!root.join(".build").exists());
+            test_ok(fs::remove_dir_all(root), "remove negative source tree");
+        }
+    }
+
+    #[test]
+    fn application_sources_enforce_aggregate_byte_budget_before_parse() {
+        let root = test_ok(
+            fs::canonicalize(temp_tree("source-aggregate-budget")),
+            "canonical root",
+        );
+        let (_, _, paths) = write_source_module_fixture(&root);
+        let limit = edict_syntax::source_closure::SourceClosureLimits::default().max_source_bytes;
+        // Each source fits the per-artifact read bound; their sum does not.
+        // Invalid syntax would produce a parse failure if parsing ran first.
+        test_ok(
+            fs::write(root.join(&paths[0]), vec![b'?'; limit / 2 + 1]),
+            "large root",
+        );
+        test_ok(
+            fs::write(root.join(&paths[1]), vec![b'?'; limit / 2 + 1]),
+            "large dependency",
+        );
+        let Err(error) = LoadedSources::load(&root, &paths) else {
+            panic!("must reject aggregate source budget")
+        };
+        assert_eq!(error.kind, "ApplicationSourceBudgetExceeded");
+        test_ok(fs::remove_dir_all(root), "remove bounded source tree");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn application_sources_refuse_dependency_symlink_escape() {
+        let root = test_ok(
+            fs::canonicalize(temp_tree("source-confined")),
+            "canonical root",
+        );
+        let outside = temp_tree("source-outside");
+        let (_, library, paths) = write_source_module_fixture(&root);
+        let external_path = outside.join("values.edict");
+        test_ok(fs::write(&external_path, library), "outside source");
+        test_ok(
+            fs::remove_file(root.join(&paths[1])),
+            "remove owned dependency",
+        );
+        test_ok(
+            std::os::unix::fs::symlink(&external_path, root.join(&paths[1])),
+            "escaping source symlink",
+        );
+        let Err(error) = LoadedSources::load(&root, &paths) else {
+            panic!("must refuse escaped dependency")
+        };
+        assert_eq!(error.kind, "ApplicationPathEscape");
+        assert!(!root.join(".build").exists());
+        test_ok(fs::remove_dir_all(root), "remove confined tree");
+        test_ok(fs::remove_dir_all(outside), "remove outside fixture");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn application_sources_refuse_symlink_alias_duplicates() {
+        let root = test_ok(
+            fs::canonicalize(temp_tree("source-alias")),
+            "canonical root",
+        );
+        let (_, _, mut paths) = write_source_module_fixture(&root);
+        let alias = PathBuf::from("src/alias.edict");
+        test_ok(
+            std::os::unix::fs::symlink("values.edict", root.join(&alias)),
+            "in-root source alias",
+        );
+        assert_ne!(paths[1], alias, "raw paths differ");
+        paths.push(alias);
+        let error = LoadedSources::load(&root, &paths)
+            .err()
+            .unwrap_or_else(|| panic!("same canonical source must refuse"));
+        assert_eq!(error.kind, "DuplicateApplicationSource");
+        assert!(!root.join(".build").exists());
+        test_ok(fs::remove_dir_all(root), "remove alias tree");
+    }
+
+    #[test]
+    fn public_application_build_reports_library_compiler_source() {
+        let root = temp_tree("public-source-module-diagnostics");
+        let config = write_external_action_application(&root);
+        let library = "package library.payloads@1;\nfn invalid() -> U64 { return true; }";
+        let pin = test_ok(
+            edict_syntax::source_closure::source_module_digest(library),
+            "digest library",
+        );
+        let source_path = root.join("src/observe-workspace.edict");
+        let original = test_ok(fs::read_to_string(&source_path), "read root source");
+        let source = original.replacen("package examples.workspace_observer@1;", &format!("package examples.workspace_observer@1; use module library.payloads@1 digest \"{pin}\" as payloads;"), 1);
+        test_ok(fs::write(&source_path, source), "write importing source");
+        let library_path = root.join("src/payloads.edict");
+        test_ok(
+            fs::write(&library_path, library),
+            "write explicit dependency",
+        );
+        let mut manifest: serde_json::Value = test_ok(
+            serde_json::from_slice(&test_ok(fs::read(&config), "read manifest")),
+            "decode manifest",
+        );
+        manifest["sources"] =
+            serde_json::json!(["src/observe-workspace.edict", "src/payloads.edict"]);
+        test_ok(
+            fs::write(
+                &config,
+                test_ok(serde_json::to_vec(&manifest), "encode manifest"),
+            ),
+            "write module manifest",
+        );
+        let Err(failure) = build_application(&config) else {
+            panic!("invalid library must fail")
+        };
+        assert_eq!(failure.kind, "ApplicationCompilationFailed");
+        assert!(
+            failure.source_diagnostics.is_some(),
+            "library failures must retain original-file diagnostics"
+        );
+        let groups = failure
+            .source_diagnostics
+            .as_ref()
+            .unwrap_or_else(|| panic!("source groups"));
+        let group = groups
+            .iter()
+            .find(|group| {
+                group.path == test_ok(fs::canonicalize(&library_path), "canonical library")
+            })
+            .unwrap_or_else(|| panic!("original library path"));
+        assert_eq!(group.source, library);
+        assert!(group.errors.iter().any(|error| matches!(error, ApplicationSourceError::Compiler(error) if error.kind == edict_syntax::CompilerErrorKind::TypeMismatch && error.span.start == library.find("return true").unwrap_or_else(|| panic!("return anchor")))));
+        assert!(!root.join(".build/application").exists());
+        test_ok(fs::remove_dir_all(root), "remove module diagnostic tree");
     }
 
     #[test]
@@ -3444,7 +3686,11 @@ mod tests {
                 &adapter,
                 configuration,
                 "examples.workspace_observer@1",
-                &source_bytes,
+                &super::SourceArtifact {
+                    domain: super::SOURCE_DOMAIN,
+                    kind: "edict-source",
+                    bytes: source_bytes,
+                },
                 target_ir_bytes,
                 &result_projection_artifact(),
             ),

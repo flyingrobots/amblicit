@@ -2312,41 +2312,56 @@ fn write_info(record: &Value) {
 
 fn write_application_source_failure(
     failure: &application_build::ApplicationBuildFailure,
-    diagnostics: &application_build::ApplicationSourceDiagnostics,
+    diagnostics: &[application_build::ApplicationSourceDiagnostics],
 ) {
     use application_build::ApplicationSourceError;
 
-    let path = diagnostics.path.display().to_string();
-    let input = json!({ "kind": "path", "path": path });
-    let positions = application_source_positions(&diagnostics.source, &diagnostics.errors);
     let mut stderr = io::stderr().lock();
-    for (error, (line, column)) in diagnostics.errors.iter().zip(positions) {
-        let (stage, kind, message) = match error {
-            ApplicationSourceError::Parse(error) => {
-                ("parse", error.kind.code(), error.message.as_str())
+    for diagnostics in diagnostics {
+        let path = diagnostics.path.display().to_string();
+        let input = json!({ "kind": "path", "path": path });
+        let positions = application_source_positions(&diagnostics.source, &diagnostics.errors);
+        for (error, (line, column)) in diagnostics.errors.iter().zip(positions) {
+            let (stage, kind, message) = match error {
+                ApplicationSourceError::Parse(error) => {
+                    ("parse", error.kind.code(), error.message.clone())
+                }
+                ApplicationSourceError::Compiler(error) => (
+                    compiler_stage_name(error.stage),
+                    compiler_error_kind_name(error.kind),
+                    error.message.clone(),
+                ),
+                ApplicationSourceError::Linker(error) => {
+                    use edict_syntax::source_linker::SourceLinkErrorKind;
+                    let kind = match error.kind {
+                        SourceLinkErrorKind::UnresolvedName => "UnresolvedName",
+                        SourceLinkErrorKind::UnknownExport => "UnknownExport",
+                        SourceLinkErrorKind::ImportedIntent => "ImportedIntent",
+                        SourceLinkErrorKind::NameCollision => "NameCollision",
+                        SourceLinkErrorKind::SpanOverflow => "SpanOverflow",
+                        SourceLinkErrorKind::DepthExceeded => "DepthExceeded",
+                        SourceLinkErrorKind::ReservedTypeIdentity => "ReservedTypeIdentity",
+                    };
+                    ("resolve", kind, error.to_string())
+                }
+            };
+            let mut record = diagnostic_record(
+                COMMAND_BUILD,
+                stage,
+                kind,
+                &input,
+                Some(error.span()),
+                None,
+                Some(&message),
+            );
+            record["sourceLocation"] = json!({ "path": path, "line": line, "column": column });
+            if let ApplicationSourceError::Compiler(error) = error {
+                if let Some(detail) = &error.signature_mismatch {
+                    record["signatureMismatch"] = json!(detail);
+                }
             }
-            ApplicationSourceError::Compiler(error) => (
-                compiler_stage_name(error.stage),
-                compiler_error_kind_name(error.kind),
-                error.message.as_str(),
-            ),
-        };
-        let mut record = diagnostic_record(
-            COMMAND_BUILD,
-            stage,
-            kind,
-            &input,
-            Some(error.span()),
-            None,
-            Some(message),
-        );
-        record["sourceLocation"] = json!({ "path": path, "line": line, "column": column });
-        if let ApplicationSourceError::Compiler(error) = error {
-            if let Some(detail) = &error.signature_mismatch {
-                record["signatureMismatch"] = json!(detail);
-            }
+            write_record(&mut stderr, &record);
         }
-        write_record(&mut stderr, &record);
     }
     let summary = CliFailure {
         command: COMMAND_BUILD,
@@ -2361,7 +2376,11 @@ fn write_application_source_failure(
             COMMAND_BUILD,
             "error",
             0,
-            diagnostics.errors.len() + 1,
+            diagnostics
+                .iter()
+                .map(|group| group.errors.len())
+                .sum::<usize>()
+                + 1,
             EXIT_CLI_FAILED,
         ),
     );
