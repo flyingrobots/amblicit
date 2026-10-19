@@ -1388,6 +1388,16 @@ digest. It embeds no closure self-digest. Its external identity uses the same
 canonical three-element digest frame under `edict.source-closure/v1`.
 Dependency input order does not affect canonical bytes or identity.
 
+The application manifest's `sources` array supplies this same explicit closure:
+the first path selects the root and later paths supply dependencies. Source
+paths remain confined to the manifest root and canonical path duplicates are
+refused. A single source with no module import retains the legacy canonical
+source-byte-string artifact. Module builds supply the new closure artifact,
+domain and auxiliary kind to both provider invocations; provider support for
+that form is required. Parse, linking and compilation failures retain original
+file paths and source-local byte spans. An error without a source ownership
+witness stays in the summary rather than acquiring a guessed file location.
+
 Source authentication does not grant execution authority. The separate
 `source_linker::link_source_closure` API creates an immutable compiler-owned
 linked surface while retaining the original witness. Its `compile` method
@@ -1412,10 +1422,8 @@ Type traversal accepts constructor height 128 and refuses 129 independently
 of lexical statement/expression frames; active lexical traversal and flattened
 member paths have fixed limits of 128.
 
-The current public application build still accepts one source. Public provider
-consumption of the source-closure artifact is not implemented. Standalone
-`compile_to_core` refuses unresolved module imports as `MissingContextFact`,
-including imports that are not referenced by a declaration.
+Standalone `compile_to_core` refuses unresolved module imports as
+`MissingContextFact`, including imports that are not referenced by a declaration.
 
 ## Grammar
 
