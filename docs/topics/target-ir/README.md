@@ -388,8 +388,15 @@ endpoint widths and the conservative result bound.
 
 A separate Target-owned totality walk requires `start <= end <= len(bytes)`
 from exact conjunctive input evidence or unconditional equal/zero relations.
-It traverses all expression-bearing intent locations, using no input assumptions
-for basis or input-predicate evaluation. Forged signatures, missing proofs,
+Within an ordered `All`, each child must be total before its predicate becomes
+proof for later children. The walker retains borrowed predicate references,
+not cloned Core trees. Reordering a partial expression before its proof refuses
+with `InvalidCoreIdentity`. This scope is confined to the conjunction: separate
+input constraints retain their canonical set encoding and cannot justify one
+another or the earlier basis. [TIR-TP-084]
+It traverses all expression-bearing intent locations. Basis predicates and each
+separate input predicate start without assumptions from other input constraints.
+Forged signatures, missing proofs,
 foreign locals and incorrect proof scope reject with `InvalidCoreIdentity` and
 no artifact. This walk is shared with subtraction, while the Target proof
 routine remains independent from the source compiler. [TIR-REQ-051]

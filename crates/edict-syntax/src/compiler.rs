@@ -3577,10 +3577,14 @@ impl<'a> TypeChecker<'a> {
                 lhs,
                 rhs,
                 ..
-            } => Some(CorePredicate::All(vec![
-                self.check_predicate(lhs, env)?,
-                self.check_predicate(rhs, env)?,
-            ])),
+            } => {
+                let left = self.check_predicate(lhs, env)?;
+                let prefix = self.input_proof_constraints.len();
+                self.input_proof_constraints.push(left.clone());
+                let right = self.check_predicate(rhs, env);
+                self.input_proof_constraints.truncate(prefix);
+                Some(CorePredicate::All(vec![left, right?]))
+            }
             Expr::Binary {
                 op: BinOp::Or,
                 lhs,

@@ -288,6 +288,10 @@ fn byte_slice_proofs_do_not_leak_into_basis_constraints_or_other_intents() {
             original.replace(GUARD, &format!("{GUARD}, len({SLICE}) >= 0u64")),
             false,
         ),
+        (
+            original.replace(GUARD, &format!("where len({SLICE}) >= 0u64, input.start <= input.end, input.end <= len(input.bytes)")),
+            false,
+        ),
         (format!("{original}\n{second_intent}"), true),
     ] {
         let start = if use_last_slice {
@@ -434,6 +438,48 @@ fn target_rejects_forged_byte_slice_signatures_and_proofs() {
                 .iter()
                 .any(|failure| failure.kind == TargetLoweringFailureKind::InvalidCoreIdentity),
             "case {case}: {report:?}"
+        );
+    }
+}
+
+#[test]
+fn conjunctive_prefix_guards_prove_later_slices_and_unsigned_differences() {
+    let predicates = [
+        "input.start <= input.end",
+        "input.end <= len(input.bytes)",
+        "len(slice(input.bytes, input.start, input.end)) <= len(input.bytes)",
+        "input.end - input.start <= len(input.bytes)",
+    ];
+    for guard in [
+        format!("where {}", predicates.join(" && ")),
+        format!(
+            "where {} && ({} && ({} && {}))",
+            predicates[0], predicates[1], predicates[2], predicates[3]
+        ),
+    ] {
+        let text = source("Bytes<max=32>", &guard, SLICE, "Bytes<max=32>");
+        let core = compile_to_core(&parse_module(&text).unwrap(), &context())
+            .expect("a checked left conjunction proves the right expression domain");
+        let report = lower_to_target_ir(&core, &facts());
+        assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+        let mut reordered = core.clone();
+        let CorePredicate::All(items) =
+            &mut reordered.intents.get_mut("cut").unwrap().input_constraints[0].predicate
+        else {
+            panic!("conjunction")
+        };
+        items.swap(0, 1);
+        let report = lower_to_target_ir(&reordered, &facts());
+        assert_eq!(report.status, TargetLoweringStatus::Unsupported);
+        assert!(report.artifact.is_none());
+        assert!(report
+            .failures
+            .iter()
+            .any(|failure| failure.kind == TargetLoweringFailureKind::InvalidCoreIdentity));
+        assert_ne!(
+            digest_core_module(&core).unwrap(),
+            digest_core_module(&reordered).unwrap(),
+            "conjunction order is semantic"
         );
     }
 }

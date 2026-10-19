@@ -18,12 +18,19 @@ pub(super) fn intent_is_total(intent: &CoreIntent) -> bool {
 }
 
 fn block_is_total(block: &CoreBlock, constraints: &[InputConstraint]) -> bool {
-    block_is_total_at_depth(block, constraints, 0)
+    block_is_total_at_depth(
+        block,
+        &constraints
+            .iter()
+            .map(|constraint| &constraint.predicate)
+            .collect::<Vec<_>>(),
+        0,
+    )
 }
 
 fn block_is_total_at_depth(
     block: &CoreBlock,
-    constraints: &[InputConstraint],
+    constraints: &[&CorePredicate],
     depth: usize,
 ) -> bool {
     if depth > MAX_CORE_GRAPH_DEPTH {
@@ -83,12 +90,19 @@ fn block_is_total_at_depth(
 }
 
 fn predicate_is_total(predicate: &CorePredicate, constraints: &[InputConstraint]) -> bool {
-    predicate_is_total_at_depth(predicate, constraints, 0)
+    predicate_is_total_at_depth(
+        predicate,
+        &constraints
+            .iter()
+            .map(|constraint| &constraint.predicate)
+            .collect::<Vec<_>>(),
+        0,
+    )
 }
 
 fn predicate_is_total_at_depth(
     predicate: &CorePredicate,
-    constraints: &[InputConstraint],
+    constraints: &[&CorePredicate],
     depth: usize,
 ) -> bool {
     if depth > MAX_CORE_GRAPH_DEPTH {
@@ -97,7 +111,17 @@ fn predicate_is_total_at_depth(
     match predicate {
         CorePredicate::True | CorePredicate::False => true,
         CorePredicate::Not(inner) => predicate_is_total_at_depth(inner, constraints, depth + 1),
-        CorePredicate::All(items) | CorePredicate::Any(items) => items
+        CorePredicate::All(items) => {
+            let mut prefix = constraints.to_vec();
+            for item in items {
+                if !predicate_is_total_at_depth(item, &prefix, depth + 1) {
+                    return false;
+                }
+                prefix.push(item);
+            }
+            true
+        }
+        CorePredicate::Any(items) => items
             .iter()
             .all(|item| predicate_is_total_at_depth(item, constraints, depth + 1)),
         CorePredicate::Compare { left, right, .. } => {
@@ -108,12 +132,19 @@ fn predicate_is_total_at_depth(
 }
 
 pub(super) fn expression_is_total(expression: &CoreExpr, constraints: &[InputConstraint]) -> bool {
-    expression_is_total_at_depth(expression, constraints, 0)
+    expression_is_total_at_depth(
+        expression,
+        &constraints
+            .iter()
+            .map(|constraint| &constraint.predicate)
+            .collect::<Vec<_>>(),
+        0,
+    )
 }
 
 fn expression_is_total_at_depth(
     expression: &CoreExpr,
-    constraints: &[InputConstraint],
+    constraints: &[&CorePredicate],
     depth: usize,
 ) -> bool {
     if depth > MAX_CORE_GRAPH_DEPTH {
