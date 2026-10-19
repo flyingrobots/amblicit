@@ -1256,17 +1256,9 @@ fn source_function_contract_preserves_old_modules_and_requires_new_schema_select
 
 #[test]
 fn source_closure_contract_has_its_own_domain_and_closed_typed_wire() {
-    use edict_syntax::source_closure::{
-        resolve_source_closure, SourceClosureLimits, SOURCE_CLOSURE_DIGEST_DOMAIN,
-    };
+    use edict_syntax::source_closure::SOURCE_CLOSURE_DIGEST_DOMAIN;
     let pack = assemble(canonical_target_profile_contract_resources());
-    let closure = resolve_source_closure(
-        "package example.modules@1;",
-        &[],
-        SourceClosureLimits::default(),
-    )
-    .unwrap();
-    let value = decode_canonical_cbor(closure.canonical_bytes()).unwrap();
+    let value = representative_source_closure();
     pack.validate_domain(SOURCE_CLOSURE_DIGEST_DOMAIN, &value)
         .expect("source closure publication has a distinct typed domain");
     let old = assemble_provider_contract_pack(input_with(
@@ -1316,4 +1308,60 @@ fn representative_source_closure() -> CanonicalValue {
     )
     .unwrap();
     decode_canonical_cbor(closure.canonical_bytes()).unwrap()
+}
+
+#[test]
+fn source_closure_domain_enforces_typed_digest_and_module_count_boundaries() {
+    use edict_syntax::source_closure::{
+        resolve_source_closure, source_module_digest, SourceClosureLimits,
+        SOURCE_CLOSURE_DIGEST_DOMAIN,
+    };
+    use std::fmt::Write as _;
+    let pack = assemble(canonical_target_profile_contract_resources());
+    let value = representative_source_closure();
+    for (algorithm, length) in [("sha256", 31), ("sha256", 33), ("sha512", 32)] {
+        let mut invalid = value.clone();
+        *map_value_mut(
+            map_value_mut(map_value_mut(&mut invalid, "modules"), "example.modules@1"),
+            "digest",
+        ) = CanonicalValue::Array(vec![
+            text(algorithm),
+            CanonicalValue::Bytes(vec![0; length]),
+        ]);
+        assert_eq!(
+            pack.validate_domain(SOURCE_CLOSURE_DIGEST_DOMAIN, &invalid),
+            Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+        );
+    }
+    let dependencies = (0..63)
+        .map(|index| format!("package example.module{index}@1;"))
+        .collect::<Vec<_>>();
+    let mut root = String::from("package example.modules@1;");
+    for (index, source) in dependencies.iter().enumerate() {
+        write!(
+            root,
+            " use module example.module{index}@1 digest \"{}\" as m{index};",
+            source_module_digest(source).unwrap()
+        )
+        .unwrap();
+    }
+    let sources = dependencies.iter().map(String::as_str).collect::<Vec<_>>();
+    let closure = resolve_source_closure(&root, &sources, SourceClosureLimits::default()).unwrap();
+    let maximum = decode_canonical_cbor(closure.canonical_bytes()).unwrap();
+    pack.validate_domain(SOURCE_CLOSURE_DIGEST_DOMAIN, &maximum)
+        .expect("exactly 64 authenticated modules satisfy the published wire");
+    let mut empty = value;
+    *map_value_mut(&mut empty, "modules") = CanonicalValue::Map(Vec::new());
+    let mut overflow = maximum;
+    let CanonicalValue::Map(modules) = map_value_mut(&mut overflow, "modules") else {
+        panic!("module map")
+    };
+    assert_eq!(modules.len(), 64);
+    modules.push((text("example.overflow@1"), modules[0].1.clone()));
+    for invalid in [empty, overflow] {
+        assert_eq!(
+            pack.validate_domain(SOURCE_CLOSURE_DIGEST_DOMAIN, &invalid),
+            Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+        );
+    }
 }

@@ -30,6 +30,9 @@ pub const PROVIDER_CONTRACT_PACK_LICENSE: &str = "Apache-2.0";
 /// CDDL root matching Edict's canonical Target IR artifact value.
 pub const TARGET_IR_ARTIFACT_CDDL_ROOT: &str = "target-ir-artifact";
 
+/// CDDL root of the explicitly selected source-closure publication.
+pub const SOURCE_CLOSURE_CDDL_ROOT: &str = "source-closure";
+
 const PACK_HEADER: &str = "; SPDX-License-Identifier: Apache-2.0\n\
 ; edict-provider-contracts.cddl\n\
 ; Generated from Edict-owned ABI fragments. DO NOT EDIT.\n";
@@ -427,12 +430,12 @@ fn build_manifest(
         .collect::<Vec<_>>();
     if with_source_closure {
         contracts.push(ProviderContractRootBinding {
-            contract: "source-closure".into(),
-            root_rule: "source-closure".into(),
+            contract: SOURCE_CLOSURE_CDDL_ROOT.into(),
+            root_rule: SOURCE_CLOSURE_CDDL_ROOT.into(),
         });
         domains.push(ProviderContractDomainBinding {
             domain: SOURCE_CLOSURE_DIGEST_DOMAIN.into(),
-            root_rule: "source-closure".into(),
+            root_rule: SOURCE_CLOSURE_CDDL_ROOT.into(),
         });
         contracts.sort_unstable();
         domains.sort_unstable();
@@ -607,7 +610,7 @@ fn all_roots(with_source_closure: bool) -> impl Iterator<Item = &'static str> {
     CONTRACT_BINDINGS
         .into_iter()
         .map(|(_contract, root)| root)
-        .chain(with_source_closure.then_some("source-closure"))
+        .chain(with_source_closure.then_some(SOURCE_CLOSURE_CDDL_ROOT))
 }
 
 enum SchemaClosureFailure {
