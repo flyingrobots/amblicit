@@ -903,22 +903,60 @@ target-ir-resource-ref = {
   digest: sha256-digest,
 }
 
-target-ir-artifact = target-ir-closed-artifact / target-ir-legacy-artifact
+target-ir-artifact = target-ir-phased-artifact / target-ir-ordered-artifact
+
+target-ir-phased-artifact = target-ir-closed-artifact / target-ir-legacy-artifact
 
 target-ir-artifact-common = (
-  kind: "targetIrArtifact",
   domain: tstr,
   targetProfile: target-ir-resource-ref,
   sourceCoreCoordinate: tstr .regexp "(?s).+",
 )
 
+; v2 binds one execution order over the instruction tables. The encoder also
+; validates the exact permutation and producer-before-consumer dependencies.
+target-ir-ordered-artifact = target-ir-ordered-closed / target-ir-ordered-legacy
+
+target-ir-ordered-common = (
+  domain: "echo.span-ir/v2",
+  targetProfile: target-ir-resource-ref,
+  sourceCoreCoordinate: tstr .regexp "(?s).+",
+)
+
+target-ir-ordered-closed = {
+  kind: "orderedTargetIrArtifact",
+  target-ir-ordered-common,
+  semanticClosure: target-ir-semantic-closure,
+  intents: { * tstr => target-ir-ordered-intent },
+}
+
+target-ir-ordered-legacy = {
+  kind: "orderedTargetIrArtifact",
+  target-ir-ordered-common,
+  intents: { * tstr => target-ir-ordered-legacy-intent },
+}
+
+target-ir-ordered-intent = {
+  target-ir-intent-common,
+  ? basis: core-expr,
+  ? pureBindings: [1* target-ir-pure-binding],
+  executionOrder: [* tstr .regexp "(?s).+"],
+}
+
+target-ir-ordered-legacy-intent = {
+  target-ir-intent-common,
+  executionOrder: [* tstr .regexp "(?s).+"],
+}
+
 target-ir-closed-artifact = {
+  kind: "targetIrArtifact",
   target-ir-artifact-common,
   semanticClosure: target-ir-semantic-closure,
   intents: { * tstr => target-ir-intent },
 }
 
 target-ir-legacy-artifact = {
+  kind: "targetIrArtifact",
   target-ir-artifact-common,
   intents: { * tstr => target-ir-legacy-intent },
 }

@@ -12,7 +12,8 @@ execute a runtime, admit a bundle, or mutate participant state.
 The current target IR implementation is deliberately narrow:
 
 - selected target profile: `echo.dpo@1` or `gitwarp.ref_crdt@1`;
-- selected Target IR artifact domain: `echo.span-ir/v1` or
+- selected Target IR artifact domain: `echo.span-ir/v1`, explicitly ordered
+  `echo.span-ir/v2`, or
   `gitwarp.commit-reducer-ir/v1`;
 - selected source/Core shape: source-ordered pure `let` bindings, the first
   supported effectful Core effect node, Echo `require` guard requirements, and
@@ -114,13 +115,65 @@ git-warp does not currently claim Target IR requirement support. A Core module
 with `require` nodes selected for git-warp rejects before artifact emission with
 `TargetLoweringFailureKind::UnsupportedTargetFeature`.
 
-Intent-level Target IR requirements are pre-step guards. A Core `require` after
+In `echo.span-ir/v1`, intent-level Target IR requirements are pre-step guards. A Core `require` after
 an emitted target step rejects with
 `TargetLoweringFailureKind::UnsupportedTargetFeature` before artifact emission.
 If the requirement predicate or reason payload references a local produced by an
 earlier target step, lowering uses the same stable failure kind with a more
-specific step-output-dependency detail. Ordered or step-attached guards remain a
-future artifact-model change.
+specific step-output-dependency detail. Selecting v1 never silently upgrades
+that contract.
+
+## Explicit ordered execution
+
+`echo.span-ir/v2` under `echo.dpo@1` preserves straight-line interleaving of
+effects, pure bindings, and guards. It uses `kind: "orderedTargetIrArtifact"`
+and requires `executionOrder` on every intent. That list references each id
+in `pureBindings`, `steps`, and `requirements` exactly once, in source order.
+Instructions remain in their existing tables; the order list does not duplicate
+their payloads. The result is evaluated after the ordered sequence succeeds.
+[TIR-REQ-050]
+
+For example, an effect `t.step.0`, derived binding `t.binding.0`, and dependent
+guard `t.require.0` produce this review field:
+
+```json
+{"executionOrder": ["t.step.0", "t.binding.0", "t.require.0"]}
+```
+
+Core-to-Target validation still independently checks types, exact local
+identities, lawpack signatures, input-only metadata authority, and
+producer-before-consumer availability. Canonical encoding additionally rejects
+missing, duplicate, foreign, or forward-dependent order entries, inconsistent
+local references, order fields under legacy domains, and v2 without an order.
+Predicate and obstruction payload dependencies count too. Input references must
+be consistent with one another; their declared type is established by Core
+validation, not inferred from the order table. Reordering independent valid
+instructions changes the artifact digest. The existing Core semantic closure,
+basis, constraints, budget, and result are preserved. [TIR-REQ-050]
+
+The published CDDL has a separate ordered root with a required order list.
+Basis and pure bindings still require semantic closure. Schema validation
+establishes structural shape; the encoder and Core validator establish the
+permutation, dependencies, and type authority. External-action requests,
+statement branches, and loops are not supported by this first ordered contract.
+There is no runtime execution or atomicity implementation in this compiler
+change. [TIR-REQ-050]
+
+Selection is explicit in `TargetIrLoweringFacts::target_ir_domain`, the CLI
+projection `target.irDomain`, or a validated lawpack adapter's
+`acceptedTargetIr`. A provider must independently support the new contract;
+changing an adapter coordinate is not evidence of provider support. Existing
+v1 artifacts, digest fixtures, and protected pre-step refusals remain unchanged.
+The public CLI exposes the order and referenced pure bindings in review data.
+
+The [Jim consumer witness](../../../scripts/consumer-witnesses/README.md) keeps
+the original read/guard source body and demonstrates both boundaries: v1
+refuses at Target lowering; an experimental v2 selection reaches the pinned
+old Echo provider's schema gate and refuses before provider execution or
+package publication. It does not repin Jim or claim a released Echo v2 target
+contract. [TIR-REQ-050]
+
+## Shared expression and identity validation
 
 Each Target IR intent also preserves an explicit Core basis expression when
 present, the Core input constraints, Core evaluation budget, source-ordered
@@ -160,7 +213,7 @@ rejects as an identity redefinition before artifact construction. [TIR-REQ-027]
 direct record or record-valued conditional can therefore supply a field without
 inventing a name for its base; predicates, branches, and the selected field
 still pass the same recursive type checks. [TIR-REQ-036]
-Each non-intrinsic pure call must also match exactly one helper fact projected
+Each imported non-intrinsic pure call must also match exactly one helper fact projected
 from a validated lawpack export. Those facts expose read-only identity and
 signature accessors but cannot be constructed or mutated by an external caller.
 Target lowering checks the canonical coordinate, complete non-generic signature,
@@ -175,7 +228,7 @@ also traverses intent basis and constraints, requirement predicates and reason
 payloads, effect inputs and obstruction values, and every external-request
 value. Local references must be available in source order, scalar and declared
 types must remain valid, and every executable call must pass the same exact
-lawpack-helper check. The current Core obstruction arm's nonempty,
+source-function or lawpack-helper check. The current Core obstruction arm's nonempty,
 zero-argument call-shaped constructor remains an opaque application value in
 that specific position; adding arguments makes it executable and subjects it to
 helper authority. Empty `All` and `Any` aggregates reject through this same
@@ -307,3 +360,134 @@ The following are not implemented by this slice:
 - v2 chained or composite adapter resolution.
 
 The verification matrix is tracked in [test-plan.md](./test-plan.md).
+
+## Byte-length boundary
+
+`core.bytes.length` accepts exactly one operand and one exact operand type
+coordinate resolving to bounded structural Bytes, and returns U64. Target
+validation independently checks local authority, operand shape, exact type
+coordinate, and result compatibility before emitting a pure binding or result
+projection. It does not trust the source compiler's earlier checks. Forged
+signatures, dangling operands, coordinate substitution, and narrowed result
+widths reject with `InvalidCoreIdentity` and no target artifact. Runtime
+interpretation remains a separate consumer obligation.
+
+Byte-length type inference reuses the operand's validated coordinate instead of
+performing separate authority and type walks. A deterministic test-only counter
+bounds repeated validation through nested conditional predicates; public tests
+also reject an unavailable local hidden in the innermost length call. These
+checks do not claim a bound on every compiler pass. [TIR-REQ-048] [TIR-REQ-049]
+
+## Byte UTF-8 predicate boundary
+
+`core.bytes.isUtf8<OperandType>(bytes)` retains exactly one structural byte
+coordinate and one operand, producing Bool. Target validation independently
+checks the operand's authority, exact coordinate and result compatibility.
+Forged arity, substituted coordinates, foreign locals and non-Boolean binding
+results refuse with `InvalidCoreIdentity` and no artifact. A nested slice still
+requires the existing totality proof in its evaluation scope. These checks do
+not claim provider or runtime UTF-8 execution. [TIR-REQ-055]
+
+## Byte-slice boundary
+
+`core.bytes.slice<OperandType>(bytes,start,end)` takes one exact structural byte
+coordinate and three operands, including two U64 endpoints. Its result is
+`Bytes<max=N>` for the resolved operand maximum N. Target inference validates
+each operand once per inference call and independently checks local authority,
+endpoint widths and the conservative result bound.
+
+A separate Target-owned totality walk requires `start <= end <= len(bytes)`
+from exact conjunctive input evidence or unconditional equal/zero relations.
+Within an ordered `All`, each child must be total before its predicate becomes
+proof for later children. The walker retains borrowed predicate references,
+not cloned Core trees. Reordering a partial expression before its proof refuses
+with `InvalidCoreIdentity`. This scope is confined to the conjunction: separate
+input constraints retain their canonical set encoding and cannot justify one
+another or the earlier basis. [TIR-TP-084]
+It traverses all expression-bearing intent locations. Basis predicates and each
+separate input predicate start without assumptions from other input constraints.
+Forged signatures, missing proofs,
+foreign locals and incorrect proof scope reject with `InvalidCoreIdentity` and
+no artifact. This walk is shared with subtraction, while the Target proof
+routine remains independent from the source compiler. [TIR-REQ-051]
+
+Public Core integrity validation rejects graph nesting beyond 128 edges before
+Target traversal. The totality walker independently applies that same ceiling,
+carrying one depth counter across expression/predicate transitions and nested
+blocks rather than resetting it at a node-family boundary. Over-limit totality
+checks fail closed. [TIR-REQ-052]
+
+The existing Call schema carries the operation without changing wire shape or
+prior canonical identities. This compiler capability supplies no UTF-8 or rope
+semantics, runtime slice execution, or byte-copy budget charging. A provider may
+accept and package the preserved call while the evaluator still lacks execution
+support; a successful build or verifier report does not discharge those consumer
+obligations.
+
+## Byte-concatenation boundary
+
+This section owns the implemented byte-concatenation lowering decision.
+
+`core.bytes.concat<LeftType,RightType>(left,right)` carries two exact structural
+byte coordinates and ordered operands. Target independently checks both arities,
+resolves both byte bounds without unwrapping nominal types, and infers each
+operand once per inference call to validate its coordinate and local authority.
+The checked sum of maxima yields `Bytes<max=L+R>`; positive minimum and exact
+length are not inferred. Overflow, forged signatures, unavailable operands,
+or incompatible destination bounds return `InvalidCoreIdentity` with no
+artifact. [TIR-REQ-053]
+
+| Relationship | Targets |
+| --- | --- |
+| `refines` | [EDICT-LANG-LEN-001](../../SPEC_edict-language-v1.md#refined-scalar-types) |
+| `supersedes` | none |
+| `depends_on` | [`COREIR-REQ-002`](../core-ir/README.md#current-contract), [TIR-REQ-044](#current-contract) |
+| `related` | [`CSPINE-REQ-043`](../compiler-spine/test-plan.md#bounded-byte-concatenation), [TIR-REQ-053](./test-plan.md#bounded-byte-concatenation) |
+
+The existing Call encoding carries this generic operation. It does not add
+text interpretation, application limits, byte-copy charging, or evaluator
+execution. An accepted provider package is separate evidence from runtime
+support for the preserved call.
+
+## Unsigned subtraction boundary
+
+The target lowerer recognizes `core.integer.subtract<U32/U64>` with exactly two
+same-width operands. A target-owned Core walk independently checks that each
+subtraction is total from identical operands, zero, ordered constants, or exact
+operand order in conjunctive input predicates. It does not invoke the source
+compiler's proof routine. Basis and input predicates are checked without using
+those predicates as already-established evidence. Disjunctive and negated
+predicates do not authorize subtraction.
+
+This is Target IR validation, not provider acceptance or Echo execution. The
+adversarial cases and public application witness are tracked under TIR-REQ-046
+and issue #212; producer locks remain unchanged. An isolated Jim application
+copy with a guarded deleted-byte-count expression builds successfully through
+the pinned provider, while execution through the original Echo evaluator still
+returns `UnsupportedProgram`.
+
+Operand type inference validates each nested subtraction once per type walk,
+including operands reached through conditionals and record fields. A returned
+type coordinate includes integer-literal and local-reference validation;
+comparison shape inference reuses that judgment instead of validating the same
+subtree again. Test-only visit counters check this work bound without elapsed-time
+thresholds. Public lowering tests retain rejection of nested overflowing,
+negative-unsigned, and malformed integer literals. The existing canonical
+container nesting ceiling still applies. [TIR-REQ-047]
+
+
+## Source-owned function authority
+
+Source calls resolve against the complete Core function table, separately from
+imported lawpack facts. Independent Target checking validates every function's
+ordered local frame, binding/result types, exact call signature and totality,
+including definitions unused by intents. A source/imported authority collision
+refuses. Core preflight rejects cycles and source paths over 128 frames; this
+is not a proof of combined imported runtime depth. [TIR-REQ-054]
+
+Calls, ordered arguments and conditional/pre-body placement are copied without
+inlining. Any nonempty source-function table forces the semantic closure to bind
+the exact complete Core digest, even for a require-only intent without imports
+or a basis. Existing `NoTargetSteps` and result-projection restrictions remain.
+Provider schema admission and pure/read runtime function execution require the
+consumer to select and implement the new published contract explicitly.

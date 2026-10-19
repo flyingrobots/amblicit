@@ -8,7 +8,103 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Signature mismatch spans identify exactly the effect call, excluding its enclosing binding and failure handler.
+
+- Add typed first-difference detail to explicit effect signature `TypeMismatch` diagnostics, retaining the kind and call span. Build diagnostics expose optional `signatureMismatch` metadata; strict schema consumers must update their schema. `edict-syntax::CompilerError` struct-literal users must initialize its new optional field.
+
 ### Changed
+
+- Application builds emit individual structured parser and compiler diagnostics
+  with byte spans and separate source file/line/scalar-column locations. Existing
+  summaries and build exit code remain; terminal counts include each emitted
+  error. Diagnostic and event schemas now include build records.
+
+- Explain the `edict.lawpack/v1` domain-framed manifest identity in import
+  guidance. `SourceImportMismatch` now names the required domain and exact
+  manifest digest, preserving the failure kind and import digest path.
+
+- Added first-order nongeneric source pure functions with ordered typed
+  parameters, immutable bindings and terminal returns. Source-owned Core bodies
+  retain call authority, alpha-normalized identity, conservative checked costs,
+  bounded nonrecursive graphs and independent Target validation. Function-free
+  Core bytes and the prior provider publication remain unchanged; providers
+  must explicitly adopt the new function-bearing contract. This does not claim
+  Echo runtime support or complete Jim buffer/rope behavior. Well-typed
+  non-Boolean predicates report `ExpectedPredicate`; rejected pure-function
+  statements and graph failures retain precise source ownership. Request-bearing
+  shapes in function-bearing modules report `UnsupportedSourceShape` rather
+  than arithmetic overflow; this does not broaden their accepted subset.
+
+- Made pure-helper call-depth validation independent of traversal order by
+  accounting for each shared suffix's full height. Paths of 128 helpers remain
+  valid; paths of 129 reject with `InvalidPureFunctionBody` even when their
+  suffixes were visited earlier. Independent helpers retain separate depth
+  allowances, and recursive helper graphs still reject.
+
+- Adopted pinned Bunny 0.6.0 as the normative checked Q32.32 numeric foundation
+  and exposed raw fixed-point evaluation through the Rust facade, with explicit
+  overflow and division-by-zero failures. Existing integer semantics and Core
+  artifacts are unchanged; fixed-point source syntax and Target instructions
+  remain unsupported. The workspace, CI and current-source consumer witness
+  now require Rust 1.96 for the dependency.
+
+- Added bounded raw-byte `+`, preserving operand order and exact coordinates in
+  Core and Target with a checked sum of operand maxima. Overflow, narrowing,
+  wrong operand families and forged Target calls fail closed. This generic
+  compiler capability does not add runtime concatenation or text semantics.
+
+- Byte-slice proof-scope regression checks now identify the exact rejected
+  basis, input-predicate or later-intent call and retain a compiling control.
+
+- Core integrity validation and Target totality now bound combined expression,
+  predicate and nested-block descent at 128 edges. Over-limit public Core
+  returns a structured depth failure before canonical or Target traversal.
+  Canonical encoding maps this earlier integrity failure to `UnsupportedValue`,
+  including nested requests that previously reached its container-depth refusal.
+
+- Byte-slice type diagnostics now identify each invalid operand, including
+  separate errors when both endpoint types are wrong.
+
+- Added proven half-open `slice` over bounded raw bytes, preserving the operand
+  maximum and explicit U64 endpoints through Core and Target IR. Source and
+  Target independently require exact input-domain proof; invalid signatures,
+  unavailable operands and pre-proof evaluation fail closed. This compiler
+  capability does not supply runtime slicing, UTF-8 semantics or new provider
+  pins.
+
+- Added explicitly selected `echo.span-ir/v2` ordered Target IR for interleaved
+  effects, pure bindings, and dependent guards. The canonical artifact binds an
+  exact instruction order and rejects malformed dependency references. Legacy
+  v1 artifacts retain their byte identities and pre-step restrictions. The CLI
+  exposes the new order and its binding payloads. This compiler capability does
+  not add Echo execution support or change existing consumer producer pins.
+
+- Avoided exponential repeated byte-length validation through nested conditional
+  predicates while retaining inner local-authority refusal.
+
+- Lowered `len` on bounded structural Bytes to a generic U64 byte-length
+  operation with exact operand identity. Target validation independently
+  checks the signature, byte shape, local authority, and result width before
+  preserving the operation in its pure bindings and projection.
+
+- Removed exponential repeated Target IR operand validation for nested unsigned
+  arithmetic, including conditional and record-field operands, while preserving
+  malformed literal and reference rejection.
+
+- Independently validated unsigned subtraction in raw Core before Target IR
+  construction, preserving widths and operands and rejecting invalid signatures,
+  unproven underflow, and input-proof scope leakage. This does not add Echo
+  execution support or change a consumer producer pin.
+
+- Lowered same-width unsigned subtraction into Core only when exact operands,
+  ordered literals, or dominating conjunctive input constraints prove no
+  underflow. Proofs are isolated to each intent body; signed, mixed-width, and
+  unproven differences reject. Target support remains a separate boundary.
+
+- Upgraded the capability-denied provider host to exact Wasmtime 48.0.4 for
+  RUSTSEC-2026-0316 and RUSTSEC-2026-0327. The workspace now requires Rust 1.95,
+  matching that dependency's minimum; the explicit host feature set is unchanged.
+  Historical component-fixture producer pins remain unchanged.
 
 - Reused release preparation's calendar validator in the policy structural
   guard, rejecting impossible target dates in manually edited policy blocks.

@@ -391,7 +391,10 @@ fn target_lowering_exposes_an_unsupported_result_projection_without_claiming_one
     assert_eq!(report.status, TargetLoweringStatus::Lowered);
     assert!(report.artifact.is_some());
     assert!(report.result_projections.is_empty());
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        [] as [edict_syntax::TargetLoweringFailure; 0]
+    );
     assert_eq!(
         report.result_projection_failures["createGreeting"].kind(),
         ResultProjectionFailureKind::UnsupportedExpression

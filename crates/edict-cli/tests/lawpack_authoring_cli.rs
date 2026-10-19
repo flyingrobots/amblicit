@@ -80,6 +80,146 @@ fn external_application_authors_vendors_and_builds_its_own_lawpack() {
     fs::remove_dir_all(caller).expect("remove caller tree");
 }
 
+#[test]
+fn public_build_requires_repinning_an_authored_helper_body_change() {
+    let root = temp_tree("helper-mutation");
+    write_external_consumer(&root);
+    let mut document = workspace_snapshot_lawpack_document();
+    document["lawpack"]["exports"]["pureFunctions"] = json!([{
+        "source": "edict",
+        "coordinate": "workspace.snapshot@1.limit",
+        "returnType": "U64",
+        "costTemplate": "workspace.snapshot@1.helperBudget",
+        "determinismClass": "total",
+        "body": {"params": [], "body": {
+            "locals": [], "bindings": [],
+            "result": {"kind": "const", "value": {"kind": "int", "width": "U64", "value": 7}}
+        }}
+    }]);
+    document["lawpack"]["targetAdapters"][0]["budgets"]["workspace.snapshot@1.helperBudget"] =
+        json!({"maxSteps": 1, "maxAllocatedBytes": 0, "maxOutputBytes": 0});
+    let original_digest = publish_mutation_lawpack(&root, &document);
+    let reviewed = fixture_root().join("fixtures/lawpack/workspace-snapshot");
+    let reviewed_digest = fs::read_to_string(reviewed.join("manifest.sha256")).unwrap();
+    let source_path = root.join("src/observe-workspace.edict");
+    let template = fs::read_to_string(&source_path).unwrap();
+    assert_eq!(template.matches(reviewed_digest.trim()).count(), 2);
+    assert_eq!(template.matches("{\n  request").count(), 1);
+    assert_eq!(
+        template
+            .matches("maxSettlementBytes input.maxSettlementBytes")
+            .count(),
+        1
+    );
+    let source = template
+        .replace(reviewed_digest.trim(), &original_digest)
+        .replace(
+            "{\n  request",
+            "{\n  let limit: U64 = workspace.limit();\n  request",
+        )
+        .replace(
+            "maxSettlementBytes input.maxSettlementBytes",
+            "maxSettlementBytes limit",
+        );
+    fs::write(&source_path, &source).unwrap();
+    assert_success(
+        &build_mutation_application(&root),
+        "original helper application",
+    );
+    let original = read_compiled_outputs(&root);
+    assert_success(
+        &build_mutation_application(&root),
+        "identical repeated application",
+    );
+    assert_eq!(original, read_compiled_outputs(&root));
+
+    document["lawpack"]["exports"]["pureFunctions"][0]["body"]["body"]["result"]["value"]
+        ["value"] = json!(8);
+    let changed_digest = publish_mutation_lawpack(&root, &document);
+    assert_ne!(original_digest, changed_digest);
+    assert_stale_helper_rejected(&root);
+    assert_eq!(
+        original,
+        read_compiled_outputs(&root),
+        "failed compilation preserves prior output"
+    );
+    fs::remove_dir_all(root.join(".build/application")).expect("remove owned test output");
+    assert_stale_helper_rejected(&root);
+    assert!(
+        !root.join(".build/application").exists(),
+        "rejection publishes no fresh output"
+    );
+
+    fs::write(
+        &source_path,
+        source.replace(&original_digest, &changed_digest),
+    )
+    .unwrap();
+    assert_success(
+        &build_mutation_application(&root),
+        "repinned helper application",
+    );
+    let changed = read_compiled_outputs(&root);
+    for (before, after) in original.iter().zip(&changed) {
+        assert_ne!(
+            before, after,
+            "authored body change reaches each emitted artifact"
+        );
+    }
+    fs::remove_dir_all(root).expect("remove mutation consumer");
+}
+
+fn publish_mutation_lawpack(root: &Path, document: &Value) -> String {
+    fs::write(
+        root.join("edict.lawpack.json"),
+        serde_json::to_vec(document).unwrap(),
+    )
+    .unwrap();
+    let output = run_edict(
+        root,
+        &jsonl(&json!({
+            "schema": "edict.compiler.settings/v1", "type": "compilerSettings", "operation": "build",
+            "lawpack": root.join("edict.lawpack.json")
+        })),
+    );
+    assert_success(&output, "publish authored helper");
+    fs::read_to_string(root.join("vendor/generated-workspace-snapshot/manifest.sha256"))
+        .unwrap()
+        .trim()
+        .to_owned()
+}
+
+fn build_mutation_application(root: &Path) -> Output {
+    run_edict(
+        root,
+        &jsonl(&json!({
+            "schema": "edict.compiler.settings/v1", "type": "compilerSettings", "operation": "build",
+            "application": root.join("edict.application.json")
+        })),
+    )
+}
+
+fn assert_stale_helper_rejected(root: &Path) {
+    let rejected = build_mutation_application(root);
+    assert_eq!(rejected.status.code(), Some(2), "{rejected:?}");
+    assert_eq!(rejected.stdout, Vec::<u8>::new());
+    let records: Vec<Value> = String::from_utf8(rejected.stderr)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("JSONL diagnostic"))
+        .collect();
+    assert_eq!(records.len(), 2);
+    assert_eq!(records[0]["schema"], "edict.cli.diagnostic/v1");
+    assert_eq!(records[0]["kind"], "InvalidApplicationClosure");
+    assert_eq!(records[1]["status"], "error");
+    assert_eq!(records[1]["exitCode"], 2);
+}
+
+fn read_compiled_outputs(root: &Path) -> [Vec<u8>; 2] {
+    ["core.cbor", "target-ir.cbor"]
+        .map(|name| fs::read(root.join(".build/application").join(name)).unwrap())
+}
+
 #[allow(
     clippy::too_many_lines,
     reason = "the standalone witness keeps its complete external file closure visible"

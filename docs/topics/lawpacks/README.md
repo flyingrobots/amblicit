@@ -27,6 +27,29 @@ use lawpack hello.optics@1 digest "sha256:<64 lowercase hex>" as hello;
 The parser preserves the import as a lawpack import with the package coordinate,
 version label, alias, and digest review string. [LAWPACKS-REQ-001]
 
+The import digest identifies the canonical manifest in the `edict.lawpack/v1`
+domain. It is SHA-256 of the canonical CBOR tuple
+`["edict.digest/v1", "edict.lawpack/v1", manifest]`, where `manifest` is the decoded
+canonical value. It is not SHA-256 of the raw `manifest.cbor` file. Copy the
+review string from `manifest.sha256` beside a generated lawpack; the public
+`ValidatedLawpackBundle::manifest_digest_review_string` API returns the same
+identity. A mismatch retains `SourceImportMismatch` and the import digest path,
+and its obligation identifies the required domain and exact digest.
+[LAWPACKS-REQ-026]
+
+For the shipped portable capability, run this command from the repository root
+to print a source import with the matching generated manifest identity:
+
+```sh
+printf 'use lawpack causal.cell@1 digest "%s" as cells;\n' "$(cat fixtures/lawpack/causal-cell/manifest.sha256)"
+```
+
+The output is one `use lawpack` declaration with the sidecar's full `sha256:`
+review string. Regenerate the closure through its owned generator when changing
+its manifest or adapter; copy the resulting manifest digest into the source.
+An exports, adapter, or target-configuration sidecar identifies that artifact,
+and cannot replace the manifest digest in a source import.
+
 The machine-readable lawpack manifest and export surface are specified in
 [`docs/abi/edict-lawpack.cddl`](../../abi/edict-lawpack.cddl), with explanatory
 reference material in
@@ -111,7 +134,11 @@ The current executable Rust surfaces touching lawpacks are:
   preserves those references but does not interpret their target-owned
   semantics. [LAWPACKS-REQ-019]
   `prepare_lawpack_compilation` then derives compiler and Target IR facts
-  through the source import's exact alias and manifest digest.
+  through every matching source import's exact alias and manifest digest.
+  Linked source modules may import the same lawpack through distinct aliases.
+  Every matching import must authenticate against the exact manifest; a valid
+  first alias cannot hide a later substituted digest. Canonical pure-helper
+  Target IR facts remain unique across aliases.
   [LAWPACKS-REQ-008] [LAWPACKS-REQ-017] [LAWPACKS-REQ-018]
 - The same preparation resolves every non-generic semantic effect's input and
   output plus every declared failure payload through its exact exported bounded
@@ -150,8 +177,14 @@ The current executable Rust surfaces touching lawpacks are:
   calls, integer domains, bounded strings and bytes, record fields, variant
   cases and payloads, bounded collection entries, and the final result must all
   have the declared types. Helper calls must also form an acyclic graph no
-  deeper than 128 calls, checked without recursive graph traversal.
-  [LAWPACKS-REQ-014]
+  deeper than 128 helpers on any directed path, including the root and terminal
+  helper. This is a graph-height bound, not a limit on the total number of
+  exports or call occurrences. Canonical coordinate order, export-array order,
+  and shared suffixes do not change acceptance. Iterative validation caches each
+  completed helper's longest suffix height and includes that height in every
+  caller; cycle detection remains separate. A cycle or a path of 129 helpers
+  rejects with `InvalidPureFunctionBody` before compiler facts are exposed.
+  [LAWPACKS-REQ-014] [LAWPACKS-REQ-025]
 - Byte constants preserve the complete exported interval during that check:
 
   | Exported byte form | Accepted length |

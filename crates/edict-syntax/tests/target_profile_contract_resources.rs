@@ -148,7 +148,10 @@ fn validated_contract_resources_bind_runtime_neutral_profiles() {
         let bound = resources.bind_manifest(profile);
         let report = validate_target_profile_manifest(&bound);
         assert_eq!(report.status, TargetProfileConformanceStatus::Conformant);
-        assert!(report.failures.is_empty());
+        assert_eq!(
+            report.failures,
+            [] as [edict_syntax::TargetProfileConformanceFailure; 0]
+        );
 
         for (field, reference) in [
             ("edict.canonical-cbor/v1", &bound.canonical_encoding_rules),

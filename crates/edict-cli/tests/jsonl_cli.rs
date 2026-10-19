@@ -98,7 +98,7 @@ fn build_accepts_application_request_without_compiler_input_records() {
     })]));
 
     assert_eq!(output.status.code(), Some(2));
-    assert!(output.stdout.is_empty());
+    assert_eq!(output.stdout, [] as [u8; 0]);
     let stderr = assert_jsonl_stream(&output.stderr, "stderr");
     let diagnostic = stderr
         .iter()
@@ -137,7 +137,7 @@ fn build_rejects_compiler_input_records_instead_of_ignoring_them() {
     ]));
 
     assert_eq!(output.status.code(), Some(2));
-    assert!(output.stdout.is_empty());
+    assert_eq!(output.stdout, [] as [u8; 0]);
     let stderr = assert_jsonl_stream(&output.stderr, "stderr");
     let diagnostic = stderr
         .iter()
@@ -168,7 +168,7 @@ fn build_rejects_unused_directory_extension_settings() {
     })]));
 
     assert_eq!(output.status.code(), Some(2));
-    assert!(output.stdout.is_empty());
+    assert_eq!(output.stdout, [] as [u8; 0]);
     let stderr = assert_jsonl_stream(&output.stderr, "stderr");
     let diagnostic = stderr
         .iter()
@@ -196,7 +196,7 @@ fn build_rejects_an_empty_lawpack_path_as_invalid_settings() {
     })]));
 
     assert_eq!(output.status.code(), Some(2));
-    assert!(output.stdout.is_empty());
+    assert_eq!(output.stdout, [] as [u8; 0]);
     let stderr = assert_jsonl_stream(&output.stderr, "stderr");
     let diagnostic = stderr
         .iter()
@@ -321,7 +321,7 @@ fn lawpack_build_writes_checks_repairs_and_is_cwd_independent() {
     })]);
     let first = run_edict_in_dir(&write_request, &caller_one);
     assert_eq!(first.status.code(), Some(0));
-    assert!(first.stderr.is_empty());
+    assert_eq!(first.stderr, [] as [u8; 0]);
     let output = root.join("vendor/example-text");
     let manifest = fs::read(output.join("manifest.cbor")).expect("read first manifest");
     let exports = fs::read(output.join("exports.cbor")).expect("read first exports");
@@ -335,7 +335,7 @@ fn lawpack_build_writes_checks_repairs_and_is_cwd_independent() {
     })]);
     let check = run_edict_in_dir(&check_request, &caller_two);
     assert_eq!(check.status.code(), Some(0));
-    assert!(check.stderr.is_empty());
+    assert_eq!(check.stderr, [] as [u8; 0]);
     assert_eq!(
         fs::read(output.join("manifest.cbor")).expect("manifest"),
         manifest
@@ -423,6 +423,39 @@ fn project_accepts_dirty_source_and_emits_syntax_core_target_ir_projection() {
     assert_empty_projection_diagnostics(&stdout);
     assert_available_core_projection(&stdout, &expected_core_digest);
     assert_available_target_ir_projection(&stdout, &expected_target_digest);
+}
+
+#[test]
+fn project_exposes_ordered_effect_binding_and_guard_without_hoisting() {
+    let source = ECHO_SOURCE.replace(
+        "  return { id: input.id };",
+        "  let observed: String<max=16> = receipt.id;\n  require observed != \"\" else domain.WriteRejected;\n  return { id: observed };",
+    );
+    let mut settings = projection_settings(["core", "targetIr", "digests"]);
+    settings["target"]["irDomain"] = json!("echo.span-ir/v2");
+    let output = run_edict(&jsonl([
+        settings,
+        json!({
+            "schema": "edict.compiler.input/v1", "type": "compilerInput",
+            "kind": "source", "name": "ordered.edict", "source": source,
+        }),
+    ]));
+    let stdout = assert_successful_projection_output(&output);
+    let target = record_of_type(&stdout, "targetIr");
+    assert_eq!(target["state"], "available");
+    assert_eq!(target["domain"], "echo.span-ir/v2");
+    let intent = &target["review"]["intents"]["replaceThing"];
+    assert_eq!(
+        intent["executionOrder"],
+        json!([
+            "replaceThing.step.0",
+            "replaceThing.binding.0",
+            "replaceThing.require.0",
+        ])
+    );
+    assert_eq!(intent["pureBindings"][0]["id"], "replaceThing.binding.0");
+    assert_eq!(intent["steps"][0]["id"], "replaceThing.step.0");
+    assert_eq!(intent["requirements"][0]["id"], "replaceThing.require.0");
 }
 
 #[test]
@@ -584,7 +617,7 @@ fn project_reserved_type_identity_emits_the_stable_compiler_kind() {
         Some(0),
         "compiler diagnostics are projection data, not process failure"
     );
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, [] as [u8; 0]);
     let stdout = assert_jsonl_stream(&output.stdout, "stdout");
     let diagnostics = record_of_type(&stdout, "diagnostics");
     let items = diagnostics
@@ -1260,6 +1293,18 @@ fn help_flag_emits_info_record() {
             exit_one.get("meaning").and_then(Value::as_str),
             Some("check operation compiler or validation diagnostics were produced"),
             "{flag} help must scope exit 1 to the check operation"
+        );
+        let exit_two = record
+            .get("exitCodes")
+            .and_then(Value::as_array)
+            .expect("help record carries exitCodes")
+            .iter()
+            .find(|entry| entry.get("code").and_then(Value::as_i64) == Some(2))
+            .expect("help record documents exit code 2");
+        assert_eq!(
+            exit_two.get("meaning").and_then(Value::as_str),
+            Some("CLI input or usage was invalid, or a build failed"),
+            "{flag} help must include build failures in exit 2"
         );
         assert_eq!(
             record.get("docs").and_then(Value::as_str),

@@ -583,7 +583,7 @@ fn fuel_resource_and_guest_traps_remain_distinct() {
         .invoke_lowerer(&trapped.prepared, &trapped.request, trapped.schema, limits)
         .expect_err("engine diagnostic retention must honor an exact zero bound");
     assert_eq!(failure.kind(), ProviderHostFailureKind::GuestTrap);
-    assert!(failure.diagnostic().is_empty());
+    assert_eq!(failure.diagnostic(), "");
 }
 
 #[test]
@@ -624,7 +624,7 @@ fn hostcall_and_logical_response_limits_are_separate() {
         failure.kind(),
         ProviderHostFailureKind::ResponseLiftLimitExceeded
     );
-    assert!(failure.diagnostic().is_empty());
+    assert_eq!(failure.diagnostic(), "");
 
     let output_limit = lower_harness("fixture.output-flood");
     let failure = output_limit
@@ -813,7 +813,7 @@ fn instantiation_fuel_exhaustion_preserves_budget_identity() {
         failure.phase(),
         edict_provider_host_wasmtime::ProviderHostPhase::Instantiate
     );
-    assert!(failure.diagnostic().is_empty());
+    assert_eq!(failure.diagnostic(), "");
 }
 
 #[test]

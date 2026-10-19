@@ -1,11 +1,14 @@
 use edict_syntax::{
-    author_lawpack, decode_lawpack_adapter, decode_lawpack_bundle,
-    preflight_lawpack_authoring_paths, CanonicalValue, LawpackArtifactKind,
-    LawpackAuthoringApertureRequirement, LawpackAuthoringDefinition, LawpackAuthoringDependency,
-    LawpackAuthoringFailureCause, LawpackAuthoringFailureKind, LawpackAuthoringPureFunction,
-    LawpackAuthoringVerifier, LawpackEffectKind, LawpackExecutionClass,
-    LawpackPureFunctionImplementation, LawpackValidationFailureKind, LawpackVerifier,
-    MAX_LAWPACK_AUTHORING_VALUE_NESTING_DEPTH,
+    author_lawpack, compile_to_core, decode_lawpack_adapter, decode_lawpack_bundle,
+    digest_core_module, digest_target_ir_artifact, encode_core_module, encode_target_ir_artifact,
+    lower_to_target_ir, parse_module, preflight_lawpack_authoring_paths,
+    prepare_lawpack_compilation, CanonicalValue, CoreModule, LawpackAdapterFailureKind,
+    LawpackArtifactKind, LawpackAuthoredArtifactSet, LawpackAuthoringApertureRequirement,
+    LawpackAuthoringDefinition, LawpackAuthoringDependency, LawpackAuthoringFailureCause,
+    LawpackAuthoringFailureKind, LawpackAuthoringPureFunction, LawpackAuthoringVerifier,
+    LawpackEffectKind, LawpackExecutionClass, LawpackPureFunctionImplementation,
+    LawpackValidationFailureKind, LawpackVerifier, TargetIrArtifact, TargetLoweringFailureKind,
+    TargetLoweringReport, TargetLoweringStatus, MAX_LAWPACK_AUTHORING_VALUE_NESTING_DEPTH,
 };
 
 const PIN_RULESET: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
@@ -283,6 +286,265 @@ fn exported_semantic_mutation_moves_exports_and_manifest_identity() {
             .expect("changed manifest")
             .digest()
     );
+}
+
+fn author_mutation_helper(value: u64) -> LawpackAuthoredArtifactSet {
+    let mut definition = full_definition();
+    let mut body = pure_body_with_nested_conditionals(0);
+    body["body"]["result"]["value"]["value"] = serde_json::json!(value);
+    definition.exports.pure_functions = vec![serde_json::from_value(serde_json::json!({
+        "source": "edict",
+        "coordinate": "example.cell@1.limit",
+        "parameterTypes": [],
+        "returnType": "U64",
+        "costTemplate": "example.cell@1.helperBudget",
+        "determinismClass": "total",
+        "body": body
+    }))
+    .expect("typed Edict helper")];
+    definition.target_adapters[0].budgets.insert(
+        "example.cell@1.helperBudget".to_owned(),
+        serde_json::from_value(serde_json::json!({
+            "maxSteps": 1, "maxAllocatedBytes": 0, "maxOutputBytes": 0
+        }))
+        .expect("helper cost"),
+    );
+    author_lawpack(&definition, &[]).expect("publicly author valid helper")
+}
+
+fn mutation_source(authored: &LawpackAuthoredArtifactSet) -> String {
+    let digest = authored
+        .artifact(LawpackArtifactKind::Manifest)
+        .expect("manifest")
+        .digest();
+    format!(
+        "package examples.mutation@1;\n\
+         use lawpack example.cell@1 digest \"{digest}\" as cell;\n\
+         type Input = {{ items: List<U64, max=4>, choose: U32, }};\n\
+         type Output = {{ value: U64, }};\n\
+         intent apply(input: Input) returns Output\n\
+           profile cell.create basis none budget <= cell.smallBudget {{\n\
+           let limit: U64 = cell.limit();\n\
+           let selected: U64 = if input.choose == 0u32 then limit else 0u64;\n\
+           return {{ value: selected }};\n\
+         }}"
+    )
+}
+
+fn compile_authored_mutation(
+    authored: &LawpackAuthoredArtifactSet,
+    source: &str,
+) -> (CoreModule, TargetLoweringReport) {
+    let manifest = authored
+        .artifact(LawpackArtifactKind::Manifest)
+        .expect("manifest");
+    let exports = authored
+        .artifact(LawpackArtifactKind::Exports)
+        .expect("exports");
+    let adapter = authored
+        .artifact(LawpackArtifactKind::Adapter)
+        .expect("adapter");
+    let bundle = decode_lawpack_bundle(manifest.bytes(), exports.bytes()).expect("exact bundle");
+    let adapter = decode_lawpack_adapter(&bundle, "echo.dpo@1", adapter.bytes()).expect("adapter");
+    let module = parse_module(source).expect("authored consumer parses");
+    let preparation =
+        prepare_lawpack_compilation(&module, &bundle, &adapter).expect("exact closure");
+    let core = compile_to_core(&module, preparation.compiler_context()).expect("consumer compiles");
+    let report = lower_to_target_ir(&core, preparation.target_ir_facts());
+    (core, report)
+}
+
+fn lower_authored_mutation(
+    authored: &LawpackAuthoredArtifactSet,
+    source: &str,
+) -> (CoreModule, TargetIrArtifact) {
+    let (core, report) = compile_authored_mutation(authored, source);
+    assert_eq!(
+        report.status,
+        TargetLoweringStatus::Lowered,
+        "{:?}",
+        report.failures
+    );
+    (core, report.artifact.expect("lowered Target artifact"))
+}
+
+fn assert_compiled_identity_changed(
+    before: &(CoreModule, TargetIrArtifact),
+    after: &(CoreModule, TargetIrArtifact),
+) {
+    assert_ne!(
+        encode_core_module(&before.0).unwrap(),
+        encode_core_module(&after.0).unwrap()
+    );
+    assert_ne!(
+        digest_core_module(&before.0).unwrap(),
+        digest_core_module(&after.0).unwrap()
+    );
+    assert_ne!(
+        encode_target_ir_artifact(&before.1).unwrap(),
+        encode_target_ir_artifact(&after.1).unwrap()
+    );
+    assert_ne!(
+        digest_target_ir_artifact(&before.1).unwrap(),
+        digest_target_ir_artifact(&after.1).unwrap()
+    );
+}
+
+#[test]
+fn authored_helper_body_mutation_moves_compiled_identity_or_rejects_stale_pins() {
+    let original = author_mutation_helper(7);
+    let repeated = author_mutation_helper(7);
+    let changed = author_mutation_helper(8);
+    assert_eq!(
+        original, repeated,
+        "identical authored semantics reproduce every artifact"
+    );
+    for kind in [LawpackArtifactKind::Exports, LawpackArtifactKind::Manifest] {
+        let before = original.artifact(kind).unwrap();
+        let after = changed.artifact(kind).unwrap();
+        assert_ne!(before.bytes(), after.bytes());
+        assert_ne!(before.digest(), after.digest());
+    }
+    assert_eq!(
+        original.artifact(LawpackArtifactKind::Adapter),
+        changed.artifact(LawpackArtifactKind::Adapter)
+    );
+
+    let original_manifest = original.artifact(LawpackArtifactKind::Manifest).unwrap();
+    let changed_exports = changed.artifact(LawpackArtifactKind::Exports).unwrap();
+    let failures = decode_lawpack_bundle(original_manifest.bytes(), changed_exports.bytes())
+        .expect_err("new helper bytes cannot inherit the old manifest");
+    assert_eq!(
+        failures
+            .iter()
+            .map(|failure| failure.kind)
+            .collect::<Vec<_>>(),
+        vec![LawpackValidationFailureKind::ExportsDigestMismatch]
+    );
+
+    let changed_bundle = decode_lawpack_bundle(
+        changed
+            .artifact(LawpackArtifactKind::Manifest)
+            .unwrap()
+            .bytes(),
+        changed_exports.bytes(),
+    )
+    .unwrap();
+    let changed_adapter = decode_lawpack_adapter(
+        &changed_bundle,
+        "echo.dpo@1",
+        changed
+            .artifact(LawpackArtifactKind::Adapter)
+            .unwrap()
+            .bytes(),
+    )
+    .unwrap();
+    let original_source = mutation_source(&original);
+    let failures = prepare_lawpack_compilation(
+        &parse_module(&original_source).unwrap(),
+        &changed_bundle,
+        &changed_adapter,
+    )
+    .expect_err("old source pin cannot accept the new helper");
+    assert_eq!(
+        failures
+            .iter()
+            .map(|failure| failure.kind)
+            .collect::<Vec<_>>(),
+        vec![LawpackAdapterFailureKind::SourceImportMismatch]
+    );
+
+    let before = lower_authored_mutation(&original, &original_source);
+    let repeat = lower_authored_mutation(&repeated, &original_source);
+    assert_eq!(before, repeat);
+    assert_eq!(
+        encode_core_module(&before.0).unwrap(),
+        encode_core_module(&repeat.0).unwrap()
+    );
+    assert_eq!(
+        encode_target_ir_artifact(&before.1).unwrap(),
+        encode_target_ir_artifact(&repeat.1).unwrap()
+    );
+    let after = lower_authored_mutation(&changed, &mutation_source(&changed));
+    assert_eq!(
+        before.0.intents, after.0.intents,
+        "only the helper implementation changed"
+    );
+    assert_ne!(
+        before.1.semantic_closure.as_ref().unwrap().lawpacks,
+        after.1.semantic_closure.as_ref().unwrap().lawpacks
+    );
+    assert_compiled_identity_changed(&before, &after);
+}
+
+#[test]
+fn authored_consumer_branch_mutation_moves_compiled_identity() {
+    let authored = author_mutation_helper(7);
+    let source = mutation_source(&authored);
+    assert_eq!(source.matches("else 0u64").count(), 1);
+    let before = lower_authored_mutation(&authored, &source);
+    let after = lower_authored_mutation(&authored, &source.replace("else 0u64", "else 1u64"));
+    assert_eq!(before.0.imports, after.0.imports);
+    assert_eq!(before.0.types, after.0.types);
+    assert_eq!(
+        before.1.semantic_closure.as_ref().unwrap().lawpacks,
+        after.1.semantic_closure.as_ref().unwrap().lawpacks
+    );
+    assert_ne!(before.0.intents, after.0.intents);
+    assert_compiled_identity_changed(&before, &after);
+}
+
+fn assert_loop_target_rejection(report: &TargetLoweringReport) {
+    assert_eq!(report.status, TargetLoweringStatus::Unsupported);
+    assert!(report.artifact.is_none());
+    assert_eq!(report.failures.len(), 1);
+    assert_eq!(
+        report.failures[0].kind,
+        TargetLoweringFailureKind::UnsupportedCoreNode
+    );
+    assert_eq!(report.failures[0].intent.as_deref(), Some("apply"));
+    assert_eq!(report.failures[0].node_index, Some(2));
+}
+
+#[test]
+fn authored_consumer_loop_mutations_move_core_identity_before_target_rejection() {
+    let authored = author_mutation_helper(7);
+    let source = mutation_source(&authored).replace("return { value: selected };",
+        "for item in input.items bounded 4 { require item <= 10u64 else cell.AlreadyExists; }\nreturn { value: selected };");
+    let (before, target) = compile_authored_mutation(&authored, &source);
+    assert_loop_target_rejection(&target);
+    let (repeat, _) = compile_authored_mutation(&authored, &source);
+    assert_eq!(
+        encode_core_module(&before).unwrap(),
+        encode_core_module(&repeat).unwrap()
+    );
+    for (from, to) in [
+        ("bounded 4", "bounded 5"),
+        ("item <= 10u64", "item <= 11u64"),
+    ] {
+        assert_eq!(
+            source.matches(from).count(),
+            1,
+            "each mutation has exactly one site"
+        );
+        let (after, target) = compile_authored_mutation(&authored, &source.replace(from, to));
+        assert_loop_target_rejection(&target);
+        assert_eq!(
+            before.imports, after.imports,
+            "source-only mutation retains exact closure"
+        );
+        assert_eq!(before.types, after.types);
+        assert_ne!(
+            encode_core_module(&before).unwrap(),
+            encode_core_module(&after).unwrap(),
+            "{from}"
+        );
+        assert_ne!(
+            digest_core_module(&before).unwrap(),
+            digest_core_module(&after).unwrap(),
+            "{from}"
+        );
+    }
 }
 
 #[test]

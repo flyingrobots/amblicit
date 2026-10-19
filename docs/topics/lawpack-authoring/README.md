@@ -115,6 +115,16 @@ parent-chain gate rejects every component that is not a normal relative name.
 
 ## Resource And Dependency Identity
 
+An Edict helper body is part of the exported semantic content. For example,
+changing a valid helper's returned integer from `7` to `8` changes the generated
+exports and manifest identities even when its coordinate and signature stay
+the same. Rebuild the lawpack, review the new manifest digest, and update the
+application's exact source import before building the application. The old pin
+rejects with `InvalidApplicationClosure`; it neither replaces prior application
+output nor publishes output into a fresh directory. With the new exact pin,
+the change reaches compiled Core and supported Target artifacts.
+[LAUTH-REQ-008]
+
 An external resource uses an application-supplied exact identity:
 
 ```json

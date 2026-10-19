@@ -34,7 +34,8 @@
 //! sealed host-computed output manifests remain separate from external
 //! component dispatch. The crate also exposes an explicit in-process
 //! compatibility seam over the current Echo and git-warp lowerers.
-//! Pure `fn`/`const` declarations, `record` semantic-effect statements,
+//! First-order nongeneric source `fn` declarations lower through typed pure Core
+//! bodies. `const` declarations, `record` semantic-effect statements,
 //! list/map/unit expression literals, full source-language lowering, general
 //! target lowering, and full admission execution tooling are deferred. The
 //! crate exposes the reference canonical Core and Target IR encoders for
@@ -80,12 +81,15 @@ pub mod lawpack;
 pub mod lawpack_adapter;
 pub mod lawpack_authoring;
 pub mod lowerability;
+pub mod numeric;
 pub mod parser;
 pub mod provider;
 pub mod provider_invocation;
 pub mod provider_lowering;
 pub mod result_projection;
 pub mod semantic;
+pub mod source_closure;
+pub mod source_linker;
 pub mod target_ir;
 pub mod target_profile;
 pub mod target_profile_contract_resources;
@@ -120,8 +124,9 @@ pub use canonical::{
 };
 pub use compiler::{
     compile_to_core, lower_core, resolve_module, type_check, BoundFact, CompilerContext,
-    CompilerError, CompilerErrorKind, CompilerStage, PureFunctionFact, PureHelperCostFact,
-    ResolvedIntent, ResolvedModule, ResolvedTypeDecl, TypeShapeFact, TypedIntent, TypedModule,
+    CompilerError, CompilerErrorKind, CompilerStage, EffectSignatureMismatch, PureFunctionFact,
+    PureHelperCostFact, ResolvedIntent, ResolvedModule, ResolvedTypeDecl,
+    SignatureMismatchPosition, SignaturePathSegment, TypeShapeFact, TypedIntent, TypedModule,
 };
 pub use contract_bundle::{
     assemble_contract_bundle, assemble_contract_bundle_from_target_ir,
@@ -135,10 +140,11 @@ pub use contract_bundle::{
 };
 pub use core_ir::{
     validate_core_module_type_integrity, CompareOp, CoreBlock, CoreBound, CoreBudget, CoreExpr,
-    CoreExternalActionBudget, CoreImport, CoreImportKind, CoreIntent, CoreModule, CoreNode,
-    CoreObstructionArm, CoreObstructionReason, CorePredicate, CoreRequireFailureArm, CoreType,
-    CoreTypeIntegrityFailure, CoreTypeIntegrityFailureKind, CoreValue, InputConstraint,
-    InputConstraintSource, LocalRef, ResourceRef, ValidatedCoreModule, CORE_API_VERSION,
+    CoreExternalActionBudget, CoreFunction, CoreImport, CoreImportKind, CoreIntent, CoreModule,
+    CoreNode, CoreObstructionArm, CoreObstructionReason, CorePredicate, CorePureBinding,
+    CorePureBlock, CoreRequireFailureArm, CoreType, CoreTypeIntegrityFailure,
+    CoreTypeIntegrityFailureKind, CoreValue, InputConstraint, InputConstraintSource, LocalRef,
+    ResourceRef, ValidatedCoreModule, CORE_API_VERSION,
 };
 pub use highlight::{highlight_source, HighlightRole, HighlightToken};
 pub use lawpack::{
@@ -230,8 +236,8 @@ pub use target_ir::{
     TargetIrExternalActionRequest, TargetIrIntent, TargetIrLoweringFacts, TargetIrPureBinding,
     TargetIrRequireFailure, TargetIrRequirement, TargetIrSemanticClosure, TargetIrStep,
     TargetLoweringFailure, TargetLoweringFailureKind, TargetLoweringReport, TargetLoweringStatus,
-    TargetPureFunctionFact, ECHO_DPO_TARGET_PROFILE, ECHO_SPAN_IR_DOMAIN,
-    GITWARP_COMMIT_REDUCER_IR_DOMAIN, GITWARP_REF_CRDT_TARGET_PROFILE,
+    TargetPureFunctionFact, ECHO_DPO_TARGET_PROFILE, ECHO_ORDERED_SPAN_IR_DOMAIN,
+    ECHO_SPAN_IR_DOMAIN, GITWARP_COMMIT_REDUCER_IR_DOMAIN, GITWARP_REF_CRDT_TARGET_PROFILE,
 };
 pub use target_profile::{
     validate_target_profile_manifest, TargetProfileConformanceFailure,

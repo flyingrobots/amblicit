@@ -5,10 +5,10 @@
 
 use crate::ast::{
     BinOp, Block, BoundRef, BytesRefine, ContinueObstructedArm, Decl, DigestLockedPackageRef,
-    ElseClause, EnumDecl, Expr, FieldConstraint, FieldDecl, Import, ImportKind, IntentClause,
-    IntentDecl, MatchArm, Module, ObstructionArm, ObstructionHandler, ObstructionTarget,
-    PackageRef, Param, RecordEntry, RequireElseArm, ScalarRefine, Stmt, TypeDecl, TypeExpr,
-    TypeRef, UnOp, VariantCase, YieldBlock,
+    ElseClause, EnumDecl, Expr, FieldConstraint, FieldDecl, FunctionDecl, Import, ImportKind,
+    IntentClause, IntentDecl, MatchArm, Module, ObstructionArm, ObstructionHandler,
+    ObstructionTarget, PackageRef, Param, RecordEntry, RequireElseArm, ScalarRefine, Stmt,
+    TypeDecl, TypeExpr, TypeRef, UnOp, VariantCase, YieldBlock,
 };
 use crate::token::{lex, Span, Token, TokenKind};
 
@@ -493,8 +493,10 @@ impl Parser {
             ImportKind::Core
         } else if self.eat_kw("capability") {
             ImportKind::Capability
+        } else if self.eat_kw("module") {
+            ImportKind::Module
         } else {
-            return self.err("expected import kind (shape|lawpack|target|core|capability)");
+            return self.err("expected import kind (shape|lawpack|target|core|capability|module)");
         };
 
         let (package, shape_path) = if kind == ImportKind::Shape {
@@ -503,7 +505,10 @@ impl Parser {
             (Some(self.package_ref()?), None)
         };
 
-        let digest = if self.eat_kw("digest") {
+        let digest = if kind == ImportKind::Module {
+            self.expect_kw("digest")?;
+            Some(self.digest_lit()?)
+        } else if self.eat_kw("digest") {
             Some(self.digest_lit()?)
         } else {
             None
@@ -529,9 +534,11 @@ impl Parser {
             Ok(Decl::Enum(self.enum_decl()?))
         } else if self.at_kw("intent") {
             Ok(Decl::Intent(self.intent_decl()?))
+        } else if self.at_kw("fn") {
+            Ok(Decl::Function(self.function_decl()?))
         } else {
             self.err(format!(
-                "expected `type`, `enum`, or `intent` declaration, found {:?}",
+                "expected `type`, `enum`, `fn`, or `intent` declaration, found {:?}",
                 self.peek()
             ))
         }
@@ -792,6 +799,39 @@ impl Parser {
     }
 
     // --- intents ---
+
+    fn function_decl(&mut self) -> Result<FunctionDecl, ParseError> {
+        let start = self.peek_span().start;
+        self.expect_kw("fn")?;
+        let name = self.binder()?;
+        self.expect(&TokenKind::LParen)?;
+        let mut params = Vec::new();
+        while *self.peek() != TokenKind::RParen {
+            let pstart = self.peek_span().start;
+            let name = self.binder()?;
+            self.expect(&TokenKind::Colon)?;
+            let ty = self.type_ref()?;
+            params.push(Param {
+                name,
+                ty,
+                span: Span::new(pstart, self.prev_end()),
+            });
+            if !self.eat(&TokenKind::Comma) {
+                break;
+            }
+        }
+        self.expect(&TokenKind::RParen)?;
+        self.expect(&TokenKind::Arrow)?;
+        let returns = self.type_ref()?;
+        let body = self.block()?;
+        Ok(FunctionDecl {
+            name,
+            params,
+            returns,
+            body,
+            span: Span::new(start, self.prev_end()),
+        })
+    }
 
     fn intent_decl(&mut self) -> Result<IntentDecl, ParseError> {
         let start = self.peek_span().start;
@@ -1579,6 +1619,10 @@ impl Parser {
                 self.idx += 1;
                 Ok(Expr::Str { value, span })
             }
+            TokenKind::Bytes(value) => {
+                self.idx += 1;
+                Ok(Expr::Bytes { value, span })
+            }
             TokenKind::Ident(name) if name == "true" || name == "false" => {
                 self.idx += 1;
                 Ok(Expr::Bool {
@@ -1652,6 +1696,7 @@ fn expr_span(expr: &Expr) -> Span {
         Expr::Ident { span, .. }
         | Expr::Int { span, .. }
         | Expr::Str { span, .. }
+        | Expr::Bytes { span, .. }
         | Expr::Bool { span, .. }
         | Expr::Digest { span, .. }
         | Expr::Field { span, .. }

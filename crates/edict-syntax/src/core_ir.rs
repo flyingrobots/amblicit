@@ -9,6 +9,9 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+mod source_functions;
+pub(crate) use source_functions::validate_function_graph;
+
 /// The Core ABI identifier emitted by this crate.
 pub const CORE_API_VERSION: &str = "edict.core/v1";
 
@@ -18,6 +21,9 @@ pub(crate) const CORE_APPLICATION_INPUT_LOCAL_ID: &str = "arg.0";
 /// Shared ceiling for structural syntax and fully expanded semantic type graphs.
 pub(crate) const MAX_CORE_TYPE_DEPTH: usize = 128;
 
+/// Shared ceiling for expression, predicate and nested-block descent.
+pub(crate) const MAX_CORE_GRAPH_DEPTH: usize = 128;
+
 /// A lowered in-memory Core module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CoreModule {
@@ -25,8 +31,32 @@ pub struct CoreModule {
     pub coordinate: String,
     pub imports: Vec<CoreImport>,
     pub types: BTreeMap<String, CoreType>,
+    pub functions: BTreeMap<String, CoreFunction>,
     pub intents: BTreeMap<String, CoreIntent>,
     pub required_core_capabilities: Vec<String>,
+}
+
+/// One source-owned pure function, authenticated by the containing Core module.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CoreFunction {
+    pub params: Vec<LocalRef>,
+    pub return_type: String,
+    pub body: CorePureBlock,
+}
+
+/// Ordered immutable pure bindings followed by one result expression.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CorePureBlock {
+    pub locals: Vec<LocalRef>,
+    pub bindings: Vec<CorePureBinding>,
+    pub result: CoreExpr,
+}
+
+/// A pure local definition, unable to contain an effect or guard node.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CorePureBinding {
+    pub binding: LocalRef,
+    pub value: CoreExpr,
 }
 
 /// A Core module proven to satisfy the complete type-integrity judgment.
@@ -73,7 +103,7 @@ impl CoreTypeIntegrityFailure {
         self.kind
     }
 
-    /// Return the structural path to the invalid definition or reference.
+    /// Return the structural path to the invalid definition, reference or graph node.
     #[must_use]
     pub fn path(&self) -> &str {
         &self.path
@@ -558,12 +588,11 @@ fn render_self_describing_core_type_at_depth(ty: &CoreType, depth: usize) -> Opt
 }
 
 fn canonical_core_type_reference_at_depth(reference: &str, depth: usize) -> Option<String> {
-    match classify_core_type_reference_at_depth(reference, depth)? {
-        CoreTypeReference::Intrinsic(ty) | CoreTypeReference::Structural(ty) => {
-            render_self_describing_core_type_at_depth(&ty, depth)
-        }
-        CoreTypeReference::Named => Some(reference.to_owned()),
-    }
+    // Classification accepts only canonical spellings and validates every child
+    // at this occurrence depth. Rendering that parsed subtree again repeats the
+    // same recursive validation at each parent without changing any bytes.
+    classify_core_type_reference_at_depth(reference, depth)?;
+    Some(reference.to_owned())
 }
 
 /// Whether a Core type-table key is a valid named identity.
@@ -818,11 +847,13 @@ where
     }
 }
 
-/// Validate every Core type definition and graph-carried type reference.
+/// Validate Core type integrity and bound executable graph descent.
 ///
 /// This judgment is deliberately eager: valid unused named definitions remain
 /// legal and hash-significant, while malformed unused definitions still reject
 /// because they are part of the module's semantic preimage.
+/// Expression, predicate and nested-block edges share a separate depth budget
+/// so switching node families cannot bypass the executable graph limit.
 ///
 /// # Errors
 ///
@@ -845,6 +876,7 @@ pub fn validate_core_module_type_integrity(
     for key in module.types.keys() {
         validate_named_core_type_definition(module, &mut state, key, &format!("types.{key}"), 0)?;
     }
+    source_functions::validate_functions(module, &mut state)?;
     for (intent_name, intent) in &module.intents {
         validate_core_intent_types(
             module,
@@ -1222,7 +1254,7 @@ fn validate_core_intent_types(
     validate_core_type_reference(module, state, &intent.input, &format!("{path}.input"), 0)?;
     validate_core_type_reference(module, state, &intent.output, &format!("{path}.output"), 0)?;
     if let Some(basis) = &intent.basis {
-        validate_core_expression_types(module, state, basis, &format!("{path}.basis"))?;
+        validate_core_expression_types(module, state, basis, &format!("{path}.basis"), 0)?;
     }
     for (index, constraint) in intent.input_constraints.iter().enumerate() {
         validate_core_predicate_types(
@@ -1230,9 +1262,21 @@ fn validate_core_intent_types(
             state,
             &constraint.predicate,
             &format!("{path}.inputConstraints[{index}].predicate"),
+            0,
         )?;
     }
-    validate_core_block_types(module, state, &intent.body, &format!("{path}.body"))
+    validate_core_block_types(module, state, &intent.body, &format!("{path}.body"), 0)
+}
+
+fn validate_core_graph_depth(depth: usize, path: &str) -> Result<(), CoreTypeIntegrityFailure> {
+    if depth > MAX_CORE_GRAPH_DEPTH {
+        Err(CoreTypeIntegrityFailure::new(
+            CoreTypeIntegrityFailureKind::DepthExceeded,
+            path,
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 fn validate_core_block_types(
@@ -1240,7 +1284,9 @@ fn validate_core_block_types(
     state: &mut CoreTypeIntegrityState,
     block: &CoreBlock,
     path: &str,
+    depth: usize,
 ) -> Result<(), CoreTypeIntegrityFailure> {
+    validate_core_graph_depth(depth, path)?;
     for (index, local) in block.locals.iter().enumerate() {
         validate_core_local_type(
             module,
@@ -1250,9 +1296,21 @@ fn validate_core_block_types(
         )?;
     }
     for (index, node) in block.nodes.iter().enumerate() {
-        validate_core_node_types(module, state, node, &format!("{path}.nodes[{index}]"))?;
+        validate_core_node_types(
+            module,
+            state,
+            node,
+            &format!("{path}.nodes[{index}]"),
+            depth,
+        )?;
     }
-    validate_core_expression_types(module, state, &block.result, &format!("{path}.result"))
+    validate_core_expression_types(
+        module,
+        state,
+        &block.result,
+        &format!("{path}.result"),
+        depth,
+    )
 }
 
 fn validate_core_local_type(
@@ -1269,11 +1327,18 @@ fn validate_core_node_types(
     state: &mut CoreTypeIntegrityState,
     node: &CoreNode,
     path: &str,
+    depth: usize,
 ) -> Result<(), CoreTypeIntegrityFailure> {
     match node {
         CoreNode::Let { binding, value } => {
             validate_core_local_type(module, state, binding, &format!("{path}.let.binding.type"))?;
-            validate_core_expression_types(module, state, value, &format!("{path}.let.value"))
+            validate_core_expression_types(
+                module,
+                state,
+                value,
+                &format!("{path}.let.value"),
+                depth,
+            )
         }
         CoreNode::Require { predicate, arm } => {
             validate_core_predicate_types(
@@ -1281,6 +1346,7 @@ fn validate_core_node_types(
                 state,
                 predicate,
                 &format!("{path}.require.predicate"),
+                depth,
             )?;
             let reason = match arm {
                 CoreRequireFailureArm::Terminal { reason }
@@ -1291,46 +1357,25 @@ fn validate_core_node_types(
                 state,
                 reason,
                 &format!("{path}.require.reason"),
+                depth,
             )
         }
-        CoreNode::Effect {
-            binding,
-            input,
-            obstruction_map,
-            ..
-        } => {
-            validate_core_local_type(
-                module,
-                state,
-                binding,
-                &format!("{path}.effect.binding.type"),
-            )?;
-            validate_core_expression_types(module, state, input, &format!("{path}.effect.input"))?;
-            for (failure, arm) in obstruction_map {
-                validate_core_local_type(
-                    module,
-                    state,
-                    &arm.binder,
-                    &format!("{path}.effect.obstructionMap.{failure}.binder.type"),
-                )?;
-                validate_core_expression_types(
-                    module,
-                    state,
-                    &arm.value,
-                    &format!("{path}.effect.obstructionMap.{failure}.value"),
-                )?;
-            }
-            Ok(())
-        }
+        CoreNode::Effect { .. } => validate_core_effect_types(module, state, node, path, depth),
         CoreNode::ExternalActionRequest { .. } => {
-            validate_external_action_request_types(module, state, node, path)
+            validate_external_action_request_types(module, state, node, path, depth)
         }
         CoreNode::For {
             binder, iter, body, ..
         } => {
             validate_core_local_type(module, state, binder, &format!("{path}.for.binder.type"))?;
-            validate_core_expression_types(module, state, iter, &format!("{path}.for.iter"))?;
-            validate_core_block_types(module, state, body, &format!("{path}.for.body"))
+            validate_core_expression_types(
+                module,
+                state,
+                iter,
+                &format!("{path}.for.iter"),
+                depth,
+            )?;
+            validate_core_block_types(module, state, body, &format!("{path}.for.body"), depth + 1)
         }
         CoreNode::Branch {
             binding,
@@ -1351,11 +1396,65 @@ fn validate_core_node_types(
                 state,
                 predicate,
                 &format!("{path}.branch.predicate"),
+                depth,
             )?;
-            validate_core_block_types(module, state, then_block, &format!("{path}.branch.then"))?;
-            validate_core_block_types(module, state, else_block, &format!("{path}.branch.else"))
+            validate_core_block_types(
+                module,
+                state,
+                then_block,
+                &format!("{path}.branch.then"),
+                depth + 1,
+            )?;
+            validate_core_block_types(
+                module,
+                state,
+                else_block,
+                &format!("{path}.branch.else"),
+                depth + 1,
+            )
         }
     }
+}
+
+fn validate_core_effect_types(
+    module: &CoreModule,
+    state: &mut CoreTypeIntegrityState,
+    node: &CoreNode,
+    path: &str,
+    depth: usize,
+) -> Result<(), CoreTypeIntegrityFailure> {
+    let CoreNode::Effect {
+        binding,
+        input,
+        obstruction_map,
+        ..
+    } = node
+    else {
+        unreachable!("caller selects the effect variant");
+    };
+    validate_core_local_type(
+        module,
+        state,
+        binding,
+        &format!("{path}.effect.binding.type"),
+    )?;
+    validate_core_expression_types(module, state, input, &format!("{path}.effect.input"), depth)?;
+    for (failure, arm) in obstruction_map {
+        validate_core_local_type(
+            module,
+            state,
+            &arm.binder,
+            &format!("{path}.effect.obstructionMap.{failure}.binder.type"),
+        )?;
+        validate_core_expression_types(
+            module,
+            state,
+            &arm.value,
+            &format!("{path}.effect.obstructionMap.{failure}.value"),
+            depth,
+        )?;
+    }
+    Ok(())
 }
 
 fn validate_external_action_request_types(
@@ -1363,6 +1462,7 @@ fn validate_external_action_request_types(
     state: &mut CoreTypeIntegrityState,
     node: &CoreNode,
     path: &str,
+    depth: usize,
 ) -> Result<(), CoreTypeIntegrityFailure> {
     let CoreNode::ExternalActionRequest {
         binding,
@@ -1410,6 +1510,7 @@ fn validate_external_action_request_types(
             state,
             expression,
             &format!("{request_path}.{name}"),
+            depth,
         )?;
     }
     Ok(())
@@ -1420,9 +1521,16 @@ fn validate_core_obstruction_reason_types(
     state: &mut CoreTypeIntegrityState,
     reason: &CoreObstructionReason,
     path: &str,
+    depth: usize,
 ) -> Result<(), CoreTypeIntegrityFailure> {
     for (field, value) in &reason.payload {
-        validate_core_expression_types(module, state, value, &format!("{path}.payload.{field}"))?;
+        validate_core_expression_types(
+            module,
+            state,
+            value,
+            &format!("{path}.payload.{field}"),
+            depth,
+        )?;
     }
     Ok(())
 }
@@ -1432,7 +1540,9 @@ fn validate_core_expression_types(
     state: &mut CoreTypeIntegrityState,
     expression: &CoreExpr,
     path: &str,
+    depth: usize,
 ) -> Result<(), CoreTypeIntegrityFailure> {
+    validate_core_graph_depth(depth, path)?;
     match expression {
         CoreExpr::Local { reference } => {
             validate_core_local_type(module, state, reference, &format!("{path}.local.type"))
@@ -1445,13 +1555,18 @@ fn validate_core_expression_types(
                     state,
                     value,
                     &format!("{path}.record.{field}"),
+                    depth + 1,
                 )?;
             }
             Ok(())
         }
-        CoreExpr::Field { base, .. } => {
-            validate_core_expression_types(module, state, base, &format!("{path}.field.base"))
-        }
+        CoreExpr::Field { base, .. } => validate_core_expression_types(
+            module,
+            state,
+            base,
+            &format!("{path}.field.base"),
+            depth + 1,
+        ),
         CoreExpr::Call {
             type_args, args, ..
         } => {
@@ -1470,6 +1585,7 @@ fn validate_core_expression_types(
                     state,
                     argument,
                     &format!("{path}.call.args[{index}]"),
+                    depth + 1,
                 )?;
             }
             Ok(())
@@ -1484,9 +1600,22 @@ fn validate_core_expression_types(
                 state,
                 predicate,
                 &format!("{path}.if.predicate"),
+                depth + 1,
             )?;
-            validate_core_expression_types(module, state, then_value, &format!("{path}.if.then"))?;
-            validate_core_expression_types(module, state, else_value, &format!("{path}.if.else"))
+            validate_core_expression_types(
+                module,
+                state,
+                then_value,
+                &format!("{path}.if.then"),
+                depth + 1,
+            )?;
+            validate_core_expression_types(
+                module,
+                state,
+                else_value,
+                &format!("{path}.if.else"),
+                depth + 1,
+            )
         }
     }
 }
@@ -1496,11 +1625,13 @@ fn validate_core_predicate_types(
     state: &mut CoreTypeIntegrityState,
     predicate: &CorePredicate,
     path: &str,
+    depth: usize,
 ) -> Result<(), CoreTypeIntegrityFailure> {
+    validate_core_graph_depth(depth, path)?;
     match predicate {
         CorePredicate::True | CorePredicate::False => Ok(()),
         CorePredicate::Not(value) => {
-            validate_core_predicate_types(module, state, value, &format!("{path}.not"))
+            validate_core_predicate_types(module, state, value, &format!("{path}.not"), depth + 1)
         }
         CorePredicate::All(values) | CorePredicate::Any(values) => {
             for (index, value) in values.iter().enumerate() {
@@ -1509,13 +1640,26 @@ fn validate_core_predicate_types(
                     state,
                     value,
                     &format!("{path}.values[{index}]"),
+                    depth + 1,
                 )?;
             }
             Ok(())
         }
         CorePredicate::Compare { left, right, .. } => {
-            validate_core_expression_types(module, state, left, &format!("{path}.compare.left"))?;
-            validate_core_expression_types(module, state, right, &format!("{path}.compare.right"))
+            validate_core_expression_types(
+                module,
+                state,
+                left,
+                &format!("{path}.compare.left"),
+                depth + 1,
+            )?;
+            validate_core_expression_types(
+                module,
+                state,
+                right,
+                &format!("{path}.compare.right"),
+                depth + 1,
+            )
         }
     }
 }
@@ -1636,6 +1780,7 @@ mod structural_type_reference_tests {
 
     fn module_with_types(types: BTreeMap<String, CoreType>) -> CoreModule {
         CoreModule {
+            functions: BTreeMap::new(),
             api_version: CORE_API_VERSION.to_owned(),
             coordinate: "integrity.test@1".to_owned(),
             imports: Vec::new(),

@@ -1803,7 +1803,7 @@ fn effectful_branch_yield_lowers_to_bound_core_branch() {
         then_block.nodes.as_slice(),
         [CoreNode::Effect { .. }]
     ));
-    assert!(else_block.nodes.is_empty());
+    assert_eq!(else_block.nodes, [] as [edict_syntax::CoreNode; 0]);
     assert!(matches!(then_block.result, CoreExpr::Field { .. }));
     assert!(matches!(
         else_block.result,
@@ -2725,7 +2725,10 @@ fn initial_core_lowering_makes_no_canonical_or_target_claim() {
     let module = parse_module(BOUNDED_HELLO).expect("fixture parses");
     let core = compile_to_core(&module, &hello_context()).expect("fixture compiles to Core");
 
-    assert!(core.required_core_capabilities.is_empty());
+    assert_eq!(
+        core.required_core_capabilities,
+        [] as [std::string::String; 0]
+    );
     assert!(core
         .imports
         .iter()

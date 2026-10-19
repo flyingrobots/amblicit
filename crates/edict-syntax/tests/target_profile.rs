@@ -84,7 +84,10 @@ fn echo_and_kv_profiles_conform_to_the_same_runtime_neutral_manifest_contract() 
         let report = validate_target_profile_manifest(&profile);
 
         assert_eq!(report.status, TargetProfileConformanceStatus::Conformant);
-        assert!(report.failures.is_empty());
+        assert_eq!(
+            report.failures,
+            [] as [edict_syntax::TargetProfileConformanceFailure; 0]
+        );
     }
 }
 
@@ -133,7 +136,10 @@ fn accepted_core_abi_must_include_v1_core() {
 fn direct_lawpack_adapter_abi_is_supported_in_v1() {
     let profile = echo_profile();
 
-    assert!(failure_kinds(&profile).is_empty());
+    assert_eq!(
+        failure_kinds(&profile),
+        [] as [edict_syntax::TargetProfileConformanceFailureKind; 0]
+    );
 }
 
 #[test]

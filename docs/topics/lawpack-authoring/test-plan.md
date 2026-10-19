@@ -13,6 +13,7 @@ Status: current contract for Edict issue #195.
 | LAUTH-REQ-005 | implemented | Unknown tagged fields, duplicate raw JSON keys or coordinates, exact or file/descendant output-path collisions, fixed-artifact and sidecar collisions, reserved namespaces, filesystem NUL bytes, case aliases, trailing-dot aliases, overlong paths, and nonportable names are preflighted before output or dependency I/O; namespace escapes, malformed canonical values or a container beyond lawpack authoring's 48-container boundary, invalid adapters, incomplete or disconnected dependency closures, and digest substitution fail with stable structured authoring failures that retain lower-level validator causes; emitted-path validation scales through an ordering-independent ancestor set. | crates/edict-syntax/tests/lawpack_authoring.rs, crates/edict-cli/src/lawpack_build.rs |
 | LAUTH-REQ-006 | implemented | The public CLI supports write and check-only lawpack builds with confined relative paths, no-follow dependency inputs retained outside the owned output tree by lexical and filesystem-directory identity, footprint-scoped shared ancestor intents plus exclusive output claims within one document-root namespace, post-intent ownership and real-directory revalidation, no output nested inside another owned lawpack tree, bounded generated artifacts, indexes, and expected-path-first reads, read-only basis-rechecked observation, real-file owner-identity enforcement, stale-output detection, missing-parent drift classification without parent creation, and failure-atomic publication among lock-respecting writers. Write publication is supported only where Edict implements an atomic no-replace directory move. Windows lawpack builds fail with stable typed obstructions before document or namespace I/O in both write and check-only modes because neither the transactional publisher nor the filesystem-identity check path has a stable Windows backend. Under an uncooperative writer with mutation authority over the publication parent, retained capabilities confine I/O and detected substitutes are preserved, but portable pathname operations cannot guarantee restoration to the original name between arbitrary adversarial renames. | crates/edict-cli/src/lawpack_build.rs, crates/edict-cli/src/lawpack_build_windows.rs |
 | LAUTH-REQ-007 | implemented | A consumer invoked from outside the Edict checkout can author, publish, check, and feed its exact lawpack closure into the public application-build boundary without invoking `xtask`. | crates/edict-cli/tests/lawpack_authoring_cli.rs |
+| LAUTH-REQ-008 | implemented | Changing a valid authored Edict helper body changes its exports and manifest identity; a consumer must repin the exact import before compilation, and accepted compilation carries that change into Core and Target identity. | issue #192 |
 
 ## Test Cases
 
@@ -34,6 +35,7 @@ Status: current contract for Edict issue #195.
 | LAUTH-TP-014 | implemented | Namespace no-clobber | LAUTH-REQ-006 | Every publication rename whose destination must be absent refuses an intervening empty directory atomically, preserves that unknown directory, and leaves the authorized prior output recoverable. | activation_refuses_to_replace_a_concurrently_installed_empty_output | crates/edict-cli/src/lawpack_build.rs | The regression injects the substitute after capture and immediately before activation; ordinary replacement-capable rename is the calibrated mutation. Apple, Linux, Android, and Redox use the capability-relative no-replace kernel operation; targets without that backend refuse write publication before document or namespace I/O. |
 | LAUTH-TP-015 | implemented | Filesystem-equivalent dependency confinement | LAUTH-REQ-006 | A dependency path whose parent is the configured output directory by filesystem identity rejects even when case-insensitive lookup uses a different lexical spelling. | filesystem_equivalent_dependency_output_alias_rejects, dependency_confinement_uses_filesystem_identity | crates/edict-cli/src/lawpack_build.rs | The public-path regression runs where the temporary filesystem exposes case-insensitive aliases; the capability-identity regression provides host-independent evidence and is mutation-sensitive to removal of the identity comparison. |
 | LAUTH-TP-016 | implemented | Unsupported publication target | LAUTH-REQ-006 | On Windows, lawpack write and check-only builds return stable mode-specific failures before reading the build document or mutating the publication namespace; the pre-existing sentinel tree remains unchanged. | windows_lawpack_build_fails_closed_before_document_io, lawpack_target_support_keeps_check_only_available | crates/edict-cli/src/lawpack_build_windows.rs, crates/edict-cli/src/lawpack_build.rs, .github/workflows/ci.yml | A dedicated `windows-latest` runtime job is required because Linux CI and cross-compilation cannot witness Windows filesystem behavior. The gate proves fail-closed containment, not a Windows lawpack-build backend. |
+| LAUTH-TP-017 | implemented | Authored helper to compiled identity | LAUTH-REQ-002, LAUTH-REQ-003, LAUTH-REQ-007, LAUTH-REQ-008 | Author valid bodies differing only in one result constant through the public API; corroborate both exact bundles and adapters, reject old-manifest/new-exports and stale source-import combinations, and compare repeated versus repinned compiled Core/Target bytes and identities. The public CLI also rejects a changed closure with the old source pin without publishing fresh output or changing prior output. | authored_helper_body_mutation_moves_compiled_identity_or_rejects_stale_pins, public_build_requires_repinning_an_authored_helper_body_change | crates/edict-syntax/tests/lawpack_authoring.rs, crates/edict-cli/tests/lawpack_authoring_cli.rs | No hand-edited accepted digests, provider package, evaluator, or runtime receipt is substituted for compiler evidence. |
 
 The injected rollback case in LAUTH-TP-005 publishes `a/b/generated` through
 the document-root boundary, proving nested-parent creation and byte-for-byte
@@ -47,3 +49,30 @@ directories, so creation of empty coordination state cannot pass invisibly.
 - Digest sidecars must equal `digest_canonical_artifact` under the artifact's owning domain and end in one newline.
 - Negative tests assert `LawpackAuthoringFailureKind` or the public CLI diagnostic kind, not prose.
 - Publication tests compare the complete previous output tree after failure rather than inspecting transaction internals.
+
+## Mutation Witness Calibration
+
+LAUTH-TP-017 and CSPINE-TP-046 add evidence for existing behavior. Their valid
+specimens pass without a production repair. The RED observations are deliberate
+fault injections, not a claim that the baseline compiler contained those faults.
+Each temporary change below was applied separately and restored before the
+unmodified compiler's GREEN run.
+
+| Temporary fault | Executable witness | Observed RED oracle |
+| --- | --- | --- |
+| Normalize every authored helper result constant to `7` before canonical export conversion. | authored_helper_body_mutation_moves_compiled_identity_or_rejects_stale_pins | Authoring `7` and `8` incorrectly produces identical export bytes. |
+| Encode an empty Core imports array instead of the actual imports. | authored_helper_body_mutation_moves_compiled_identity_or_rejects_stale_pins | Repinned helper bodies incorrectly produce identical Core bytes. |
+| Drop the checked nodes when constructing a Core `for` body. | authored_consumer_loop_mutations_move_core_identity_before_target_rejection | Changing only `item <= 10u64` to `item <= 11u64` incorrectly produces identical Core bytes. |
+| Skip the source import digest comparison during lawpack preparation. | authored_helper_body_mutation_moves_compiled_identity_or_rejects_stale_pins; public_build_requires_repinning_an_authored_helper_body_change | Preparation incorrectly succeeds with the stale pin; the CLI advances to a later compilation failure instead of the required closure failure. |
+
+The focused commands are:
+
+```sh
+cargo test -p edict-syntax --test lawpack_authoring authored_
+cargo test -p edict-cli --test lawpack_authoring_cli public_build_requires_repinning_an_authored_helper_body_change
+```
+
+The four injected faults produced five assertion failures across the two test
+binaries (exit `101`). With production source restored, the commands pass three
+syntax witnesses and one public CLI witness. Compiler output identity is the
+oracle; these tests do not execute helper bodies, loops, or provider packages.

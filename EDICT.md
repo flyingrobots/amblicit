@@ -1269,8 +1269,10 @@ intent <name>(input: <Type>)
 | --- | --- |
 | Parser (20) | `Lex`, `ExpectedToken`, `ExpectedKeyword`, `ExpectedIdentifier`, `ExpectedExpression`, `InvalidInteger`, `InvalidDigest`, `InvalidVersion`, `ReservedKeyword`, `UnsupportedSyntax`, `InvalidName`, `EmptyEnum`, `EmptyObstructionMap`, `EmptyMatch`, `MissingRequiredField`, `DuplicateField`, `NonCallEffect`, `NonCallExternalActionOperation`, `ReturnInYieldBlock`, `InvalidTypeCall` |
 | Semantic (7) | `UnboundedScalar`, `MissingOperationMode`, `MissingBudget`, `MissingBasis`, `DuplicateIntentClause`, `DuplicateName`, `ShadowedName` |
-| Compiler (11) | `SurfaceValidation`, `MissingContextFact`, `UnsupportedSourceShape`, `UnresolvedType`, `UnknownField`, `TypeMismatch`, `ExpectedPredicate`, `ProfileEffectMismatch`, `UnrequestableExternalOperation`, `DuplicateObstructionFailure`, `DuplicateObstructionPayloadField` |
-| CLI exit codes | `0` ok · `1` compiler/validation diagnostics · `2` invalid CLI input |
+| Compiler (15) | `SurfaceValidation`, `MissingContextFact`, `UnsupportedSourceShape`, `UnresolvedType`, `UnresolvedFunction`, `InvalidBound`, `UnknownField`, `TypeMismatch`, `ExpectedPredicate`, `ProfileEffectMismatch`, `UnrequestableExternalOperation`, `DuplicateObstructionFailure`, `DuplicateObstructionPayloadField`, `ReservedTypeIdentity`, `InvalidCoreTypeIntegrity` |
+| CLI exit codes | `0` request completed · `1` check diagnostics · `2` invalid CLI input or build failure |
+
+Application `build` source failures emit one structured diagnostic per parser or compiler error, then the existing summary and terminal status. Source `span` offsets are zero-based UTF-8 bytes with exclusive end; `sourceLocation` gives the canonical path and one-based source line and Unicode-scalar column. Top-level `line` remains a JSONL request-record coordinate. The build failure exit code stays `2`, and the terminal error count includes the source records and summary. See the [CLI diagnostic reference](docs/topics/cli/README.md#application-source-diagnostics) for the checked schema and output-preservation contract.
 
 ### D.5 Digest domains
 

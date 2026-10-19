@@ -1800,26 +1800,39 @@ fn validate_pure_function_call_graph(
         collect_pure_callees(body, callees);
     }
 
-    let mut visited = BTreeSet::new();
+    let mut completed_heights = BTreeMap::<String, usize>::new();
     for root in call_graph.keys() {
-        if visited.contains(root) {
+        if completed_heights.contains_key(root) {
             continue;
         }
         let mut visiting = BTreeSet::new();
         let mut stack = vec![(root.clone(), false, 1_usize)];
         while let Some((coordinate, exiting, depth)) = stack.pop() {
             if exiting {
+                // A completed suffix must contribute its full height to every
+                // caller, even when an earlier traversal reached it shallowly.
+                let height = 1 + call_graph[&coordinate]
+                    .iter()
+                    .map(|callee| completed_heights[callee])
+                    .max()
+                    .unwrap_or(0);
+                if height > MAX_HELPER_CALL_DEPTH {
+                    return Err(pure_body_failure(
+                        "exports.pureFunctions",
+                        "an acyclic pure-helper call graph no deeper than 128 helper nodes",
+                    ));
+                }
                 visiting.remove(&coordinate);
-                visited.insert(coordinate);
+                completed_heights.insert(coordinate, height);
                 continue;
             }
-            if visited.contains(&coordinate) {
+            if completed_heights.contains_key(&coordinate) {
                 continue;
             }
             if depth > MAX_HELPER_CALL_DEPTH || !visiting.insert(coordinate.clone()) {
                 return Err(pure_body_failure(
                     "exports.pureFunctions",
-                    "an acyclic pure-helper call graph no deeper than 128 calls",
+                    "an acyclic pure-helper call graph no deeper than 128 helper nodes",
                 ));
             }
             stack.push((coordinate.clone(), true, depth));

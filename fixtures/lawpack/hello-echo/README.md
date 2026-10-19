@@ -34,6 +34,15 @@ a fake transport, or a handwritten Echo executable package.
 - `create-greeting.result-projection.sha256` is its
   `edict.result-projection.artifact/v1` domain-framed identity.
 
+## Source Import Digest
+
+Copy the full review string from `manifest.sha256` into the source lawpack
+import. This sidecar holds the `edict.lawpack/v1` domain-framed manifest identity.
+A raw file hash from `shasum -a 256 manifest.cbor` identifies different bytes
+and fails source preparation with `SourceImportMismatch`. The failure obligation
+names the required manifest domain and matching digest. The exports, adapter,
+and target-configuration sidecars cannot be substituted for this import value.
+
 Regenerate only through:
 
 ```sh

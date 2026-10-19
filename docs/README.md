@@ -64,6 +64,8 @@ The current specification set is:
   participant-neutral bundle and assurance evidence manifest validation.
 - [Fixtures Topic](./topics/fixtures/): shared executable fixture corpus and
   reviewed Core golden artifact contract.
+- [Numeric Foundation](./topics/numeric-foundation/): the checked Bunny Q32.32
+  compiler API and its conformance boundary.
 - [Lawpacks Topic](./topics/lawpacks/): lawpack import, direct-adapter, bundle
   reference, and deferred manifest-validation boundary.
 - [Lowerability Topic](./topics/lowerability/): typed v1 lowering

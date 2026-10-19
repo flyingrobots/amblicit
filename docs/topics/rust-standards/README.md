@@ -20,10 +20,10 @@ That gate runs formatting, Clippy with warnings as errors, workspace tests,
 workspace doctests, Core golden checks, topic contract checks, and whitespace
 checks. [RUST-REQ-001]
 
-Every workspace package inherits the minimum supported Rust version `1.94`, so
+Every workspace package inherits the minimum supported Rust version `1.96`, so
 published Cargo metadata and local resolver behavior agree with the workspace
-policy. CI runs the complete format, Clippy, test, and provider-component
-fixture matrix on exact Rust `1.94.0` and on stable; an xtask guard checks Cargo
+policy. The pinned Bunny 0.6.0 numeric dependency requires this minimum. CI runs
+the complete format, Clippy, test, and provider-component fixture matrix on exact Rust `1.96.0` and on stable; an xtask guard checks Cargo
 metadata and the CI toolchain declarations together. [RUST-REQ-009]
 
 ## Safety

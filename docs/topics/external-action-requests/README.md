@@ -160,3 +160,9 @@ and replay semantics.
 
 The verification matrix, fixed seed, and stress bound are in
 [test-plan.md](./test-plan.md).
+
+Nested request blocks cross the shared Core integrity boundary before canonical
+closure inspection. With atomic operands, graph depth 128 can reach closure
+inspection; depth 129 returns Core `DepthExceeded`, mapped to canonical
+`UnsupportedValue`. The separate canonical CBOR container ceiling still applies
+after integrity and closure validation. [EXTREQ-REQ-004]

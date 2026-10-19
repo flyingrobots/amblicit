@@ -47,6 +47,7 @@ For Core, `core_module_value` projects a `CoreModule` into a map containing:
 - `coordinate`;
 - `imports`;
 - `types`;
+- `functions`, only when nonempty;
 - `intents`;
 - `requiredCoreCapabilities`.
 

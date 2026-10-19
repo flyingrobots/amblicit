@@ -27,6 +27,25 @@ Out of scope:
 
 | ID | Status | Requirement | Source |
 | --- | --- | --- | --- |
+| SYNTAX-REQ-017 | implemented | Source-module imports preserve an exact package, mandatory digest and lexical alias. Standalone compilation refuses unresolved source modules, including unused imports. | docs/SPEC_edict-language-v1.md |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| SYNTAX-TP-027 | implemented | Source-module import boundary | SYNTAX-REQ-017 | Exact package/digest/alias and full import span survive parsing; missing digest fails with ExpectedKeyword; a standalone compiler cannot discard an unresolved dependency. | source_module_import_highlights_the_contextual_keyword, source_module_import_preserves_exact_package_digest_and_alias, source_module_import_requires_a_digest_clause, unresolved_source_import_cannot_silently_compile_even_when_unused | crates/edict-syntax/tests/source_modules.rs | Closure authentication and linking belong to the compiler-spine plan. |
+
+Byte-literal verification for #249 is recorded below. Source-to-Core literal
+and bound checks belong to the compiler-spine plan.
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| SYNTAX-REQ-016 | implemented | Parse ASCII-spelled byte literals as one token with raw octets; support quote, backslash, newline, tab, carriage-return, NUL and two-digit hexadecimal escapes; reject malformed escapes and non-ASCII byte source; preserve Unicode strings as valid UTF-8. | issue #249 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| SYNTAX-TP-026 | implemented | Byte literals and escapes | SYNTAX-REQ-016 | Complete prefix span, literal binary octets, lexical refusals and Unicode string preservation are checked independently. | bytes_prefix_is_one_token_with_the_complete_source_span, source_bytes_literals_lower_to_exact_raw_octets, invalid_byte_spellings_fail_at_the_lexical_boundary | crates/edict-syntax/tests/bytes_literals.rs | Inline literal vectors include empty bytes, CR/LF/TAB/NUL, 0x80 and 0xFF. |
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
 | SYNTAX-REQ-001 | implemented | `parse_module` returns source AST only; later phases own semantic validation and lowering. | crates/edict-syntax/src/lib.rs |
 | SYNTAX-REQ-002 | implemented | Module/package/import coordinates parse and preserve source-significant version spelling. | docs/SPEC_edict-language-v1.md |
 | SYNTAX-REQ-003 | implemented | Imports parse supported kinds, including digest-bound external-operation `capability` references, and validate digest literals. | docs/SPEC_edict-language-v1.md |
@@ -112,3 +131,13 @@ deterministic regression cases in `crates/edict-syntax/tests/`.
 - Fixture coverage is not exhaustive across every `EDICT-LANG-*` row in
   `docs/REQUIREMENTS.md`; this shelf covers the landed Phase 1 syntax parser
   only.
+
+## Source functions
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| SYNTAX-REQ-015 | implemented | Parse typed nongeneric first-order function declarations with ordered statement bodies; preserve spans for definition and call diagnostics. | issue #226 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| SYNTAX-TP-025 | implemented | Source functions | SYNTAX-REQ-015 | Identity and Jim byte-assembly declarations reach actual compiler checking; declaration-only acceptance is insufficient. | source_function_identity_is_not_an_imported_fact, jim_range_assembly_calls_an_authored_function_through_core_and_target | fixtures/lang/functions/range-assembly.edict | crates/edict-syntax/tests/source_functions.rs; Guarded source-function and regression suites pass. |

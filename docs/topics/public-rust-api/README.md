@@ -26,6 +26,11 @@ and verified projections. Diagnostic spans are available under `diagnostic`.
 These are explicit type exports; implementation modules remain private to the
 facade boundary. [PUBRUST-REQ-001]
 
+The `numeric` namespace exposes the checked Bunny Q32.32 foundation described
+in its [owning shelf](../numeric-foundation/README.md). It evaluates raw values
+without exposing saturating traits or claiming fixed-point source/IR support.
+[PUBRUST-REQ-005]
+
 ## Decision relationships
 
 This current public-API boundary depends on the contracts implemented by its
@@ -36,7 +41,7 @@ continues to serve repository consumers.
 | --- | --- |
 | `refines` | none |
 | `supersedes` | none |
-| `depends_on` | [Syntax](../syntax/README.md), [Semantic validation](../semantic-validation/README.md), [Core IR](../core-ir/README.md), [Target IR](../target-ir/README.md), [Result projections](../result-projections/README.md) |
+| `depends_on` | [Syntax](../syntax/README.md), [Semantic validation](../semantic-validation/README.md), [Core IR](../core-ir/README.md), [Target IR](../target-ir/README.md), [Result projections](../result-projections/README.md), [Numeric foundation](../numeric-foundation/README.md) |
 | `related` | [Rust standards](../rust-standards/README.md), [Release process](../release-process/README.md), [CLI](../cli/README.md) |
 
 The relationship table follows the

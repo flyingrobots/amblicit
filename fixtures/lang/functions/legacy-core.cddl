@@ -1,0 +1,350 @@
+; edict-core.cddl
+; Normative schema for the Edict Core v1 semantic model.
+;
+; Scope boundary: this file defines Core meaning and schema shape only. It does
+; not define a canonical encoder, Core module hash fields, hash fixtures, target
+; lowering, admission bundles, or target-owned IR.
+
+core-module = {
+  apiVersion: "edict.core/v1",
+  coordinate: tstr,
+  imports: [* core-import],
+  types: { * core-named-type-ref => core-type },
+  intents: { + tstr => core-intent },
+  requiredCoreCapabilities: [* tstr],
+}
+
+core-import = {
+  kind: "lawpack" / "target" / "core" / "capability",
+  ref: resource-ref,
+  ? alias: tstr,
+}
+
+; --- types ---------------------------------------------------------------
+
+core-type = core-scalar-type / core-record-type / core-variant-type /
+            core-option-type / core-list-type / core-map-type /
+            core-capability-ref-type / core-external-action-request-type /
+            core-nominal-type
+
+core-scalar-type = core-bool-type / core-int-type / core-string-type /
+                   core-bytes-type / core-unit-type
+
+core-bool-type = { kind: "Bool" }
+core-unit-type = { kind: "Unit" }
+core-int-type = {
+  kind: "I64" / "U64" / "I32" / "U32" / "I16" / "U16" / "I8" / "U8",
+}
+core-string-type = {
+  kind: "String",
+  max: uint,
+  canonical: "unicode-scalar-nfc" / "raw-utf8",
+}
+core-bytes-type = {
+  kind: "Bytes",
+  ? min: uint,
+  max: uint,
+}
+core-nominal-type = {
+  kind: "Nominal",
+  contract: tstr,
+  representation: core-type-ref,
+}
+core-record-type = {
+  kind: "Record",
+  fields: { * tstr => core-type-ref },
+}
+core-variant-type = {
+  kind: "Variant",
+  cases: { + tstr => variant-case-body },
+}
+variant-case-body = {
+  ? payload: core-type-ref,
+}
+core-option-type = {
+  kind: "Option",
+  item: core-type-ref,
+}
+core-list-type = {
+  kind: "List",
+  item: core-type-ref,
+  max: uint,
+}
+core-map-type = {
+  kind: "Map",
+  key: core-type-ref,
+  value: core-type-ref,
+  max: uint,
+}
+core-capability-ref-type = {
+  kind: "CapabilityRef",
+  item: core-type-ref,
+}
+core-external-action-request-type = {
+  kind: "ExternalActionRequest",
+  settlement: core-type-ref,
+}
+
+; core-type-ref is defined in edict-common.cddl and assembled with this schema.
+
+; --- references and values ----------------------------------------------
+
+; Local identity is alpha-stable. `id` is the compiler-owned local coordinate;
+; `alphaName` is the normalized human/debug name. Source binder spelling is not
+; identity.
+local-ref = {
+  id: tstr,
+  alphaName: tstr,
+  type: core-type-ref,
+}
+
+core-value = core-null-value / core-bool-value / core-int-value /
+             core-string-value / core-bytes-value / core-record-value /
+             core-variant-value / core-list-value / core-map-value /
+             core-capability-value
+
+core-null-value = { kind: "null" }
+core-bool-value = { kind: "bool", value: bool }
+core-int-value = { kind: "int", width: tstr, value: int }
+core-string-value = { kind: "string", value: tstr }
+core-bytes-value = { kind: "bytes", value: bstr }
+core-record-value = { kind: "record", fields: { * tstr => core-value } }
+core-variant-value = {
+  kind: "variant",
+  type: core-type-ref,
+  case: tstr,
+  ? payload: core-value,
+}
+core-list-value = { kind: "list", values: [* core-value] }
+core-map-value = { kind: "map", entries: [* [key: core-value, value: core-value]] }
+core-capability-value = {
+  kind: "capability",
+  receipt: sha256-digest,
+}
+
+; Edict-authored pure helpers use a pure Core function body. The body can bind
+; pure expressions and return an expression, but it cannot contain Core effect,
+; guard, branch, loop, match-node, or proof-obligation nodes.
+core-fn-body = {
+  params: [* local-ref],
+  body: core-pure-block,
+}
+
+core-pure-block = {
+  locals: [* local-ref],
+  bindings: [* pure-let-node],
+  result: core-expr,
+}
+
+pure-let-node = {
+  kind: "let",
+  binding: local-ref,
+  value: core-expr,
+}
+
+; --- expressions and predicates -----------------------------------------
+
+core-expr = local-expr / const-expr / record-expr / field-expr /
+            variant-expr / match-expr / call-expr / list-expr / map-expr /
+            if-expr
+
+local-expr = { kind: "local", ref: local-ref }
+const-expr = { kind: "const", value: core-value }
+record-expr = { kind: "record", fields: { * tstr => core-expr } }
+field-expr = { kind: "field", base: core-expr, field: tstr }
+variant-expr = {
+  kind: "variant",
+  type: core-type-ref,
+  case: tstr,
+  ? payload: core-expr,
+}
+match-expr = {
+  kind: "match",
+  scrutinee: core-expr,
+  arms: [+ match-arm],
+}
+match-arm = {
+  case: tstr,
+  ? binder: local-ref,
+  body: core-expr,
+}
+call-expr = {
+  kind: "call",
+  callee: tstr,
+  typeArgs: [* core-type-ref],
+  args: [* core-expr],
+}
+list-expr = { kind: "list", values: [* core-expr] }
+map-expr = { kind: "map", entries: [* [key: core-expr, value: core-expr]] }
+if-expr = {
+  kind: "if",
+  predicate: core-predicate,
+  then: core-expr,
+  else: core-expr,
+}
+
+core-predicate = true-predicate / false-predicate / not-predicate /
+                 all-predicate / any-predicate / compare-predicate /
+                 call-predicate / obstruction-predicate
+
+true-predicate = { kind: "true" }
+false-predicate = { kind: "false" }
+not-predicate = { kind: "not", value: core-predicate }
+all-predicate = { kind: "all", values: [+ core-predicate] }
+any-predicate = { kind: "any", values: [+ core-predicate] }
+compare-predicate = {
+  kind: "compare",
+  op: "==" / "!=" / "<" / "<=" / ">" / ">=",
+  left: core-expr,
+  right: core-expr,
+}
+call-predicate = {
+  kind: "call",
+  predicate: tstr,
+  args: [* core-expr],
+}
+obstruction-predicate = {
+  kind: "obstruction",
+  coordinate: failure-ident,
+  payload: core-expr,
+}
+
+input-constraint = {
+  coordinate: tstr,
+  source: "where" / "compiler",
+  predicate: core-predicate,
+}
+
+; --- intents, blocks, and nodes -----------------------------------------
+
+core-intent = {
+  input: core-type-ref,
+  output: core-type-ref,
+  requiredOperationProfile: tstr,
+  ? basis: core-expr,
+  inputConstraints: [* input-constraint],
+  coreEvaluationBudget: core-budget,
+  body: core-block,
+  ? optic: core-optic,
+}
+
+core-budget = {
+  maxSteps: uint,
+  maxAllocatedBytes: uint,
+  maxOutputBytes: uint,
+}
+
+core-optic = {
+  opticKind: "revelation" / "affectReintegration",
+  boundaryKind: "projection" / "affect",
+  apertureRequirement: aperture-requirement,
+  supportPolicy: tstr,
+  lossDisposition: tstr,
+}
+
+core-block = {
+  locals: [* local-ref],
+  nodes: [* core-node],
+  result: core-expr,
+}
+
+core-node = let-node / require-node / effect-node /
+            external-action-request-node / guard-node / branch-node /
+            for-node / match-node / proof-obligation-node
+
+let-node = {
+  kind: "let",
+  binding: local-ref,
+  value: core-expr,
+}
+require-node = {
+  kind: "require",
+  predicate: core-predicate,
+  onFailure: require-failure-arm,
+}
+require-failure-arm = terminal-require-failure /
+                      continue-obstructed-require-failure
+terminal-require-failure = {
+  kind: "terminal",
+  reason: obstruction-reason,
+}
+continue-obstructed-require-failure = {
+  kind: "continueObstructed",
+  reason: obstruction-reason,
+}
+obstruction-reason = {
+  reasonKind: tstr,
+  payload: { * tstr => core-expr },
+}
+effect-node = {
+  kind: "effect",
+  binding: local-ref,
+  effect: tstr,
+  input: core-expr,
+  obstructionMap: { * failure-ident => obstruction-arm },
+}
+external-action-request-node = {
+  kind: "externalActionRequest",
+  binding: local-ref,
+  operation: resource-ref,
+  inputType: core-type-ref,
+  settlementType: core-type-ref,
+  inputSchema: resource-ref,
+  settlementSchema: resource-ref,
+  input: core-expr,
+  authorityScope: core-expr,
+  basis: core-expr,
+  budget: external-action-budget,
+  reconciliationLaw: resource-ref,
+  state: "awaitingSettlement",
+  settlementAdmission: "schemaRequired",
+}
+external-action-budget = {
+  maxSettlementBytes: core-expr,
+  maxAttempts: core-expr,
+}
+obstruction-arm = {
+  binder: local-ref,
+  value: core-expr,
+}
+guard-node = {
+  kind: "guard",
+  predicate: core-predicate,
+  obstruction: core-expr,
+}
+branch-node = {
+  kind: "branch",
+  ? binding: local-ref,
+  predicate: core-predicate,
+  then: core-block,
+  else: core-block,
+}
+for-node = {
+  kind: "for",
+  binder: local-ref,
+  iter: core-expr,
+  bound: core-bound,
+  body: core-block,
+}
+match-node = {
+  kind: "match",
+  scrutinee: core-expr,
+  arms: [+ match-block-arm],
+}
+match-block-arm = {
+  case: tstr,
+  ? binder: local-ref,
+  body: core-block,
+}
+proof-obligation-node = {
+  kind: "proof",
+  coordinate: tstr,
+  predicate: core-predicate,
+}
+
+core-bound = literal-bound / coordinate-bound
+literal-bound = { kind: "literal", value: uint }
+coordinate-bound = { kind: "coordinate", ref: tstr }
+
+; Shared resource-ref, sha256-digest, failure-ident, aperture-requirement,
+; core-type-ref, and core-named-type-ref are defined once in edict-common.cddl.

@@ -4,6 +4,14 @@
 //! effect nodes into in-memory Echo or git-warp review artifacts. It does not
 //! execute a runtime, run a verifier, assemble bundles, or perform admission.
 
+mod byte_concat;
+mod byte_length;
+mod byte_slice;
+mod byte_utf8;
+pub(crate) mod execution_order;
+mod totality;
+mod unsigned_subtraction;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::core_ir::{
@@ -20,14 +28,22 @@ use crate::{ResultProjectionArtifact, ResultProjectionFailure};
 
 pub const ECHO_DPO_TARGET_PROFILE: &str = "echo.dpo@1";
 pub const ECHO_SPAN_IR_DOMAIN: &str = "echo.span-ir/v1";
+pub const ECHO_ORDERED_SPAN_IR_DOMAIN: &str = "echo.span-ir/v2";
 pub const GITWARP_REF_CRDT_TARGET_PROFILE: &str = "gitwarp.ref_crdt@1";
 pub const GITWARP_COMMIT_REDUCER_IR_DOMAIN: &str = "gitwarp.commit-reducer-ir/v1";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExecutionModel {
+    PreStepGuards,
+    Ordered,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TargetSelection {
     target_ir_domain: &'static str,
     target_intrinsic_prefix: &'static str,
     supports_requirements: bool,
+    execution_model: ExecutionModel,
 }
 
 impl TargetSelection {
@@ -44,11 +60,13 @@ fn target_selection_for_profile(target_profile: &str) -> Option<TargetSelection>
             target_ir_domain: ECHO_SPAN_IR_DOMAIN,
             target_intrinsic_prefix: ECHO_DPO_TARGET_PROFILE,
             supports_requirements: true,
+            execution_model: ExecutionModel::PreStepGuards,
         }),
         GITWARP_REF_CRDT_TARGET_PROFILE => Some(TargetSelection {
             target_ir_domain: GITWARP_COMMIT_REDUCER_IR_DOMAIN,
             target_intrinsic_prefix: GITWARP_REF_CRDT_TARGET_PROFILE,
             supports_requirements: false,
+            execution_model: ExecutionModel::PreStepGuards,
         }),
         _ => None,
     }
@@ -347,6 +365,9 @@ pub struct TargetIrSemanticClosure {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TargetIrIntent {
     pub operation_profile: String,
+    /// Exact instruction-id permutation for explicitly selected ordered Target IR.
+    /// Legacy artifacts omit this field.
+    pub execution_order: Option<Vec<String>>,
     pub basis: Option<CoreExpr>,
     pub input_constraints: Vec<InputConstraint>,
     pub core_evaluation_budget: CoreBudget,
@@ -533,7 +554,12 @@ pub(crate) fn semantic_closure_for_core(
             .iter()
             .any(|node| matches!(node, CoreNode::Let { .. }))
     });
-    if !has_explicit_basis && !has_pure_bindings && lawpacks.is_empty() && capabilities.is_empty() {
+    if core.functions.is_empty()
+        && !has_explicit_basis
+        && !has_pure_bindings
+        && lawpacks.is_empty()
+        && capabilities.is_empty()
+    {
         return Ok(None);
     }
 
@@ -599,7 +625,7 @@ fn digest_locked_import_set(
 fn validate_target_selection(
     facts: &TargetIrLoweringFacts,
 ) -> Result<TargetSelection, Vec<TargetLoweringFailure>> {
-    let Some(target_selection) = target_selection_for_profile(&facts.target_profile.coordinate)
+    let Some(mut target_selection) = target_selection_for_profile(&facts.target_profile.coordinate)
     else {
         return Err(vec![TargetLoweringFailure {
             kind: TargetLoweringFailureKind::UnsupportedTargetProfile,
@@ -619,6 +645,12 @@ fn validate_target_selection(
                 .clone()
                 .unwrap_or_else(|| "<missing>".to_owned()),
         }]);
+    }
+    if facts.target_profile.coordinate == ECHO_DPO_TARGET_PROFILE
+        && facts.target_ir_domain == ECHO_ORDERED_SPAN_IR_DOMAIN
+    {
+        target_selection.target_ir_domain = ECHO_ORDERED_SPAN_IR_DOMAIN;
+        target_selection.execution_model = ExecutionModel::Ordered;
     }
     if facts.target_ir_domain != target_selection.target_ir_domain {
         return Err(vec![TargetLoweringFailure {
@@ -687,6 +719,10 @@ fn validate_core_module(
     if !capability_failures.is_empty() {
         return capability_failures;
     }
+    if let Some(failure) = validate_source_function_bodies(core, pure_functions, effect_signatures)
+    {
+        return vec![failure];
+    }
     validate_pure_binding_graphs(core, pure_functions, effect_signatures)
 }
 
@@ -703,6 +739,13 @@ fn validate_pure_binding_graphs(
                     intent_name,
                     None,
                     "Core local table or producer contains an empty or duplicate identity",
+                ));
+            }
+            if !totality::intent_is_total(intent) {
+                return Some(invalid_pure_binding(
+                    intent_name,
+                    None,
+                    "Core operation is not proven total in its evaluation scope",
                 ));
             }
             if intent
@@ -1128,6 +1171,42 @@ fn expression_has_closed_authority(
         CoreExpr::Field { .. } => {
             expression_type_coordinate(core, pure_functions, expression, available).is_some()
         }
+        CoreExpr::Call {
+            callee,
+            type_args,
+            args,
+        } if callee == byte_concat::OPERATION => {
+            byte_concat::type_coordinate(core, pure_functions, type_args, args, available).is_some()
+        }
+        CoreExpr::Call {
+            callee,
+            type_args,
+            args,
+        } if callee == byte_length::OPERATION => {
+            byte_length::type_coordinate(core, pure_functions, type_args, args, available).is_some()
+        }
+        CoreExpr::Call {
+            callee,
+            type_args,
+            args,
+        } if callee == byte_utf8::OPERATION => {
+            byte_utf8::type_coordinate(core, pure_functions, type_args, args, available).is_some()
+        }
+        CoreExpr::Call {
+            callee,
+            type_args,
+            args,
+        } if callee == byte_slice::OPERATION => {
+            byte_slice::type_coordinate(core, pure_functions, type_args, args, available).is_some()
+        }
+        CoreExpr::Call {
+            callee,
+            type_args,
+            args,
+        } if callee == unsigned_subtraction::OPERATION => {
+            unsigned_subtraction::type_coordinate(core, pure_functions, type_args, args, available)
+                .is_some()
+        }
         CoreExpr::Call { callee, .. } if callee == "core.string.concat" => {
             expression_string_shape(core, pure_functions, expression, available).is_some()
         }
@@ -1135,8 +1214,10 @@ fn expression_has_closed_authority(
             callee,
             type_args,
             args,
-        } => validated_pure_function_fact(core, pure_functions, callee, type_args, args, available)
-            .is_some(),
+        } => {
+            validated_function_return_type(core, pure_functions, callee, type_args, args, available)
+                .is_some()
+        }
         CoreExpr::If {
             predicate,
             then_value,
@@ -1193,6 +1274,16 @@ fn expression_fits_declared_type(
                 0,
             )
         }
+        CoreExpr::Call { callee, .. }
+            if callee == byte_concat::OPERATION
+                || callee == byte_length::OPERATION
+                || callee == byte_utf8::OPERATION
+                || callee == byte_slice::OPERATION
+                || callee == unsigned_subtraction::OPERATION =>
+        {
+            expression_type_coordinate(core, pure_functions, expression, available)
+                .is_some_and(|actual| core_type_fits(core, &actual, expected))
+        }
         CoreExpr::Call {
             callee,
             type_args,
@@ -1220,8 +1311,10 @@ fn expression_fits_declared_type(
             callee,
             type_args,
             args,
-        } => validated_pure_function_fact(core, pure_functions, callee, type_args, args, available)
-            .is_some_and(|fact| core_type_fits(core, &fact.return_type, expected)),
+        } => {
+            validated_function_return_type(core, pure_functions, callee, type_args, args, available)
+                .is_some_and(|return_type| core_type_fits(core, return_type, expected))
+        }
         CoreExpr::If {
             predicate,
             then_value,
@@ -1244,6 +1337,91 @@ fn expression_fits_declared_type(
                 )
         }
     }
+}
+
+fn validated_function_return_type<'a>(
+    core: &'a CoreModule,
+    imported: &'a [TargetPureFunctionFact],
+    callee: &str,
+    type_args: &[String],
+    args: &[CoreExpr],
+    available: &BTreeMap<&str, &LocalRef>,
+) -> Option<&'a str> {
+    if let Some(name) = callee.strip_prefix(&format!("{}.", core.coordinate)) {
+        if let Some(function) = core.functions.get(name) {
+            if !type_args.is_empty()
+                || args.len() != function.params.len()
+                || imported.iter().any(|fact| fact.coordinate == callee)
+            {
+                return None;
+            }
+            return args
+                .iter()
+                .zip(&function.params)
+                .all(|(argument, parameter)| {
+                    expression_fits_declared_type(
+                        core,
+                        imported,
+                        argument,
+                        &parameter.ty,
+                        available,
+                    )
+                })
+                .then_some(function.return_type.as_str());
+        }
+    }
+    validated_pure_function_fact(core, imported, callee, type_args, args, available)
+        .map(|fact| fact.return_type.as_str())
+}
+
+fn validate_source_function_bodies(
+    core: &CoreModule,
+    imported: &[TargetPureFunctionFact],
+    effects: &[TargetEffectSignatureFact],
+) -> Option<TargetLoweringFailure> {
+    for (name, function) in &core.functions {
+        let coordinate = format!("{}.{name}", core.coordinate);
+        let invalid = |detail: &str| TargetLoweringFailure {
+            kind: TargetLoweringFailureKind::InvalidCoreIdentity,
+            intent: None,
+            node_index: None,
+            detail: format!("source function {coordinate}: {detail}"),
+        };
+        if imported.iter().any(|fact| fact.coordinate == coordinate)
+            || effects.iter().any(|fact| fact.coordinate == coordinate)
+        {
+            return Some(invalid("coordinate collides with imported authority"));
+        }
+        let mut available = function
+            .params
+            .iter()
+            .map(|local| (local.id.as_str(), local))
+            .collect::<BTreeMap<_, _>>();
+        for binding in &function.body.bindings {
+            if !expression_fits_declared_type(
+                core,
+                imported,
+                &binding.value,
+                &binding.binding.ty,
+                &available,
+            ) || !totality::expression_is_total(&binding.value, &[])
+            {
+                return Some(invalid("binding has invalid type, authority, or totality"));
+            }
+            available.insert(binding.binding.id.as_str(), &binding.binding);
+        }
+        if !expression_fits_declared_type(
+            core,
+            imported,
+            &function.body.result,
+            &function.return_type,
+            &available,
+        ) || !totality::expression_is_total(&function.body.result, &[])
+        {
+            return Some(invalid("result has invalid type, authority, or totality"));
+        }
+    }
+    None
 }
 
 fn validated_pure_function_fact<'a>(
@@ -1347,7 +1525,7 @@ fn expression_string_shape(
             type_args,
             args,
         } => {
-            let fact = validated_pure_function_fact(
+            let fact = validated_function_return_type(
                 core,
                 pure_functions,
                 callee,
@@ -1355,8 +1533,7 @@ fn expression_string_shape(
                 args,
                 available,
             )?;
-            let CoreType::String { max, canonical } = resolved_core_type(core, &fact.return_type)?
-            else {
+            let CoreType::String { max, canonical } = resolved_core_type(core, fact)? else {
                 return None;
             };
             Some((max, canonical))
@@ -1382,6 +1559,8 @@ fn expression_string_shape(
     }
 }
 
+// A returned coordinate also establishes operand validity. Callers must not
+// recursively validate the same expression again just to recover its type.
 fn expression_type_coordinate(
     core: &CoreModule,
     pure_functions: &[TargetPureFunctionFact],
@@ -1390,12 +1569,15 @@ fn expression_type_coordinate(
 ) -> Option<String> {
     match expression {
         CoreExpr::Local { reference }
-            if available.get(reference.id.as_str()).copied() == Some(reference) =>
+            if available.get(reference.id.as_str()).copied() == Some(reference)
+                && resolved_core_type(core, &reference.ty).is_some() =>
         {
             Some(reference.ty.clone())
         }
         CoreExpr::Const(CoreValue::Bool(_)) => Some("Bool".to_owned()),
-        CoreExpr::Const(CoreValue::Int { width, .. }) => Some(width.clone()),
+        CoreExpr::Const(CoreValue::Int { width, value }) => {
+            crate::core_ir::parse_core_integer(width, value).map(|_| width.clone())
+        }
         CoreExpr::Const(CoreValue::String(value)) => Some(format!(
             "String<max={},canonical=raw-utf8>",
             u64::try_from(value.chars().count()).ok()?
@@ -1411,6 +1593,41 @@ fn expression_type_coordinate(
             };
             Some(coordinate)
         }
+        CoreExpr::Call {
+            callee,
+            type_args,
+            args,
+        } if callee == byte_concat::OPERATION => {
+            byte_concat::type_coordinate(core, pure_functions, type_args, args, available)
+        }
+        CoreExpr::Call {
+            callee,
+            type_args,
+            args,
+        } if callee == byte_length::OPERATION => {
+            byte_length::type_coordinate(core, pure_functions, type_args, args, available)
+        }
+        CoreExpr::Call {
+            callee,
+            type_args,
+            args,
+        } if callee == byte_utf8::OPERATION => {
+            byte_utf8::type_coordinate(core, pure_functions, type_args, args, available)
+        }
+        CoreExpr::Call {
+            callee,
+            type_args,
+            args,
+        } if callee == byte_slice::OPERATION => {
+            byte_slice::type_coordinate(core, pure_functions, type_args, args, available)
+        }
+        CoreExpr::Call {
+            callee,
+            type_args,
+            args,
+        } if callee == unsigned_subtraction::OPERATION => {
+            unsigned_subtraction::type_coordinate(core, pure_functions, type_args, args, available)
+        }
         CoreExpr::Call { callee, .. } if callee == "core.string.concat" => {
             expression_string_shape(core, pure_functions, expression, available)
                 .map(|(max, canonical)| format!("String<max={max},canonical={canonical}>"))
@@ -1420,8 +1637,8 @@ fn expression_type_coordinate(
             type_args,
             args,
         } if callee != "core.string.concat" => {
-            validated_pure_function_fact(core, pure_functions, callee, type_args, args, available)
-                .map(|fact| fact.return_type.clone())
+            validated_function_return_type(core, pure_functions, callee, type_args, args, available)
+                .map(str::to_owned)
         }
         CoreExpr::If {
             predicate,
@@ -1665,12 +1882,8 @@ fn comparison_operand_shape(
             let else_shape = comparison_operand_shape(core, pure_functions, else_value, available)?;
             join_conditional_shapes(core, &then_shape, &else_shape, 0)
         }
-        _ => {
-            let coordinate =
-                expression_type_coordinate(core, pure_functions, expression, available)?;
-            expression_fits_declared_type(core, pure_functions, expression, &coordinate, available)
-                .then_some(ComparisonOperandShape::Coordinate(coordinate))
-        }
+        _ => expression_type_coordinate(core, pure_functions, expression, available)
+            .map(ComparisonOperandShape::Coordinate),
     }
 }
 
@@ -1843,7 +2056,29 @@ fn lower_intent(
 
     let mut state = IntentLoweringState::default();
     for (node_index, node) in intent.body.nodes.iter().enumerate() {
+        if context.target_selection.execution_model == ExecutionModel::Ordered
+            && matches!(node, CoreNode::ExternalActionRequest { .. })
+        {
+            failures.push(TargetLoweringFailure {
+                kind: TargetLoweringFailureKind::UnsupportedCoreNode,
+                intent: Some(intent_name.to_owned()),
+                node_index: Some(node_index),
+                detail: "ordered_external_action_request".to_owned(),
+            });
+            continue;
+        }
         lower_node(intent_name, node_index, node, context, &mut state, failures);
+        if context.target_selection.execution_model == ExecutionModel::Ordered {
+            let id = match node {
+                CoreNode::Let { .. } => state.pure_bindings.last().map(|node| &node.id),
+                CoreNode::Effect { .. } => state.steps.last().map(|node| &node.id),
+                CoreNode::Require { .. } => state.requirements.last().map(|node| &node.id),
+                _ => None,
+            };
+            if let Some(id) = id {
+                state.execution_order.push(id.clone());
+            }
+        }
     }
     if state.pure_bindings.is_empty()
         && state.requirements.is_empty()
@@ -1861,6 +2096,8 @@ fn lower_intent(
 
     TargetIrIntent {
         operation_profile: intent.required_operation_profile.clone(),
+        execution_order: (context.target_selection.execution_model == ExecutionModel::Ordered)
+            .then_some(state.execution_order),
         basis: intent.basis.clone(),
         input_constraints: intent.input_constraints.clone(),
         core_evaluation_budget: intent.core_evaluation_budget.clone(),
@@ -1880,6 +2117,7 @@ struct TargetLoweringContext<'a> {
 
 #[derive(Default)]
 struct IntentLoweringState {
+    execution_order: Vec<String>,
     pure_bindings: Vec<TargetIrPureBinding>,
     requirements: Vec<TargetIrRequirement>,
     steps: Vec<TargetIrStep>,
@@ -2001,7 +2239,9 @@ fn lower_require_node(
         });
         return;
     }
-    if require_references_step_output(predicate, arm, &state.step_outputs) {
+    if context.target_selection.execution_model == ExecutionModel::PreStepGuards
+        && require_references_step_output(predicate, arm, &state.step_outputs)
+    {
         failures.push(TargetLoweringFailure {
             kind: TargetLoweringFailureKind::UnsupportedTargetFeature,
             intent: Some(intent_name.to_owned()),
@@ -2010,7 +2250,9 @@ fn lower_require_node(
         });
         return;
     }
-    if !state.steps.is_empty() {
+    if context.target_selection.execution_model == ExecutionModel::PreStepGuards
+        && !state.steps.is_empty()
+    {
         failures.push(TargetLoweringFailure {
             kind: TargetLoweringFailureKind::UnsupportedTargetFeature,
             intent: Some(intent_name.to_owned()),
@@ -2240,6 +2482,7 @@ mod tests {
         };
         let unrelated_definition = CoreType::Bool;
         let core = CoreModule {
+            functions: BTreeMap::new(),
             api_version: CORE_API_VERSION.to_owned(),
             coordinate: "examples.closure@1".to_owned(),
             imports: Vec::new(),

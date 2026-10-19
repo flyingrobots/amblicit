@@ -463,7 +463,10 @@ fn supported_effectful_core_lowers_to_echo_span_ir() {
     let report = lower_to_target_ir(&core, &echo_facts());
 
     assert_eq!(report.status, TargetLoweringStatus::Lowered);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        Vec::<edict_syntax::TargetLoweringFailure>::new()
+    );
 
     let artifact = report.artifact.expect("supported Core emits Target IR");
     assert_eq!(artifact.domain, ECHO_SPAN_IR_DOMAIN);
@@ -492,7 +495,10 @@ fn lowerability_native_support_feeds_echo_target_lowering() {
     let profile_facts = echo_profile_facts();
     let lowerability = check_lowerability(&echo_requirements(), &profile_facts);
     assert_eq!(lowerability.status, LowerabilityStatus::Native);
-    assert!(lowerability.failures.is_empty());
+    assert_eq!(
+        lowerability.failures,
+        Vec::<edict_syntax::LowerabilityFailure>::new()
+    );
 
     let target_facts = TargetIrLoweringFacts::from_lowerability_report(
         echo_profile_ref(),
@@ -517,7 +523,10 @@ fn supported_gitwarp_core_lowers_to_commit_reducer_ir() {
     let report = lower_to_target_ir(&core, &gitwarp_facts());
 
     assert_eq!(report.status, TargetLoweringStatus::Lowered);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        Vec::<edict_syntax::TargetLoweringFailure>::new()
+    );
 
     let artifact = report.artifact.expect("supported Core emits Target IR");
     assert_eq!(artifact.domain, GITWARP_COMMIT_REDUCER_IR_DOMAIN);
@@ -565,7 +574,10 @@ fn supported_gitwarp_core_lowers_to_commit_reducer_ir() {
 fn lowerability_native_support_feeds_gitwarp_target_lowering() {
     let lowerability = check_lowerability(&gitwarp_requirements(), &gitwarp_profile_facts());
     assert_eq!(lowerability.status, LowerabilityStatus::Native);
-    assert!(lowerability.failures.is_empty());
+    assert_eq!(
+        lowerability.failures,
+        Vec::<edict_syntax::LowerabilityFailure>::new()
+    );
 
     let target_facts = TargetIrLoweringFacts::from_lowerability_report(
         gitwarp_profile_ref(),
@@ -589,7 +601,7 @@ fn echo_target_ir_contains_obstruction_requirement_payload() {
     let artifact = effectful_artifact(ECHO_CONTINUE_OBSTRUCTED_REQUIRE);
     let intent = artifact.intents.get("t").expect("lowered intent t");
 
-    assert!(intent.steps.is_empty());
+    assert_eq!(intent.steps, Vec::<edict_syntax::TargetIrStep>::new());
     assert_eq!(intent.requirements.len(), 1);
     let requirement = &intent.requirements[0];
     assert_eq!(requirement.id, "t.require.0");
@@ -733,7 +745,10 @@ fn lowerability_bridge_carries_only_selected_native_effect() {
     });
     let lowerability = check_lowerability(&echo_requirements(), &profile_facts);
     assert_eq!(lowerability.status, LowerabilityStatus::Native);
-    assert!(lowerability.failures.is_empty());
+    assert_eq!(
+        lowerability.failures,
+        Vec::<edict_syntax::LowerabilityFailure>::new()
+    );
 
     let target_facts = TargetIrLoweringFacts::from_lowerability_report(
         echo_profile_ref(),
@@ -770,7 +785,10 @@ fn lowerability_bridge_deduplicates_identical_native_effect_selection() {
     let report = lower_to_target_ir(&effectful_core(), &target_facts);
 
     assert_eq!(report.status, TargetLoweringStatus::Lowered);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        Vec::<edict_syntax::TargetLoweringFailure>::new()
+    );
     let artifact = report
         .artifact
         .expect("duplicate selected effect still lowers once");
@@ -795,7 +813,10 @@ fn unused_duplicate_effect_lowerings_do_not_reject_supported_effect() {
     let report = lower_to_target_ir(&effectful_core(), &facts);
 
     assert_eq!(report.status, TargetLoweringStatus::Lowered);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        Vec::<edict_syntax::TargetLoweringFailure>::new()
+    );
     let artifact = report
         .artifact
         .expect("unused duplicate lowerings do not block supported effect");
@@ -908,8 +929,8 @@ fn obstruction_arm_values_are_preserved_in_echo_span_ir() {
         panic!("obstruction arm value is preserved as a call expression");
     };
     assert_eq!(callee, "domain.WriteDifferentlyRejected");
-    assert!(type_args.is_empty());
-    assert!(args.is_empty());
+    assert_eq!(type_args.as_slice(), Vec::<String>::new());
+    assert_eq!(args.as_slice(), []);
 }
 
 #[test]
@@ -990,7 +1011,7 @@ fn unsupported_target_profile_rejects_without_artifact() {
 #[test]
 fn unsupported_target_ir_domain_rejects_without_artifact() {
     let mut facts = echo_facts();
-    facts.target_ir_domain = "echo.span-ir/v2".to_owned();
+    facts.target_ir_domain = "echo.span-ir/v99".to_owned();
 
     let report = lower_to_target_ir(&effectful_core(), &facts);
 
@@ -1319,7 +1340,10 @@ fn pure_core_bindings_lower_as_generic_target_program() {
     let report = lower_to_target_ir(&core, &facts);
 
     assert_eq!(report.status, TargetLoweringStatus::Lowered);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        Vec::<edict_syntax::TargetLoweringFailure>::new()
+    );
     let artifact = report.artifact.as_ref().expect("pure Target IR");
     let intent = artifact.intents.get("sayHello").expect("pure intent");
     assert_eq!(intent.pure_bindings.len(), 1);
@@ -1584,7 +1608,10 @@ fn ranged_core_byte_coordinates_lower_as_builtin_types() {
     let report = lower_to_target_ir(&core, &pure_target_facts());
 
     assert_eq!(report.status, TargetLoweringStatus::Lowered);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        Vec::<edict_syntax::TargetLoweringFailure>::new()
+    );
     assert!(report.artifact.is_some());
 
     let CoreNode::Let { value, .. } = &mut core
@@ -1683,7 +1710,10 @@ fn pure_conditional_comparison_accepts_supported_call_operands() {
     let report = lower_to_target_ir(&core, &pure_target_facts());
 
     assert_eq!(report.status, TargetLoweringStatus::Lowered);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        Vec::<edict_syntax::TargetLoweringFailure>::new()
+    );
     assert!(report.artifact.is_some());
 }
 
@@ -1725,7 +1755,10 @@ fn compiler_produced_conditional_comparisons_infer_compatible_branch_types() {
     let report = lower_to_target_ir(&core, &pure_target_facts());
 
     assert_eq!(report.status, TargetLoweringStatus::Lowered);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        Vec::<edict_syntax::TargetLoweringFailure>::new()
+    );
     assert!(report.artifact.is_some());
 }
 
@@ -1750,7 +1783,10 @@ fn compiler_produced_conditional_record_comparisons_preserve_structural_compatib
     let report = lower_to_target_ir(&core, &pure_target_facts());
 
     assert_eq!(report.status, TargetLoweringStatus::Lowered);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        Vec::<edict_syntax::TargetLoweringFailure>::new()
+    );
     assert!(report.artifact.is_some());
 
     let mut incompatible = core;
@@ -1950,7 +1986,10 @@ fn lawpack_effect_signatures_reject_mismatched_core_values() {
 
     let control = lower_to_target_ir(&core, facts);
     assert_eq!(control.status, TargetLoweringStatus::Lowered);
-    assert!(control.failures.is_empty());
+    assert_eq!(
+        control.failures,
+        Vec::<edict_syntax::TargetLoweringFailure>::new()
+    );
     assert!(control.artifact.is_some());
 
     let mut input_mismatch = core.clone();
@@ -2068,7 +2107,10 @@ fn compiler_produced_bounded_lists_lower_through_target_ir() {
     let report = lower_to_target_ir(&core, &pure_target_facts());
 
     assert_eq!(report.status, TargetLoweringStatus::Lowered);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        Vec::<edict_syntax::TargetLoweringFailure>::new()
+    );
     assert!(report.artifact.is_some());
 
     let mut max_mismatch = core.clone();
@@ -2137,7 +2179,10 @@ fn caller_authored_byte_comparisons_require_directional_compatibility() {
 
     let report = lower_to_target_ir(&conditional_join, &pure_target_facts());
     assert_eq!(report.status, TargetLoweringStatus::Lowered);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        Vec::<edict_syntax::TargetLoweringFailure>::new()
+    );
     assert!(report.artifact.is_some());
 }
 
@@ -2371,7 +2416,10 @@ fn compiler_produced_crossed_list_conditionals_lower_through_target_ir() {
     let report = lower_to_target_ir(&core, &pure_target_facts());
 
     assert_eq!(report.status, TargetLoweringStatus::Lowered);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        Vec::<edict_syntax::TargetLoweringFailure>::new()
+    );
     assert!(report.artifact.is_some());
 }
 
@@ -2394,7 +2442,10 @@ fn compiler_bound_record_joins_use_canonical_structural_identity() {
     for core in [&forward, &reverse] {
         let report = lower_to_target_ir(core, &pure_target_facts());
         assert_eq!(report.status, TargetLoweringStatus::Lowered);
-        assert!(report.failures.is_empty());
+        assert_eq!(
+            report.failures,
+            Vec::<edict_syntax::TargetLoweringFailure>::new()
+        );
         assert!(report.artifact.is_some());
     }
 }
@@ -2417,7 +2468,10 @@ fn compiler_bound_list_record_joins_use_canonical_structural_identity() {
     for core in [&forward, &reverse] {
         let report = lower_to_target_ir(core, &pure_target_facts());
         assert_eq!(report.status, TargetLoweringStatus::Lowered);
-        assert!(report.failures.is_empty());
+        assert_eq!(
+            report.failures,
+            Vec::<edict_syntax::TargetLoweringFailure>::new()
+        );
         assert!(report.artifact.is_some());
     }
 }
@@ -3280,7 +3334,10 @@ fn target_lowering_accepts_compiler_type_depth_boundary() {
     let report = lower_to_target_ir(&core, &pure_target_facts());
 
     assert_eq!(report.status, TargetLoweringStatus::Lowered);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        Vec::<edict_syntax::TargetLoweringFailure>::new()
+    );
     assert!(report.artifact.is_some());
 }
 
@@ -3899,3 +3956,6 @@ fn replace_required(source: &str, from: &str, to: &str) -> String {
 fn digest_text(hex: char) -> String {
     format!("sha256:{}", hex.to_string().repeat(64))
 }
+
+#[path = "target_ir/ordered.rs"]
+mod ordered;

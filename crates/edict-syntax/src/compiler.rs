@@ -7,19 +7,31 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ast::{
     BinOp, Block, BoundRef, BytesRefine, Decl, DigestLockedPackageRef, ElseClause, Expr, FieldDecl,
-    Import, ImportKind, IntentClause, IntentDecl, Module, ObstructionArm, ObstructionHandler,
-    ObstructionTarget, RecordEntry, RequireElseArm, ScalarRefine, Stmt, TypeDecl, TypeExpr,
-    TypeRef, UnOp, YieldBlock,
+    FunctionDecl, Import, ImportKind, IntentClause, IntentDecl, Module, ObstructionArm,
+    ObstructionHandler, ObstructionTarget, RecordEntry, RequireElseArm, ScalarRefine, Stmt,
+    TypeDecl, TypeExpr, TypeRef, UnOp, YieldBlock,
 };
 use crate::core_ir::{
     classify_core_type_reference, is_lowercase_sha256_review_digest, parse_core_integer,
     render_self_describing_core_type, validate_core_module_type_integrity, CompareOp, CoreBlock,
-    CoreBound, CoreBudget, CoreExpr, CoreExternalActionBudget, CoreImport, CoreImportKind,
-    CoreIntent, CoreModule, CoreNode, CoreObstructionArm, CoreObstructionReason, CorePredicate,
-    CoreRequireFailureArm, CoreType, CoreTypeReference, CoreValue, InputConstraint,
-    InputConstraintSource, LocalRef, ResourceRef, CORE_API_VERSION,
-    CORE_APPLICATION_INPUT_LOCAL_ID, MAX_CORE_TYPE_DEPTH,
+    CoreBound, CoreBudget, CoreExpr, CoreExternalActionBudget, CoreFunction, CoreImport,
+    CoreImportKind, CoreIntent, CoreModule, CoreNode, CoreObstructionArm, CoreObstructionReason,
+    CorePredicate, CorePureBinding, CorePureBlock, CoreRequireFailureArm, CoreType,
+    CoreTypeReference, CoreValue, InputConstraint, InputConstraintSource, LocalRef, ResourceRef,
+    CORE_API_VERSION, CORE_APPLICATION_INPUT_LOCAL_ID, MAX_CORE_TYPE_DEPTH,
 };
+mod byte_concat;
+mod byte_length;
+mod byte_slice;
+mod byte_utf8;
+mod signature_diagnostic;
+mod source_functions;
+mod source_types;
+pub use signature_diagnostic::{
+    EffectSignatureMismatch, SignatureMismatchPosition, SignaturePathSegment,
+};
+mod unsigned_subtraction;
+
 use crate::lowerability::WriteClass;
 use crate::semantic::validate_surface;
 use crate::token::{IntSuffix, Span};
@@ -110,6 +122,8 @@ pub struct CompilerError {
     pub kind: CompilerErrorKind,
     pub message: String,
     pub span: Span,
+    /// Optional typed detail for an exported effect signature mismatch.
+    pub signature_mismatch: Option<EffectSignatureMismatch>,
 }
 
 /// Deterministic facts supplied to the compiler spine by the caller.
@@ -126,11 +140,34 @@ pub struct CompilerContext {
     pure_functions: BTreeMap<String, PureFunctionFact>,
     pure_helper_costs: BTreeMap<String, PureHelperCostFact>,
     type_shapes: BTreeMap<String, TypeShapeFact>,
+    source_type_origins: BTreeMap<String, SourceTypeOrigin>,
     bounds: BTreeMap<String, BoundFact>,
     budgets: BTreeMap<String, CoreBudget>,
 }
 
 impl CompilerContext {
+    pub(crate) fn with_linked_source_types(
+        mut self,
+        origins: BTreeMap<String, SourceTypeOrigin>,
+    ) -> Self {
+        self.source_type_origins = origins;
+        self
+    }
+
+    pub(crate) fn has_imported_type_coordinate(&self, coordinate: &str) -> bool {
+        self.type_shapes.contains_key(coordinate)
+    }
+
+    pub(crate) fn has_imported_callable_coordinate(&self, coordinate: &str) -> bool {
+        self.pure_functions
+            .values()
+            .any(|fact| fact.coordinate == coordinate)
+            || self
+                .effect_signatures
+                .values()
+                .any(|fact| fact.coordinate == coordinate)
+    }
+
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -246,10 +283,18 @@ pub struct ResolvedModule {
     pub pure_functions: BTreeMap<String, PureFunctionFact>,
     pub pure_helper_costs: BTreeMap<String, PureHelperCostFact>,
     pub type_shapes: BTreeMap<String, TypeShapeFact>,
+    pub(crate) source_type_origins: BTreeMap<String, SourceTypeOrigin>,
     pub bounds: BTreeMap<String, BoundFact>,
     pub budgets: BTreeMap<String, CoreBudget>,
     pub types: Vec<ResolvedTypeDecl>,
+    pub source_functions: Vec<FunctionDecl>,
     pub intents: Vec<ResolvedIntent>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SourceTypeOrigin {
+    pub(crate) coordinate: String,
+    pub(crate) table_key: String,
 }
 
 /// Resolved type declaration.
@@ -275,6 +320,7 @@ pub struct TypedModule {
     pub coordinate: String,
     pub imports: Vec<CoreImport>,
     pub types: BTreeMap<String, CoreType>,
+    pub functions: BTreeMap<String, CoreFunction>,
     pub intents: Vec<TypedIntent>,
 }
 
@@ -308,6 +354,7 @@ pub fn compile_to_core(
                 kind: CompilerErrorKind::SurfaceValidation,
                 message: err.message,
                 span: err.span,
+                signature_mismatch: None,
             })
             .collect::<Vec<_>>()
     })?;
@@ -326,13 +373,25 @@ pub fn resolve_module(
     context: &CompilerContext,
 ) -> Result<ResolvedModule, Vec<CompilerError>> {
     let mut errors = Vec::new();
+    for import in &module.imports {
+        if import.kind == ImportKind::Module {
+            errors.push(error(
+                CompilerStage::Resolve,
+                CompilerErrorKind::MissingContextFact,
+                "source module requires an authenticated source closure before compilation",
+                import.span,
+            ));
+        }
+    }
     let coordinate = package_coordinate(&module.package.path, &module.package.version);
     let imports = resolve_imports(&module.imports);
     let mut types = Vec::new();
     let mut intents = Vec::new();
+    let mut source_functions = Vec::new();
 
     for decl in &module.decls {
         match decl {
+            Decl::Function(decl) => source_functions.push(decl.clone()),
             Decl::Type(decl) => types.push(ResolvedTypeDecl {
                 name: decl.name.clone(),
                 source: decl.clone(),
@@ -361,9 +420,11 @@ pub fn resolve_module(
             pure_functions: context.pure_functions.clone(),
             pure_helper_costs: context.pure_helper_costs.clone(),
             type_shapes: context.type_shapes.clone(),
+            source_type_origins: context.source_type_origins.clone(),
             bounds: context.bounds.clone(),
             budgets: context.budgets.clone(),
             types,
+            source_functions,
             intents,
         },
     )
@@ -408,6 +469,7 @@ pub fn lower_core(typed: &TypedModule) -> Result<CoreModule, Vec<CompilerError>>
         coordinate: typed.coordinate.clone(),
         imports: typed.imports.clone(),
         types: typed.types.clone(),
+        functions: typed.functions.clone(),
         intents,
         required_core_capabilities: Vec::new(),
     };
@@ -418,6 +480,7 @@ pub fn lower_core(typed: &TypedModule) -> Result<CoreModule, Vec<CompilerError>>
             kind: CompilerErrorKind::InvalidCoreTypeIntegrity,
             message: failure.to_string(),
             span: Span::new(0, 0),
+            signature_mismatch: None,
         }]),
     }
 }
@@ -449,7 +512,7 @@ fn core_import_kind(kind: ImportKind) -> Option<CoreImportKind> {
         ImportKind::Target => Some(CoreImportKind::Target),
         ImportKind::Core => Some(CoreImportKind::Core),
         ImportKind::Capability => Some(CoreImportKind::Capability),
-        ImportKind::Shape => None,
+        ImportKind::Shape | ImportKind::Module => None,
     }
 }
 
@@ -716,6 +779,12 @@ struct LetStatement<'a> {
 #[derive(Debug, Clone)]
 struct TypeChecker<'a> {
     resolved: &'a ResolvedModule,
+    function_signatures: BTreeMap<String, source_functions::Signature>,
+    function_costs: BTreeMap<String, HelperCost>,
+    source_expression_costs: BTreeMap<usize, HelperCost>,
+    source_predicate_costs: BTreeMap<usize, HelperCost>,
+    source_value_bounds: BTreeMap<usize, (u64, u64)>,
+    input_proof_constraints: Vec<CorePredicate>,
     errors: Vec<CompilerError>,
     named_types: BTreeMap<String, TypeShape>,
     core_types: BTreeMap<String, CoreType>,
@@ -727,6 +796,12 @@ impl<'a> TypeChecker<'a> {
     fn new(resolved: &'a ResolvedModule) -> Self {
         Self {
             resolved,
+            function_signatures: BTreeMap::new(),
+            function_costs: BTreeMap::new(),
+            source_expression_costs: BTreeMap::new(),
+            source_predicate_costs: BTreeMap::new(),
+            source_value_bounds: BTreeMap::new(),
+            input_proof_constraints: Vec::new(),
             errors: Vec::new(),
             named_types: BTreeMap::new(),
             core_types: BTreeMap::new(),
@@ -737,6 +812,10 @@ impl<'a> TypeChecker<'a> {
 
     fn check(mut self) -> Result<TypedModule, Vec<CompilerError>> {
         self.check_types();
+        let functions = self.check_source_functions();
+        if !self.resolved.source_functions.is_empty() && !self.errors.is_empty() {
+            return Err(self.errors);
+        }
         let mut intents = Vec::new();
         for intent in &self.resolved.intents {
             if let Some(typed) = self.check_intent(intent) {
@@ -747,42 +826,29 @@ impl<'a> TypeChecker<'a> {
             coordinate: self.resolved.coordinate.clone(),
             imports: self.resolved.imports.clone(),
             types: self.core_types,
+            functions,
             intents,
         };
         finish(self.errors, module)
     }
 
-    fn check_types(&mut self) {
-        for decl in &self.resolved.types {
-            if !matches!(
-                classify_core_type_reference(&decl.name),
-                Some(CoreTypeReference::Named)
-            ) {
-                self.errors.push(error(
-                    CompilerStage::TypeCheck,
-                    CompilerErrorKind::ReservedTypeIdentity,
-                    format!("type `{}` cannot become a Core named identity", decl.name),
-                    decl.source.span,
-                ));
-                continue;
-            }
-            let Some(shape) = self.type_decl_shape(&decl.source) else {
-                continue;
-            };
-            self.core_types.insert(decl.name.clone(), shape.core_type());
-            self.named_types.insert(decl.name.clone(), shape);
-        }
-    }
-
     fn type_decl_shape(&mut self, decl: &TypeDecl) -> Option<TypeShape> {
-        let coord = format!("{}.{}", self.resolved.coordinate, decl.name);
+        let coord = self
+            .resolved
+            .source_type_origins
+            .get(&decl.name)
+            .map_or_else(
+                || format!("{}.{}", self.resolved.coordinate, decl.name),
+                |origin| origin.coordinate.clone(),
+            );
         match &decl.body {
             TypeExpr::Record(fields) => self.record_shape(&coord, fields, decl.span),
-            TypeExpr::Variant(_) | TypeExpr::Ref(_) => {
+            TypeExpr::Ref(ty) => self.type_ref_shape(ty, decl.span),
+            TypeExpr::Variant(_) => {
                 self.errors.push(error(
                     CompilerStage::TypeCheck,
                     CompilerErrorKind::UnsupportedSourceShape,
-                    "only record type declarations are in the initial lowerable subset",
+                    "variant type declarations are outside the current lowerable subset",
                     decl.span,
                 ));
                 None
@@ -819,7 +885,9 @@ impl<'a> TypeChecker<'a> {
         match ty {
             TypeRef::Named { path, args } if args.is_empty() && path.len() == 1 => {
                 let name = &path[0];
-                if let Some(width) = builtin_integer_width(name) {
+                if name == "Bool" {
+                    TypeShape::canonical_structural(TypeKind::Bool)
+                } else if let Some(width) = builtin_integer_width(name) {
                     Some(integer_shape(width))
                 } else if let Some(shape) = self.named_types.get(name) {
                     Some(shape.clone())
@@ -840,9 +908,12 @@ impl<'a> TypeChecker<'a> {
                 if path.as_slice() == ["ExternalActionRequest"] && args.len() == 1 =>
             {
                 let settlement = self.type_ref_shape(&args[0], span)?;
-                TypeShape::canonical_structural(TypeKind::ExternalActionRequest {
-                    settlement: Box::new(settlement),
-                })
+                self.source_canonical_structural(
+                    TypeKind::ExternalActionRequest {
+                        settlement: Box::new(settlement),
+                    },
+                    span,
+                )
             }
             TypeRef::StringTy(Some(refine)) => self.string_shape(refine, span),
             TypeRef::BytesTy(Some(refine)) => self.bytes_shape(refine, span),
@@ -861,7 +932,7 @@ impl<'a> TypeChecker<'a> {
                     item: Box::new(item),
                     max: *value,
                 };
-                TypeShape::canonical_structural(kind)
+                self.source_canonical_structural(kind, span)
             }
             TypeRef::BytesTy(None)
             | TypeRef::Option(_)
@@ -894,11 +965,20 @@ impl<'a> TypeChecker<'a> {
             .canonical
             .clone()
             .unwrap_or_else(|| "raw-utf8".to_owned());
+        if !matches!(canonical.as_str(), "raw-utf8" | "unicode-scalar-nfc") {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::UnsupportedSourceShape,
+                "unsupported string canonicalization",
+                span,
+            ));
+            return None;
+        }
         let kind = TypeKind::String {
             max: value,
             canonical,
         };
-        TypeShape::canonical_structural(kind)
+        self.source_canonical_structural(kind, span)
     }
 
     fn bytes_shape(&mut self, refine: &BytesRefine, span: Span) -> Option<TypeShape> {
@@ -933,7 +1013,19 @@ impl<'a> TypeChecker<'a> {
             ));
             return None;
         }
-        TypeShape::canonical_structural(TypeKind::Bytes { min, max: *max })
+        self.source_canonical_structural(TypeKind::Bytes { min, max: *max }, span)
+    }
+
+    fn source_canonical_structural(&mut self, kind: TypeKind, span: Span) -> Option<TypeShape> {
+        TypeShape::canonical_structural(kind).or_else(|| {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::InvalidBound,
+                "expanded source structural type depth exceeded",
+                span,
+            ));
+            None
+        })
     }
 
     fn imported_source_type_shape(&mut self, path: &[String], span: Span) -> Option<TypeShape> {
@@ -997,6 +1089,8 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn check_intent(&mut self, intent: &ResolvedIntent) -> Option<TypedIntent> {
+        self.input_proof_constraints.clear();
+        let recorded_costs = self.source_expression_costs.len();
         let source = &intent.source;
         if source.params.len() != 1 {
             self.errors.push(error(
@@ -1045,7 +1139,18 @@ impl<'a> TypeChecker<'a> {
             None => None,
         };
         let input_constraints = self.input_constraints(source, &env);
-        let body = self.check_body(intent, &output_shape, &mut env, &mut locals)?;
+        self.input_proof_constraints = input_constraints
+            .iter()
+            .map(|constraint| constraint.predicate.clone())
+            .collect();
+        let body = self.check_body(intent, &output_shape, &mut env, &mut locals);
+        self.input_proof_constraints.clear();
+        let body = body?;
+        if !self.resolved.source_functions.is_empty()
+            || self.source_expression_costs.len() > recorded_costs
+        {
+            self.check_helper_cost_budget(intent)?;
+        }
 
         Some(TypedIntent {
             name: intent.name.clone(),
@@ -1100,6 +1205,13 @@ impl<'a> TypeChecker<'a> {
             };
             cost = self.checked_helper_cost_add(cost, clause_cost, intent.source.span)?;
         }
+        if !self.resolved.source_functions.is_empty() {
+            let input =
+                self.type_ref_shape(&intent.source.params[0].ty, intent.source.params[0].span)?;
+            let output = self.type_ref_shape(&intent.source.returns, intent.source.span)?;
+            let frame = self.source_intent_frame_cost(&input, &output, intent.source.span)?;
+            cost = self.checked_helper_cost_add(cost, frame, intent.source.span)?;
+        }
         if cost.steps > intent.budget.max_steps
             || cost.allocated_bytes > intent.budget.max_allocated_bytes
             || cost.output_bytes > intent.budget.max_output_bytes
@@ -1131,11 +1243,7 @@ impl<'a> TypeChecker<'a> {
         match stmt {
             Stmt::Let {
                 value, els, span, ..
-            } => {
-                let value_cost = self.helper_cost_for_expr(value)?;
-                let handler_cost = self.helper_cost_for_handler(els.as_ref())?;
-                self.checked_helper_cost_add(value_cost, handler_cost, *span)
-            }
+            } => self.helper_cost_for_binding(value, els.as_ref(), *span),
             Stmt::Effect { call, els, span } => {
                 let call_cost = self.helper_cost_for_expr(call)?;
                 let handler_cost = self.helper_cost_for_handler(els.as_ref())?;
@@ -1225,11 +1333,35 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    fn helper_cost_for_binding(
+        &mut self,
+        value: &Expr,
+        handler: Option<&ObstructionHandler>,
+        span: Span,
+    ) -> Option<HelperCost> {
+        let value_cost = self.helper_cost_for_expr(value)?;
+        let handler_cost = self.helper_cost_for_handler(handler)?;
+        let combined = self.checked_helper_cost_add(value_cost, handler_cost, span)?;
+        let steps = self
+            .source_value_bounds
+            .get(&expression_identity(value))
+            .map_or(0, |bound| bound.0);
+        self.checked_helper_cost_add(
+            combined,
+            HelperCost {
+                steps,
+                ..HelperCost::default()
+            },
+            span,
+        )
+    }
+
     fn helper_cost_for_expr(&mut self, expr: &Expr) -> Option<HelperCost> {
-        match expr {
+        let children = match expr {
             Expr::Ident { .. }
             | Expr::Int { .. }
             | Expr::Str { .. }
+            | Expr::Bytes { .. }
             | Expr::Bool { .. }
             | Expr::Digest { .. } => Some(HelperCost::default()),
             Expr::Field { base, .. } | Expr::Unary { operand: base, .. } => {
@@ -1306,7 +1438,20 @@ impl<'a> TypeChecker<'a> {
                 }
                 self.checked_helper_cost_add(scrutinee_cost, arm_cost, *span)
             }
-        }
+        }?;
+        let span = expr_span(expr);
+        let own = self
+            .source_expression_costs
+            .get(&expression_identity(expr))
+            .copied()
+            .unwrap_or_default();
+        let predicate = self
+            .source_predicate_costs
+            .get(&expression_identity(expr))
+            .copied()
+            .unwrap_or_default();
+        let own = self.checked_helper_cost_add(own, predicate, span)?;
+        self.checked_helper_cost_add(children, own, span)
     }
 
     fn helper_cost_for_exprs_at<'b, I>(&mut self, exprs: I, span: Span) -> Option<HelperCost>
@@ -1325,6 +1470,9 @@ impl<'a> TypeChecker<'a> {
         let Some(source_coordinate) = plain_callee_coordinate(callee) else {
             return Some(HelperCost::default());
         };
+        if let Some(cost) = self.function_costs.get(&source_coordinate) {
+            return Some(*cost);
+        }
         let Some(fact) = self.resolved.pure_functions.get(&source_coordinate) else {
             return Some(HelperCost::default());
         };
@@ -1393,11 +1541,13 @@ impl<'a> TypeChecker<'a> {
         &mut self,
         block: &crate::ast::YieldBlock,
     ) -> Option<HelperCost> {
-        let statements = Block {
-            stmts: block.stmts.clone(),
-            span: block.span,
-        };
-        let statement_cost = self.helper_cost_for_block(&statements)?;
+        // Keep the original borrowed expressions: their immutable AST identity
+        // keys type/cost summaries, while spans remain diagnostics only.
+        let mut statement_cost = HelperCost::default();
+        for statement in &block.stmts {
+            let cost = self.helper_cost_for_stmt(statement)?;
+            statement_cost = self.checked_helper_cost_add(statement_cost, cost, block.span)?;
+        }
         let value_cost = self.helper_cost_for_expr(&block.value)?;
         self.checked_helper_cost_add(statement_cost, value_cost, block.span)
     }
@@ -3044,14 +3194,23 @@ impl<'a> TypeChecker<'a> {
                 ));
                 return None;
             };
-            if !compatible(&expected_input, &input.ty) || !compatible(binding_shape, &effect_output)
-            {
-                self.errors.push(error(
-                    CompilerStage::TypeCheck,
-                    CompilerErrorKind::TypeMismatch,
-                    format!("effect `{effect}` call does not match its exported signature"),
-                    span,
-                ));
+            if let Some(failure) = signature_diagnostic::mismatch(
+                &effect,
+                SignatureMismatchPosition::Input,
+                &expected_input,
+                &input.ty,
+                expr_span(call),
+            )
+            .or_else(|| {
+                signature_diagnostic::mismatch(
+                    &effect,
+                    SignatureMismatchPosition::Receipt,
+                    binding_shape,
+                    &effect_output,
+                    expr_span(call),
+                )
+            }) {
+                self.errors.push(failure);
                 return None;
             }
         }
@@ -3227,6 +3386,7 @@ impl<'a> TypeChecker<'a> {
             Expr::Ident { .. }
             | Expr::Int { .. }
             | Expr::Str { .. }
+            | Expr::Bytes { .. }
             | Expr::Bool { .. }
             | Expr::Digest { .. } => {}
             Expr::Field { base, .. } => {
@@ -3403,7 +3563,7 @@ impl<'a> TypeChecker<'a> {
         expr: &Expr,
         env: &BTreeMap<String, (LocalRef, TypeShape)>,
     ) -> Option<CorePredicate> {
-        match expr {
+        let checked = match expr {
             Expr::Bool { value, .. } => Some(if *value {
                 CorePredicate::True
             } else {
@@ -3416,6 +3576,28 @@ impl<'a> TypeChecker<'a> {
             } => self
                 .check_predicate(operand, env)
                 .map(|value| CorePredicate::Not(Box::new(value))),
+            Expr::Binary {
+                op: BinOp::And,
+                lhs,
+                rhs,
+                ..
+            } => {
+                let left = self.check_predicate(lhs, env)?;
+                let prefix = self.input_proof_constraints.len();
+                self.input_proof_constraints.push(left.clone());
+                let right = self.check_predicate(rhs, env);
+                self.input_proof_constraints.truncate(prefix);
+                Some(CorePredicate::All(vec![left, right?]))
+            }
+            Expr::Binary {
+                op: BinOp::Or,
+                lhs,
+                rhs,
+                ..
+            } => Some(CorePredicate::Any(vec![
+                self.check_predicate(lhs, env)?,
+                self.check_predicate(rhs, env)?,
+            ])),
             Expr::Binary { op, lhs, rhs, .. } => {
                 if let Some(op) = compare_op(*op) {
                     self.check_compare_predicate(op, lhs, rhs, env, expr_span(expr))
@@ -3429,6 +3611,26 @@ impl<'a> TypeChecker<'a> {
                     None
                 }
             }
+            Expr::Ident { .. } | Expr::Field { .. } | Expr::Call { .. } | Expr::If { .. } => {
+                let expected = TypeShape::canonical_structural(TypeKind::Bool)?;
+                // Check the operand on its own terms before applying the
+                // predicate requirement; nested typing failures stay distinct.
+                let value = self.check_expr(expr, env)?;
+                if !compatible(&expected, &value.ty) {
+                    self.errors.push(error(
+                        CompilerStage::TypeCheck,
+                        CompilerErrorKind::ExpectedPredicate,
+                        "predicate value must have type Bool",
+                        expr_span(expr),
+                    ));
+                    return None;
+                }
+                Some(CorePredicate::Compare {
+                    op: CompareOp::Eq,
+                    left: value.expr,
+                    right: CoreExpr::Const(CoreValue::Bool(true)),
+                })
+            }
             _ => {
                 self.errors.push(error(
                     CompilerStage::TypeCheck,
@@ -3438,7 +3640,11 @@ impl<'a> TypeChecker<'a> {
                 ));
                 None
             }
+        }?;
+        if !self.resolved.source_functions.is_empty() {
+            self.record_source_predicate_cost(expr)?;
         }
+        Some(checked)
     }
 
     fn check_compare_predicate(
@@ -3487,22 +3693,37 @@ impl<'a> TypeChecker<'a> {
         self.check_expr_with_expected(expr, env, None)
     }
 
+    fn check_negated_integer(
+        &mut self,
+        operand: &Expr,
+        expected: Option<&TypeShape>,
+        span: Span,
+    ) -> Option<TypedValue> {
+        let Expr::Int { value, suffix, .. } = operand else {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::UnsupportedSourceShape,
+                "negated expression is outside the initial lowerable subset",
+                span,
+            ));
+            return None;
+        };
+        self.check_integer_literal(&format!("-{value}"), *suffix, expected, span)
+    }
+
     fn check_expr_with_expected(
         &mut self,
         expr: &Expr,
         env: &BTreeMap<String, (LocalRef, TypeShape)>,
         expected: Option<&TypeShape>,
     ) -> Option<TypedValue> {
-        match expr {
+        let checked = match expr {
             Expr::Ident { name, span } => self.check_ident(name, *span, env),
             Expr::Str { value, .. } => string_value(value),
+            Expr::Bytes { value, .. } => bytes_value(value),
             Expr::Bool { value, .. } => Some(TypedValue {
                 expr: CoreExpr::Const(CoreValue::Bool(*value)),
-                ty: TypeShape {
-                    coord: "Bool".to_owned(),
-                    kind: TypeKind::Bool,
-                    preserve_named_identity: false,
-                },
+                ty: TypeShape::canonical_structural(TypeKind::Bool)?,
             }),
             Expr::Int {
                 value,
@@ -3513,41 +3734,69 @@ impl<'a> TypeChecker<'a> {
                 op: UnOp::Neg,
                 operand,
                 span,
-            } => {
-                let Expr::Int { value, suffix, .. } = operand.as_ref() else {
-                    self.errors.push(error(
-                        CompilerStage::TypeCheck,
-                        CompilerErrorKind::UnsupportedSourceShape,
-                        "negated expression is outside the initial lowerable subset",
-                        *span,
-                    ));
-                    return None;
-                };
-                self.check_integer_literal(&format!("-{value}"), *suffix, expected, *span)
-            }
+            } => self.check_negated_integer(operand, expected, *span),
             Expr::Field { base, field, span } => self.check_field(base, field, *span, env),
             Expr::Binary {
                 op: BinOp::Add,
                 lhs,
                 rhs,
                 span,
-            } => self.check_string_concat(lhs, rhs, env, *span),
+            } => self.check_concat(lhs, rhs, env, *span),
+            Expr::Binary {
+                op: BinOp::Sub,
+                lhs,
+                rhs,
+                span,
+            } => self.check_unsigned_subtraction(lhs, rhs, env, expected, *span),
             Expr::Record { entries, span } => self.check_record(entries, env, expected, *span),
             Expr::Call {
                 callee,
                 type_args,
                 args,
                 span,
-            } => self.check_pure_call(callee, type_args, args, env, expected, *span),
+            } => match callee.as_ref() {
+                Expr::Ident { name, .. } if name == "len" => {
+                    self.check_byte_length(type_args, args, env, *span)
+                }
+                Expr::Ident { name, .. } if name == "isUtf8" => {
+                    self.check_byte_utf8(type_args, args, env, *span, expr)
+                }
+                Expr::Ident { name, .. } if name == "slice" => {
+                    self.check_byte_slice(type_args, args, env, *span)
+                }
+                _ => self.check_pure_call(callee, type_args, args, env, expected, *span),
+            },
             Expr::If {
                 cond,
                 then,
                 els,
                 span,
             } => self.check_pure_conditional(cond, then, els, env, expected, *span),
+            Expr::Binary {
+                op:
+                    BinOp::Eq
+                    | BinOp::Ne
+                    | BinOp::Lt
+                    | BinOp::Le
+                    | BinOp::Gt
+                    | BinOp::Ge
+                    | BinOp::And
+                    | BinOp::Or,
+                ..
+            }
+            | Expr::Unary { op: UnOp::Not, .. } => {
+                let predicate = self.check_predicate(expr, env)?;
+                Some(TypedValue {
+                    expr: CoreExpr::If {
+                        predicate: Box::new(predicate),
+                        then_value: Box::new(CoreExpr::Const(CoreValue::Bool(true))),
+                        else_value: Box::new(CoreExpr::Const(CoreValue::Bool(false))),
+                    },
+                    ty: TypeShape::canonical_structural(TypeKind::Bool)?,
+                })
+            }
             Expr::Binary { .. }
             | Expr::Digest { .. }
-            | Expr::Unary { .. }
             | Expr::IfYield { .. }
             | Expr::VariantLit { .. }
             | Expr::Match { .. } => {
@@ -3559,10 +3808,34 @@ impl<'a> TypeChecker<'a> {
                 ));
                 None
             }
+        };
+        if !self.resolved.source_functions.is_empty() {
+            if let Some(value) = &checked {
+                self.record_source_expression_cost(expr, &value.ty)?;
+            }
         }
+        checked
     }
 
     fn check_pure_call(
+        &mut self,
+        callee: &Expr,
+        type_args: &[TypeRef],
+        args: &[Expr],
+        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        expected: Option<&TypeShape>,
+        span: Span,
+    ) -> Option<TypedValue> {
+        if let Expr::Ident { name, .. } = callee {
+            if let Some(signature) = self.function_signatures.get(name).cloned() {
+                return self
+                    .check_source_call(name, &signature, type_args, args, env, expected, span);
+            }
+        }
+        self.check_imported_pure_call(callee, type_args, args, env, expected, span)
+    }
+
+    fn check_imported_pure_call(
         &mut self,
         callee: &Expr,
         type_args: &[TypeRef],
@@ -3941,7 +4214,7 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn check_string_concat(
+    fn check_concat(
         &mut self,
         lhs: &Expr,
         rhs: &Expr,
@@ -3950,13 +4223,19 @@ impl<'a> TypeChecker<'a> {
     ) -> Option<TypedValue> {
         let left = self.check_expr(lhs, env)?;
         let right = self.check_expr(rhs, env)?;
+        if matches!(
+            (&left.ty.kind, &right.ty.kind),
+            (TypeKind::Bytes { .. }, TypeKind::Bytes { .. })
+        ) {
+            return self.check_byte_concat(left, right, span);
+        }
         let (TypeKind::String { max: lmax, .. }, TypeKind::String { max: rmax, .. }) =
             (&left.ty.kind, &right.ty.kind)
         else {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
                 CompilerErrorKind::TypeMismatch,
-                "string concatenation requires string operands",
+                "concatenation requires two bounded strings or two bounded bytes",
                 span,
             ));
             return None;
@@ -4060,6 +4339,7 @@ fn contains_contextual_bare_integer(expr: &Expr) -> bool {
         Expr::Ident { .. }
         | Expr::Int { .. }
         | Expr::Str { .. }
+        | Expr::Bytes { .. }
         | Expr::Bool { .. }
         | Expr::Digest { .. }
         | Expr::Field { .. }
@@ -4177,6 +4457,17 @@ fn string_value(value: &str) -> Option<TypedValue> {
     Some(TypedValue {
         expr: CoreExpr::Const(CoreValue::String(value.to_owned())),
         ty: TypeShape::canonical_structural(kind)?,
+    })
+}
+
+fn bytes_value(value: &[u8]) -> Option<TypedValue> {
+    let length = u64::try_from(value.len()).ok()?;
+    Some(TypedValue {
+        expr: CoreExpr::Const(CoreValue::Bytes(value.to_vec())),
+        ty: TypeShape::canonical_structural(TypeKind::Bytes {
+            min: Some(length),
+            max: length,
+        })?,
     })
 }
 
@@ -4557,6 +4848,7 @@ fn plain_callee_coordinate(expr: &Expr) -> Option<String> {
         Expr::Call { .. }
         | Expr::Int { .. }
         | Expr::Str { .. }
+        | Expr::Bytes { .. }
         | Expr::Bool { .. }
         | Expr::Digest { .. }
         | Expr::Unary { .. }
@@ -4580,6 +4872,7 @@ fn plain_path_root(expr: &Expr) -> Option<&str> {
         Expr::Call { .. }
         | Expr::Int { .. }
         | Expr::Str { .. }
+        | Expr::Bytes { .. }
         | Expr::Bool { .. }
         | Expr::Digest { .. }
         | Expr::Unary { .. }
@@ -4596,11 +4889,18 @@ fn package_coordinate(path: &[String], version: &str) -> String {
     format!("{}@{version}", path.join("."))
 }
 
+// The resolved AST remains immutably borrowed for the entire check. Addresses
+// are only local memoization keys: they never enter Core, digests or diagnostics.
+fn expression_identity(expr: &Expr) -> usize {
+    std::ptr::from_ref(expr).addr()
+}
+
 fn expr_span(expr: &Expr) -> Span {
     match expr {
         Expr::Ident { span, .. }
         | Expr::Int { span, .. }
         | Expr::Str { span, .. }
+        | Expr::Bytes { span, .. }
         | Expr::Bool { span, .. }
         | Expr::Digest { span, .. }
         | Expr::Field { span, .. }
@@ -4626,6 +4926,7 @@ fn error(
         kind,
         message: message.into(),
         span,
+        signature_mismatch: None,
     }
 }
 

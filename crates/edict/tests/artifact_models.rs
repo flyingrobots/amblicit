@@ -25,6 +25,7 @@ fn core_fixture() -> CoreModule {
         reference: input.clone(),
     };
     CoreModule {
+        functions: BTreeMap::new(),
         api_version: "edict.core/v1".to_owned(),
         coordinate: "examples.facade@1".to_owned(),
         imports: Vec::new(),
@@ -82,6 +83,7 @@ fn target_fixture(core: &CoreModule) -> TargetIrArtifact {
         intents: BTreeMap::from([(
             "echo".to_owned(),
             TargetIrIntent {
+                execution_order: None,
                 operation_profile: intent.required_operation_profile.clone(),
                 basis: intent.basis.clone(),
                 input_constraints: intent.input_constraints.clone(),

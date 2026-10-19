@@ -14,7 +14,7 @@
       "const": "status"
     },
     "command": {
-      "enum": ["check", "project"]
+      "enum": ["check", "project", "build"]
     },
     "status": {
       "enum": ["ok", "error"]
@@ -31,7 +31,7 @@
     },
     "exitCode": {
       "enum": [0, 1, 2],
-      "description": "Process exit code: 0 ok, 1 check diagnostics, 2 CLI input error."
+      "description": "Process exit code: 0 completed, 1 check diagnostics, 2 CLI input or build failure."
     }
   },
   "allOf": [
