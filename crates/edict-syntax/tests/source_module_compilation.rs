@@ -519,3 +519,11 @@ fn library_core_paths_require_their_own_import_instead_of_capturing_the_root() {
         resolve_source_closure(&control, &[&declared], SourceClosureLimits::default()).unwrap();
     link_source_closure(&closure).expect("an owning module import permits the namespace");
 }
+
+#[test]
+fn linker_preserves_utf8_prelude_with_an_imported_byte_alias() {
+    let library = "package library.bytes@1; type Blob=Bytes<max=32>;";
+    let source=format!("package app.example@1; {} type Input={{bytes:bytes.Blob,}}; intent evaluate(input:Input) returns Bool profile p.read basis none budget <= p.small {{let valid = isUtf8(input.bytes); return valid;}}",import("library.bytes@1",library,"bytes"));
+    let core = compile(&source, &[library]);
+    assert!(core.intents.contains_key("evaluate"));
+}

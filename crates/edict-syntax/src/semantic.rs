@@ -174,6 +174,7 @@ const PRELUDE_NAMES: &[&str] = &[
     "digest",
     "false",
     "hash",
+    "isUtf8",
     "len",
     "none",
     "slice",

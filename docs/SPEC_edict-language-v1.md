@@ -2110,6 +2110,16 @@ The Edict Core prelude is intentionally small:
 - `len(value) -> U64` (Unicode scalar count for `String`, byte count for
   `Bytes`, element count for `List`/`Map`; see Refined Scalar Types,
   `EDICT-LANG-LEN-001`)
+- `isUtf8(bytes: Bytes<max=N>) -> Bool` validates a complete UTF-8 byte
+  sequence (`EDICT-LANG-BYTE-UTF8-001`). Empty bytes and embedded NUL are valid;
+  incomplete sequences, overlong encodings, surrogate encodings and code points
+  above U+10FFFF are invalid. It neither normalizes nor repairs bytes. The
+  source prelude takes one bounded structural byte operand and no authored type
+  arguments; it lowers to `core.bytes.isUtf8<OperandType>(bytes)` with a Bool
+  result. The exact operand coordinate is retained. String values and implicit
+  nominal unwrapping are not accepted by this specialization. Compiler and
+  Target support establish typing and authority, not runtime execution evidence.
+  A prefix slice passed to this predicate still needs its own bounds proof.
 - `slice(bytes: Bytes<max=N>, start: U64, end: U64) -> Bytes<max=N>`
   selects the half-open byte range `[start,end)` only when the compiler proves
   `start <= end <= len(bytes)` (`EDICT-LANG-BYTE-SLICE-001`). The bytes remain

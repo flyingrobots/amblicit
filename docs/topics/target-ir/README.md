@@ -378,6 +378,16 @@ bounds repeated validation through nested conditional predicates; public tests
 also reject an unavailable local hidden in the innermost length call. These
 checks do not claim a bound on every compiler pass. [TIR-REQ-048] [TIR-REQ-049]
 
+## Byte UTF-8 predicate boundary
+
+`core.bytes.isUtf8<OperandType>(bytes)` retains exactly one structural byte
+coordinate and one operand, producing Bool. Target validation independently
+checks the operand's authority, exact coordinate and result compatibility.
+Forged arity, substituted coordinates, foreign locals and non-Boolean binding
+results refuse with `InvalidCoreIdentity` and no artifact. A nested slice still
+requires the existing totality proof in its evaluation scope. These checks do
+not claim provider or runtime UTF-8 execution. [TIR-REQ-055]
+
 ## Byte-slice boundary
 
 `core.bytes.slice<OperandType>(bytes,start,end)` takes one exact structural byte

@@ -269,3 +269,13 @@ it does not treat compiler Target IR as proof of runtime support.
 | TIR-TP-082 | implemented | Disjoint imported calls | TIR-REQ-054 | A source function calls an authenticated imported helper with a disjoint name even when module and lawpack share a coordinate; a separate-package control succeeds, while missing authority and unknown exports refuse. | source_function_can_call_disjoint_import_in_its_own_package_namespace | crates/edict-syntax/tests/lawpack.rs | Graph membership follows declared source definitions; exact imported authority remains independently checked. |
 
 | TIR-TP-084 | implemented | Conjunctive proof scope | TIR-REQ-051 | The independently validated conjunction prefix permits later partial operations; moving the partial operation before its proof refuses InvalidCoreIdentity without artifact. | conjunctive_prefix_guards_prove_later_slices_and_unsigned_differences | crates/edict-syntax/tests/byte_slice.rs | Separate input constraints remain canonical sets; only ordered conjunction children carry prefix proof. |
+
+## Bounded byte UTF-8 predicate
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| TIR-REQ-055 | implemented | isUtf8 preserves bounded byte operand identity and produces Bool; Target independently rejects forged signatures, and guarded prefix slices require prior bounds. | EDICT-LANG-BYTE-UTF8-001 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-085 | implemented | UTF-8 primitive typing | TIR-REQ-055 | Bytes/exact/empty operands lower with Boolean projections; wrong signatures, foreign operands and unproven slices refuse. | byte_utf8_call_retains_operand_identity_and_boolean_projection, byte_utf8_rejects_wrong_operands_signatures_and_result_type, byte_utf8_target_refuses_forged_signature_or_operand_authority, byte_utf8_predicate_accepts_proven_prefix_and_rejects_unproven_slice, byte_utf8_prelude_name_cannot_be_shadowed, byte_utf8_source_function_budget_includes_bounded_scan, linker_preserves_utf8_prelude_with_an_imported_byte_alias | crates/edict-syntax/tests/byte_utf8.rs, crates/edict-syntax/tests/source_module_compilation.rs | Runtime byte validation is separate evidence. |

@@ -131,6 +131,14 @@ The target validates the emitted primitive independently; compilation alone
 does not establish runtime support or execution evidence.
 [CSPINE-REQ-040]
 
+`isUtf8(bytes)` takes one bounded structural byte operand and no authored type
+arguments, retaining its exact coordinate in `core.bytes.isUtf8<OperandType>`
+and returning Bool. It is a reserved prelude name, including through authenticated
+source-module linking. Wrong operand families, signatures and result types reject.
+The source-function cost bound includes operand validation and conservative scan
+work using the complete bounded operand storage. This compiler evidence does not
+execute UTF-8 validation. [CSPINE-REQ-053]
+
 `slice(bytes, start, end)` lowers bounded raw bytes and U64 endpoints to
 `core.bytes.slice<OperandType>(bytes,start,end)`. Its result keeps the operand
 maximum and drops positive minimum/exact length, since empty slices are valid.
