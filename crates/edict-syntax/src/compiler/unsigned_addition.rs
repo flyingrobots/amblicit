@@ -26,8 +26,8 @@ impl TypeChecker<'_> {
         let right = self.diagnostic_shape_inner(rhs, env);
         match (left, right) {
             (Some(left), Some(right)) => diagnostic_shape(&left, &right),
-            (Some(known), None) if is_bare_integer_literal(rhs) => unsigned_shape(known),
-            (None, Some(known)) if is_bare_integer_literal(lhs) => unsigned_shape(known),
+            (Some(known), None) if contextual_literal_arithmetic(rhs) => unsigned_shape(known),
+            (None, Some(known)) if contextual_literal_arithmetic(lhs) => unsigned_shape(known),
             _ => None,
         }
     }
@@ -171,6 +171,17 @@ impl TypeChecker<'_> {
             ty: left.ty,
         })
     }
+}
+
+// An untyped arithmetic subtree can borrow its peer's width without a
+// recursive type-checking probe. Its values and totality are checked later.
+fn contextual_literal_arithmetic(expr: &Expr) -> bool {
+    if is_bare_integer_literal(expr) {
+        return true;
+    }
+    matches!(expr,
+        Expr::Binary { op: super::BinOp::Add | super::BinOp::Sub, lhs, rhs, .. }
+            if contextual_literal_arithmetic(lhs) && contextual_literal_arithmetic(rhs))
 }
 
 fn unsigned_shape(shape: TypeShape) -> Option<TypeShape> {

@@ -150,6 +150,20 @@ fn mixed_width_addition_has_a_stable_type_mismatch() {
     }
 }
 
+#[test]
+fn enclosing_sums_preserve_a_contextual_literal_peers_width() {
+    for width in ["U32", "U64"] {
+        for expression in ["((1 + 2) + input.left) + 3", "3 + (input.left + (2 + 1))"] {
+            let core = compile_with_annotation(width, "where input.left <= 10", expression, false)
+                .expect("enclosing sums retain the known unsigned width");
+            assert_eq!(
+                lower_to_target_ir(&core, &facts()).status,
+                TargetLoweringStatus::Lowered
+            );
+        }
+    }
+}
+
 fn facts() -> TargetIrLoweringFacts {
     TargetIrLoweringFacts {
         target_profile: ResourceRef {
