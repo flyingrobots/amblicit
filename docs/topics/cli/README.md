@@ -284,7 +284,9 @@ parser or compiler error on stderr, followed by its existing
 `InvalidApplicationSource` or `ApplicationCompilationFailed` summary and one
 terminal status record. Each source record retains the originating stage and
 kind, its message, and the source span. The summary does not embed a Debug
-vector of compiler errors. The terminal `errors` count includes every source
+vector of compiler errors. When ownership cannot be established, each error's
+human-readable message remains in the summary without a guessed file location.
+The terminal `errors` count includes every source
 record and the summary; `checked` stays zero, and the existing build exit code
 is `2`. A failed source build writes no output and preserves prior artifacts.
 [CLI-REQ-018]

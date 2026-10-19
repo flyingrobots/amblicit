@@ -178,8 +178,13 @@ impl LoadedSources {
         let message = if unmapped.is_empty() {
             "Edict application sources did not compile to Core".to_owned()
         } else {
+            let details = unmapped
+                .iter()
+                .map(|error| error.error.message.as_str())
+                .collect::<Vec<_>>()
+                .join("; ");
             format!(
-                "Edict application sources did not compile to Core; unlocated errors: {unmapped:?}"
+                "Edict application sources did not compile to Core; unlocated errors: {details}"
             )
         };
         let mut failure = failure("ApplicationCompilationFailed", message);
@@ -253,4 +258,41 @@ fn validate_original_surfaces(
         return Err(error);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unowned_compiler_errors_preserve_messages_without_debug_or_guessed_locations() {
+        let source = "package application.root@1;";
+        let loaded = LoadedSources {
+            root_path: "root.edict".into(),
+            root_source: source.into(),
+            root_module: parse_module(source).unwrap_or_else(|error| panic!("source: {error:?}")),
+            closure: None,
+            units: vec![],
+        };
+        let errors = ["first unowned cause", "second unowned cause"]
+            .into_iter()
+            .map(|message| edict_syntax::source_linker::SourceCompilerError {
+                coordinate: String::new(),
+                error: edict_syntax::CompilerError {
+                    stage: edict_syntax::CompilerStage::TypeCheck,
+                    kind: edict_syntax::CompilerErrorKind::TypeMismatch,
+                    message: message.into(),
+                    span: edict_syntax::Span { start: 0, end: 1 },
+                    signature_mismatch: None,
+                },
+            })
+            .collect();
+        let error = loaded.compiler_failure(errors);
+        assert_eq!(error.kind, "ApplicationCompilationFailed");
+        assert_eq!(error.message, "Edict application sources did not compile to Core; unlocated errors: first unowned cause; second unowned cause");
+        assert!(
+            error.source_diagnostics.is_none(),
+            "unowned spans must not acquire a source location"
+        );
+    }
 }

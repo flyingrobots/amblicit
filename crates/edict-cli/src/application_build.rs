@@ -2960,6 +2960,29 @@ mod tests {
         test_ok(fs::remove_dir_all(outside), "remove outside fixture");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn application_sources_refuse_symlink_alias_duplicates() {
+        let root = test_ok(
+            fs::canonicalize(temp_tree("source-alias")),
+            "canonical root",
+        );
+        let (_, _, mut paths) = write_source_module_fixture(&root);
+        let alias = PathBuf::from("src/alias.edict");
+        test_ok(
+            std::os::unix::fs::symlink("values.edict", root.join(&alias)),
+            "in-root source alias",
+        );
+        assert_ne!(paths[1], alias, "raw paths differ");
+        paths.push(alias);
+        let error = LoadedSources::load(&root, &paths)
+            .err()
+            .unwrap_or_else(|| panic!("same canonical source must refuse"));
+        assert_eq!(error.kind, "DuplicateApplicationSource");
+        assert!(!root.join(".build").exists());
+        test_ok(fs::remove_dir_all(root), "remove alias tree");
+    }
+
     #[test]
     fn public_application_build_reports_library_compiler_source() {
         let root = temp_tree("public-source-module-diagnostics");
