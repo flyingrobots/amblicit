@@ -379,17 +379,17 @@ This is an implementation-crate Rust API addition: code constructing `CompilerEr
 Source and imported helper calls retain independent supplied-argument diagnostics
 after an argument-count mismatch. Known parameter positions retain their type
 context; extra arguments are checked without inventing an expected type. Invalid
-calls produce no Core value. [CSPINE-TP-124]
+calls produce no Core value. [CSPINE-TP-164]
 
 When helper resolution fails, supplied arguments still retain independent
 diagnostics without an expected parameter type. Poisoned dependencies remain
-suppressed and the compiler constructs no call. [CSPINE-TP-125]
+suppressed and the compiler constructs no call. [CSPINE-TP-165]
 
 Supported branch-yield bindings check effect profiles while checking each
 branch, rather than rejecting the whole binding during a recursive preflight.
 A disallowed mapped effect leaves independent sibling diagnostics visible;
 predicate and yielded-value profile checks still reject disallowed effects.
-[CSPINE-TP-126]
+[CSPINE-TP-166]
 
 Duplicate failure-map keys reject the complete map while retaining independent
 arm diagnostics. Every source arm is checked, including a duplicate that would
