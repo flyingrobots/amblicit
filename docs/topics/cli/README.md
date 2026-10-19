@@ -107,7 +107,9 @@ its checked provider-package manifest.
 Source loading performs no discovery. Duplicate canonical source paths,
 disconnected or substituted modules, missing dependencies and escaped paths
 fail before publication. The fixed 1 MiB aggregate source limit applies before
-parsing. Parse, linker and compiler diagnostics retain each original file's
+parsing. Surface validation runs on each original module before closure
+authentication, so invalid declarations retain their detailed diagnostics.
+Parse, linker and compiler diagnostics retain each original file's
 canonical path and local byte span, including errors from several modules.
 
 A source without module imports keeps the existing `edict.source/v1` byte-string

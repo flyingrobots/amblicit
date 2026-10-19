@@ -132,3 +132,5 @@ Out of scope:
   Edict; v1 implements only the direct declarative adapter ABI.
 - Runtime admission and execution of compiler-emitted packages remain outside
   Edict.
+
+| LAWPACKS-TP-031 | implemented | Linked lawpack aliases | LAWPACKS-REQ-005, LAWPACKS-REQ-012 | Root and helper import the same exact lawpack through distinct linked aliases; helper exported types and pure calls compile and lower; canonical pure facts remain unique; a substituted later import refuses with SourceImportMismatch. | linked_modules_prepare_each_authenticated_lawpack_alias | crates/edict-syntax/tests/lawpack.rs | Authenticates every matching import. |

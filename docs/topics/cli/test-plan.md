@@ -172,3 +172,7 @@ fixture gap in CLI-TP-028 or establish new Echo runtime support.
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | CLI-TP-047 | planned | Public executable module build | CLI-REQ-019 | An imported helper changes the result of a public producer/provider/verifier/runtime execution; exact closure identity reaches the executable package and runtime. | - | - | Requires an Echo provider accepting the new source form. Frontend diagnostics do not satisfy this case. |
+
+| CLI-TP-048 | implemented | Module surface diagnostics | CLI-REQ-018, CLI-REQ-019 | Duplicate declarations in root and dependency sources preserve typed surface-validation diagnostics, exact original text, byte spans, file paths, schema-valid records and no published output. | application_module_surface_failures_preserve_original_locations | crates/edict-cli/tests/application_diagnostics_cli.rs | Review regression for the authenticated module build path. |
+
+| CLI-TP-049 | implemented | Shared lawpack aliases in public build | CLI-REQ-019 | A public module application sharing the selected lawpack compiles Core and Target IR; a substituted dependency lawpack digest rejects before publishing output. | application_module_build_prepares_shared_lawpack_aliases | crates/edict-cli/tests/application_diagnostics_cli.rs | External-action frontend witness; executable module execution remains CLI-TP-047. |

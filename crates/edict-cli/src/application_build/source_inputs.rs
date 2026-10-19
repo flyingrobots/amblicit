@@ -84,8 +84,9 @@ impl LoadedSources {
                 vec![ApplicationSourceError::Parse(error)],
             )
         })?;
+        let mut modules = vec![root_module.clone()];
         for (path, source) in &units[1..] {
-            parse_module(source).map_err(|error| {
+            let module = parse_module(source).map_err(|error| {
                 source_failure(
                     "InvalidApplicationSource",
                     "Edict dependency source did not parse",
@@ -94,6 +95,7 @@ impl LoadedSources {
                     vec![ApplicationSourceError::Parse(error)],
                 )
             })?;
+            modules.push(module);
         }
         let closure = if units.len() > 1
             || root_module
@@ -101,6 +103,7 @@ impl LoadedSources {
                 .iter()
                 .any(|import| import.kind == ImportKind::Module)
         {
+            validate_original_surfaces(&units, &modules)?;
             let dependencies = units[1..]
                 .iter()
                 .map(|(_, source)| source.as_str())
@@ -209,4 +212,45 @@ impl LoadedSources {
             })
         }
     }
+}
+
+fn validate_original_surfaces(
+    units: &[(PathBuf, String)],
+    modules: &[Module],
+) -> Result<(), ApplicationBuildFailure> {
+    // Authentication deliberately summarizes invalid surface syntax.
+    // Preserve source-local causes before crossing that boundary.
+    let groups = units
+        .iter()
+        .zip(modules)
+        .filter_map(|((path, source), module)| {
+            edict_syntax::validate_surface(module).err().map(|errors| {
+                ApplicationSourceDiagnostics {
+                    path: path.clone(),
+                    source: source.clone(),
+                    errors: errors
+                        .into_iter()
+                        .map(|error| {
+                            ApplicationSourceError::Compiler(edict_syntax::CompilerError {
+                                stage: edict_syntax::CompilerStage::SurfaceValidation,
+                                kind: edict_syntax::CompilerErrorKind::SurfaceValidation,
+                                message: error.message,
+                                span: error.span,
+                                signature_mismatch: None,
+                            })
+                        })
+                        .collect(),
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    if !groups.is_empty() {
+        let mut error = failure(
+            "ApplicationCompilationFailed",
+            "Edict application sources failed surface validation",
+        );
+        error.source_diagnostics = Some(groups);
+        return Err(error);
+    }
+    Ok(())
 }

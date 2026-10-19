@@ -607,3 +607,91 @@ fn application_build_reports_dependency_parse_and_link_failures_at_original_path
         fs::remove_dir_all(root).expect("remove fixture");
     }
 }
+
+#[test]
+fn application_module_surface_failures_preserve_original_locations() {
+    for in_root in [false, true] {
+        let root = temp_tree("module-surface");
+        let library = "package library.bad@1;\r\n// 🦀\r\nfn repeated() -> U64 { return 1; }\r\nfn repeated() -> U64 { return 2; }";
+        let config = write_module_application(&root, &[("library.bad@1", "bad", library)]);
+        let path = if in_root {
+            root.join("src/observe-workspace.edict")
+        } else {
+            root.join("src/bad.edict")
+        };
+        if in_root {
+            let mut source = fs::read_to_string(&path).expect("root source");
+            source.push_str(
+                "\nfn repeated() -> U64 { return 1; }\nfn repeated() -> U64 { return 2; }",
+            );
+            fs::write(&path, source).expect("invalid root source");
+            // Keep the dependency valid so both cases test their own file.
+            let valid = "package library.bad@1; fn valid() -> U64 { return 1; }";
+            let pin = edict_syntax::source_closure::source_module_digest(valid).expect("valid pin");
+            let old = edict_syntax::source_closure::source_module_digest(library).expect("old pin");
+            fs::write(root.join("src/bad.edict"), valid).expect("valid dependency");
+            let source = fs::read_to_string(&path)
+                .expect("root source")
+                .replace(&old.to_string(), &pin.to_string());
+            fs::write(&path, source).expect("pin dependency");
+        }
+        let source = fs::read_to_string(&path).expect("original source");
+        let module = edict_syntax::parse_module(&source).expect("parsable surface error");
+        let errors = edict_syntax::validate_surface(&module).expect_err("duplicate declaration");
+        let output = build(&config);
+        assert_eq!(output.status.code(), Some(2));
+        let stream = records(&output.stderr);
+        summary(&stream, "ApplicationCompilationFailed");
+        for error in errors {
+            let record = stream
+                .iter()
+                .find(|r| {
+                    r["kind"] == "SurfaceValidation" && r["span"]["start"] == error.span.start
+                })
+                .unwrap_or_else(|| panic!("missing surface diagnostic: {stream:?}"));
+            assert_eq!(record["message"], error.message);
+            assert_location(record, &path, &source, error.span.start);
+        }
+        validate_stream(&stream);
+        assert!(!root.join(".build/application").exists());
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+}
+
+#[test]
+fn application_module_build_prepares_shared_lawpack_aliases() {
+    for substituted in [false, true] {
+        let root = temp_tree("module-lawpack");
+        let digest = if substituted {
+            format!("sha256:{}", "0".repeat(64))
+        } else {
+            include_str!("../../../fixtures/lawpack/workspace-snapshot/manifest.sha256")
+                .trim()
+                .to_owned()
+        };
+        let library = format!("package library.shared@1; use lawpack workspace.snapshot@1 digest \"{digest}\" as local; type Value = U64;");
+        let config = write_module_application(&root, &[("library.shared@1", "shared", &library)]);
+        let output = build(&config);
+        if substituted {
+            assert_eq!(output.status.code(), Some(2));
+            let stream = records(&output.stderr);
+            summary(&stream, "InvalidApplicationClosure");
+            validate_stream(&stream);
+            assert!(!root.join(".build/application").exists());
+        } else {
+            assert_eq!(
+                output.status.code(),
+                Some(0),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let core =
+                fs::read(root.join(".build/application/core.cbor")).expect("public compiled Core");
+            let target = fs::read(root.join(".build/application/target-ir.cbor"))
+                .expect("public lowered Target IR");
+            edict_syntax::decode_canonical_cbor(&core).expect("canonical Core");
+            edict_syntax::decode_canonical_cbor(&target).expect("canonical Target IR");
+        }
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+}
