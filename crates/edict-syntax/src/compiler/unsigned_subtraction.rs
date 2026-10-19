@@ -1,8 +1,8 @@
 //! Conservative totality proof for unsigned differences in intent bodies.
 use super::{
-    error, is_bare_integer_literal, BTreeMap, CompareOp, CompilerErrorKind, CompilerStage,
-    CoreExpr, CorePredicate, CoreValue, Expr, LocalRef, Span, TypeChecker, TypeKind, TypeShape,
-    TypedValue,
+    compatible, error, expr_span, is_bare_integer_literal, CompareOp, CompilerErrorKind,
+    CompilerStage, CoreExpr, CorePredicate, CoreValue, Expr, LocalEnvironment, Span, TypeChecker,
+    TypeKind, TypeShape, TypedValue,
 };
 
 impl TypeChecker<'_> {
@@ -10,21 +10,50 @@ impl TypeChecker<'_> {
         &mut self,
         lhs: &Expr,
         rhs: &Expr,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         expected: Option<&TypeShape>,
         span: Span,
     ) -> Option<TypedValue> {
         let (left, right) = if is_bare_integer_literal(lhs) && !is_bare_integer_literal(rhs) {
-            let right = self.check_expr_with_expected(rhs, env, expected)?;
-            (
-                self.check_expr_with_expected(lhs, env, Some(&right.ty))?,
-                right,
-            )
+            let right = self.check_expr_with_expected(rhs, env, expected);
+            let left_expected = right.as_ref().map(|value| &value.ty).or(expected);
+            let left = left_expected
+                .and_then(|expected| self.check_expr_with_expected(lhs, env, Some(expected)));
+            (left, right)
         } else {
-            let left = self.check_expr_with_expected(lhs, env, expected)?;
-            let right = self.check_expr_with_expected(rhs, env, Some(&left.ty))?;
+            let left = self.check_expr_with_expected(lhs, env, expected);
+            let right_expected = left.as_ref().map(|value| &value.ty).or(expected);
+            let right = if right_expected.is_some() || !is_bare_integer_literal(rhs) {
+                self.check_expr_with_expected(rhs, env, right_expected)
+            } else {
+                None
+            };
             (left, right)
         };
+        if left.is_none() || right.is_none() {
+            for (value, operand) in [(&left, lhs), (&right, rhs)] {
+                let Some(value) = value else { continue };
+                let unsigned = matches!(&value.ty.kind, TypeKind::Int { width } if width == "U32" || width == "U64");
+                if expected.is_some_and(|expected| !compatible(expected, &value.ty)) {
+                    self.errors.push(error(
+                        CompilerStage::TypeCheck,
+                        CompilerErrorKind::TypeMismatch,
+                        "subtraction operand does not match its expected type",
+                        expr_span(operand),
+                    ));
+                } else if !unsigned {
+                    self.errors.push(error(
+                        CompilerStage::TypeCheck,
+                        CompilerErrorKind::UnsupportedSourceShape,
+                        "subtraction requires unsigned U32 or U64 operands",
+                        expr_span(operand),
+                    ));
+                }
+            }
+            return None;
+        }
+        let left = left?;
+        let right = right?;
         if left.ty != right.ty {
             self.errors.push(error(
                 CompilerStage::TypeCheck,

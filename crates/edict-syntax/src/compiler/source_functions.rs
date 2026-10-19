@@ -4,8 +4,8 @@ use std::collections::BTreeMap;
 use super::{
     compare_op, compatible, error, expr_span, expression_identity, next_local, BinOp,
     CompilerErrorKind, CompilerStage, CoreExpr, CoreFunction, CorePureBinding, CorePureBlock, Expr,
-    FunctionDecl, HelperCost, LetStatement, LocalRef, Span, Stmt, TypeChecker, TypeKind, TypeRef,
-    TypeShape, TypedValue, UnOp,
+    FunctionDecl, HelperCost, LetStatement, LocalEnvironment, LocalRef, Span, Stmt, TypeChecker,
+    TypeKind, TypeRef, TypeShape, TypedValue, UnOp,
 };
 
 const VALUE_CELL_BYTES: u64 = 64;
@@ -105,7 +105,7 @@ impl TypeChecker<'_> {
     fn check_source_function(&mut self, definition: &FunctionDecl) -> Option<CoreFunction> {
         let signature = self.function_signatures.get(&definition.name)?.clone();
         self.input_proof_constraints.clear();
-        let mut env = BTreeMap::new();
+        let mut env = LocalEnvironment::default();
         let params = definition
             .params
             .iter()
@@ -124,9 +124,11 @@ impl TypeChecker<'_> {
         let mut locals = Vec::new();
         let mut bindings = Vec::new();
         let mut result = None;
+        let mut saw_return = false;
+        let errors_before = self.errors.len();
         let mut local_index = 0;
         for statement in &definition.body.stmts {
-            if result.is_some() {
+            if saw_return {
                 self.unsupported_stmt(statement_span(statement), "statement after function return");
                 break;
             }
@@ -138,23 +140,17 @@ impl TypeChecker<'_> {
                     els: None,
                     span,
                 } => {
-                    let annotation = match ty {
-                        Some(ty) => Some(self.type_ref_shape(ty, *span)?),
-                        None => None,
+                    let stmt = LetStatement {
+                        name,
+                        ty: ty.as_ref(),
+                        value,
+                        handler: None,
+                        span: *span,
                     };
-                    let value_checked =
-                        self.check_expr_with_expected(value, &env, annotation.as_ref())?;
-                    let shape = self.pure_let_binding_shape(
-                        &LetStatement {
-                            name,
-                            ty: ty.as_ref(),
-                            value,
-                            handler: None,
-                            span: *span,
-                        },
-                        &value_checked,
-                        annotation,
-                    )?;
+                    let Some((value_checked, shape)) = self.check_source_let(&stmt, &env) else {
+                        env.poison(name);
+                        continue;
+                    };
                     let local = next_local(&mut local_index, shape.coord.clone());
                     bindings.push(CorePureBinding {
                         binding: local.clone(),
@@ -164,8 +160,8 @@ impl TypeChecker<'_> {
                     env.insert(name.clone(), (local, shape));
                 }
                 Stmt::Return { value, span } => {
-                    result =
-                        Some(self.check_source_return(value, &env, &signature.result, *span)?);
+                    saw_return = true;
+                    result = self.check_source_return(value, &env, &signature.result, *span);
                 }
                 _ => {
                     self.unsupported_stmt(
@@ -176,15 +172,18 @@ impl TypeChecker<'_> {
                 }
             }
         }
-        let Some(result) = result else {
+        if !saw_return {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
                 CompilerErrorKind::TypeMismatch,
                 "function must end in a return",
                 definition.span,
             ));
+        }
+        if self.errors.len() != errors_before {
             return None;
-        };
+        }
+        let result = result?;
         Some(CoreFunction {
             params,
             return_type: signature.result.coord,
@@ -196,10 +195,30 @@ impl TypeChecker<'_> {
         })
     }
 
+    fn check_source_let(
+        &mut self,
+        stmt: &LetStatement<'_>,
+        env: &LocalEnvironment,
+    ) -> Option<(TypedValue, TypeShape)> {
+        let annotation = match stmt.ty {
+            Some(ty) => {
+                let Some(shape) = self.type_ref_shape(ty, stmt.span) else {
+                    self.check_expr_with_unavailable_expected_type(stmt.value, env);
+                    return None;
+                };
+                Some(shape)
+            }
+            None => None,
+        };
+        let value = self.check_expr_with_expected(stmt.value, env, annotation.as_ref())?;
+        let shape = self.pure_let_binding_shape(stmt, &value, annotation)?;
+        Some((value, shape))
+    }
+
     fn check_source_return(
         &mut self,
         value: &Expr,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         expected: &TypeShape,
         span: Span,
     ) -> Option<CoreExpr> {
@@ -223,7 +242,7 @@ impl TypeChecker<'_> {
         signature: &Signature,
         type_args: &[TypeRef],
         args: &[Expr],
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         expected: Option<&TypeShape>,
         span: Span,
     ) -> Option<TypedValue> {
@@ -243,11 +262,14 @@ impl TypeChecker<'_> {
                 "source function argument count does not match signature",
                 span,
             ));
-            return None;
         }
         let mut arguments = Vec::new();
+        let mut accepted = args.len() == signature.params.len();
         for (argument, parameter) in args.iter().zip(&signature.params) {
-            let value = self.check_expr_with_expected(argument, env, Some(parameter))?;
+            let Some(value) = self.check_expr_with_expected(argument, env, Some(parameter)) else {
+                accepted = false;
+                continue;
+            };
             if !compatible(parameter, &value.ty) {
                 self.errors.push(error(
                     CompilerStage::TypeCheck,
@@ -255,9 +277,13 @@ impl TypeChecker<'_> {
                     "source function argument type does not match signature",
                     expr_span(argument),
                 ));
-                return None;
+                accepted = false;
+                continue;
             }
             arguments.push(value.expr);
+        }
+        for argument in args.iter().skip(signature.params.len()) {
+            self.check_expr_with_unavailable_expected_type(argument, env);
         }
         if expected.is_some_and(|expected| !compatible(expected, &signature.result)) {
             self.errors.push(error(
@@ -266,6 +292,9 @@ impl TypeChecker<'_> {
                 "source function result does not match its use",
                 span,
             ));
+            return None;
+        }
+        if !accepted {
             return None;
         }
         Some(TypedValue {
