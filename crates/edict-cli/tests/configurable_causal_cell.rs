@@ -350,7 +350,7 @@ fn copy_provider_tree(source: &std::path::Path, target: &std::path::Path) {
 }
 
 fn assert_public_failure(output: &std::process::Output, kind: &str) {
-    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert_eq!(output.status.code(), Some(2), "expected {kind}: {output:?}");
     assert!(output.stdout.is_empty(), "{output:?}");
     let records: Vec<serde_json::Value> = std::str::from_utf8(&output.stderr)
         .unwrap()
