@@ -2741,6 +2741,24 @@ impl<'a> TypeChecker<'a> {
             expected_unavailable,
         );
         state.accumulated_steps = then_steps.max(state.accumulated_steps);
+        if then_result.is_none() || else_result.is_none() {
+            if let Some(annotation) = annotation_shape {
+                for (result, source) in [(&then_result, then_source), (&else_result, else_source)] {
+                    if result
+                        .as_ref()
+                        .is_some_and(|(_, shape)| !compatible(annotation, shape))
+                    {
+                        self.errors.push(error(
+                            CompilerStage::TypeCheck,
+                            CompilerErrorKind::TypeMismatch,
+                            "branch-yield result does not match the annotated type",
+                            expr_span(&source.value),
+                        ));
+                    }
+                }
+            }
+            return None;
+        }
         let (then_block, then_shape) = then_result?;
         let (else_block, else_shape) = else_result?;
         Some((then_block, then_shape, else_block, else_shape))

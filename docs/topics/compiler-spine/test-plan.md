@@ -368,3 +368,9 @@ CSPINE-REQ-054 remains planned. The implemented rows establish their named fixtu
 | Case ID | Status | Kind | Requirements | Scenario and oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | CSPINE-TP-170 | implemented | UTF-8 intrinsic family | CSPINE-REQ-054, CSPINE-REQ-053 | A valid bounded byte predicate compiles; a non-byte argument keeps its TypeMismatch even when the binding annotation is unavailable. | unavailable_outer_annotations_preserve_utf8_family_errors | crates/edict-syntax/tests/binding_recovery.rs | A missing outer type cannot make an integer a valid byte operand. |
+
+## Surviving yield type evidence
+
+| Case ID | Status | Kind | Requirements | Scenario and oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-171 | implemented | Surviving yield annotation | CSPINE-REQ-054 | A poisoned yield arm cannot hide the other arm's independently known mismatch with an available binding annotation, in either arm order. | poisoned_yield_arm_keeps_the_surviving_annotation_mismatch | crates/edict-syntax/tests/binding_recovery.rs | Valid Boolean control; exact surviving value span; no Core from invalid branches. |

@@ -1515,3 +1515,30 @@ fn unavailable_outer_annotations_preserve_utf8_family_errors() {
         ]
     );
 }
+
+#[test]
+fn poisoned_yield_arm_keeps_the_surviving_annotation_mismatch() {
+    for (then_value, else_value) in [("failed", "1u64"), ("1u64", "failed")] {
+        let source = insert_bindings(&format!(
+            "  let failed = missingYieldTypeCause;\n  let chosen: Bool = if true {{ yield {then_value}; }} else {{ yield {else_value}; }};"
+        ));
+        let valid = source
+            .replace("missingYieldTypeCause", "true")
+            .replace("1u64", "false");
+        compile(&valid).expect("valid annotated yield control");
+        let errors = compile(&source).expect_err("invalid yields cannot produce Core");
+        assert_eq!(
+            errors.iter().map(|error| error.kind).collect::<Vec<_>>(),
+            [
+                CompilerErrorKind::UnresolvedType,
+                CompilerErrorKind::TypeMismatch
+            ],
+            "{errors:?}",
+        );
+        assert_eq!(
+            &source[errors[0].span.start..errors[0].span.end],
+            "missingYieldTypeCause"
+        );
+        assert_eq!(&source[errors[1].span.start..errors[1].span.end], "1u64");
+    }
+}
