@@ -41,7 +41,6 @@ impl TypeChecker<'_> {
         span: Span,
     ) -> Option<TypedValue> {
         let expected = expectation.value();
-        let unsigned = |ty: &TypeShape| matches!(&ty.kind, TypeKind::Int { width } if width == "U32" || width == "U64");
         let infer_unsigned = expected.is_none()
             && !matches!(
                 expectation,
@@ -51,18 +50,22 @@ impl TypeChecker<'_> {
                     | EffectOutputExpectation::Predicate
                     | EffectOutputExpectation::Field { .. }
             );
-        if expected.is_some_and(unsigned)
-            || infer_unsigned
-                && (self
-                    .diagnostic_expr_shape(lhs, env)
-                    .as_ref()
-                    .is_some_and(unsigned)
-                    || self
-                        .diagnostic_expr_shape(rhs, env)
-                        .as_ref()
-                        .is_some_and(unsigned))
+        // Shape probes observe arithmetic without checking it. Propagate a
+        // known peer width into both operands before the authoritative check.
+        let inferred = if infer_unsigned {
+            self.diagnostic_expr_shape(lhs, env)
+                .filter(|shape| matches!(shape.kind, TypeKind::Int { .. }))
+                .or_else(|| {
+                    self.diagnostic_expr_shape(rhs, env)
+                        .filter(|shape| matches!(shape.kind, TypeKind::Int { .. }))
+                })
+        } else {
+            None
+        };
+        if expected.is_some_and(|shape| matches!(shape.kind, TypeKind::Int { .. }))
+            || inferred.is_some()
         {
-            self.check_unsigned_addition(lhs, rhs, env, expected, span)
+            self.check_unsigned_addition(lhs, rhs, env, expected.or(inferred.as_ref()), span)
         } else {
             self.check_concat(lhs, rhs, env, expectation, span)
         }

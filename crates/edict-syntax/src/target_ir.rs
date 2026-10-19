@@ -13,6 +13,10 @@ mod totality;
 mod unsigned_addition;
 mod unsigned_subtraction;
 
+mod unsigned_arithmetic {
+    pub(super) use super::unsigned_subtraction::type_coordinate;
+}
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::core_ir::{
@@ -1204,10 +1208,8 @@ fn expression_has_closed_authority(
             callee,
             type_args,
             args,
-        } if callee == unsigned_subtraction::OPERATION
-            || callee == unsigned_addition::OPERATION =>
-        {
-            unsigned_subtraction::type_coordinate(core, pure_functions, type_args, args, available)
+        } if is_unsigned_arithmetic(callee) => {
+            unsigned_arithmetic::type_coordinate(core, pure_functions, type_args, args, available)
                 .is_some()
         }
         CoreExpr::Call { callee, .. } if callee == "core.string.concat" => {
@@ -1632,10 +1634,8 @@ fn expression_type_coordinate(
             callee,
             type_args,
             args,
-        } if callee == unsigned_subtraction::OPERATION
-            || callee == unsigned_addition::OPERATION =>
-        {
-            unsigned_subtraction::type_coordinate(core, pure_functions, type_args, args, available)
+        } if is_unsigned_arithmetic(callee) => {
+            unsigned_arithmetic::type_coordinate(core, pure_functions, type_args, args, available)
         }
         CoreExpr::Call { callee, .. } if callee == "core.string.concat" => {
             expression_string_shape(core, pure_functions, expression, available)

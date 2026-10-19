@@ -19,6 +19,16 @@ fn compile_with_annotation(
     expression: &str,
     annotated: bool,
 ) -> Result<CoreModule, Vec<edict_syntax::CompilerError>> {
+    compile_with_input_widths(width, width, guard, expression, annotated)
+}
+
+fn compile_with_input_widths(
+    width: &str,
+    right_width: &str,
+    guard: &str,
+    expression: &str,
+    annotated: bool,
+) -> Result<CoreModule, Vec<edict_syntax::CompilerError>> {
     let annotation = if annotated {
         format!(": {width}")
     } else {
@@ -26,7 +36,7 @@ fn compile_with_annotation(
     };
     let source = format!(
         "package arithmetic.sum@1;
-        type Input = {{ left: {width}, right: {width}, }};
+        type Input = {{ left: {width}, right: {right_width}, }};
         type Output = {{ sum: {width}, }};
         intent measure(input: Input) returns Output
           profile p.read basis none budget <= p.small {guard} {{
@@ -77,6 +87,66 @@ fn nested_bare_literals_inherit_an_unsigned_peers_width() {
                 TargetLoweringStatus::Lowered
             );
         }
+    }
+}
+
+#[test]
+fn a_typed_right_operand_supplies_the_left_sums_width() {
+    for width in ["U32", "U64"] {
+        let core = compile_with_annotation(
+            width,
+            "where input.left <= 10",
+            "(1 + 2) + input.left",
+            false,
+        )
+        .expect("a typed right operand supplies the literal sums width");
+        assert_eq!(
+            lower_to_target_ir(&core, &facts()).status,
+            TargetLoweringStatus::Lowered
+        );
+    }
+}
+
+#[test]
+fn alternating_unsigned_arithmetic_completes_at_normal_expression_depth() {
+    let mut expression = "input.left".to_owned();
+    for _ in 0..32 {
+        expression = format!("({expression} + 0) - 0");
+    }
+    let core = compile_with_annotation("U64", "", &expression, false)
+        .expect("all alternating operations are total");
+    assert!(matches!(
+        &core.intents["measure"].body.nodes[0],
+        CoreNode::Let { value: CoreExpr::Call { callee, .. }, .. }
+            if callee == "core.integer.subtract"
+    ));
+}
+
+#[test]
+fn signed_sums_and_negated_bound_evidence_are_rejected_as_unsupported() {
+    for (width, guard) in [
+        ("I32", ""),
+        ("U64", "where !(input.left > 10) && !(input.right > 20)"),
+    ] {
+        let errors = compile(width, guard, "input.left + input.right")
+            .expect_err("not proved unsigned addition");
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.kind == CompilerErrorKind::UnsupportedSourceShape),
+            "{errors:?}"
+        );
+    }
+}
+
+#[test]
+fn mixed_width_addition_has_a_stable_type_mismatch() {
+    for (left, right) in [("U32", "U64"), ("U64", "U32")] {
+        let errors = compile_with_input_widths(left, right, "", "input.left + input.right", true)
+            .expect_err("mixed widths must refuse");
+        assert!(errors
+            .iter()
+            .any(|e| e.kind == CompilerErrorKind::TypeMismatch));
     }
 }
 

@@ -76,6 +76,9 @@ fn collect_limits<'a>(predicate: &'a CorePredicate, limits: &mut Vec<(&'a CoreEx
 }
 
 fn bound(expr: &CoreExpr, max: u64, limits: &[(&CoreExpr, u64)], depth: usize) -> Option<u64> {
+    // Target refuses when traversal cannot establish a bound. Source uses
+    // the width maximum at its cutoff, so a source-accepted sum with zero
+    // can still be refused here. Target remains the final authority.
     if depth > MAX_CORE_GRAPH_DEPTH {
         return None;
     }

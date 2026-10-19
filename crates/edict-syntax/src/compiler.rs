@@ -4745,6 +4745,18 @@ impl<'a> TypeChecker<'a> {
                 rhs,
                 ..
             } => self.diagnostic_addition_shape(lhs, rhs, env),
+            Expr::Binary {
+                op: BinOp::Sub,
+                lhs,
+                rhs,
+                ..
+            } => self
+                .diagnostic_shape_inner(lhs, env)
+                .and_then(|shape| match shape.kind {
+                    TypeKind::Int { .. } => Some(shape),
+                    _ => None,
+                })
+                .or_else(|| self.diagnostic_shape_inner(rhs, env)),
             Expr::If { then, els, .. } => compatible_shape(
                 &self.diagnostic_shape_inner(then, env)?,
                 &self.diagnostic_shape_inner(els, env)?,
