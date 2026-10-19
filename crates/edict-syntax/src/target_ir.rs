@@ -10,6 +10,7 @@ mod byte_slice;
 mod byte_utf8;
 pub(crate) mod execution_order;
 mod totality;
+mod unsigned_addition;
 mod unsigned_subtraction;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -1203,7 +1204,9 @@ fn expression_has_closed_authority(
             callee,
             type_args,
             args,
-        } if callee == unsigned_subtraction::OPERATION => {
+        } if callee == unsigned_subtraction::OPERATION
+            || callee == unsigned_addition::OPERATION =>
+        {
             unsigned_subtraction::type_coordinate(core, pure_functions, type_args, args, available)
                 .is_some()
         }
@@ -1228,6 +1231,10 @@ fn expression_has_closed_authority(
                 && expression_has_closed_authority(core, pure_functions, else_value, available)
         }
     }
+}
+
+fn is_unsigned_arithmetic(callee: &str) -> bool {
+    callee == unsigned_subtraction::OPERATION || callee == unsigned_addition::OPERATION
 }
 
 fn expression_fits_declared_type(
@@ -1279,7 +1286,7 @@ fn expression_fits_declared_type(
                 || callee == byte_length::OPERATION
                 || callee == byte_utf8::OPERATION
                 || callee == byte_slice::OPERATION
-                || callee == unsigned_subtraction::OPERATION =>
+                || is_unsigned_arithmetic(callee) =>
         {
             expression_type_coordinate(core, pure_functions, expression, available)
                 .is_some_and(|actual| core_type_fits(core, &actual, expected))
@@ -1625,7 +1632,9 @@ fn expression_type_coordinate(
             callee,
             type_args,
             args,
-        } if callee == unsigned_subtraction::OPERATION => {
+        } if callee == unsigned_subtraction::OPERATION
+            || callee == unsigned_addition::OPERATION =>
+        {
             unsigned_subtraction::type_coordinate(core, pure_functions, type_args, args, available)
         }
         CoreExpr::Call { callee, .. } if callee == "core.string.concat" => {

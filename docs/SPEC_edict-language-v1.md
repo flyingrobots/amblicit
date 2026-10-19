@@ -2201,6 +2201,17 @@ slice does not imply support for the other arithmetic forms specified above.
 Every prelude function must be total over valid input or must expose a typed
 diagnostic that the compiler can force authors to handle.
 
+The source-to-Core compiler also supports same-width `U32`/`U64` addition as
+`core.integer.add<T>(left, right)`. It composes literal and nested-sum upper
+bounds and literal bounds on the exact operands from dominating conjunctive
+input comparisons. Both comparison directions and equality can establish a
+bound; disjunction and negation cannot. A sum is accepted only when its proved
+upper bound fits the width, including the exact maximum. Width inference does
+not require a `let` annotation when an operand determines the unsigned type.
+The Target IR boundary independently checks signatures and totality over raw
+Core and rejects removed or weakened proofs. This source/Target slice does not
+establish provider or runtime support for the new call.
+
 The implemented byte concatenation accepts two bounded structural byte operands
 and preserves their order in `core.bytes.concat<LeftType,RightType>(left,right)`
 (`EDICT-LANG-BYTE-CONCAT-001`). The result has the conservative bound

@@ -1,7 +1,7 @@
 //! Evaluation-scope traversal for partial Core operations at the Target boundary.
 use super::{
-    byte_slice, unsigned_subtraction, CoreExpr, CoreIntent, CoreNode, CorePredicate,
-    CoreRequireFailureArm, InputConstraint,
+    byte_slice, unsigned_addition, unsigned_subtraction, CoreExpr, CoreIntent, CoreNode,
+    CorePredicate, CoreRequireFailureArm, InputConstraint,
 };
 use crate::core_ir::{CoreBlock, MAX_CORE_GRAPH_DEPTH};
 
@@ -177,6 +177,9 @@ fn expression_is_total_at_depth(
                 return false;
             }
             match callee.as_str() {
+                unsigned_addition::OPERATION => {
+                    unsigned_addition::is_total(type_args, args, constraints)
+                }
                 unsigned_subtraction::OPERATION => {
                     let [left, right] = args.as_slice() else {
                         return false;

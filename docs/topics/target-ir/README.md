@@ -9,6 +9,13 @@ execute a runtime, admit a bundle, or mutate participant state.
 
 ## Current Contract
 
+Unsigned `core.integer.add<U32/U64>` requires independently checked operand
+types and an upper-bound proof that its sum fits the declared width. Literal
+and nested sums compose bounds; dominating conjunctive comparisons contribute
+limits in either direction. Missing or disjunctive proof refuses raw Core with
+`InvalidCoreIdentity` and no Target artifact. Source compilation is not proof
+at this boundary. Provider and runtime support remain separate. [TIR-REQ-056]
+
 The current target IR implementation is deliberately narrow:
 
 - selected target profile: `echo.dpo@1` or `gitwarp.ref_crdt@1`;

@@ -37,6 +37,14 @@ Out of scope:
 
 | ID | Status | Requirement | Source |
 | --- | --- | --- | --- |
+| TIR-REQ-056 | implemented | Independently validate same-width unsigned addition and a dominating no-overflow bound over raw Core; source compiler success cannot authorize a missing or weakened proof. | docs/SPEC_edict-language-v1.md |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-086 | implemented | Addition totality | TIR-REQ-056 | Actual compiled bounded sums lower; removing a guard or replacing conjunction by disjunction refuses with InvalidCoreIdentity and no artifact. | proven_unsigned_addition_preserves_operands_and_lowers_independently, target_rejects_unsigned_addition_when_core_proof_is_removed_or_weakened | crates/edict-syntax/tests/unsigned_addition.rs | Native provider and runtime proof remain separate. |
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
 | TIR-REQ-001 | implemented | `edict_syntax` exposes a typed target-lowering API that consumes Core and explicit target-profile facts without reading ambient environment or runtime state. | issue #66 |
 | TIR-REQ-002 | implemented | The first target lowerer supports `echo.dpo@1` and emits a deterministic `echo.span-ir/v1` review artifact for the supported effectful Core shape. | issue #66, docs/SPEC_edict-target-profile-abi-v1.md |
 | TIR-REQ-003 | implemented | Target lowering rejects unsupported target profiles with stable structured failure kinds before producing an artifact. | issue #66 |

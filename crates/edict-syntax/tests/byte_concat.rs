@@ -177,7 +177,6 @@ fn byte_concat_rejects_narrow_destinations_and_wrong_operand_families() {
         ("U64", "Bytes<max=8>", "Bytes<max=8>"),
         ("Bytes<max=8>", "String<max=8>", "Bytes<max=16>"),
         ("String<max=8>", "Bytes<max=8>", "Bytes<max=16>"),
-        ("U64", "U64", "U64"),
     ] {
         assert_source_rejected(left, right, output, CompilerErrorKind::TypeMismatch);
     }

@@ -28,6 +28,14 @@ Out of scope:
 
 | ID | Status | Requirement | Source |
 | --- | --- | --- | --- |
+| CSPINE-REQ-055 | implemented | Same-width U32/U64 addition requires a dominating no-overflow bound and emits a generic arithmetic call; unproved or overflowing sums refuse. | docs/SPEC_edict-language-v1.md |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-177 | implemented | Unsigned addition | CSPINE-REQ-055 | Literal width boundaries and independently bounded input sums compile; possible overflow and disjunctive evidence refuse; raw Core proof removal refuses at Target. | proven_unsigned_addition_preserves_operands_and_lowers_independently, unsigned_addition_accepts_the_width_boundary_and_zero_identity, unsigned_addition_refuses_possible_overflow_and_disjunctive_evidence, target_rejects_unsigned_addition_when_core_proof_is_removed_or_weakened, nested_unsigned_addition_infers_its_width_without_an_annotation, unsigned_addition_uses_upper_bounds_with_both_comparison_directions, target_refuses_forged_addition_width_arity_and_overflowing_constants | crates/edict-syntax/tests/unsigned_addition.rs | Provider and runtime acceptance are separate requirements. |
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
 | CSPINE-REQ-051 | implemented | Compile authenticated source modules with explicit aliases, isolated module/function scopes, complete definition checking, transitive call budgets, deterministic namespace identity and source-local failures; imported intent entries cannot silently become application entries. | docs/SPEC_edict-language-v1.md |
 
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
