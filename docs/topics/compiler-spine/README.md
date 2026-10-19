@@ -138,8 +138,11 @@ Operand type failures point to the wrong byte or endpoint expression; two wrong
 endpoints receive separate `TypeMismatch` diagnostics. [CSPINE-REQ-042]
 The compiler requires exact evidence of `start <= end <= len(bytes)` from
 conjunctive input constraints or unconditional equal/zero relationships. It
-does not infer aliases, transitive orders, or flow-sensitive guard facts, and
-constraints cannot justify earlier basis or constraint evaluation. Missing
+does not infer aliases, transitive orders, or branch-local facts. Within an
+ordered `&&` predicate, checked left predicates may establish the domain of
+later predicates. Separate input constraints remain a canonical set and cannot
+justify one another or the earlier basis. Conjunction proof facts do not escape
+into another expression. Missing
 proof rejects with `UnsupportedSourceShape`; wrong operands or output bounds
 reject with `TypeMismatch`. Raw byte slicing has no UTF-8 semantics.
 [CSPINE-REQ-041]
@@ -198,8 +201,10 @@ input-constraint enforcement, or runtime byte-copy charging.
   `core.integer.subtract<T>(left, right)` when the operands are identical,
   the subtrahend is zero, literal operands are ordered, or a checked input
   constraint directly establishes the required order. Conjunctions supply
-  evidence; disjunctions and negations do not. Evidence becomes available only
-  for the intent body and is cleared between intents, including failed bodies.
+  evidence; disjunctions and negations do not. Within `&&`, the checked left
+  predicate can prove the right operand's domain. These temporary facts are
+  restored afterward; completed input constraints also justify the intent body.
+  Evidence is cleared between intents, including failed bodies.
   Signed and mixed-width subtraction remain outside this subset. This is a
   source-to-Core contract, not target execution support. [CSPINE-REQ-038]
 - An explicit basis expression is checked in the pure pre-body environment

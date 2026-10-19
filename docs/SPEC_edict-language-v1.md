@@ -2203,8 +2203,13 @@ The implemented byte-slice proof uses exact operands in conjunctive intent
 input constraints, identical endpoints, unsigned zero lower bounds, and ordered
 unsigned literals. The upper endpoint must be ordered against `len` of the
 same byte expression and exact operand coordinate. It does not infer alias,
-transitive, negated, disjunctive, or branch-local relationships. Input constraints
-justify body evaluation only, never their own evaluation or the earlier basis.
+transitive, negated, disjunctive, or branch-local relationships. Separate input
+constraints form a canonical set and cannot justify one another or the earlier
+basis. Within an ordered `&&` predicate, the checked left predicate establishes
+positive proof for evaluation of its right predicate, including nested
+conjunctions (`EDICT-LANG-GUARD-ORDER-001`). A predicate cannot use its own or
+a later predicate's facts. These temporary facts do not escape that conjunction.
+After all input constraints hold, they justify body evaluation.
 An unproven slice rejects before Core with `UnsupportedSourceShape`; wrong
 operand families or endpoint widths reject with `TypeMismatch`.
 
