@@ -1399,7 +1399,10 @@ through its explicit alias, without implicit transitive re-exports. Every
 linked definition is checked, including unused definitions. Library functions
 and types resolve only in their own lexical module. Compiler names are fresh
 and deterministic; root intent entry names and runtime record/member labels
-remain authored. Imported intent entries refuse as `ImportedIntent`.
+remain authored. Imported intent entries refuse as `ImportedIntent`. Built-in
+`ExternalActionRequest` constructors and capability request callees remain
+supported. Authored namespace calls, including `core.*`, require an import
+owned by the same source module.
 
 A source record retains its module-owned `package@version.Type` coordinate
 across importing applications. Root record table keys retain original local

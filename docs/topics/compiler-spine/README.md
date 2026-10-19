@@ -58,7 +58,10 @@ table keys retain their original source names. Source declarations cannot use
 renaming to shadow reserved types or redeclare imported callable/type authority.
 Type-constructor height is limited to 128 independently of statement/expression
 frames; active lexical traversal and flattened member paths are also bounded.
-These checks grant no runtime authority. Public application/provider closure
+Built-in `ExternalActionRequest` types and bare capability request callees
+remain supported. Authored namespace calls, including `core.*`, require an
+import owned by that same source module. These checks grant no runtime
+authority. Public application/provider closure
 consumption remains a separate requirement. [CSPINE-REQ-051]
 
 Source `type Alias = Target;` declarations are transparent spellings for

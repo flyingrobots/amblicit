@@ -445,3 +445,77 @@ fn linker_preserves_the_compilers_exact_type_constructor_height_boundary() {
         }
     }
 }
+
+#[test]
+fn linker_preserves_builtin_request_constructors_and_rewrites_their_type_arguments() {
+    let library = "package library.metrics@1; type Count = U64;";
+    let source = format!(
+        "package app.example@1; {} type Pending = ExternalActionRequest<List<metrics.Count,max=1>>;",
+        import("library.metrics@1", library, "metrics")
+    );
+    compile(&source, &[library]);
+}
+
+#[test]
+fn linked_root_preserves_capability_request_operations() {
+    let library = "package library.metrics@1;";
+    let source = include_str!("../../../fixtures/lang/external-actions/workspace-snapshot.edict")
+        .replacen(
+            "package examples.workspace_observer@1;",
+            &format!(
+                "package examples.workspace_observer@1; {}",
+                import("library.metrics@1", library, "metrics")
+            ),
+            1,
+        );
+    let closure =
+        resolve_source_closure(&source, &[library], SourceClosureLimits::default()).unwrap();
+    let linked = link_source_closure(&closure).unwrap();
+    let context = context()
+        .with_operation_profile("workspace.read", "continuum.profile.read-only/v1")
+        .with_budget(
+            "workspace.tiny",
+            CoreBudget {
+                max_steps: 512,
+                max_allocated_bytes: 256 * 1024,
+                max_output_bytes: 128 * 1024,
+            },
+        );
+    let core = linked.compile(&context).unwrap();
+    let CoreNode::ExternalActionRequest { operation, .. } = &core.intents["observe"].body.nodes[0]
+    else {
+        panic!("authored capability request survives linking")
+    };
+    assert_eq!(operation.coordinate, "workspace.snapshot.observe@1");
+    assert_eq!(operation.digest, Some(format!("sha256:{}", "a".repeat(64))));
+}
+
+#[test]
+fn library_core_paths_require_their_own_import_instead_of_capturing_the_root() {
+    let pin = format!("sha256:{}", "1".repeat(64));
+    let lawpack_import = format!("use lawpack example.bounds@1 digest \"{pin}\" as core;");
+    let library =
+        "package library.metrics@1; fn retain(value: U64) -> U64 { return core.retain(value); }";
+    let source = root(
+        &format!(
+            "{} {lawpack_import}",
+            import("library.metrics@1", library, "metrics")
+        ),
+        "",
+        "metrics.retain(input.value)",
+    );
+    let closure =
+        resolve_source_closure(&source, &[library], SourceClosureLimits::default()).unwrap();
+    let failure = link_source_closure(&closure).unwrap_err();
+    assert_eq!(failure.kind, SourceLinkErrorKind::UnresolvedName);
+    assert_eq!(failure.coordinate, "library.metrics@1");
+    let declared = library.replace("fn retain", &format!("{lawpack_import} fn retain"));
+    let control = root(
+        &import("library.metrics@1", &declared, "metrics"),
+        "",
+        "metrics.retain(input.value)",
+    );
+    let closure =
+        resolve_source_closure(&control, &[&declared], SourceClosureLimits::default()).unwrap();
+    link_source_closure(&closure).expect("an owning module import permits the namespace");
+}

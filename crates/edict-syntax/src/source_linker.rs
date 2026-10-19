@@ -176,7 +176,7 @@ struct Definition {
 #[derive(Debug)]
 enum ImportBinding {
     Source(String),
-    External(String),
+    External(String, ImportKind),
 }
 #[derive(Debug)]
 struct UnitNames {
@@ -225,7 +225,7 @@ pub fn link_source_closure(
                 continue;
             }
             let mut import = import.clone();
-            if let Some(ImportBinding::External(alias)) = names.imports.get(&import.alias) {
+            if let Some(ImportBinding::External(alias, _)) = names.imports.get(&import.alias) {
                 import.alias.clone_from(alias);
             }
             rewrite.shift(&mut import.span)?;
@@ -425,7 +425,7 @@ fn collect_names(
                         &import.alias,
                     ));
                 }
-                ImportBinding::External(alias)
+                ImportBinding::External(alias, import.kind)
             };
             names.imports.insert(import.alias.clone(), binding);
         }

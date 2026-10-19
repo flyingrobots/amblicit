@@ -3,9 +3,9 @@ use super::{
     failure, DefinitionKind, ImportBinding, SourceLinkError, SourceLinkErrorKind, UnitNames,
 };
 use crate::ast::{
-    Block, BoundRef, Decl, DigestLockedPackageRef, ElseClause, Expr, FieldConstraint, IntentClause,
-    ObstructionHandler, ObstructionTarget, Param, RecordEntry, RequireElseArm, Stmt, TypeExpr,
-    TypeRef, YieldBlock,
+    Block, BoundRef, Decl, DigestLockedPackageRef, ElseClause, Expr, FieldConstraint, ImportKind,
+    IntentClause, ObstructionHandler, ObstructionTarget, Param, RecordEntry, RequireElseArm, Stmt,
+    TypeExpr, TypeRef, YieldBlock,
 };
 use crate::token::Span;
 use std::collections::{BTreeMap, BTreeSet};
@@ -168,7 +168,7 @@ impl<'a> Rewrite<'a> {
             Some(ImportBinding::Source(_)) => {
                 Err(self.error(SourceLinkErrorKind::UnknownExport, span, first))
             }
-            Some(ImportBinding::External(alias)) => {
+            Some(ImportBinding::External(alias, _)) => {
                 first.clone_from(alias);
                 Ok(())
             }
@@ -181,7 +181,7 @@ impl<'a> Rewrite<'a> {
             if self.type_parameters.contains(name)
                 || matches!(
                     name.as_str(),
-                    "Bool" | "I32" | "I64" | "U32" | "U64" | "Unit"
+                    "Bool" | "I32" | "I64" | "U32" | "U64" | "Unit" | "ExternalActionRequest"
                 )
             {
                 return Ok(());
@@ -219,7 +219,7 @@ impl<'a> Rewrite<'a> {
                 *path = vec![definition.linked.clone()];
                 Ok(())
             }
-            Some(ImportBinding::External(alias)) => {
+            Some(ImportBinding::External(alias, _)) => {
                 path[0].clone_from(alias);
                 Ok(())
             }
@@ -594,8 +594,12 @@ impl<'a> Rewrite<'a> {
                     };
                     return self.shift(expr_span(expr));
                 }
-                ImportBinding::External(alias) if path.len() > 1 => Some(alias.clone()),
-                ImportBinding::External(_) => {
+                ImportBinding::External(alias, kind)
+                    if path.len() > 1 || (function && *kind == ImportKind::Capability) =>
+                {
+                    Some(alias.clone())
+                }
+                ImportBinding::External(_, _) => {
                     return Err(self.error(SourceLinkErrorKind::UnresolvedName, span, head))
                 }
             }
@@ -615,8 +619,6 @@ impl<'a> Rewrite<'a> {
             } else {
                 return Err(self.error(SourceLinkErrorKind::UnresolvedName, span, head));
             }
-        } else if function && head == "core" && path.len() > 1 {
-            None
         } else {
             return Err(self.error(SourceLinkErrorKind::UnresolvedName, span, head));
         };
