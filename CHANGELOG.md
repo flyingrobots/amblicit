@@ -374,8 +374,9 @@ versions still track specification maturity rather than a released product.
   are explicitly outside this change.
 - Added `docs/EXPLAINER_inside-edict.md`, a draft zero-familiarity walkthrough
   of the implemented toolchain that follows the `hello-echo` fixture from
-  source through Core IR, Target IR, digests, and the provider sandbox, and
-  records a measured claims-versus-code ledger at `e4fa81dd`. Non-normative.
+  source through Core IR, Target IR, digests, and the provider sandbox, and the
+  companion `docs/audit/2026-09-10_inside-edict-claims-audit.md`, a dated
+  claims-versus-code ledger at `e4fa81dd`. Both are non-normative snapshots.
 - Added explicit imported `Nominal<T>` lawpack contracts. Nominal contracts
   preserve exact and ranged bounded-byte storage representations in Core while
   rejecting cross-assignment between distinct contract coordinates before

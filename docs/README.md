@@ -119,8 +119,11 @@ The current specification set is:
 - [EXPLAINER - Inside Edict](./EXPLAINER_inside-edict.md): a zero-familiarity
   walkthrough of the toolchain as implemented in `crates/`, following the
   `hello-echo` fixture from source through Core IR, Target IR, digests, and the
-  provider sandbox, with a measured ledger of where the README's claims run
-  ahead of the code. Draft; non-normative.
+  provider sandbox, recorded at `e4fa81dd`. Draft; non-normative.
+- [Audit - Inside Edict claims](./audit/2026-09-10_inside-edict-claims-audit.md):
+  the explainer's companion, a dated ledger of where the README's claims ran
+  ahead of the code at `e4fa81dd`, how that was measured, and acceptance
+  criteria for closing each gap. Draft; non-normative.
 
 Machine-readable ABIs live in [`abi/`](./abi/) and are the single source of
 truth for the artifacts they describe; prose JSON in the specs is generated from
