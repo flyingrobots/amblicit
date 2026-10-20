@@ -93,14 +93,31 @@ policy, and artifact ownership model are documented in the
 
 ### Application Builds
 
-An application manifest names one exact Edict source, its complete lawpack
-closure, the selected target profile and provider package, and the output
-directory. Both application routes accept exactly one source and a non-empty
-ordered lawpack closure whose first entry is the root. They validate the
+An application manifest names an ordered, explicit source closure, its complete
+lawpack closure, the selected target profile and provider package, and the
+output directory. The first source is the entry package; up to 63 remaining
+sources supply its complete digest-authenticated module dependencies. Both
+application routes accept a non-empty ordered lawpack closure whose first
+entry is the root. They validate the
 complete supplied dependency graph, reject any supplied lawpack unreachable
 from that root, compile and lower the source through the root lawpack's
 declarative target adapter, and resolve the selected target profile only from
 its checked provider-package manifest.
+
+Source loading performs no discovery. Duplicate canonical source paths,
+disconnected or substituted modules, missing dependencies and escaped paths
+fail before publication. The fixed 1 MiB aggregate source limit applies before
+parsing. Surface validation runs on each original module before closure
+authentication, so invalid declarations retain their detailed diagnostics.
+Parse, linker and compiler diagnostics retain each original file's
+canonical path and local byte span, including errors from several modules.
+
+A source without module imports keeps the existing `edict.source/v1` byte-string
+artifact. Module builds use the authenticated `edict.source-closure/v1` artifact
+and `edict-source-closure` auxiliary kind in both provider invocations. A provider
+must support that source form explicitly; older providers refuse it. Source
+module support does not expand the existing source-function accounting profile,
+which continues to refuse request-bearing values.
 
 The application path is resolved from the process working directory. Every
 path inside the manifest is resolved from the manifest's parent directory and
@@ -260,6 +277,34 @@ diagnostic and terminal status records carry that command. Invalid `project`
 settings therefore report `command: "project"` rather than falling back to the
 `check` command. [CLI-REQ-006, CLI-REQ-007]
 
+### Application Source Diagnostics
+
+A failed application build emits one `edict.cli.diagnostic/v1` record for each
+parser or compiler error on stderr, followed by its existing
+`InvalidApplicationSource` or `ApplicationCompilationFailed` summary and one
+terminal status record. Each source record retains the originating stage and
+kind, its message, and the source span. The summary does not embed a Debug
+vector of compiler errors. When ownership cannot be established, each error's
+human-readable message remains in the summary without a guessed file location.
+The terminal `errors` count includes every source
+record and the summary; `checked` stays zero, and the existing build exit code
+is `2`. A failed source build writes no output and preserves prior artifacts.
+[CLI-REQ-018]
+
+`span.start` and `span.end` are zero-based UTF-8 byte offsets, with an exclusive
+end. `sourceLocation` contains the canonical source path, a one-based source
+line, and a one-based Unicode-scalar column. An empty EOF span has the location
+immediately after the last source character. CRLF advances the source line once.
+These coordinates refer to the source loaded for this build. The top-level
+`line` field, when present, continues to identify a JSONL request record; it is
+not a source line or column. [CLI-REQ-018]
+
+The diagnostic and event schemas now admit `build`; the diagnostic schema also
+admits compiler stages and the optional `sourceLocation` object. Check and
+project stream shapes are unchanged. Clients that validate build records must
+use the matching checked schemas. Schema validation is exercised by the public
+binary tests and is not added to the shipped CLI runtime. [CLI-REQ-018]
+
 ## Stream Contract Artifacts
 
 Every record family on the CLI boundary has a checked-in JSON Schema. These
@@ -290,7 +335,8 @@ the checked-in schemas as the accepted wire shape.
   failures emitted as projection records.
 - `1`: compiler or validation diagnostics were produced for at least one
   source input in the `check` operation.
-- `2`: CLI input or usage was invalid before compiler validation could run.
+- `2`: CLI input or usage was invalid, or a build failed, including source
+  parsing or compilation. Build failures keep this existing exit code.
 
 ## Golden Fixtures
 
@@ -312,3 +358,9 @@ The following are not implemented by this first CLI slice:
 - language-server transport.
 
 The verification matrix is tracked in [test-plan.md](./test-plan.md).
+
+## Signature mismatch diagnostic context
+
+Application build diagnostics include optional `signatureMismatch` context on a compiler `TypeMismatch` at the `typeCheck` stage. It contains `effect`, `position` (`input` or `receipt`), `path`, `expectedType`, and `actualType`. Field segments carry a separate name; list-item and settlement segments carry only their kind. Exactly absent fields use JSON null for the corresponding type. Other errors omit this property. Existing source spans, source locations, summaries, status counts, and failed-output publication rules are preserved.
+
+The diagnostic and projection schemas admit this optional context. Consumers pinned to an older strict schema must update that schema before accepting the new property. Records without the property remain valid. The projection formatter preserves supplied compiler detail; current public projection inputs do not load a lawpack signature closure. No new projection transport or capability is introduced.

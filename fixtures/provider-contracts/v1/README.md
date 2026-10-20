@@ -1,7 +1,7 @@
 # Provider Contract Pack v1
 
-This directory publishes Edict's provider-facing wire contracts as deterministic,
-Rust-neutral artifacts for runtime-owned generators.
+This directory preserves Edict's prior function-free provider contract
+publication as exact Rust-neutral bytes for explicitly pinned consumers.
 
 | File | Contract |
 | --- | --- |
@@ -26,6 +26,7 @@ Both artifacts carry the Apache-2.0 license. Consumers receive their bytes as
 explicit inputs. The provenance paths are review evidence, not discovery or
 filesystem lookup handles.
 
-Use `cargo xtask provider-contract-pack --check` to reproduce and compare both
-files. Use `--write` only after intentional review of an Edict ABI or canonical
-contract-resource change. The full `cargo xtask verify` gate runs check mode.
+The current owner generator writes and checks the separately selected
+[source-functions-v1 publication](../source-functions-v1/README.md). These
+prior CDDL/manifest bytes are retained unchanged; selecting the new publication
+requires an explicit downstream contract/digest update.

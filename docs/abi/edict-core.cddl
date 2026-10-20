@@ -10,6 +10,7 @@ core-module = {
   coordinate: tstr,
   imports: [* core-import],
   types: { * core-named-type-ref => core-type },
+  ? functions: { + tstr => core-source-function },
   intents: { + tstr => core-intent },
   requiredCoreCapabilities: [* tstr],
 }
@@ -125,6 +126,14 @@ core-capability-value = {
 ; Edict-authored pure helpers use a pure Core function body. The body can bind
 ; pure expressions and return an expression, but it cannot contain Core effect,
 ; guard, branch, loop, match-node, or proof-obligation nodes.
+; Source-owned functions use the same pure body algebra, with their result type
+; authenticated by the enclosing module. An empty function table is omitted.
+core-source-function = {
+  params: [* local-ref],
+  returnType: core-type-ref,
+  body: core-pure-block,
+}
+
 core-fn-body = {
   params: [* local-ref],
   body: core-pure-block,

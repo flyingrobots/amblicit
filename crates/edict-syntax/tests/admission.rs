@@ -172,7 +172,10 @@ fn semantic_and_release_subjects_are_checked_independently() {
     let release_report = validate_admission_request(&bundle, &stale_release_request);
 
     assert_eq!(semantic_report.status, AdmissionValidationStatus::Valid);
-    assert!(semantic_report.failures.is_empty());
+    assert_eq!(
+        semantic_report.failures,
+        [] as [edict_syntax::AdmissionValidationFailure; 0]
+    );
     assert_eq!(release_report.status, AdmissionValidationStatus::Invalid);
     assert_eq!(
         failure_kinds(&release_report),
@@ -394,7 +397,10 @@ fn participant_policy_rejection_is_evidence_not_invocation_authority() {
     let invocation_report = check_gate_c_invocation(&packet);
 
     assert_eq!(receipt_report.status, AdmissionValidationStatus::Valid);
-    assert!(receipt_report.failures.is_empty());
+    assert_eq!(
+        receipt_report.failures,
+        [] as [edict_syntax::AdmissionValidationFailure; 0]
+    );
     assert_eq!(invocation_report.status, AdmissionValidationStatus::Invalid);
     assert_eq!(
         failure_kinds(&invocation_report),
@@ -510,5 +516,8 @@ fn accepted_receipt_and_invocation_capability_authorize_gate_c_invocation() {
     let report = check_gate_c_invocation(&packet);
 
     assert_eq!(report.status, AdmissionValidationStatus::Valid);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        [] as [edict_syntax::AdmissionValidationFailure; 0]
+    );
 }

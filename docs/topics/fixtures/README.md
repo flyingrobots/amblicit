@@ -28,7 +28,7 @@ Current checked-in fixture families are:
   for the five Edict-owned resource coordinates and their coordinate-framed
   digests;
 - the provider contract pack under
-  [`fixtures/provider-contracts/v1/`](../../../fixtures/provider-contracts/v1/)
+  [`fixtures/provider-contracts/source-modules-v1/`](../../../fixtures/provider-contracts/source-modules-v1/)
   for self-contained CDDL, root bindings, exact schema/resource bytes, raw and
   domain-framed digests, and reviewed provenance;
 - golden CLI cases under [`fixtures/cli/`](../../../fixtures/cli/) replayed

@@ -7,19 +7,33 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ast::{
     BinOp, Block, BoundRef, BytesRefine, Decl, DigestLockedPackageRef, ElseClause, Expr, FieldDecl,
-    Import, ImportKind, IntentClause, IntentDecl, Module, ObstructionArm, ObstructionHandler,
-    ObstructionTarget, RecordEntry, RequireElseArm, ScalarRefine, Stmt, TypeDecl, TypeExpr,
-    TypeRef, UnOp, YieldBlock,
+    FunctionDecl, Import, ImportKind, IntentClause, IntentDecl, Module, ObstructionArm,
+    ObstructionHandler, ObstructionTarget, RecordEntry, RequireElseArm, ScalarRefine, Stmt,
+    TypeDecl, TypeExpr, TypeRef, UnOp, YieldBlock,
 };
 use crate::core_ir::{
     classify_core_type_reference, is_lowercase_sha256_review_digest, parse_core_integer,
     render_self_describing_core_type, validate_core_module_type_integrity, CompareOp, CoreBlock,
-    CoreBound, CoreBudget, CoreExpr, CoreExternalActionBudget, CoreImport, CoreImportKind,
-    CoreIntent, CoreModule, CoreNode, CoreObstructionArm, CoreObstructionReason, CorePredicate,
-    CoreRequireFailureArm, CoreType, CoreTypeReference, CoreValue, InputConstraint,
-    InputConstraintSource, LocalRef, ResourceRef, CORE_API_VERSION,
-    CORE_APPLICATION_INPUT_LOCAL_ID, MAX_CORE_TYPE_DEPTH,
+    CoreBound, CoreBudget, CoreExpr, CoreExternalActionBudget, CoreFunction, CoreImport,
+    CoreImportKind, CoreIntent, CoreModule, CoreNode, CoreObstructionArm, CoreObstructionReason,
+    CorePredicate, CorePureBinding, CorePureBlock, CoreRequireFailureArm, CoreType,
+    CoreTypeReference, CoreValue, InputConstraint, InputConstraintSource, LocalRef, ResourceRef,
+    CORE_API_VERSION, CORE_APPLICATION_INPUT_LOCAL_ID, MAX_CORE_TYPE_DEPTH,
 };
+mod byte_concat;
+mod byte_length;
+mod byte_slice;
+mod byte_utf8;
+mod return_budget;
+mod signature_diagnostic;
+mod source_functions;
+mod source_types;
+pub use signature_diagnostic::{
+    EffectSignatureMismatch, SignatureMismatchPosition, SignaturePathSegment,
+};
+mod unsigned_addition;
+mod unsigned_subtraction;
+
 use crate::lowerability::WriteClass;
 use crate::semantic::validate_surface;
 use crate::token::{IntSuffix, Span};
@@ -41,6 +55,7 @@ pub enum CompilerErrorKind {
     UnsupportedSourceShape,
     UnresolvedType,
     UnresolvedFunction,
+    EffectWithoutFailureMapping,
     InvalidBound,
     UnknownField,
     TypeMismatch,
@@ -77,6 +92,13 @@ pub(crate) struct EffectSignatureFact {
     pub(crate) input_type: String,
     pub(crate) output_type: String,
     pub(crate) failure_payload_types: BTreeMap<String, String>,
+    pub(crate) domain_mappable_failures: BTreeSet<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AuthenticatedEffectExports {
+    lawpack: ResourceRef,
+    names: BTreeSet<String>,
 }
 
 /// Canonical identity and Core definition for one imported lawpack type.
@@ -110,6 +132,8 @@ pub struct CompilerError {
     pub kind: CompilerErrorKind,
     pub message: String,
     pub span: Span,
+    /// Optional typed detail for an exported effect signature mismatch.
+    pub signature_mismatch: Option<EffectSignatureMismatch>,
 }
 
 /// Deterministic facts supplied to the compiler spine by the caller.
@@ -123,14 +147,38 @@ pub struct CompilerContext {
     operation_profile_budgets: BTreeMap<String, String>,
     effect_write_classes: BTreeMap<String, WriteClass>,
     effect_signatures: BTreeMap<String, EffectSignatureFact>,
+    authenticated_effect_exports: BTreeMap<String, AuthenticatedEffectExports>,
     pure_functions: BTreeMap<String, PureFunctionFact>,
     pure_helper_costs: BTreeMap<String, PureHelperCostFact>,
     type_shapes: BTreeMap<String, TypeShapeFact>,
+    source_type_origins: BTreeMap<String, SourceTypeOrigin>,
     bounds: BTreeMap<String, BoundFact>,
     budgets: BTreeMap<String, CoreBudget>,
 }
 
 impl CompilerContext {
+    pub(crate) fn with_linked_source_types(
+        mut self,
+        origins: BTreeMap<String, SourceTypeOrigin>,
+    ) -> Self {
+        self.source_type_origins = origins;
+        self
+    }
+
+    pub(crate) fn has_imported_type_coordinate(&self, coordinate: &str) -> bool {
+        self.type_shapes.contains_key(coordinate)
+    }
+
+    pub(crate) fn has_imported_callable_coordinate(&self, coordinate: &str) -> bool {
+        self.pure_functions
+            .values()
+            .any(|fact| fact.coordinate == coordinate)
+            || self
+                .effect_signatures
+                .values()
+                .any(|fact| fact.coordinate == coordinate)
+    }
+
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -182,6 +230,18 @@ impl CompilerContext {
     ) -> Self {
         self.effect_write_classes
             .insert(source_effect_coordinate.into(), write_class);
+        self
+    }
+
+    #[must_use]
+    pub(crate) fn with_authenticated_effect_exports(
+        mut self,
+        alias: String,
+        lawpack: ResourceRef,
+        names: BTreeSet<String>,
+    ) -> Self {
+        self.authenticated_effect_exports
+            .insert(alias, AuthenticatedEffectExports { lawpack, names });
         self
     }
 
@@ -243,13 +303,22 @@ pub struct ResolvedModule {
     pub imports: Vec<CoreImport>,
     pub effect_write_classes: BTreeMap<String, WriteClass>,
     pub(crate) effect_signatures: BTreeMap<String, EffectSignatureFact>,
+    authenticated_effect_exports: BTreeMap<String, AuthenticatedEffectExports>,
     pub pure_functions: BTreeMap<String, PureFunctionFact>,
     pub pure_helper_costs: BTreeMap<String, PureHelperCostFact>,
     pub type_shapes: BTreeMap<String, TypeShapeFact>,
+    pub(crate) source_type_origins: BTreeMap<String, SourceTypeOrigin>,
     pub bounds: BTreeMap<String, BoundFact>,
     pub budgets: BTreeMap<String, CoreBudget>,
     pub types: Vec<ResolvedTypeDecl>,
+    pub source_functions: Vec<FunctionDecl>,
     pub intents: Vec<ResolvedIntent>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SourceTypeOrigin {
+    pub(crate) coordinate: String,
+    pub(crate) table_key: String,
 }
 
 /// Resolved type declaration.
@@ -275,6 +344,7 @@ pub struct TypedModule {
     pub coordinate: String,
     pub imports: Vec<CoreImport>,
     pub types: BTreeMap<String, CoreType>,
+    pub functions: BTreeMap<String, CoreFunction>,
     pub intents: Vec<TypedIntent>,
 }
 
@@ -308,6 +378,7 @@ pub fn compile_to_core(
                 kind: CompilerErrorKind::SurfaceValidation,
                 message: err.message,
                 span: err.span,
+                signature_mismatch: None,
             })
             .collect::<Vec<_>>()
     })?;
@@ -326,13 +397,25 @@ pub fn resolve_module(
     context: &CompilerContext,
 ) -> Result<ResolvedModule, Vec<CompilerError>> {
     let mut errors = Vec::new();
+    for import in &module.imports {
+        if import.kind == ImportKind::Module {
+            errors.push(error(
+                CompilerStage::Resolve,
+                CompilerErrorKind::MissingContextFact,
+                "source module requires an authenticated source closure before compilation",
+                import.span,
+            ));
+        }
+    }
     let coordinate = package_coordinate(&module.package.path, &module.package.version);
     let imports = resolve_imports(&module.imports);
     let mut types = Vec::new();
     let mut intents = Vec::new();
+    let mut source_functions = Vec::new();
 
     for decl in &module.decls {
         match decl {
+            Decl::Function(decl) => source_functions.push(decl.clone()),
             Decl::Type(decl) => types.push(ResolvedTypeDecl {
                 name: decl.name.clone(),
                 source: decl.clone(),
@@ -358,12 +441,15 @@ pub fn resolve_module(
             imports,
             effect_write_classes: context.effect_write_classes.clone(),
             effect_signatures: context.effect_signatures.clone(),
+            authenticated_effect_exports: context.authenticated_effect_exports.clone(),
             pure_functions: context.pure_functions.clone(),
             pure_helper_costs: context.pure_helper_costs.clone(),
             type_shapes: context.type_shapes.clone(),
+            source_type_origins: context.source_type_origins.clone(),
             bounds: context.bounds.clone(),
             budgets: context.budgets.clone(),
             types,
+            source_functions,
             intents,
         },
     )
@@ -408,6 +494,7 @@ pub fn lower_core(typed: &TypedModule) -> Result<CoreModule, Vec<CompilerError>>
         coordinate: typed.coordinate.clone(),
         imports: typed.imports.clone(),
         types: typed.types.clone(),
+        functions: typed.functions.clone(),
         intents,
         required_core_capabilities: Vec::new(),
     };
@@ -418,6 +505,7 @@ pub fn lower_core(typed: &TypedModule) -> Result<CoreModule, Vec<CompilerError>>
             kind: CompilerErrorKind::InvalidCoreTypeIntegrity,
             message: failure.to_string(),
             span: Span::new(0, 0),
+            signature_mismatch: None,
         }]),
     }
 }
@@ -449,7 +537,7 @@ fn core_import_kind(kind: ImportKind) -> Option<CoreImportKind> {
         ImportKind::Target => Some(CoreImportKind::Target),
         ImportKind::Core => Some(CoreImportKind::Core),
         ImportKind::Capability => Some(CoreImportKind::Capability),
-        ImportKind::Shape => None,
+        ImportKind::Shape | ImportKind::Module => None,
     }
 }
 
@@ -634,10 +722,37 @@ struct TypedValue {
     ty: TypeShape,
 }
 
+#[derive(Debug, Clone, Default)]
+struct LocalEnvironment {
+    values: BTreeMap<String, (LocalRef, TypeShape)>,
+    poisoned: BTreeSet<String>,
+}
+
+impl LocalEnvironment {
+    fn get(&self, name: &str) -> Option<&(LocalRef, TypeShape)> {
+        self.values.get(name)
+    }
+
+    fn contains_key(&self, name: &str) -> bool {
+        self.values.contains_key(name) || self.poisoned.contains(name)
+    }
+
+    fn insert(&mut self, name: String, value: (LocalRef, TypeShape)) {
+        self.poisoned.remove(&name);
+        self.values.insert(name, value);
+    }
+
+    fn poison(&mut self, name: &str) {
+        self.values.remove(name);
+        self.poisoned.insert(name.to_owned());
+    }
+}
+
 #[derive(Debug, Clone)]
 struct BodyState {
     nodes: Vec<CoreNode>,
     result: Option<CoreExpr>,
+    saw_return: bool,
     local_index: usize,
     obstruction_index: usize,
     step_factor: u64,
@@ -690,6 +805,7 @@ impl Default for BodyState {
         Self {
             nodes: Vec::new(),
             result: None,
+            saw_return: false,
             local_index: 0,
             obstruction_index: 0,
             step_factor: 1,
@@ -713,30 +829,166 @@ struct LetStatement<'a> {
     span: Span,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum EffectOutputExpectation<'a> {
+    Value(Option<&'a TypeShape>),
+    Predicate,
+    ConcatenationPeer {
+        peer: &'a Expr,
+        next: &'a Self,
+    },
+    ConditionalPeer {
+        peer: &'a Expr,
+        next: &'a Self,
+    },
+    String,
+    Bytes,
+    Unsigned(Option<&'a TypeShape>),
+    Comparison(&'a TypeShape),
+    ComparisonLiteral(&'a Expr),
+    Field {
+        name: &'a str,
+        next: &'a Self,
+        span: Span,
+    },
+}
+
+impl<'a> EffectOutputExpectation<'a> {
+    fn value(self) -> Option<&'a TypeShape> {
+        match self {
+            Self::Value(shape) | Self::Unsigned(shape) => shape,
+            Self::ConditionalPeer { next, .. } => next.value(),
+            Self::Predicate
+            | Self::ConcatenationPeer { .. }
+            | Self::String
+            | Self::Bytes
+            | Self::Comparison(_)
+            | Self::ComparisonLiteral(_)
+            | Self::Field { .. } => None,
+        }
+    }
+
+    fn project<'s>(
+        self,
+        output: &'s TypeShape,
+    ) -> Result<(&'s TypeShape, Self), (CompilerErrorKind, Span, &'a str)> {
+        if let Self::Field { name, next, span } = self {
+            let TypeKind::Record(fields) = &output.kind else {
+                return Err((CompilerErrorKind::TypeMismatch, span, name));
+            };
+            let Some(field) = fields.get(name) else {
+                return Err((CompilerErrorKind::UnknownField, span, name));
+            };
+            next.project(field)
+        } else {
+            Ok((output, self))
+        }
+    }
+
+    fn origin(self, fallback: Span) -> Span {
+        match self {
+            Self::Field { next, span, .. } => next.origin(span),
+            _ => fallback,
+        }
+    }
+
+    fn rejection(self, output: &TypeShape) -> Option<CompilerErrorKind> {
+        match self {
+            Self::Value(Some(expected)) if !compatible(expected, output) => {
+                Some(CompilerErrorKind::TypeMismatch)
+            }
+            Self::ConcatenationPeer { .. }
+                if !matches!(
+                    output.kind,
+                    TypeKind::String { .. } | TypeKind::Bytes { .. }
+                ) =>
+            {
+                Some(CompilerErrorKind::TypeMismatch)
+            }
+            Self::Unsigned(expected)
+                if !matches!(&output.kind, TypeKind::Int { width } if width == "U32" || width == "U64")
+                    || expected.is_some_and(|shape| !compatible(shape, output)) =>
+            {
+                Some(CompilerErrorKind::TypeMismatch)
+            }
+            Self::String if !matches!(output.kind, TypeKind::String { .. }) => {
+                Some(CompilerErrorKind::TypeMismatch)
+            }
+            Self::Bytes if !matches!(output.kind, TypeKind::Bytes { .. }) => {
+                Some(CompilerErrorKind::TypeMismatch)
+            }
+            Self::Predicate if !matches!(output.kind, TypeKind::Bool) => {
+                Some(CompilerErrorKind::ExpectedPredicate)
+            }
+            Self::Comparison(peer) if !comparable(peer, output) => {
+                Some(CompilerErrorKind::TypeMismatch)
+            }
+            Self::ComparisonLiteral(_) if !matches!(output.kind, TypeKind::Int { .. }) => {
+                Some(CompilerErrorKind::TypeMismatch)
+            }
+            _ => None,
+        }
+    }
+}
+
+enum DiagnosticPeerShape {
+    Known(TypeShape),
+    Unknown,
+    Rejected,
+}
+
+#[derive(Debug, Clone)]
+struct EffectBindingProfile {
+    name: String,
+    allowed_write_classes: Option<BTreeSet<WriteClass>>,
+}
+
 #[derive(Debug, Clone)]
 struct TypeChecker<'a> {
     resolved: &'a ResolvedModule,
+    function_signatures: BTreeMap<String, source_functions::Signature>,
+    function_costs: BTreeMap<String, HelperCost>,
+    source_expression_costs: BTreeMap<usize, HelperCost>,
+    source_predicate_costs: BTreeMap<usize, HelperCost>,
+    source_value_bounds: BTreeMap<usize, (u64, u64)>,
+    input_proof_constraints: Vec<CorePredicate>,
+    effect_binding_profile: Option<EffectBindingProfile>,
     errors: Vec<CompilerError>,
     named_types: BTreeMap<String, TypeShape>,
     core_types: BTreeMap<String, CoreType>,
     inferred_yield_shapes: BTreeMap<usize, TypeShape>,
-    inferred_yield_envs: BTreeMap<usize, BTreeMap<String, (LocalRef, TypeShape)>>,
+    inferred_yield_envs: BTreeMap<usize, LocalEnvironment>,
+    expected_type_unavailable: bool,
+    checking_diagnostic_peer: bool,
 }
 
 impl<'a> TypeChecker<'a> {
     fn new(resolved: &'a ResolvedModule) -> Self {
         Self {
             resolved,
+            function_signatures: BTreeMap::new(),
+            function_costs: BTreeMap::new(),
+            source_expression_costs: BTreeMap::new(),
+            source_predicate_costs: BTreeMap::new(),
+            source_value_bounds: BTreeMap::new(),
+            input_proof_constraints: Vec::new(),
+            effect_binding_profile: None,
             errors: Vec::new(),
             named_types: BTreeMap::new(),
             core_types: BTreeMap::new(),
             inferred_yield_shapes: BTreeMap::new(),
             inferred_yield_envs: BTreeMap::new(),
+            expected_type_unavailable: false,
+            checking_diagnostic_peer: false,
         }
     }
 
     fn check(mut self) -> Result<TypedModule, Vec<CompilerError>> {
         self.check_types();
+        let functions = self.check_source_functions();
+        if !self.resolved.source_functions.is_empty() && !self.errors.is_empty() {
+            return Err(self.errors);
+        }
         let mut intents = Vec::new();
         for intent in &self.resolved.intents {
             if let Some(typed) = self.check_intent(intent) {
@@ -747,42 +999,29 @@ impl<'a> TypeChecker<'a> {
             coordinate: self.resolved.coordinate.clone(),
             imports: self.resolved.imports.clone(),
             types: self.core_types,
+            functions,
             intents,
         };
         finish(self.errors, module)
     }
 
-    fn check_types(&mut self) {
-        for decl in &self.resolved.types {
-            if !matches!(
-                classify_core_type_reference(&decl.name),
-                Some(CoreTypeReference::Named)
-            ) {
-                self.errors.push(error(
-                    CompilerStage::TypeCheck,
-                    CompilerErrorKind::ReservedTypeIdentity,
-                    format!("type `{}` cannot become a Core named identity", decl.name),
-                    decl.source.span,
-                ));
-                continue;
-            }
-            let Some(shape) = self.type_decl_shape(&decl.source) else {
-                continue;
-            };
-            self.core_types.insert(decl.name.clone(), shape.core_type());
-            self.named_types.insert(decl.name.clone(), shape);
-        }
-    }
-
     fn type_decl_shape(&mut self, decl: &TypeDecl) -> Option<TypeShape> {
-        let coord = format!("{}.{}", self.resolved.coordinate, decl.name);
+        let coord = self
+            .resolved
+            .source_type_origins
+            .get(&decl.name)
+            .map_or_else(
+                || format!("{}.{}", self.resolved.coordinate, decl.name),
+                |origin| origin.coordinate.clone(),
+            );
         match &decl.body {
             TypeExpr::Record(fields) => self.record_shape(&coord, fields, decl.span),
-            TypeExpr::Variant(_) | TypeExpr::Ref(_) => {
+            TypeExpr::Ref(ty) => self.type_ref_shape(ty, decl.span),
+            TypeExpr::Variant(_) => {
                 self.errors.push(error(
                     CompilerStage::TypeCheck,
                     CompilerErrorKind::UnsupportedSourceShape,
-                    "only record type declarations are in the initial lowerable subset",
+                    "variant type declarations are outside the current lowerable subset",
                     decl.span,
                 ));
                 None
@@ -819,7 +1058,9 @@ impl<'a> TypeChecker<'a> {
         match ty {
             TypeRef::Named { path, args } if args.is_empty() && path.len() == 1 => {
                 let name = &path[0];
-                if let Some(width) = builtin_integer_width(name) {
+                if name == "Bool" {
+                    TypeShape::canonical_structural(TypeKind::Bool)
+                } else if let Some(width) = builtin_integer_width(name) {
                     Some(integer_shape(width))
                 } else if let Some(shape) = self.named_types.get(name) {
                     Some(shape.clone())
@@ -840,9 +1081,12 @@ impl<'a> TypeChecker<'a> {
                 if path.as_slice() == ["ExternalActionRequest"] && args.len() == 1 =>
             {
                 let settlement = self.type_ref_shape(&args[0], span)?;
-                TypeShape::canonical_structural(TypeKind::ExternalActionRequest {
-                    settlement: Box::new(settlement),
-                })
+                self.source_canonical_structural(
+                    TypeKind::ExternalActionRequest {
+                        settlement: Box::new(settlement),
+                    },
+                    span,
+                )
             }
             TypeRef::StringTy(Some(refine)) => self.string_shape(refine, span),
             TypeRef::BytesTy(Some(refine)) => self.bytes_shape(refine, span),
@@ -861,7 +1105,7 @@ impl<'a> TypeChecker<'a> {
                     item: Box::new(item),
                     max: *value,
                 };
-                TypeShape::canonical_structural(kind)
+                self.source_canonical_structural(kind, span)
             }
             TypeRef::BytesTy(None)
             | TypeRef::Option(_)
@@ -894,11 +1138,20 @@ impl<'a> TypeChecker<'a> {
             .canonical
             .clone()
             .unwrap_or_else(|| "raw-utf8".to_owned());
+        if !matches!(canonical.as_str(), "raw-utf8" | "unicode-scalar-nfc") {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::UnsupportedSourceShape,
+                "unsupported string canonicalization",
+                span,
+            ));
+            return None;
+        }
         let kind = TypeKind::String {
             max: value,
             canonical,
         };
-        TypeShape::canonical_structural(kind)
+        self.source_canonical_structural(kind, span)
     }
 
     fn bytes_shape(&mut self, refine: &BytesRefine, span: Span) -> Option<TypeShape> {
@@ -933,7 +1186,19 @@ impl<'a> TypeChecker<'a> {
             ));
             return None;
         }
-        TypeShape::canonical_structural(TypeKind::Bytes { min, max: *max })
+        self.source_canonical_structural(TypeKind::Bytes { min, max: *max }, span)
+    }
+
+    fn source_canonical_structural(&mut self, kind: TypeKind, span: Span) -> Option<TypeShape> {
+        TypeShape::canonical_structural(kind).or_else(|| {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::InvalidBound,
+                "expanded source structural type depth exceeded",
+                span,
+            ));
+            None
+        })
     }
 
     fn imported_source_type_shape(&mut self, path: &[String], span: Span) -> Option<TypeShape> {
@@ -997,6 +1262,8 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn check_intent(&mut self, intent: &ResolvedIntent) -> Option<TypedIntent> {
+        self.input_proof_constraints.clear();
+        let recorded_costs = self.source_expression_costs.len();
         let source = &intent.source;
         if source.params.len() != 1 {
             self.errors.push(error(
@@ -1017,7 +1284,8 @@ impl<'a> TypeChecker<'a> {
             ty: input_shape.coord.clone(),
         };
         let mut locals = vec![input_binding.clone()];
-        let mut env = BTreeMap::from([(param.name.clone(), (input_binding.clone(), input_shape))]);
+        let mut env = LocalEnvironment::default();
+        env.insert(param.name.clone(), (input_binding.clone(), input_shape));
         let mut basis_clauses = source.clauses.iter().filter_map(|clause| match clause {
             IntentClause::Basis(basis) => Some(basis),
             _ => None,
@@ -1045,7 +1313,30 @@ impl<'a> TypeChecker<'a> {
             None => None,
         };
         let input_constraints = self.input_constraints(source, &env);
-        let body = self.check_body(intent, &output_shape, &mut env, &mut locals)?;
+        self.input_proof_constraints = input_constraints
+            .iter()
+            .map(|constraint| constraint.predicate.clone())
+            .collect();
+        self.effect_binding_profile = Some(EffectBindingProfile {
+            name: intent.profile.clone(),
+            allowed_write_classes: intent.allowed_write_classes.clone(),
+        });
+
+        let body_error_count = self.errors.len();
+
+        let body = self.check_body(intent, &output_shape, &mut env, &mut locals);
+        self.effect_binding_profile = None;
+        self.input_proof_constraints.clear();
+        let body = body?;
+        if self.errors.len() != body_error_count {
+            return None;
+        }
+        self.check_return_budget(intent, &output_shape)?;
+        if !self.resolved.source_functions.is_empty()
+            || self.source_expression_costs.len() > recorded_costs
+        {
+            self.check_helper_cost_budget(intent)?;
+        }
 
         Some(TypedIntent {
             name: intent.name.clone(),
@@ -1063,7 +1354,7 @@ impl<'a> TypeChecker<'a> {
     fn input_constraints(
         &mut self,
         intent: &IntentDecl,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
     ) -> Vec<InputConstraint> {
         let mut out = Vec::new();
         let mut index = 0usize;
@@ -1100,6 +1391,13 @@ impl<'a> TypeChecker<'a> {
             };
             cost = self.checked_helper_cost_add(cost, clause_cost, intent.source.span)?;
         }
+        if !self.resolved.source_functions.is_empty() {
+            let input =
+                self.type_ref_shape(&intent.source.params[0].ty, intent.source.params[0].span)?;
+            let output = self.type_ref_shape(&intent.source.returns, intent.source.span)?;
+            let frame = self.source_intent_frame_cost(&input, &output, intent.source.span)?;
+            cost = self.checked_helper_cost_add(cost, frame, intent.source.span)?;
+        }
         if cost.steps > intent.budget.max_steps
             || cost.allocated_bytes > intent.budget.max_allocated_bytes
             || cost.output_bytes > intent.budget.max_output_bytes
@@ -1131,11 +1429,7 @@ impl<'a> TypeChecker<'a> {
         match stmt {
             Stmt::Let {
                 value, els, span, ..
-            } => {
-                let value_cost = self.helper_cost_for_expr(value)?;
-                let handler_cost = self.helper_cost_for_handler(els.as_ref())?;
-                self.checked_helper_cost_add(value_cost, handler_cost, *span)
-            }
+            } => self.helper_cost_for_binding(value, els.as_ref(), *span),
             Stmt::Effect { call, els, span } => {
                 let call_cost = self.helper_cost_for_expr(call)?;
                 let handler_cost = self.helper_cost_for_handler(els.as_ref())?;
@@ -1225,11 +1519,35 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    fn helper_cost_for_binding(
+        &mut self,
+        value: &Expr,
+        handler: Option<&ObstructionHandler>,
+        span: Span,
+    ) -> Option<HelperCost> {
+        let value_cost = self.helper_cost_for_expr(value)?;
+        let handler_cost = self.helper_cost_for_handler(handler)?;
+        let combined = self.checked_helper_cost_add(value_cost, handler_cost, span)?;
+        let steps = self
+            .source_value_bounds
+            .get(&expression_identity(value))
+            .map_or(0, |bound| bound.0);
+        self.checked_helper_cost_add(
+            combined,
+            HelperCost {
+                steps,
+                ..HelperCost::default()
+            },
+            span,
+        )
+    }
+
     fn helper_cost_for_expr(&mut self, expr: &Expr) -> Option<HelperCost> {
-        match expr {
+        let children = match expr {
             Expr::Ident { .. }
             | Expr::Int { .. }
             | Expr::Str { .. }
+            | Expr::Bytes { .. }
             | Expr::Bool { .. }
             | Expr::Digest { .. } => Some(HelperCost::default()),
             Expr::Field { base, .. } | Expr::Unary { operand: base, .. } => {
@@ -1306,7 +1624,20 @@ impl<'a> TypeChecker<'a> {
                 }
                 self.checked_helper_cost_add(scrutinee_cost, arm_cost, *span)
             }
-        }
+        }?;
+        let span = expr_span(expr);
+        let own = self
+            .source_expression_costs
+            .get(&expression_identity(expr))
+            .copied()
+            .unwrap_or_default();
+        let predicate = self
+            .source_predicate_costs
+            .get(&expression_identity(expr))
+            .copied()
+            .unwrap_or_default();
+        let own = self.checked_helper_cost_add(own, predicate, span)?;
+        self.checked_helper_cost_add(children, own, span)
     }
 
     fn helper_cost_for_exprs_at<'b, I>(&mut self, exprs: I, span: Span) -> Option<HelperCost>
@@ -1325,6 +1656,9 @@ impl<'a> TypeChecker<'a> {
         let Some(source_coordinate) = plain_callee_coordinate(callee) else {
             return Some(HelperCost::default());
         };
+        if let Some(cost) = self.function_costs.get(&source_coordinate) {
+            return Some(*cost);
+        }
         let Some(fact) = self.resolved.pure_functions.get(&source_coordinate) else {
             return Some(HelperCost::default());
         };
@@ -1393,11 +1727,13 @@ impl<'a> TypeChecker<'a> {
         &mut self,
         block: &crate::ast::YieldBlock,
     ) -> Option<HelperCost> {
-        let statements = Block {
-            stmts: block.stmts.clone(),
-            span: block.span,
-        };
-        let statement_cost = self.helper_cost_for_block(&statements)?;
+        // Keep the original borrowed expressions: their immutable AST identity
+        // keys type/cost summaries, while spans remain diagnostics only.
+        let mut statement_cost = HelperCost::default();
+        for statement in &block.stmts {
+            let cost = self.helper_cost_for_stmt(statement)?;
+            statement_cost = self.checked_helper_cost_add(statement_cost, cost, block.span)?;
+        }
         let value_cost = self.helper_cost_for_expr(&block.value)?;
         self.checked_helper_cost_add(statement_cost, value_cost, block.span)
     }
@@ -1497,7 +1833,7 @@ impl<'a> TypeChecker<'a> {
         &mut self,
         intent: &ResolvedIntent,
         output_shape: &TypeShape,
-        env: &mut BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &mut LocalEnvironment,
         locals: &mut Vec<LocalRef>,
     ) -> Option<CoreBlock> {
         let source = &intent.source;
@@ -1513,6 +1849,8 @@ impl<'a> TypeChecker<'a> {
                 nodes: state.nodes,
                 result,
             })
+        } else if state.saw_return {
+            None
         } else {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
@@ -1530,7 +1868,7 @@ impl<'a> TypeChecker<'a> {
         intent: &ResolvedIntent,
         output_shape: &TypeShape,
         stmt: &Stmt,
-        env: &mut BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &mut LocalEnvironment,
         locals: &mut Vec<LocalRef>,
         state: &mut BodyState,
     ) {
@@ -1556,6 +1894,7 @@ impl<'a> TypeChecker<'a> {
                 state,
             ),
             Stmt::Return { value, .. } => {
+                state.saw_return = true;
                 let Some(value) = self.check_expr_with_expected(value, env, Some(output_shape))
                 else {
                     return;
@@ -1588,22 +1927,29 @@ impl<'a> TypeChecker<'a> {
                 max_attempts,
                 reconciliation_law,
                 span,
-            } => self.check_external_action_request(
-                name,
-                request_type,
-                operation,
-                input_schema,
-                settlement_schema,
-                authority_scope,
-                basis,
-                max_settlement_bytes,
-                max_attempts,
-                reconciliation_law,
-                *span,
-                env,
-                locals,
-                state,
-            ),
+            } => {
+                let previous_id = env.get(name).map(|(local, _)| local.id.clone());
+                self.check_external_action_request(
+                    name,
+                    request_type,
+                    operation,
+                    input_schema,
+                    settlement_schema,
+                    authority_scope,
+                    basis,
+                    max_settlement_bytes,
+                    max_attempts,
+                    reconciliation_law,
+                    *span,
+                    env,
+                    locals,
+                    state,
+                );
+                let current_id = env.get(name).map(|(local, _)| local.id.clone());
+                if current_id.is_none() || current_id == previous_id {
+                    env.poison(name);
+                }
+            }
             Stmt::Require { predicate, arm, .. } => {
                 self.check_require_stmt(predicate, arm, env, state);
             }
@@ -1654,12 +2000,10 @@ impl<'a> TypeChecker<'a> {
         then_block: &Block,
         els: Option<&ElseClause>,
         span: Span,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         state: &mut BodyState,
     ) {
-        let Some(predicate) = self.check_predicate(cond, env) else {
-            return;
-        };
+        let predicate = self.check_predicate(cond, env);
         let baseline_steps = state.accumulated_steps;
         let then_block =
             self.check_isolated_statement_block(intent, output_shape, then_block, env, state);
@@ -1681,12 +2025,14 @@ impl<'a> TypeChecker<'a> {
             None => empty_core_block(),
         };
         state.accumulated_steps = then_steps.max(state.accumulated_steps);
-        state.nodes.push(CoreNode::Branch {
-            binding: None,
-            predicate,
-            then_block,
-            else_block,
-        });
+        if let Some(predicate) = predicate {
+            state.nodes.push(CoreNode::Branch {
+                binding: None,
+                predicate,
+                then_block,
+                else_block,
+            });
+        }
     }
 
     fn check_isolated_statement_block(
@@ -1694,7 +2040,7 @@ impl<'a> TypeChecker<'a> {
         intent: &ResolvedIntent,
         output_shape: &TypeShape,
         block: &Block,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         state: &mut BodyState,
     ) -> CoreBlock {
         let mut nested_env = env.clone();
@@ -1745,10 +2091,11 @@ impl<'a> TypeChecker<'a> {
         bound: &BoundRef,
         body: &Block,
         span: Span,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         state: &mut BodyState,
     ) {
         let Some(iter_value) = self.check_expr(iter, env) else {
+            self.check_failed_for_body(intent, output_shape, var, body, env, state, None);
             return;
         };
         let TypeKind::List { item, max } = &iter_value.ty.kind else {
@@ -1758,9 +2105,11 @@ impl<'a> TypeChecker<'a> {
                 "bounded for requires a statically bounded list",
                 span,
             ));
+            self.check_failed_for_body(intent, output_shape, var, body, env, state, None);
             return;
         };
         let Some((value, core_bound)) = self.resolve_loop_bound(bound, span) else {
+            self.check_failed_for_body(intent, output_shape, var, body, env, state, Some(item));
             return;
         };
         if value < *max {
@@ -1770,11 +2119,13 @@ impl<'a> TypeChecker<'a> {
                 format!("loop bound {value} is below iterable maximum {max}"),
                 span,
             ));
+            self.check_failed_for_body(intent, output_shape, var, body, env, state, Some(item));
             return;
         }
         let Some((loop_steps, accumulated_steps)) =
             self.charge_loop_work(intent, state, value, span)
         else {
+            self.check_failed_for_body(intent, output_shape, var, body, env, state, Some(item));
             return;
         };
 
@@ -1790,6 +2141,75 @@ impl<'a> TypeChecker<'a> {
             accumulated_steps,
             ..BodyState::default()
         };
+        self.check_for_body_stmts(
+            intent,
+            output_shape,
+            body,
+            &mut nested_env,
+            &mut nested_locals,
+            &mut nested_state,
+        );
+        state.local_index = nested_state.local_index;
+        state.obstruction_index = nested_state.obstruction_index;
+        state.accumulated_steps = nested_state.accumulated_steps;
+        state.nodes.push(CoreNode::For {
+            binder,
+            iter: iter_value.expr,
+            bound: core_bound,
+            body: CoreBlock {
+                locals: nested_locals,
+                nodes: nested_state.nodes,
+                result: CoreExpr::Const(CoreValue::Null),
+            },
+        });
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn check_failed_for_body(
+        &mut self,
+        intent: &ResolvedIntent,
+        output_shape: &TypeShape,
+        var: &str,
+        body: &Block,
+        env: &LocalEnvironment,
+        state: &BodyState,
+        known_item: Option<&TypeShape>,
+    ) {
+        let mut nested_env = env.clone();
+        let mut nested_locals = Vec::new();
+        let mut nested_state = BodyState {
+            local_index: state.local_index,
+            obstruction_index: state.obstruction_index,
+            step_factor: state.step_factor,
+            accumulated_steps: state.accumulated_steps,
+            ..BodyState::default()
+        };
+        if let Some(item) = known_item {
+            let binder = next_local(&mut nested_state.local_index, item.coord.clone());
+            nested_env.insert(var.to_owned(), (binder.clone(), item.clone()));
+            nested_locals.push(binder);
+        } else {
+            nested_env.poison(var);
+        }
+        self.check_for_body_stmts(
+            intent,
+            output_shape,
+            body,
+            &mut nested_env,
+            &mut nested_locals,
+            &mut nested_state,
+        );
+    }
+
+    fn check_for_body_stmts(
+        &mut self,
+        intent: &ResolvedIntent,
+        output_shape: &TypeShape,
+        body: &Block,
+        nested_env: &mut LocalEnvironment,
+        nested_locals: &mut Vec<LocalRef>,
+        nested_state: &mut BodyState,
+    ) {
         for stmt in &body.stmts {
             if let Stmt::Return { span, .. } = stmt {
                 self.errors.push(error(
@@ -1804,24 +2224,11 @@ impl<'a> TypeChecker<'a> {
                 intent,
                 output_shape,
                 stmt,
-                &mut nested_env,
-                &mut nested_locals,
-                &mut nested_state,
+                nested_env,
+                nested_locals,
+                nested_state,
             );
         }
-        state.local_index = nested_state.local_index;
-        state.obstruction_index = nested_state.obstruction_index;
-        state.accumulated_steps = nested_state.accumulated_steps;
-        state.nodes.push(CoreNode::For {
-            binder,
-            iter: iter_value.expr,
-            bound: core_bound,
-            body: CoreBlock {
-                locals: nested_locals,
-                nodes: nested_state.nodes,
-                result: CoreExpr::Const(CoreValue::Null),
-            },
-        });
     }
 
     fn resolve_loop_bound(&mut self, bound: &BoundRef, span: Span) -> Option<(u64, CoreBound)> {
@@ -1901,67 +2308,80 @@ impl<'a> TypeChecker<'a> {
         max_attempts: &Expr,
         reconciliation_law: &DigestLockedPackageRef,
         span: Span,
-        env: &mut BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &mut LocalEnvironment,
         locals: &mut Vec<LocalRef>,
         state: &mut BodyState,
     ) {
-        let Some(request_shape) = self.type_ref_shape(request_type, span) else {
-            return;
-        };
-        let TypeKind::ExternalActionRequest { settlement } = &request_shape.kind else {
-            self.errors.push(error(
-                CompilerStage::TypeCheck,
-                CompilerErrorKind::TypeMismatch,
-                "request binding type must be ExternalActionRequest<Settlement>",
-                span,
-            ));
-            return;
-        };
-        let settlement_type = settlement.coord.clone();
-        let Some((operation_resource, input)) =
-            self.check_external_action_operation(operation, env, span)
-        else {
-            return;
-        };
-        if !requestable_operation_family(&operation_resource.coordinate) {
-            self.errors.push(error(
-                CompilerStage::TypeCheck,
-                CompilerErrorKind::UnrequestableExternalOperation,
-                format!(
-                    "external operation family `{}` is not requestable",
-                    operation_resource.coordinate
-                ),
-                span,
-            ));
-            return;
-        }
-        let Some(authority_scope) = self.check_expr(authority_scope, env) else {
-            return;
-        };
-        let Some(basis) = self.check_expr(basis, env) else {
-            return;
-        };
+        let request_shape = self.type_ref_shape(request_type, span);
+        let settlement_type = request_shape.as_ref().and_then(|shape| {
+            if let TypeKind::ExternalActionRequest { settlement } = &shape.kind {
+                Some(settlement.coord.clone())
+            } else {
+                self.errors.push(error(
+                    CompilerStage::TypeCheck,
+                    CompilerErrorKind::TypeMismatch,
+                    "request binding type must be ExternalActionRequest<Settlement>",
+                    span,
+                ));
+                None
+            }
+        });
+        let operation = self
+            .check_external_action_operation(operation, env, span)
+            .filter(|(resource, _)| {
+                if requestable_operation_family(&resource.coordinate) {
+                    true
+                } else {
+                    self.errors.push(error(
+                        CompilerStage::TypeCheck,
+                        CompilerErrorKind::UnrequestableExternalOperation,
+                        format!(
+                            "external operation family `{}` is not requestable",
+                            resource.coordinate
+                        ),
+                        span,
+                    ));
+                    false
+                }
+            });
+        let authority_scope = self.check_expr(authority_scope, env);
+        let basis = self.check_expr(basis, env);
         let settlement_budget_shape = integer_shape("U64");
-        let Some(max_settlement_bytes) = self.check_expr_with_expected(
+        let max_settlement_bytes = self.check_expr_with_expected(
             max_settlement_bytes,
             env,
             Some(&settlement_budget_shape),
-        ) else {
-            return;
-        };
+        );
         let attempt_budget_shape = integer_shape("U32");
-        let Some(max_attempts) =
-            self.check_expr_with_expected(max_attempts, env, Some(&attempt_budget_shape))
+        let max_attempts =
+            self.check_expr_with_expected(max_attempts, env, Some(&attempt_budget_shape));
+        let input_schema = self.request_resource(input_schema);
+        let settlement_schema = self.request_resource(settlement_schema);
+        let reconciliation_law = self.request_resource(reconciliation_law);
+        let (
+            Some(request_shape),
+            Some(settlement_type),
+            Some((operation_resource, input)),
+            Some(authority_scope),
+            Some(basis),
+            Some(max_settlement_bytes),
+            Some(max_attempts),
+            Some(input_schema),
+            Some(settlement_schema),
+            Some(reconciliation_law),
+        ) = (
+            request_shape,
+            settlement_type,
+            operation,
+            authority_scope,
+            basis,
+            max_settlement_bytes,
+            max_attempts,
+            input_schema,
+            settlement_schema,
+            reconciliation_law,
+        )
         else {
-            return;
-        };
-        let Some(input_schema) = self.request_resource(input_schema) else {
-            return;
-        };
-        let Some(settlement_schema) = self.request_resource(settlement_schema) else {
-            return;
-        };
-        let Some(reconciliation_law) = self.request_resource(reconciliation_law) else {
             return;
         };
         let local = next_local(&mut state.local_index, request_shape.coord.clone());
@@ -1988,7 +2408,7 @@ impl<'a> TypeChecker<'a> {
     fn check_external_action_operation(
         &mut self,
         operation: &Expr,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         span: Span,
     ) -> Option<(ResourceRef, TypedValue)> {
         let Expr::Call {
@@ -2077,13 +2497,12 @@ impl<'a> TypeChecker<'a> {
         &mut self,
         predicate: &Expr,
         arm: &RequireElseArm,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         state: &mut BodyState,
     ) {
-        let Some(predicate) = self.check_predicate(predicate, env) else {
-            return;
-        };
-        let Some(arm) = self.check_require_else_arm(arm, env) else {
+        let predicate = self.check_predicate(predicate, env);
+        let arm = self.check_require_else_arm(arm, env);
+        let (Some(predicate), Some(arm)) = (predicate, arm) else {
             return;
         };
         state.nodes.push(CoreNode::Require { predicate, arm });
@@ -2092,7 +2511,7 @@ impl<'a> TypeChecker<'a> {
     fn check_require_else_arm(
         &mut self,
         arm: &RequireElseArm,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
     ) -> Option<CoreRequireFailureArm> {
         match arm {
             RequireElseArm::Terminal(target) => {
@@ -2101,16 +2520,16 @@ impl<'a> TypeChecker<'a> {
             }
             RequireElseArm::ContinueObstructed(obstruction) => {
                 let reason_kind =
-                    self.check_reason_kind(&obstruction.reason, env, obstruction.span)?;
+                    self.check_reason_kind(&obstruction.reason, env, obstruction.span);
                 let payload = self.check_reason_payload(
                     &obstruction.payload,
                     env,
                     ReasonPayloadMode::SkipReasonField,
-                )?;
+                );
                 Some(CoreRequireFailureArm::ContinueObstructed {
                     reason: CoreObstructionReason {
-                        kind: reason_kind,
-                        payload,
+                        kind: reason_kind?,
+                        payload: payload?,
                     },
                 })
             }
@@ -2120,7 +2539,7 @@ impl<'a> TypeChecker<'a> {
     fn check_terminal_require_reason(
         &mut self,
         target: &ObstructionTarget,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
     ) -> Option<CoreObstructionReason> {
         if self.reject_capability_obstruction_root(&target.coordinate, target.span) {
             return None;
@@ -2149,7 +2568,7 @@ impl<'a> TypeChecker<'a> {
     fn check_reason_kind(
         &mut self,
         reason: &Expr,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         span: Span,
     ) -> Option<String> {
         let Some(kind) = plain_path_coordinate(reason) else {
@@ -2171,6 +2590,9 @@ impl<'a> TypeChecker<'a> {
                 ));
                 return None;
             }
+            if env.poisoned.contains(root) {
+                return None;
+            }
             if env.contains_key(root) {
                 self.errors.push(error(
                     CompilerStage::TypeCheck,
@@ -2187,17 +2609,18 @@ impl<'a> TypeChecker<'a> {
     fn check_reason_payload(
         &mut self,
         entries: &[RecordEntry],
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         mode: ReasonPayloadMode,
     ) -> Option<BTreeMap<String, CoreExpr>> {
         let mut fields = BTreeMap::new();
+        let mut authored_names = BTreeSet::new();
         let mut accepted = true;
         for entry in entries {
             match entry {
                 RecordEntry::Field { name, .. } | RecordEntry::Shorthand { name, .. }
                     if mode == ReasonPayloadMode::SkipReasonField && name == "reason" => {}
                 RecordEntry::Field { name, value } => {
-                    if fields.contains_key(name) {
+                    if !authored_names.insert(name) {
                         self.errors.push(error(
                             CompilerStage::TypeCheck,
                             CompilerErrorKind::DuplicateObstructionPayloadField,
@@ -2205,7 +2628,7 @@ impl<'a> TypeChecker<'a> {
                             expr_span(value),
                         ));
                         accepted = false;
-                        continue;
+                        // Still diagnose this independently authored value.
                     }
                     if let Some(value) = self.check_expr(value, env) {
                         fields.insert(name.clone(), value.expr);
@@ -2214,7 +2637,7 @@ impl<'a> TypeChecker<'a> {
                     }
                 }
                 RecordEntry::Shorthand { name, span } => {
-                    if fields.contains_key(name) {
+                    if !authored_names.insert(name) {
                         self.errors.push(error(
                             CompilerStage::TypeCheck,
                             CompilerErrorKind::DuplicateObstructionPayloadField,
@@ -2222,15 +2645,17 @@ impl<'a> TypeChecker<'a> {
                             *span,
                         ));
                         accepted = false;
-                        continue;
+                        // A repeated key does not resolve its shorthand name.
                     }
                     let Some((local, _)) = env.get(name) else {
-                        self.errors.push(error(
-                            CompilerStage::TypeCheck,
-                            CompilerErrorKind::UnresolvedType,
-                            format!("obstruction reason payload field `{name}` has no binding"),
-                            *span,
-                        ));
+                        if !env.poisoned.contains(name) {
+                            self.errors.push(error(
+                                CompilerStage::TypeCheck,
+                                CompilerErrorKind::UnresolvedType,
+                                format!("obstruction reason payload field `{name}` has no binding"),
+                                *span,
+                            ));
+                        }
                         accepted = false;
                         continue;
                     };
@@ -2264,14 +2689,20 @@ impl<'a> TypeChecker<'a> {
         intent: &ResolvedIntent,
         output_shape: &TypeShape,
         stmt: LetStatement<'_>,
-        env: &mut BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &mut LocalEnvironment,
         locals: &mut Vec<LocalRef>,
         state: &mut BodyState,
     ) {
+        let previous_id = env.get(stmt.name).map(|(local, _)| local.id.clone());
+        let name = stmt.name;
         if let Some(handler) = stmt.handler {
             self.check_effectful_let(intent, stmt, handler, env, locals, state);
         } else {
             self.check_pure_let(intent, output_shape, stmt, env, locals, state);
+        }
+        let current_id = env.get(name).map(|(local, _)| local.id.clone());
+        if current_id.is_none() || current_id == previous_id {
+            env.poison(name);
         }
     }
 
@@ -2280,13 +2711,10 @@ impl<'a> TypeChecker<'a> {
         intent: &ResolvedIntent,
         output_shape: &TypeShape,
         stmt: LetStatement<'_>,
-        env: &mut BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &mut LocalEnvironment,
         locals: &mut Vec<LocalRef>,
         state: &mut BodyState,
     ) {
-        if !self.check_known_effect_profiles(intent, stmt.value) {
-            return;
-        }
         if let Expr::IfYield {
             pred,
             then_block,
@@ -2308,11 +2736,17 @@ impl<'a> TypeChecker<'a> {
             );
             return;
         }
+        if !self.check_known_effect_profiles(intent, stmt.value) {
+            return;
+        }
         let annotation_shape = match stmt.ty {
-            Some(annotation) => match self.type_ref_shape(annotation, stmt.span) {
-                Some(shape) => Some(shape),
-                None => return,
-            },
+            Some(annotation) => {
+                let Some(shape) = self.type_ref_shape(annotation, stmt.span) else {
+                    self.check_expr_with_unavailable_expected_type(stmt.value, env);
+                    return;
+                };
+                Some(shape)
+            }
             None => None,
         };
         let Some(value) = self.check_expr_with_expected(stmt.value, env, annotation_shape.as_ref())
@@ -2342,20 +2776,19 @@ impl<'a> TypeChecker<'a> {
         then_source: &YieldBlock,
         else_source: &YieldBlock,
         span: Span,
-        env: &mut BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &mut LocalEnvironment,
         locals: &mut Vec<LocalRef>,
         state: &mut BodyState,
     ) {
-        let Some(predicate) = self.check_predicate(pred, env) else {
-            return;
+        let predicate = if self.check_known_effect_profiles(intent, pred) {
+            self.check_predicate(pred, env)
+        } else {
+            None
         };
-        let annotation_shape = match stmt.ty {
-            Some(annotation) => match self.type_ref_shape(annotation, stmt.span) {
-                Some(shape) => Some(shape),
-                None => return,
-            },
-            None => None,
-        };
+        let annotation_shape = stmt
+            .ty
+            .and_then(|annotation| self.type_ref_shape(annotation, stmt.span));
+        let expected_unavailable = stmt.ty.is_some() && annotation_shape.is_none();
         let baseline_steps = state.accumulated_steps;
         let Some((then_block, then_shape, else_block, else_shape)) = self
             .check_branch_yield_blocks(
@@ -2367,6 +2800,7 @@ impl<'a> TypeChecker<'a> {
                 state,
                 baseline_steps,
                 annotation_shape.as_ref(),
+                expected_unavailable,
             )
         else {
             return;
@@ -2384,6 +2818,12 @@ impl<'a> TypeChecker<'a> {
             return;
         };
 
+        if expected_unavailable {
+            return;
+        }
+        let Some(predicate) = predicate else {
+            return;
+        };
         let binding = next_local(&mut state.local_index, binding_shape.coord.clone());
         state.nodes.push(CoreNode::Branch {
             binding: Some(binding.clone()),
@@ -2402,10 +2842,11 @@ impl<'a> TypeChecker<'a> {
         output_shape: &TypeShape,
         then_source: &YieldBlock,
         else_source: &YieldBlock,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         state: &mut BodyState,
         baseline_steps: u64,
         annotation_shape: Option<&TypeShape>,
+        expected_unavailable: bool,
     ) -> Option<(CoreBlock, TypeShape, CoreBlock, TypeShape)> {
         let joint_shape = if annotation_shape.is_none()
             && contains_contextual_bare_integer(&then_source.value)
@@ -2415,100 +2856,66 @@ impl<'a> TypeChecker<'a> {
         } else {
             None
         };
-        let (then_block, then_shape, else_block, else_shape) = if let Some(joint_shape) =
-            joint_shape
-        {
-            self.check_yield_blocks_with_shared_expected(
-                intent,
-                output_shape,
-                then_source,
-                else_source,
-                env,
-                state,
-                baseline_steps,
-                &joint_shape,
-            )?
-        } else if annotation_shape.is_none() && contains_contextual_bare_integer(&then_source.value)
-        {
-            let inferred_else_shape =
-                self.infer_yield_block_shape(intent, output_shape, else_source, env, state)?;
-            let (then_block, then_shape) = self.check_yield_block(
-                intent,
-                output_shape,
-                then_source,
-                env,
-                state,
-                Some(&inferred_else_shape),
-            )?;
-            let then_steps = state.accumulated_steps;
-            state.accumulated_steps = baseline_steps;
-            let (else_block, else_shape) =
-                self.check_yield_block(intent, output_shape, else_source, env, state, None)?;
-            state.accumulated_steps = then_steps.max(state.accumulated_steps);
-            (then_block, then_shape, else_block, else_shape)
-        } else {
-            let (then_block, then_shape) = self.check_yield_block(
-                intent,
-                output_shape,
-                then_source,
-                env,
-                state,
-                annotation_shape,
-            )?;
-            let then_steps = state.accumulated_steps;
-            state.accumulated_steps = baseline_steps;
-            let branch_expectation = if annotation_shape.is_some() {
-                annotation_shape
-            } else if contains_contextual_bare_integer(&else_source.value) {
-                Some(&then_shape)
+        let shared_expected = annotation_shape.or(joint_shape.as_ref());
+        let inferred_else_shape =
+            if shared_expected.is_none() && contains_contextual_bare_integer(&then_source.value) {
+                self.infer_yield_block_shape(intent, output_shape, else_source, env, state)
             } else {
                 None
             };
-            let (else_block, else_shape) = self.check_yield_block(
-                intent,
-                output_shape,
-                else_source,
-                env,
-                state,
-                branch_expectation,
-            )?;
-            state.accumulated_steps = then_steps.max(state.accumulated_steps);
-            (then_block, then_shape, else_block, else_shape)
-        };
-        Some((then_block, then_shape, else_block, else_shape))
-    }
-
-    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-    fn check_yield_blocks_with_shared_expected(
-        &mut self,
-        intent: &ResolvedIntent,
-        output_shape: &TypeShape,
-        then_source: &YieldBlock,
-        else_source: &YieldBlock,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
-        state: &mut BodyState,
-        baseline_steps: u64,
-        expected: &TypeShape,
-    ) -> Option<(CoreBlock, TypeShape, CoreBlock, TypeShape)> {
-        let (then_block, then_shape) = self.check_yield_block(
+        let then_result = self.check_yield_block(
             intent,
             output_shape,
             then_source,
             env,
             state,
-            Some(expected),
-        )?;
+            shared_expected.or(inferred_else_shape.as_ref()),
+            expected_unavailable,
+        );
         let then_steps = state.accumulated_steps;
         state.accumulated_steps = baseline_steps;
-        let (else_block, else_shape) = self.check_yield_block(
+        let inferred_then_shape =
+            if shared_expected.is_none() && contains_contextual_bare_integer(&else_source.value) {
+                then_result
+                    .as_ref()
+                    .map(|(_, shape)| shape.clone())
+                    .or_else(|| {
+                        self.infer_yield_block_shape(intent, output_shape, then_source, env, state)
+                    })
+            } else {
+                None
+            };
+        let else_expected = shared_expected.or(inferred_then_shape.as_ref());
+        let else_result = self.check_yield_block(
             intent,
             output_shape,
             else_source,
             env,
             state,
-            Some(expected),
-        )?;
+            else_expected,
+            expected_unavailable,
+        );
         state.accumulated_steps = then_steps.max(state.accumulated_steps);
+        if then_result.is_none() || else_result.is_none() {
+            if let Some(annotation) = annotation_shape {
+                for (result, source) in [(&then_result, then_source), (&else_result, else_source)] {
+                    if result
+                        .as_ref()
+                        .is_some_and(|(_, shape)| !compatible(annotation, shape))
+                    {
+                        self.errors.push(error(
+                            CompilerStage::TypeCheck,
+                            CompilerErrorKind::TypeMismatch,
+                            "branch-yield result does not match the annotated type",
+                            expr_span(&source.value),
+                        ));
+                    }
+                }
+            }
+            return None;
+        }
+        let (then_block, then_shape) = then_result?;
+        let (else_block, else_shape) = else_result?;
         Some((then_block, then_shape, else_block, else_shape))
     }
 
@@ -2551,7 +2958,7 @@ impl<'a> TypeChecker<'a> {
         intent: &ResolvedIntent,
         output_shape: &TypeShape,
         block: &YieldBlock,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         state: &BodyState,
     ) -> Option<TypeShape> {
         // `resolved` is a shared borrow for this checker's whole lifetime, so
@@ -2562,36 +2969,13 @@ impl<'a> TypeChecker<'a> {
         if let Some(shape) = self.inferred_yield_shapes.get(&cache_key) {
             return Some(shape.clone());
         }
-        // A yield block may introduce types, locals, effects, and diagnostics, so
-        // the complete checker state is the smallest existing isolation boundary.
-        // Discarding this clone keeps inference observational: the real blocks
-        // still lower once, in source order, into the authoritative state. Share
-        // successful nested shape results back into this compilation so a nested
-        // bare-integer branch cannot trigger exponential repeated inference.
-        let mut inference_checker = self.clone();
-        let inference_error_count = inference_checker.errors.len();
-        let mut inference_state = BodyState {
-            local_index: state.local_index,
-            obstruction_index: state.obstruction_index,
-            step_factor: state.step_factor,
-            accumulated_steps: state.accumulated_steps,
-            ..BodyState::default()
-        };
-        let shape = inference_checker
-            .check_yield_block(intent, output_shape, block, env, &mut inference_state, None)
-            .map(|(_, shape)| shape);
-        self.inferred_yield_shapes
-            .append(&mut inference_checker.inferred_yield_shapes);
+        // Shape probes are observational. Recovered environments retain failed
+        // names without values; only the real branch checks publish diagnostics
+        // and decide whether a Core block can be constructed.
+        let nested_env = self.infer_yield_block_env(intent, output_shape, block, env, state)?;
+        let shape = self.infer_expr_shape(&block.value, &nested_env);
         if let Some(shape) = &shape {
             self.inferred_yield_shapes.insert(cache_key, shape.clone());
-        }
-        if shape.is_none() {
-            self.errors.extend(
-                inference_checker
-                    .errors
-                    .into_iter()
-                    .skip(inference_error_count),
-            );
         }
         shape
     }
@@ -2603,7 +2987,7 @@ impl<'a> TypeChecker<'a> {
         output_shape: &TypeShape,
         then_block: &YieldBlock,
         else_block: &YieldBlock,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         state: &BodyState,
     ) -> Option<TypeShape> {
         let then_env = self.infer_yield_block_env(intent, output_shape, then_block, env, state)?;
@@ -2616,9 +3000,9 @@ impl<'a> TypeChecker<'a> {
         intent: &ResolvedIntent,
         output_shape: &TypeShape,
         block: &YieldBlock,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         state: &BodyState,
-    ) -> Option<BTreeMap<String, (LocalRef, TypeShape)>> {
+    ) -> Option<LocalEnvironment> {
         // `resolved` is a shared borrow for this checker's whole lifetime, so
         // every reachable `YieldBlock` stays immutable and alive. That makes
         // its address a stable per-compilation identity; owned or replaceable
@@ -2628,7 +3012,6 @@ impl<'a> TypeChecker<'a> {
             return Some(env.clone());
         }
         let mut checker = self.clone();
-        let error_count = checker.errors.len();
         let mut nested_env = env.clone();
         let mut nested_locals = Vec::new();
         let mut nested_state = BodyState {
@@ -2651,9 +3034,6 @@ impl<'a> TypeChecker<'a> {
                 &mut nested_state,
             );
         }
-        if checker.errors.len() != error_count {
-            return None;
-        }
         self.inferred_yield_shapes
             .append(&mut checker.inferred_yield_shapes);
         self.inferred_yield_envs
@@ -2666,9 +3046,9 @@ impl<'a> TypeChecker<'a> {
     fn infer_joint_expr_shape(
         &self,
         then_expr: &Expr,
-        then_env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        then_env: &LocalEnvironment,
         else_expr: &Expr,
-        else_env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        else_env: &LocalEnvironment,
     ) -> Option<TypeShape> {
         if is_bare_integer_literal(then_expr) {
             return self.infer_expr_shape(else_expr, else_env);
@@ -2719,9 +3099,9 @@ impl<'a> TypeChecker<'a> {
     fn infer_joint_record_field_shape(
         &self,
         then_entry: &RecordEntry,
-        then_env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        then_env: &LocalEnvironment,
         else_entry: &RecordEntry,
-        else_env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        else_env: &LocalEnvironment,
     ) -> Option<TypeShape> {
         match (then_entry, else_entry) {
             (
@@ -2760,11 +3140,7 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn infer_expr_shape(
-        &self,
-        expr: &Expr,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
-    ) -> Option<TypeShape> {
+    fn infer_expr_shape(&self, expr: &Expr, env: &LocalEnvironment) -> Option<TypeShape> {
         let mut checker = self.clone();
         checker
             .check_expr_with_expected(expr, env, None)
@@ -2777,9 +3153,10 @@ impl<'a> TypeChecker<'a> {
         intent: &ResolvedIntent,
         output_shape: &TypeShape,
         block: &YieldBlock,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         state: &mut BodyState,
         expected: Option<&TypeShape>,
+        expected_unavailable: bool,
     ) -> Option<(CoreBlock, TypeShape)> {
         let error_count = self.errors.len();
         let mut nested_env = env.clone();
@@ -2810,7 +3187,14 @@ impl<'a> TypeChecker<'a> {
                 &mut nested_state,
             );
         }
-        let value = self.check_expr_with_expected(&block.value, &nested_env, expected)?;
+        if !self.check_known_effect_profiles(intent, &block.value) {
+            return None;
+        }
+        let value = if expected_unavailable && expected.is_none() {
+            self.check_expr_with_unavailable_expected_type(&block.value, &nested_env)
+        } else {
+            self.check_expr_with_expected(&block.value, &nested_env, expected)
+        }?;
         state.local_index = nested_state.local_index;
         state.obstruction_index = nested_state.obstruction_index;
         state.accumulated_steps = nested_state.accumulated_steps;
@@ -2854,21 +3238,26 @@ impl<'a> TypeChecker<'a> {
         intent: &ResolvedIntent,
         stmt: LetStatement<'_>,
         handler: &ObstructionHandler,
-        env: &mut BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &mut LocalEnvironment,
         locals: &mut Vec<LocalRef>,
         state: &mut BodyState,
     ) {
-        if !self.check_effect_profile(intent, stmt.value, stmt.span) {
-            return;
-        }
+        let profile_matches = self.check_effect_profile(intent, stmt.value, stmt.span);
         let Some(binding_shape) = self.effect_binding_shape(stmt.ty, stmt.span) else {
+            self.check_effect_input(stmt.value, env, stmt.span);
+            self.check_failed_effect_handler(&stmt, handler, state);
             return;
         };
         let Some((effect, input)) =
             self.check_effect_call(stmt.value, env, &binding_shape, stmt.span)
         else {
+            self.check_failed_effect_handler(&stmt, handler, state);
             return;
         };
+        if !profile_matches {
+            self.check_failed_effect_handler(&stmt, handler, state);
+            return;
+        }
         let local = next_local(&mut state.local_index, binding_shape.coord.clone());
         locals.push(local.clone());
         let Some(obstruction_map) = self.check_obstruction_handler(
@@ -2887,6 +3276,33 @@ impl<'a> TypeChecker<'a> {
             obstruction_map,
         });
         env.insert(stmt.name.to_owned(), (local, binding_shape));
+    }
+
+    fn check_failed_effect_handler(
+        &mut self,
+        stmt: &LetStatement<'_>,
+        handler: &ObstructionHandler,
+        state: &BodyState,
+    ) {
+        let Some(effect) = effect_coordinate(stmt.value) else {
+            return;
+        };
+        if let Some(signature) = self.resolved.effect_signatures.get(&effect) {
+            if !self.fact_matches_source_import(&effect, &signature.coordinate, &signature.lawpack)
+                || !signature.type_parameters.is_empty()
+            {
+                return;
+            }
+        }
+        let mut obstruction_index = state.obstruction_index;
+        let mut diagnostic_locals = Vec::new();
+        self.check_obstruction_handler(
+            handler,
+            &effect,
+            &mut obstruction_index,
+            &mut diagnostic_locals,
+            stmt.span,
+        );
     }
 
     fn check_effect_profile(&mut self, intent: &ResolvedIntent, call: &Expr, span: Span) -> bool {
@@ -2909,36 +3325,22 @@ impl<'a> TypeChecker<'a> {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
                 CompilerErrorKind::MissingContextFact,
-                format!("effect `{effect}` has no compiler context fact"),
+                self.missing_effect_context_message(&effect),
                 span,
             ));
             return false;
         };
-        let Some(allowed_write_classes) = &intent.allowed_write_classes else {
-            self.errors.push(error(
-                CompilerStage::TypeCheck,
-                CompilerErrorKind::MissingContextFact,
-                format!(
-                    "operation profile `{}` has no write-class compiler context fact",
-                    intent.profile
-                ),
-                span,
-            ));
-            return false;
-        };
-        if allowed_write_classes.contains(write_class) {
-            true
-        } else {
-            self.errors.push(error(
-                CompilerStage::TypeCheck,
-                CompilerErrorKind::ProfileEffectMismatch,
-                format!(
-                    "effect `{effect}` requires write class {write_class:?}, which profile `{}` does not allow",
-                    intent.profile
-                ),
-                span,
-            ));
+        if let Some(failure) = effect_profile_error(
+            &effect,
+            write_class,
+            &intent.profile,
+            intent.allowed_write_classes.as_ref(),
+            span,
+        ) {
+            self.errors.push(failure);
             false
+        } else {
+            true
         }
     }
 
@@ -2972,10 +3374,32 @@ impl<'a> TypeChecker<'a> {
     fn check_effect_call(
         &mut self,
         call: &Expr,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         binding_shape: &TypeShape,
         span: Span,
     ) -> Option<(String, CoreExpr)> {
+        let (effect, input, output) = self.check_effect_input(call, env, span)?;
+        if let Some(output) = output {
+            if let Some(failure) = signature_diagnostic::mismatch(
+                &effect,
+                SignatureMismatchPosition::Receipt,
+                binding_shape,
+                &output,
+                expr_span(call),
+            ) {
+                self.errors.push(failure);
+                return None;
+            }
+        }
+        Some((effect, input.expr))
+    }
+
+    fn check_effect_input(
+        &mut self,
+        call: &Expr,
+        env: &LocalEnvironment,
+        span: Span,
+    ) -> Option<(String, TypedValue, Option<TypeShape>)> {
         let effect = effect_coordinate(call)?;
         let Expr::Call {
             args, type_args, ..
@@ -3002,11 +3426,11 @@ impl<'a> TypeChecker<'a> {
             ));
             return None;
         };
-        let input = self.check_expr(arg, env)?;
-        let signature = self.resolved.effect_signatures.get(&effect).cloned();
-        if let Some(signature) = signature {
+        let mut output_shape = None;
+        let (input, signature) = if let Some(signature) =
+            self.resolved.effect_signatures.get(&effect).cloned()
+        {
             if !self.fact_matches_source_import(&effect, &signature.coordinate, &signature.lawpack)
-                || !signature.type_parameters.is_empty()
             {
                 self.errors.push(error(
                     CompilerStage::TypeCheck,
@@ -3016,46 +3440,36 @@ impl<'a> TypeChecker<'a> {
                 ));
                 return None;
             }
-            let Some(expected_input) =
-                self.shape_for_helper_coordinate(&signature.input_type, &signature.lawpack)
-            else {
+            if !signature.type_parameters.is_empty() {
                 self.errors.push(error(
-                    CompilerStage::TypeCheck,
-                    CompilerErrorKind::UnresolvedType,
-                    format!(
-                        "effect `{effect}` input type `{}` is outside its exact exported type closure",
-                        signature.input_type
-                    ),
-                    span,
-                ));
-                return None;
-            };
-            let Some(effect_output) =
-                self.shape_for_helper_coordinate(&signature.output_type, &signature.lawpack)
-            else {
-                self.errors.push(error(
-                    CompilerStage::TypeCheck,
-                    CompilerErrorKind::UnresolvedType,
-                    format!(
-                        "effect `{effect}` output type `{}` is outside its exact exported type closure",
-                        signature.output_type
-                    ),
-                    span,
-                ));
-                return None;
-            };
-            if !compatible(&expected_input, &input.ty) || !compatible(binding_shape, &effect_output)
-            {
-                self.errors.push(error(
-                    CompilerStage::TypeCheck,
-                    CompilerErrorKind::TypeMismatch,
-                    format!("effect `{effect}` call does not match its exported signature"),
-                    span,
-                ));
+                        CompilerStage::TypeCheck,
+                        CompilerErrorKind::UnsupportedSourceShape,
+                        format!("generic semantic effects such as `{effect}` are not supported by source compilation"),
+                        span,
+                    ));
                 return None;
             }
+            let expected = self.effect_input_shape(&effect, &signature, span)?;
+            let input = self.check_expr_with_expected(arg, env, Some(&expected))?;
+            (input, Some((signature, expected)))
+        } else {
+            (self.check_expr(arg, env)?, None)
+        };
+        if let Some((signature, expected_input)) = signature {
+            let effect_output = self.effect_output_shape(&effect, &signature, span)?;
+            if let Some(failure) = signature_diagnostic::mismatch(
+                &effect,
+                SignatureMismatchPosition::Input,
+                &expected_input,
+                &input.ty,
+                expr_span(call),
+            ) {
+                self.errors.push(failure);
+                return None;
+            }
+            output_shape = Some(effect_output);
         }
-        Some((effect, input.expr))
+        Some((effect, input, output_shape))
     }
 
     fn check_obstruction_handler(
@@ -3092,6 +3506,13 @@ impl<'a> TypeChecker<'a> {
             }
         }
         if !accepted {
+            // Duplicate keys invalidate the entire map, but each source arm can
+            // still contain an independent error. Inspect all arms (including
+            // overwritten duplicates) without allocating locals or publishing
+            // a recovered obstruction map.
+            for arm in arms {
+                let _ = self.check_obstruction_arm(effect, arm, *obstruction_index);
+            }
             return None;
         }
 
@@ -3227,6 +3648,7 @@ impl<'a> TypeChecker<'a> {
             Expr::Ident { .. }
             | Expr::Int { .. }
             | Expr::Str { .. }
+            | Expr::Bytes { .. }
             | Expr::Bool { .. }
             | Expr::Digest { .. } => {}
             Expr::Field { base, .. } => {
@@ -3398,12 +3820,19 @@ impl<'a> TypeChecker<'a> {
         ));
     }
 
-    fn check_predicate(
+    fn check_predicate(&mut self, expr: &Expr, env: &LocalEnvironment) -> Option<CorePredicate> {
+        let previous = std::mem::replace(&mut self.expected_type_unavailable, false);
+        let checked = self.check_predicate_inner(expr, env);
+        self.expected_type_unavailable = previous;
+        checked
+    }
+
+    fn check_predicate_inner(
         &mut self,
         expr: &Expr,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
     ) -> Option<CorePredicate> {
-        match expr {
+        let checked = match expr {
             Expr::Bool { value, .. } => Some(if *value {
                 CorePredicate::True
             } else {
@@ -3416,6 +3845,31 @@ impl<'a> TypeChecker<'a> {
             } => self
                 .check_predicate(operand, env)
                 .map(|value| CorePredicate::Not(Box::new(value))),
+            Expr::Binary {
+                op: BinOp::And,
+                lhs,
+                rhs,
+                ..
+            } => {
+                let left = self.check_predicate(lhs, env);
+                let prefix = self.input_proof_constraints.len();
+                if let Some(left) = &left {
+                    self.input_proof_constraints.push(left.clone());
+                }
+                let right = self.check_predicate(rhs, env);
+                self.input_proof_constraints.truncate(prefix);
+                Some(CorePredicate::All(vec![left?, right?]))
+            }
+            Expr::Binary {
+                op: BinOp::Or,
+                lhs,
+                rhs,
+                ..
+            } => {
+                let left = self.check_predicate(lhs, env);
+                let right = self.check_predicate(rhs, env);
+                Some(CorePredicate::Any(vec![left?, right?]))
+            }
             Expr::Binary { op, lhs, rhs, .. } => {
                 if let Some(op) = compare_op(*op) {
                     self.check_compare_predicate(op, lhs, rhs, env, expr_span(expr))
@@ -3429,6 +3883,30 @@ impl<'a> TypeChecker<'a> {
                     None
                 }
             }
+            Expr::Ident { .. } | Expr::Field { .. } | Expr::Call { .. } | Expr::If { .. } => {
+                let expected = TypeShape::canonical_structural(TypeKind::Bool)?;
+                // Check the operand on its own terms before applying the
+                // predicate requirement; nested typing failures stay distinct.
+                let value = self.check_expr_with_effect_expectation(
+                    expr,
+                    env,
+                    EffectOutputExpectation::Predicate,
+                )?;
+                if !compatible(&expected, &value.ty) {
+                    self.errors.push(error(
+                        CompilerStage::TypeCheck,
+                        CompilerErrorKind::ExpectedPredicate,
+                        "predicate value must have type Bool",
+                        expr_span(expr),
+                    ));
+                    return None;
+                }
+                Some(CorePredicate::Compare {
+                    op: CompareOp::Eq,
+                    left: value.expr,
+                    right: CoreExpr::Const(CoreValue::Bool(true)),
+                })
+            }
             _ => {
                 self.errors.push(error(
                     CompilerStage::TypeCheck,
@@ -3438,7 +3916,11 @@ impl<'a> TypeChecker<'a> {
                 ));
                 None
             }
+        }?;
+        if !self.resolved.source_functions.is_empty() {
+            self.record_source_predicate_cost(expr)?;
         }
+        Some(checked)
     }
 
     fn check_compare_predicate(
@@ -3446,9 +3928,27 @@ impl<'a> TypeChecker<'a> {
         op: CompareOp,
         lhs: &Expr,
         rhs: &Expr,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         span: Span,
     ) -> Option<CorePredicate> {
+        // A bare effect always rejects in this value position. Validate its
+        // own guards and exported numeric output before inferring its peer.
+        if self.is_authenticated_effect_call(lhs) && is_bare_integer_literal(rhs) {
+            self.check_expr_with_effect_expectation(
+                lhs,
+                env,
+                EffectOutputExpectation::ComparisonLiteral(rhs),
+            )?;
+            return None;
+        }
+        if self.is_authenticated_effect_call(rhs) && is_bare_integer_literal(lhs) {
+            self.check_expr_with_effect_expectation(
+                rhs,
+                env,
+                EffectOutputExpectation::ComparisonLiteral(lhs),
+            )?;
+            return None;
+        }
         let (left, right) = match (is_bare_integer_literal(lhs), is_bare_integer_literal(rhs)) {
             (true, false) => {
                 let right = self.check_expr(rhs, env)?;
@@ -3460,7 +3960,31 @@ impl<'a> TypeChecker<'a> {
                 let right = self.check_expr_with_expected(rhs, env, Some(&left.ty))?;
                 (left, right)
             }
-            _ => (self.check_expr(lhs, env)?, self.check_expr(rhs, env)?),
+            _ if self.is_authenticated_effect_call(lhs) => {
+                let right = self.check_expr(rhs, env);
+                let left = self.check_expr_with_effect_expectation(
+                    lhs,
+                    env,
+                    right
+                        .as_ref()
+                        .map_or(EffectOutputExpectation::Value(None), |right| {
+                            EffectOutputExpectation::Comparison(&right.ty)
+                        }),
+                );
+                (left?, right?)
+            }
+            _ => {
+                let left = self.check_expr(lhs, env);
+                let right = self.check_expr_with_effect_expectation(
+                    rhs,
+                    env,
+                    left.as_ref()
+                        .map_or(EffectOutputExpectation::Value(None), |left| {
+                            EffectOutputExpectation::Comparison(&left.ty)
+                        }),
+                );
+                (left?, right?)
+            }
         };
         if comparable(&left.ty, &right.ty) {
             Some(CorePredicate::Compare {
@@ -3479,30 +4003,73 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn check_expr(
-        &mut self,
-        expr: &Expr,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
-    ) -> Option<TypedValue> {
+    fn is_authenticated_effect_call(&self, expr: &Expr) -> bool {
+        if let Expr::Field { base, .. } = expr {
+            return self.is_authenticated_effect_call(base);
+        }
+        let Expr::Call { callee, .. } = expr else {
+            return false;
+        };
+        let Some(coordinate) = plain_callee_coordinate(callee) else {
+            return false;
+        };
+        self.resolved
+            .effect_signatures
+            .get(&coordinate)
+            .is_some_and(|signature| {
+                self.fact_matches_source_import(
+                    &coordinate,
+                    &signature.coordinate,
+                    &signature.lawpack,
+                )
+            })
+    }
+
+    fn check_expr(&mut self, expr: &Expr, env: &LocalEnvironment) -> Option<TypedValue> {
         self.check_expr_with_expected(expr, env, None)
+    }
+
+    fn check_negated_integer(
+        &mut self,
+        operand: &Expr,
+        expected: Option<&TypeShape>,
+        span: Span,
+    ) -> Option<TypedValue> {
+        let Expr::Int { value, suffix, .. } = operand else {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::UnsupportedSourceShape,
+                "negated expression is outside the initial lowerable subset",
+                span,
+            ));
+            return None;
+        };
+        self.check_integer_literal(&format!("-{value}"), *suffix, expected, span)
     }
 
     fn check_expr_with_expected(
         &mut self,
         expr: &Expr,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         expected: Option<&TypeShape>,
     ) -> Option<TypedValue> {
-        match expr {
+        self.check_expr_with_effect_expectation(expr, env, EffectOutputExpectation::Value(expected))
+    }
+
+    fn check_expr_with_effect_expectation(
+        &mut self,
+        expr: &Expr,
+        env: &LocalEnvironment,
+        expectation: EffectOutputExpectation<'_>,
+    ) -> Option<TypedValue> {
+        let expected = expectation.value();
+        let checked = match expr {
             Expr::Ident { name, span } => self.check_ident(name, *span, env),
             Expr::Str { value, .. } => string_value(value),
+            Expr::Bytes { value, .. } => bytes_value(value),
             Expr::Bool { value, .. } => Some(TypedValue {
                 expr: CoreExpr::Const(CoreValue::Bool(*value)),
-                ty: TypeShape {
-                    coord: "Bool".to_owned(),
-                    kind: TypeKind::Bool,
-                    preserve_named_identity: false,
-                },
+                ty: TypeShape::canonical_structural(TypeKind::Bool)?,
             }),
             Expr::Int {
                 value,
@@ -3513,41 +4080,61 @@ impl<'a> TypeChecker<'a> {
                 op: UnOp::Neg,
                 operand,
                 span,
-            } => {
-                let Expr::Int { value, suffix, .. } = operand.as_ref() else {
-                    self.errors.push(error(
-                        CompilerStage::TypeCheck,
-                        CompilerErrorKind::UnsupportedSourceShape,
-                        "negated expression is outside the initial lowerable subset",
-                        *span,
-                    ));
-                    return None;
-                };
-                self.check_integer_literal(&format!("-{value}"), *suffix, expected, *span)
+            } => self.check_negated_integer(operand, expected, *span),
+            Expr::Field { base, field, span } => {
+                self.check_field(base, field, *span, env, expectation)
             }
-            Expr::Field { base, field, span } => self.check_field(base, field, *span, env),
             Expr::Binary {
                 op: BinOp::Add,
                 lhs,
                 rhs,
                 span,
-            } => self.check_string_concat(lhs, rhs, env, *span),
+            } => self.check_addition_or_concat(lhs, rhs, env, expectation, *span),
+            Expr::Binary {
+                op: BinOp::Sub,
+                lhs,
+                rhs,
+                span,
+            } => self.check_unsigned_subtraction(lhs, rhs, env, expected, *span),
             Expr::Record { entries, span } => self.check_record(entries, env, expected, *span),
             Expr::Call {
                 callee,
                 type_args,
                 args,
                 span,
-            } => self.check_pure_call(callee, type_args, args, env, expected, *span),
+            } => match callee.as_ref() {
+                Expr::Ident { name, .. } if name == "len" => {
+                    self.check_byte_length(type_args, args, env, *span)
+                }
+                Expr::Ident { name, .. } if name == "isUtf8" => {
+                    self.check_byte_utf8(type_args, args, env, *span, expr)
+                }
+                Expr::Ident { name, .. } if name == "slice" => {
+                    self.check_byte_slice(type_args, args, env, *span)
+                }
+                _ => self.check_pure_call(callee, type_args, args, env, expectation, *span),
+            },
             Expr::If {
                 cond,
                 then,
                 els,
                 span,
-            } => self.check_pure_conditional(cond, then, els, env, expected, *span),
+            } => self.check_pure_conditional(cond, then, els, env, expectation, *span),
+            Expr::Binary {
+                op:
+                    BinOp::Eq
+                    | BinOp::Ne
+                    | BinOp::Lt
+                    | BinOp::Le
+                    | BinOp::Gt
+                    | BinOp::Ge
+                    | BinOp::And
+                    | BinOp::Or,
+                ..
+            }
+            | Expr::Unary { op: UnOp::Not, .. } => self.check_predicate_value(expr, env),
             Expr::Binary { .. }
             | Expr::Digest { .. }
-            | Expr::Unary { .. }
             | Expr::IfYield { .. }
             | Expr::VariantLit { .. }
             | Expr::Match { .. } => {
@@ -3559,7 +4146,25 @@ impl<'a> TypeChecker<'a> {
                 ));
                 None
             }
+        };
+        if !self.resolved.source_functions.is_empty() {
+            if let Some(value) = &checked {
+                self.record_source_expression_cost(expr, &value.ty)?;
+            }
         }
+        checked
+    }
+
+    fn check_predicate_value(&mut self, expr: &Expr, env: &LocalEnvironment) -> Option<TypedValue> {
+        let predicate = self.check_predicate(expr, env)?;
+        Some(TypedValue {
+            expr: CoreExpr::If {
+                predicate: Box::new(predicate),
+                then_value: Box::new(CoreExpr::Const(CoreValue::Bool(true))),
+                else_value: Box::new(CoreExpr::Const(CoreValue::Bool(false))),
+            },
+            ty: TypeShape::canonical_structural(TypeKind::Bool)?,
+        })
     }
 
     fn check_pure_call(
@@ -3567,11 +4172,50 @@ impl<'a> TypeChecker<'a> {
         callee: &Expr,
         type_args: &[TypeRef],
         args: &[Expr],
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
-        expected: Option<&TypeShape>,
+        env: &LocalEnvironment,
+        expectation: EffectOutputExpectation<'_>,
         span: Span,
     ) -> Option<TypedValue> {
-        let (source_coordinate, fact) = self.resolve_pure_function(callee, span)?;
+        if plain_path_root(callee).is_some_and(|root| env.poisoned.contains(root)) {
+            for arg in args {
+                self.check_expr_with_unavailable_expected_type(arg, env);
+            }
+            return None;
+        }
+        if let Expr::Ident { name, .. } = callee {
+            if let Some(signature) = self.function_signatures.get(name).cloned() {
+                return self.check_source_call(
+                    name,
+                    &signature,
+                    type_args,
+                    args,
+                    env,
+                    expectation.value(),
+                    span,
+                );
+            }
+        }
+        self.check_imported_pure_call(callee, type_args, args, env, expectation, span)
+    }
+
+    fn check_imported_pure_call(
+        &mut self,
+        callee: &Expr,
+        type_args: &[TypeRef],
+        args: &[Expr],
+        env: &LocalEnvironment,
+        expectation: EffectOutputExpectation<'_>,
+        span: Span,
+    ) -> Option<TypedValue> {
+        let Some((source_coordinate, fact)) =
+            self.resolve_pure_function(callee, type_args, args, env, expectation, span)
+        else {
+            for arg in args {
+                self.check_expr_with_unavailable_expected_type(arg, env);
+            }
+            return None;
+        };
+        let expected = expectation.value();
         if self
             .resolved
             .effect_write_classes
@@ -3607,36 +4251,9 @@ impl<'a> TypeChecker<'a> {
                 ),
                 span,
             ));
-            return None;
         }
 
-        let mut core_args = Vec::with_capacity(args.len());
-        for (arg, parameter_type) in args.iter().zip(&fact.parameter_types) {
-            let Some(parameter_shape) =
-                self.shape_for_helper_coordinate(parameter_type, &fact.lawpack)
-            else {
-                self.errors.push(error(
-                    CompilerStage::TypeCheck,
-                    CompilerErrorKind::UnresolvedType,
-                    format!(
-                        "pure helper `{source_coordinate}` parameter type `{parameter_type}` is not available in the module type closure"
-                    ),
-                    span,
-                ));
-                return None;
-            };
-            let value = self.check_expr_with_expected(arg, env, Some(&parameter_shape))?;
-            if !compatible(&parameter_shape, &value.ty) {
-                self.errors.push(error(
-                    CompilerStage::TypeCheck,
-                    CompilerErrorKind::TypeMismatch,
-                    format!("argument does not match pure helper `{source_coordinate}` signature"),
-                    expr_span(arg),
-                ));
-                return None;
-            }
-            core_args.push(value.expr);
-        }
+        let core_args = self.check_imported_arguments(args, env, &fact, &source_coordinate, span);
 
         let Some(return_shape) = self.shape_for_helper_coordinate(&fact.return_type, &fact.lawpack)
         else {
@@ -3665,10 +4282,61 @@ impl<'a> TypeChecker<'a> {
             expr: CoreExpr::Call {
                 callee: fact.coordinate,
                 type_args: Vec::new(),
-                args: core_args,
+                args: core_args?,
             },
             ty: return_shape,
         })
+    }
+
+    fn check_imported_arguments(
+        &mut self,
+        args: &[Expr],
+        env: &LocalEnvironment,
+        fact: &PureFunctionFact,
+        source_coordinate: &str,
+        span: Span,
+    ) -> Option<Vec<CoreExpr>> {
+        let mut core_args = Vec::with_capacity(args.len());
+        let mut accepted = args.len() == fact.parameter_types.len();
+        for (arg, parameter_type) in args.iter().zip(&fact.parameter_types) {
+            let Some(parameter_shape) =
+                self.shape_for_helper_coordinate(parameter_type, &fact.lawpack)
+            else {
+                self.errors.push(error(
+                    CompilerStage::TypeCheck,
+                    CompilerErrorKind::UnresolvedType,
+                    format!(
+                        "pure helper `{source_coordinate}` parameter type `{parameter_type}` is not available in the module type closure"
+                    ),
+                    span,
+                ));
+                self.check_expr_with_unavailable_expected_type(arg, env);
+                accepted = false;
+                continue;
+            };
+            let Some(value) = self.check_expr_with_expected(arg, env, Some(&parameter_shape))
+            else {
+                accepted = false;
+                continue;
+            };
+            if !compatible(&parameter_shape, &value.ty) {
+                self.errors.push(error(
+                    CompilerStage::TypeCheck,
+                    CompilerErrorKind::TypeMismatch,
+                    format!("argument does not match pure helper `{source_coordinate}` signature"),
+                    expr_span(arg),
+                ));
+                accepted = false;
+                continue;
+            }
+            core_args.push(value.expr);
+        }
+
+        for arg in args.iter().skip(fact.parameter_types.len()) {
+            self.check_expr_with_unavailable_expected_type(arg, env);
+        }
+
+        accepted.then_some(core_args)
     }
 
     fn fact_matches_source_import(
@@ -3696,9 +4364,148 @@ impl<'a> TypeChecker<'a> {
             })
     }
 
+    fn missing_effect_context_message(&self, effect: &str) -> String {
+        let Some((alias, _)) = effect.split_once('.') else {
+            return format!("effect `{effect}` has no compiler context fact");
+        };
+        let Some(import) = self.resolved.imports.iter().find(|import| {
+            import.kind == CoreImportKind::Lawpack && import.alias.as_deref() == Some(alias)
+        }) else {
+            return format!("effect `{effect}` has no compiler context fact");
+        };
+        let available = self
+            .resolved
+            .effect_signatures
+            .iter()
+            .filter(|(source, fact)| {
+                source
+                    .split_once('.')
+                    .is_some_and(|(source_alias, _)| source_alias == alias)
+                    && fact.lawpack == import.resource
+                    && self.fact_matches_source_import(source, &fact.coordinate, &fact.lawpack)
+            })
+            .map(|(source, _)| source.as_str())
+            .collect::<Vec<_>>();
+        if available.is_empty() {
+            if let Some(surface) = self
+                .resolved
+                .authenticated_effect_exports
+                .get(alias)
+                .filter(|surface| surface.lawpack == import.resource)
+            {
+                if surface.names.is_empty() {
+                    return format!("effect `{effect}` has no compiler context fact; imported lawpack `{}` has no authenticated effect exports", import.resource.coordinate);
+                }
+                let names = surface.names.iter().cloned().collect::<Vec<_>>().join(", ");
+                return format!("effect `{effect}` has no compiler context fact; authenticated effect exports from imported lawpack `{}` lack compiler signatures in this context: {names}", import.resource.coordinate);
+            }
+            return format!(
+                "effect `{effect}` has no compiler context fact; missing authenticated effect export information for imported lawpack `{}`",
+                import.resource.coordinate
+            );
+        }
+        format!(
+            "effect `{effect}` has no compiler context fact; available authenticated effect exports in this compiler context for imported lawpack `{}`: {}",
+            import.resource.coordinate,
+            available.join(", ")
+        )
+    }
+
+    fn bare_effect_profile_error(&self, effect: &str, span: Span) -> Option<CompilerError> {
+        let Some(profile) = self.effect_binding_profile.as_ref() else {
+            return Some(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::UnsupportedSourceShape,
+                format!("semantic effect `{effect}` is unavailable in this pure context"),
+                span,
+            ));
+        };
+        let Some(write_class) = self.resolved.effect_write_classes.get(effect) else {
+            return Some(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::MissingContextFact,
+                self.missing_effect_context_message(effect),
+                span,
+            ));
+        };
+        effect_profile_error(
+            effect,
+            write_class,
+            &profile.name,
+            profile.allowed_write_classes.as_ref(),
+            span,
+        )
+    }
+
+    fn effect_input_shape(
+        &mut self,
+        effect: &str,
+        signature: &EffectSignatureFact,
+        span: Span,
+    ) -> Option<TypeShape> {
+        self.shape_for_helper_coordinate(&signature.input_type, &signature.lawpack)
+            .or_else(|| {
+                self.errors.push(error(
+                    CompilerStage::TypeCheck,
+                    CompilerErrorKind::UnresolvedType,
+                    format!(
+                        "effect `{effect}` input type `{}` is outside its exact exported type closure",
+                        signature.input_type
+                    ),
+                    span,
+                ));
+                None
+            })
+    }
+
+    fn effect_output_shape(
+        &mut self,
+        effect: &str,
+        signature: &EffectSignatureFact,
+        span: Span,
+    ) -> Option<TypeShape> {
+        self.shape_for_helper_coordinate(&signature.output_type, &signature.lawpack)
+            .or_else(|| {
+                self.errors.push(error(
+                    CompilerStage::TypeCheck,
+                    CompilerErrorKind::UnresolvedType,
+                    format!("effect `{effect}` output type `{}` is outside its exact exported type closure", signature.output_type),
+                    span,
+                ));
+                None
+            })
+    }
+
+    fn check_bare_effect_input(
+        &mut self,
+        effect: &str,
+        signature: &EffectSignatureFact,
+        arg: &Expr,
+        env: &LocalEnvironment,
+        span: Span,
+    ) -> Option<()> {
+        let expected = self.effect_input_shape(effect, signature, span)?;
+        let input = self.check_expr_with_expected(arg, env, Some(&expected))?;
+        if compatible(&expected, &input.ty) {
+            Some(())
+        } else {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::TypeMismatch,
+                format!("effect `{effect}` call does not match its exported signature"),
+                span,
+            ));
+            None
+        }
+    }
+
     fn resolve_pure_function(
         &mut self,
         callee: &Expr,
+        type_args: &[TypeRef],
+        args: &[Expr],
+        env: &LocalEnvironment,
+        expectation: EffectOutputExpectation<'_>,
         span: Span,
     ) -> Option<(String, PureFunctionFact)> {
         let Some(source_coordinate) = plain_callee_coordinate(callee) else {
@@ -3710,6 +4517,57 @@ impl<'a> TypeChecker<'a> {
             ));
             return None;
         };
+        let resolved = self.resolved;
+        if let Some(signature) = resolved.effect_signatures.get(&source_coordinate) {
+            if self.fact_matches_source_import(
+                &source_coordinate,
+                &signature.coordinate,
+                &signature.lawpack,
+            ) {
+                if !type_args.is_empty() {
+                    self.errors.push(error(
+                        CompilerStage::TypeCheck,
+                        CompilerErrorKind::UnsupportedSourceShape,
+                        "semantic effect calls do not support effect type arguments",
+                        span,
+                    ));
+                    return None;
+                }
+                if args.len() != 1 {
+                    self.errors.push(error(
+                        CompilerStage::TypeCheck,
+                        CompilerErrorKind::UnsupportedSourceShape,
+                        "semantic effect calls support exactly one effect argument",
+                        span,
+                    ));
+                    return None;
+                }
+                if !signature.type_parameters.is_empty() {
+                    self.errors.push(error(
+                        CompilerStage::TypeCheck,
+                        CompilerErrorKind::UnsupportedSourceShape,
+                        format!("generic semantic effects such as `{source_coordinate}` are not supported by source compilation"),
+                        span,
+                    ));
+                    return None;
+                }
+                if let Some(failure) = self.bare_effect_profile_error(&source_coordinate, span) {
+                    self.errors.push(failure);
+                    return None;
+                }
+                self.check_bare_effect_input(&source_coordinate, signature, &args[0], env, span)?;
+                self.check_bare_effect_output(
+                    &source_coordinate,
+                    signature,
+                    expectation,
+                    env,
+                    span,
+                )?;
+                self.errors
+                    .push(effect_mapping_error(&source_coordinate, signature, span));
+                return None;
+            }
+        }
         let Some(fact) = self
             .resolved
             .pure_functions
@@ -3736,6 +4594,224 @@ impl<'a> TypeChecker<'a> {
             return None;
         }
         Some((source_coordinate, fact))
+    }
+
+    fn check_bare_effect_output(
+        &mut self,
+        effect: &str,
+        signature: &EffectSignatureFact,
+        expectation: EffectOutputExpectation<'_>,
+        env: &LocalEnvironment,
+        span: Span,
+    ) -> Option<()> {
+        let output = self.effect_output_shape(effect, signature, span)?;
+        self.check_effect_shape(effect, &output, expectation, env, span)
+    }
+
+    fn check_effect_shape(
+        &mut self,
+        effect: &str,
+        output: &TypeShape,
+        expectation: EffectOutputExpectation<'_>,
+        env: &LocalEnvironment,
+        span: Span,
+    ) -> Option<()> {
+        let (projected, terminal) = match expectation.project(output) {
+            Ok(projection) => projection,
+            Err((kind, span, name)) => {
+                self.errors.push(error(
+                    CompilerStage::TypeCheck,
+                    kind,
+                    format!("effect `{effect}` result cannot select field `{name}`"),
+                    span,
+                ));
+                return None;
+            }
+        };
+        if let Some(kind) = terminal.rejection(projected) {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                kind,
+                format!("effect `{effect}` output does not match the expected type"),
+                expectation.origin(span),
+            ));
+            return None;
+        }
+        if let EffectOutputExpectation::ComparisonLiteral(peer) = terminal {
+            self.check_expr_with_expected(peer, env, Some(projected))?;
+        }
+        match terminal {
+            EffectOutputExpectation::ConcatenationPeer { peer, next } => {
+                self.check_effect_concat_peer(projected, peer, env)?;
+                if let Some(peer_shape) = self.diagnostic_expr_shape(peer, env) {
+                    let Some(combined) = diagnostic_concat_shape(projected, &peer_shape) else {
+                        self.errors.push(error(
+                            CompilerStage::TypeCheck,
+                            CompilerErrorKind::InvalidBound,
+                            "concatenation maximum exceeds its bounded domain",
+                            span,
+                        ));
+                        return None;
+                    };
+                    self.check_effect_shape(effect, &combined, *next, env, span)?;
+                }
+            }
+            EffectOutputExpectation::ConditionalPeer { peer, next } => {
+                // A peer probe already traverses both branches. Recursively
+                // launching peer probes here would multiply that work.
+                if self.checking_diagnostic_peer {
+                    return self.check_effect_shape(effect, projected, *next, env, span);
+                }
+                let expected = next
+                    .value()
+                    .or_else(|| contains_contextual_bare_integer(peer).then_some(projected));
+                let peer_shape = match self.check_effect_conditional_peer(peer, env, expected) {
+                    DiagnosticPeerShape::Known(shape) => shape,
+                    DiagnosticPeerShape::Unknown => return Some(()),
+                    DiagnosticPeerShape::Rejected => return None,
+                };
+                let Some(joined) = compatible_shape(projected, &peer_shape) else {
+                    self.errors.push(error(
+                        CompilerStage::TypeCheck,
+                        CompilerErrorKind::TypeMismatch,
+                        "conditional branches do not have compatible bounded types",
+                        span,
+                    ));
+                    return None;
+                };
+                self.check_effect_shape(effect, &joined, *next, env, span)?;
+            }
+            _ => {}
+        }
+        Some(())
+    }
+
+    fn check_effect_conditional_peer(
+        &mut self,
+        peer: &Expr,
+        env: &LocalEnvironment,
+        expected: Option<&TypeShape>,
+    ) -> DiagnosticPeerShape {
+        let mut probe = self.clone();
+        probe.errors.clear();
+        probe.checking_diagnostic_peer = true;
+        let shape = probe
+            .check_expr_with_expected(peer, env, expected)
+            .map(|value| value.ty);
+        probe
+            .errors
+            .retain(|error| error.kind != CompilerErrorKind::EffectWithoutFailureMapping);
+        if !probe.errors.is_empty() {
+            self.errors.extend(probe.errors);
+            return DiagnosticPeerShape::Rejected;
+        }
+        shape
+            .or_else(|| self.diagnostic_expr_shape(peer, env))
+            .map_or(DiagnosticPeerShape::Unknown, DiagnosticPeerShape::Known)
+    }
+
+    fn diagnostic_expr_shape(&self, expr: &Expr, env: &LocalEnvironment) -> Option<TypeShape> {
+        // This fork reads authenticated signatures only. It cannot authorize
+        // effects or fabricate a Core expression for an unbound effect.
+        let mut probe = self.clone();
+        probe.diagnostic_shape_inner(expr, env)
+    }
+
+    fn diagnostic_shape_inner(&mut self, expr: &Expr, env: &LocalEnvironment) -> Option<TypeShape> {
+        match expr {
+            Expr::Field { base, field, .. } => {
+                let base = self.diagnostic_shape_inner(base, env)?;
+                let TypeKind::Record(fields) = base.kind else {
+                    return None;
+                };
+                fields.get(field).cloned()
+            }
+            Expr::Call { callee, span, .. } => {
+                let coordinate = plain_callee_coordinate(callee)?;
+                if let Some(signature) = self.resolved.effect_signatures.get(&coordinate).cloned() {
+                    if self.fact_matches_source_import(
+                        &coordinate,
+                        &signature.coordinate,
+                        &signature.lawpack,
+                    ) {
+                        return self.effect_output_shape(&coordinate, &signature, *span);
+                    }
+                }
+                self.infer_expr_shape(expr, env)
+            }
+            Expr::Binary {
+                op: BinOp::Add,
+                lhs,
+                rhs,
+                ..
+            } => self.diagnostic_addition_shape(lhs, rhs, env),
+            Expr::Binary {
+                op: BinOp::Sub,
+                lhs,
+                rhs,
+                ..
+            } => self
+                .diagnostic_shape_inner(lhs, env)
+                .and_then(|shape| match shape.kind {
+                    TypeKind::Int { .. } => Some(shape),
+                    _ => None,
+                })
+                .or_else(|| self.diagnostic_shape_inner(rhs, env)),
+            Expr::If { then, els, .. } => compatible_shape(
+                &self.diagnostic_shape_inner(then, env)?,
+                &self.diagnostic_shape_inner(els, env)?,
+            ),
+            Expr::Record { entries, .. } => {
+                let fields = entries
+                    .iter()
+                    .map(|entry| match entry {
+                        RecordEntry::Field { name, value } => {
+                            Some((name.clone(), self.diagnostic_shape_inner(value, env)?))
+                        }
+                        RecordEntry::Shorthand { name, .. } => {
+                            Some((name.clone(), env.get(name)?.1.clone()))
+                        }
+                        RecordEntry::Spread(_) => None,
+                    })
+                    .collect::<Option<BTreeMap<_, _>>>()?;
+                TypeShape::canonical_structural(TypeKind::Record(fields))
+            }
+            _ => self.infer_expr_shape(expr, env),
+        }
+    }
+
+    fn check_effect_concat_peer(
+        &mut self,
+        output: &TypeShape,
+        peer: &Expr,
+        env: &LocalEnvironment,
+    ) -> Option<()> {
+        let family = if matches!(output.kind, TypeKind::Bytes { .. }) {
+            EffectOutputExpectation::Bytes
+        } else {
+            EffectOutputExpectation::String
+        };
+        let mut probe = self.clone();
+        probe.errors.clear();
+        if let Some(value) = probe.check_expr_with_effect_expectation(peer, env, family) {
+            if let Some(kind) = family.rejection(&value.ty) {
+                probe.errors.push(error(
+                    CompilerStage::TypeCheck,
+                    kind,
+                    "concatenation requires matching string or byte operand families",
+                    expr_span(peer),
+                ));
+            }
+        }
+        probe
+            .errors
+            .retain(|error| error.kind != CompilerErrorKind::EffectWithoutFailureMapping);
+        if probe.errors.is_empty() {
+            Some(())
+        } else {
+            self.errors.extend(probe.errors);
+            None
+        }
     }
 
     fn shape_for_helper_coordinate(
@@ -3791,32 +4867,63 @@ impl<'a> TypeChecker<'a> {
         cond: &Expr,
         then: &Expr,
         els: &Expr,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
-        expected: Option<&TypeShape>,
+        env: &LocalEnvironment,
+        expectation: EffectOutputExpectation<'_>,
         span: Span,
     ) -> Option<TypedValue> {
-        let predicate = self.check_predicate(cond, env)?;
+        let expected = expectation.value();
+        let predicate = self.check_predicate(cond, env);
+        let then_expectation = EffectOutputExpectation::ConditionalPeer {
+            peer: els,
+            next: &expectation,
+        };
+        let else_expectation = EffectOutputExpectation::ConditionalPeer {
+            peer: then,
+            next: &expectation,
+        };
         let (then_value, else_value) = match expected {
-            Some(expected) => (
-                self.check_expr_with_expected(then, env, Some(expected))?,
-                self.check_expr_with_expected(els, env, Some(expected))?,
-            ),
             None if is_bare_integer_literal(then) => {
-                let else_value = self.check_expr_with_expected(els, env, None)?;
-                let then_value = self.check_expr_with_expected(then, env, Some(&else_value.ty))?;
+                let else_value =
+                    self.check_expr_with_effect_expectation(els, env, else_expectation);
+                let then_value = else_value
+                    .as_ref()
+                    .and_then(|value| self.check_expr_with_expected(then, env, Some(&value.ty)));
                 (then_value, else_value)
             }
             None if is_bare_integer_literal(els) => {
-                let then_value = self.check_expr_with_expected(then, env, None)?;
-                let else_value = self.check_expr_with_expected(els, env, Some(&then_value.ty))?;
+                let then_value =
+                    self.check_expr_with_effect_expectation(then, env, then_expectation);
+                let else_value = then_value
+                    .as_ref()
+                    .and_then(|value| self.check_expr_with_expected(els, env, Some(&value.ty)));
                 (then_value, else_value)
             }
-            None => (
-                self.check_expr_with_expected(then, env, None)?,
-                self.check_expr_with_expected(els, env, None)?,
+            Some(_) | None => (
+                self.check_expr_with_effect_expectation(then, env, then_expectation),
+                self.check_expr_with_effect_expectation(els, env, else_expectation),
             ),
         };
 
+        if then_value.is_none() || else_value.is_none() {
+            if let Some(expected) = expected {
+                for (value, source) in [(&then_value, then), (&else_value, els)] {
+                    if value
+                        .as_ref()
+                        .is_some_and(|value| !compatible(expected, &value.ty))
+                    {
+                        self.errors.push(error(
+                            CompilerStage::TypeCheck,
+                            CompilerErrorKind::TypeMismatch,
+                            "conditional arm does not match its expected type",
+                            expr_span(source),
+                        ));
+                    }
+                }
+            }
+            return None;
+        }
+        let then_value = then_value?;
+        let else_value = else_value?;
         let ty = self.join_branch_shapes(
             expected,
             &then_value.ty,
@@ -3830,12 +4937,36 @@ impl<'a> TypeChecker<'a> {
 
         Some(TypedValue {
             expr: CoreExpr::If {
-                predicate: Box::new(predicate),
+                predicate: Box::new(predicate?),
                 then_value: Box::new(then_value.expr),
                 else_value: Box::new(else_value.expr),
             },
             ty,
         })
+    }
+
+    fn check_expr_with_intrinsic_effect_context(
+        &mut self,
+        expr: &Expr,
+        env: &LocalEnvironment,
+        expectation: EffectOutputExpectation<'_>,
+    ) -> Option<TypedValue> {
+        let previous = std::mem::replace(&mut self.expected_type_unavailable, false);
+        let value = self.check_expr_with_effect_expectation(expr, env, expectation);
+        self.expected_type_unavailable = previous;
+        value
+    }
+
+    fn check_expr_with_unavailable_expected_type(
+        &mut self,
+        expr: &Expr,
+        env: &LocalEnvironment,
+    ) -> Option<TypedValue> {
+        let previous = self.expected_type_unavailable;
+        self.expected_type_unavailable = true;
+        let value = self.check_expr(expr, env);
+        self.expected_type_unavailable = previous;
+        value
     }
 
     fn check_integer_literal(
@@ -3845,6 +4976,9 @@ impl<'a> TypeChecker<'a> {
         expected: Option<&TypeShape>,
         span: Span,
     ) -> Option<TypedValue> {
+        if suffix.is_none() && expected.is_none() && self.expected_type_unavailable {
+            return None;
+        }
         let width = if let Some(suffix) = suffix {
             integer_suffix_width(suffix)
         } else {
@@ -3885,8 +5019,11 @@ impl<'a> TypeChecker<'a> {
         &mut self,
         name: &str,
         span: Span,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
     ) -> Option<TypedValue> {
+        if env.poisoned.contains(name) {
+            return None;
+        }
         if let Some((local, ty)) = env.get(name) {
             Some(TypedValue {
                 expr: CoreExpr::Local {
@@ -3910,9 +5047,18 @@ impl<'a> TypeChecker<'a> {
         base: &Expr,
         field: &str,
         span: Span,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
+        expectation: EffectOutputExpectation<'_>,
     ) -> Option<TypedValue> {
-        let base = self.check_expr(base, env)?;
+        let base = self.check_expr_with_effect_expectation(
+            base,
+            env,
+            EffectOutputExpectation::Field {
+                name: field,
+                next: &expectation,
+                span,
+            },
+        )?;
         let TypeKind::Record(fields) = &base.ty.kind else {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
@@ -3941,27 +5087,75 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn check_string_concat(
+    fn check_concat(
         &mut self,
         lhs: &Expr,
         rhs: &Expr,
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
+        expectation: EffectOutputExpectation<'_>,
         span: Span,
     ) -> Option<TypedValue> {
-        let left = self.check_expr(lhs, env)?;
-        let right = self.check_expr(rhs, env)?;
+        let left = self.check_expr_with_intrinsic_effect_context(
+            lhs,
+            env,
+            EffectOutputExpectation::ConcatenationPeer {
+                peer: rhs,
+                next: &expectation,
+            },
+        );
+        let right = self.check_expr_with_intrinsic_effect_context(
+            rhs,
+            env,
+            EffectOutputExpectation::ConcatenationPeer {
+                peer: lhs,
+                next: &expectation,
+            },
+        );
+        if left.is_none() || right.is_none() {
+            for (value, expression) in [(&left, lhs), (&right, rhs)] {
+                if value.as_ref().is_some_and(|value| {
+                    !matches!(
+                        value.ty.kind,
+                        TypeKind::String { .. } | TypeKind::Bytes { .. }
+                    )
+                }) {
+                    self.errors.push(error(
+                        CompilerStage::TypeCheck,
+                        CompilerErrorKind::TypeMismatch,
+                        "concatenation operand must be a bounded string or bounded bytes",
+                        expr_span(expression),
+                    ));
+                }
+            }
+            return None;
+        }
+        let (left, right) = (left?, right?);
+        if matches!(
+            (&left.ty.kind, &right.ty.kind),
+            (TypeKind::Bytes { .. }, TypeKind::Bytes { .. })
+        ) {
+            return self.check_byte_concat(left, right, span);
+        }
         let (TypeKind::String { max: lmax, .. }, TypeKind::String { max: rmax, .. }) =
             (&left.ty.kind, &right.ty.kind)
         else {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
                 CompilerErrorKind::TypeMismatch,
-                "string concatenation requires string operands",
+                "concatenation requires two bounded strings or two bounded bytes",
                 span,
             ));
             return None;
         };
-        let max = lmax + rmax;
+        let Some(max) = lmax.checked_add(*rmax) else {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::InvalidBound,
+                "string concatenation maximum exceeds U64",
+                span,
+            ));
+            return None;
+        };
         let canonical = "raw-utf8".to_owned();
         let ty = TypeShape::canonical_structural(TypeKind::String { max, canonical })?;
         Some(TypedValue {
@@ -3977,7 +5171,7 @@ impl<'a> TypeChecker<'a> {
     fn check_record(
         &mut self,
         entries: &[RecordEntry],
-        env: &BTreeMap<String, (LocalRef, TypeShape)>,
+        env: &LocalEnvironment,
         expected: Option<&TypeShape>,
         span: Span,
     ) -> Option<TypedValue> {
@@ -3987,24 +5181,35 @@ impl<'a> TypeChecker<'a> {
         });
         let mut fields = BTreeMap::new();
         let mut field_types = BTreeMap::new();
+        let mut field_spans = BTreeMap::new();
+        let mut accepted = true;
         for entry in entries {
             match entry {
                 RecordEntry::Field { name, value } => {
                     let field_expected = expected_fields.and_then(|fields| fields.get(name));
-                    let value = self.check_expr_with_expected(value, env, field_expected)?;
-                    fields.insert(name.clone(), value.expr);
-                    field_types.insert(name.clone(), value.ty);
+                    if let Some(checked) = self.check_expr_with_expected(value, env, field_expected)
+                    {
+                        field_spans.insert(name.clone(), expr_span(value));
+                        fields.insert(name.clone(), checked.expr);
+                        field_types.insert(name.clone(), checked.ty);
+                    } else {
+                        accepted = false;
+                    }
                 }
                 RecordEntry::Shorthand { name, span } => {
                     let Some((local, ty)) = env.get(name) else {
-                        self.errors.push(error(
-                            CompilerStage::TypeCheck,
-                            CompilerErrorKind::UnresolvedType,
-                            format!("record shorthand `{name}` has no typed binding"),
-                            *span,
-                        ));
+                        accepted = false;
+                        if !env.poisoned.contains(name) {
+                            self.errors.push(error(
+                                CompilerStage::TypeCheck,
+                                CompilerErrorKind::UnresolvedType,
+                                format!("record shorthand `{name}` has no typed binding"),
+                                *span,
+                            ));
+                        }
                         continue;
                     };
+                    field_spans.insert(name.clone(), *span);
                     fields.insert(
                         name.clone(),
                         CoreExpr::Local {
@@ -4014,6 +5219,7 @@ impl<'a> TypeChecker<'a> {
                     field_types.insert(name.clone(), ty.clone());
                 }
                 RecordEntry::Spread(_) => {
+                    accepted = false;
                     self.errors.push(error(
                         CompilerStage::TypeCheck,
                         CompilerErrorKind::UnsupportedSourceShape,
@@ -4023,11 +5229,86 @@ impl<'a> TypeChecker<'a> {
                 }
             }
         }
+        if !accepted {
+            self.report_unavailable_record_mismatches(
+                entries,
+                expected,
+                &field_types,
+                &field_spans,
+                span,
+            );
+            return None;
+        }
         let ty = TypeShape::canonical_structural(TypeKind::Record(field_types))?;
         Some(TypedValue {
             expr: CoreExpr::Record { fields },
             ty,
         })
+    }
+    fn report_unavailable_record_mismatches(
+        &mut self,
+        entries: &[RecordEntry],
+        expected: Option<&TypeShape>,
+        field_types: &BTreeMap<String, TypeShape>,
+        field_spans: &BTreeMap<String, Span>,
+        span: Span,
+    ) {
+        let Some(expected) = expected else { return };
+        let TypeKind::Record(expected_fields) = &expected.kind else {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::TypeMismatch,
+                "record value does not match its non-record expected type",
+                span,
+            ));
+            return;
+        };
+        for (name, actual) in field_types {
+            if expected_fields
+                .get(name)
+                .is_some_and(|expected| !compatible(expected, actual))
+            {
+                self.errors.push(error(
+                    CompilerStage::TypeCheck,
+                    CompilerErrorKind::TypeMismatch,
+                    format!("record field `{name}` does not match its expected type"),
+                    field_spans[name],
+                ));
+            }
+        }
+        let mut authored_keys = BTreeSet::new();
+        let mut has_spread = false;
+        for entry in entries {
+            let (name, field_span) = match entry {
+                RecordEntry::Field { name, value } => (name, expr_span(value)),
+                RecordEntry::Shorthand { name, span } => (name, *span),
+                RecordEntry::Spread(_) => {
+                    has_spread = true;
+                    continue;
+                }
+            };
+            authored_keys.insert(name.as_str());
+            if !expected_fields.contains_key(name) {
+                self.errors.push(error(
+                    CompilerStage::TypeCheck,
+                    CompilerErrorKind::TypeMismatch,
+                    format!("record has unexpected field `{name}`"),
+                    field_span,
+                ));
+            }
+        }
+        if !has_spread {
+            for name in expected_fields.keys() {
+                if !authored_keys.contains(name.as_str()) {
+                    self.errors.push(error(
+                        CompilerStage::TypeCheck,
+                        CompilerErrorKind::TypeMismatch,
+                        format!("record is missing expected field `{name}`"),
+                        span,
+                    ));
+                }
+            }
+        }
     }
 }
 
@@ -4060,6 +5341,7 @@ fn contains_contextual_bare_integer(expr: &Expr) -> bool {
         Expr::Ident { .. }
         | Expr::Int { .. }
         | Expr::Str { .. }
+        | Expr::Bytes { .. }
         | Expr::Bool { .. }
         | Expr::Digest { .. }
         | Expr::Field { .. }
@@ -4177,6 +5459,17 @@ fn string_value(value: &str) -> Option<TypedValue> {
     Some(TypedValue {
         expr: CoreExpr::Const(CoreValue::String(value.to_owned())),
         ty: TypeShape::canonical_structural(kind)?,
+    })
+}
+
+fn bytes_value(value: &[u8]) -> Option<TypedValue> {
+    let length = u64::try_from(value.len()).ok()?;
+    Some(TypedValue {
+        expr: CoreExpr::Const(CoreValue::Bytes(value.to_vec())),
+        ty: TypeShape::canonical_structural(TypeKind::Bytes {
+            min: Some(length),
+            max: length,
+        })?,
     })
 }
 
@@ -4557,6 +5850,7 @@ fn plain_callee_coordinate(expr: &Expr) -> Option<String> {
         Expr::Call { .. }
         | Expr::Int { .. }
         | Expr::Str { .. }
+        | Expr::Bytes { .. }
         | Expr::Bool { .. }
         | Expr::Digest { .. }
         | Expr::Unary { .. }
@@ -4580,6 +5874,7 @@ fn plain_path_root(expr: &Expr) -> Option<&str> {
         Expr::Call { .. }
         | Expr::Int { .. }
         | Expr::Str { .. }
+        | Expr::Bytes { .. }
         | Expr::Bool { .. }
         | Expr::Digest { .. }
         | Expr::Unary { .. }
@@ -4596,11 +5891,18 @@ fn package_coordinate(path: &[String], version: &str) -> String {
     format!("{}@{version}", path.join("."))
 }
 
+// The resolved AST remains immutably borrowed for the entire check. Addresses
+// are only local memoization keys: they never enter Core, digests or diagnostics.
+fn expression_identity(expr: &Expr) -> usize {
+    std::ptr::from_ref(expr).addr()
+}
+
 fn expr_span(expr: &Expr) -> Span {
     match expr {
         Expr::Ident { span, .. }
         | Expr::Int { span, .. }
         | Expr::Str { span, .. }
+        | Expr::Bytes { span, .. }
         | Expr::Bool { span, .. }
         | Expr::Digest { span, .. }
         | Expr::Field { span, .. }
@@ -4615,6 +5917,61 @@ fn expr_span(expr: &Expr) -> Span {
     }
 }
 
+fn effect_mapping_error(
+    effect: &str,
+    signature: &EffectSignatureFact,
+    span: Span,
+) -> CompilerError {
+    let guidance = if signature.failure_payload_types.is_empty() {
+        "no declared failures; effect bindings without a failure map are not supported".to_owned()
+    } else if signature.domain_mappable_failures.is_empty() {
+        "no domain-mappable failures; effect bindings without an authored failure map are not supported".to_owned()
+    } else {
+        let failures = signature
+            .domain_mappable_failures
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("use an annotated effect binding with `else`; domain-mappable failures: {failures}")
+    };
+    error(
+        CompilerStage::TypeCheck,
+        CompilerErrorKind::EffectWithoutFailureMapping,
+        format!("effect `{effect}` is not a pure helper; {guidance}"),
+        span,
+    )
+}
+
+fn effect_profile_error(
+    effect: &str,
+    write_class: &WriteClass,
+    profile: &str,
+    allowed_write_classes: Option<&BTreeSet<WriteClass>>,
+    span: Span,
+) -> Option<CompilerError> {
+    let Some(allowed) = allowed_write_classes else {
+        return Some(error(
+            CompilerStage::TypeCheck,
+            CompilerErrorKind::MissingContextFact,
+            format!("operation profile `{profile}` has no write-class compiler context fact"),
+            span,
+        ));
+    };
+    if allowed.contains(write_class) {
+        None
+    } else {
+        Some(error(
+            CompilerStage::TypeCheck,
+            CompilerErrorKind::ProfileEffectMismatch,
+            format!(
+                "effect `{effect}` requires write class {write_class:?}, which profile `{profile}` does not allow"
+            ),
+            span,
+        ))
+    }
+}
+
 fn error(
     stage: CompilerStage,
     kind: CompilerErrorKind,
@@ -4626,6 +5983,7 @@ fn error(
         kind,
         message: message.into(),
         span,
+        signature_mismatch: None,
     }
 }
 
@@ -4635,4 +5993,23 @@ fn finish<T>(errors: Vec<CompilerError>, value: T) -> Result<T, Vec<CompilerErro
     } else {
         Err(errors)
     }
+}
+
+fn diagnostic_concat_shape(left: &TypeShape, right: &TypeShape) -> Option<TypeShape> {
+    let kind = match (&left.kind, &right.kind) {
+        (TypeKind::Bytes { max: left, .. }, TypeKind::Bytes { max: right, .. }) => {
+            TypeKind::Bytes {
+                min: None,
+                max: left.checked_add(*right)?,
+            }
+        }
+        (TypeKind::String { max: left, .. }, TypeKind::String { max: right, .. }) => {
+            TypeKind::String {
+                max: left.checked_add(*right)?,
+                canonical: "raw-utf8".into(),
+            }
+        }
+        _ => return None,
+    };
+    TypeShape::canonical_structural(kind)
 }

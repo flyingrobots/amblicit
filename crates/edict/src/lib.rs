@@ -41,8 +41,9 @@ pub mod artifact {
         digest_result_projection, digest_target_ir_artifact, encode_core_module,
         encode_result_projection, encode_target_ir_artifact, verify_result_projection,
         CanonicalError, CanonicalErrorKind, CanonicalValue, CompareOp, CoreBlock, CoreBound,
-        CoreBudget, CoreDigest, CoreExpr, CoreExternalActionBudget, CoreImport, CoreImportKind,
-        CoreIntent, CoreModule, CoreNode, CoreObstructionArm, CoreObstructionReason, CorePredicate,
+        CoreBudget, CoreDigest, CoreExpr, CoreExternalActionBudget, CoreFunction, CoreImport,
+        CoreImportKind, CoreIntent, CoreModule, CoreNode, CoreObstructionArm,
+        CoreObstructionReason, CorePredicate, CorePureBinding, CorePureBlock,
         CoreRequireFailureArm, CoreType, CoreValue, InputConstraint, InputConstraintSource,
         LocalRef, ResourceRef, ResultProjection, ResultProjectionArtifact, ResultProjectionExpr,
         ResultProjectionFailure, ResultProjectionFailureKind, ResultProjectionSource,
@@ -50,4 +51,21 @@ pub mod artifact {
         TargetIrRequireFailure, TargetIrRequirement, TargetIrSemanticClosure, TargetIrStep,
         VerifiedResultProjection,
     };
+}
+
+/// Checked Bunny Q32.32 arithmetic for compiler consumers.
+///
+/// This API evaluates raw fixed-point values. It does not imply source-language
+/// fixed-point syntax or a corresponding Core/Target artifact representation.
+///
+/// ```
+/// use edict::numeric::{NumericError, Q32_32};
+///
+/// let one = Q32_32::from_raw(4_294_967_296);
+/// let half = Q32_32::from_raw(2_147_483_648);
+/// assert_eq!(one.checked_mul(half).map(Q32_32::raw), Ok(2_147_483_648));
+/// assert_eq!(one.checked_div(Q32_32::from_raw(0)), Err(NumericError::DivisionByZero));
+/// ```
+pub mod numeric {
+    pub use edict_syntax::numeric::{NumericError, Q32_32, Q32_32_PROFILE};
 }

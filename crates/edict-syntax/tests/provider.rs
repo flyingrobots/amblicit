@@ -40,7 +40,10 @@ fn generated_provider_manifest_fixture_validates() {
     let report = validate_target_provider_manifest(&manifest);
 
     assert_eq!(report.status, ProviderManifestValidationStatus::Valid);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        [] as [edict_syntax::ProviderManifestValidationFailure; 0]
+    );
 }
 
 #[test]

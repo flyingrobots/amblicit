@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/work/edict/docs/plans/study-feedback/evidence/snapshot-deletion-regression.py.txt", line 51, in <module>
+    raise AssertionError(f"snapshot differs from working tree: {actual!r} != {expected!r}")
+AssertionError: snapshot differs from working tree: {'rename-new.txt': 'rename-old.txt', 'untracked.txt': 'new bytes', 'staged.txt': 'staged.txt', 'retained.txt': 'modified bytes', 'rename-old.txt': 'rename-old.txt'} != {'rename-new.txt': 'rename-old.txt', 'retained.txt': 'modified bytes', 'untracked.txt': 'new bytes'}

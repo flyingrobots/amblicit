@@ -1194,10 +1194,10 @@ Ask the unreleased `project` operation for Core IR *without* supplying authority
 {"checked":1,"command":"project","errors":2,"exitCode":0,"schema":"edict.cli.event/v1","status":"ok","type":"status"}
 ```
 
-Supply the facts in `compilerContext` — a read-only profile for `hello.readOnly` and a `{maxSteps: 64, maxAllocatedBytes: 4096, maxOutputBytes: 1024}` budget for `hello.tinyBudget` — and the same request yields a live Core review and a canonical digest:
+Supply the facts in `compilerContext` — a read-only profile for `hello.readOnly` and a `{maxSteps: 64, maxAllocatedBytes: 4096, maxOutputBytes: 4096}` budget for `hello.tinyBudget` — and the same request yields a live Core review and a canonical digest:
 
 ```json
-{"schema":"edict.projection.core/v1","state":"available","digest":"sha256:f8243875a77aa3cc8f02529e2c8b18e183ed6b02ad5f6fd6d0795c6ad532ce85","review":{"apiVersion":"edict.core/v1","coordinate":"examples.hello@1","intents":{"sayHello":{"body":{"locals":[{"alphaName":"$arg0","id":"arg.0","ty":"examples.hello@1.HelloInput"},{"alphaName":"$local0","id":"local.0","ty":"String<max=263,canonical=raw-utf8>"}],"...":"..."}}}}}
+{"schema":"edict.projection.core/v1","state":"available","digest":"sha256:671f213333fed88894b1be077408a7ecc643c0215f3e5d1ad1c9b5b194109ffd","review":{"apiVersion":"edict.core/v1","coordinate":"examples.hello@1","intents":{"sayHello":{"body":{"locals":[{"alphaName":"$arg0","id":"arg.0","ty":"examples.hello@1.HelloInput"},{"alphaName":"$local0","id":"local.0","ty":"String<max=263,canonical=raw-utf8>"}],"...":"..."}}}}}
 ```
 
 Two details in that review are worth savoring. The locals are the alpha-normalized `$arg0` / `$local0` — your variable names are already gone. And the concatenation `"hello, " + input.name` was typed `String<max=263>`: the compiler summed the literal's length (7) and the input's bound (256). Bounds are arithmetic, not annotations.
@@ -1208,9 +1208,9 @@ Finally, the whole identity story in two runs. First, take the same program but 
 
 | Mutation | Core digest | Verdict |
 | --- | --- | --- |
-| (baseline) | `sha256:f8243875a77aa3cc…` | — |
-| + comment, local renamed `message`→`msg` | `sha256:f8243875a77aa3cc…` | **Identical.** Spans are stripped; locals are alpha-normalized. Formatting and naming cannot touch identity. |
-| budget fact `maxSteps` 64→65, source untouched | `sha256:d5a85b4021837e97…` | **Moved.** The evaluation budget is hash-significant Core meaning — change what the operation is *allowed to cost* and it is a different operation. |
+| (baseline) | `sha256:671f213333fed888…` | — |
+| + comment, local renamed `message`→`msg` | `sha256:671f213333fed888…` | **Identical.** Spans are stripped; locals are alpha-normalized. Formatting and naming cannot touch identity. |
+| budget fact `maxSteps` 64→65, source untouched | `sha256:35e2de812ecc11c7…` | **Moved.** The evaluation budget is hash-significant Core meaning — change what the operation is *allowed to cost* and it is a different operation. |
 
 This is Moriarty's hash-impact matrix in miniature, reproduced against the real binary: non-semantic mutations must not move the digest; semantic mutations must.
 
@@ -1269,8 +1269,10 @@ intent <name>(input: <Type>)
 | --- | --- |
 | Parser (20) | `Lex`, `ExpectedToken`, `ExpectedKeyword`, `ExpectedIdentifier`, `ExpectedExpression`, `InvalidInteger`, `InvalidDigest`, `InvalidVersion`, `ReservedKeyword`, `UnsupportedSyntax`, `InvalidName`, `EmptyEnum`, `EmptyObstructionMap`, `EmptyMatch`, `MissingRequiredField`, `DuplicateField`, `NonCallEffect`, `NonCallExternalActionOperation`, `ReturnInYieldBlock`, `InvalidTypeCall` |
 | Semantic (7) | `UnboundedScalar`, `MissingOperationMode`, `MissingBudget`, `MissingBasis`, `DuplicateIntentClause`, `DuplicateName`, `ShadowedName` |
-| Compiler (11) | `SurfaceValidation`, `MissingContextFact`, `UnsupportedSourceShape`, `UnresolvedType`, `UnknownField`, `TypeMismatch`, `ExpectedPredicate`, `ProfileEffectMismatch`, `UnrequestableExternalOperation`, `DuplicateObstructionFailure`, `DuplicateObstructionPayloadField` |
-| CLI exit codes | `0` ok · `1` compiler/validation diagnostics · `2` invalid CLI input |
+| Compiler (16) | `SurfaceValidation`, `MissingContextFact`, `UnsupportedSourceShape`, `UnresolvedType`, `UnresolvedFunction`, `EffectWithoutFailureMapping`, `InvalidBound`, `UnknownField`, `TypeMismatch`, `ExpectedPredicate`, `ProfileEffectMismatch`, `UnrequestableExternalOperation`, `DuplicateObstructionFailure`, `DuplicateObstructionPayloadField`, `ReservedTypeIdentity`, `InvalidCoreTypeIntegrity` |
+| CLI exit codes | `0` request completed · `1` check diagnostics · `2` invalid CLI input or build failure |
+
+Application `build` source failures emit one structured diagnostic per parser or compiler error, then the existing summary and terminal status. Source `span` offsets are zero-based UTF-8 bytes with exclusive end; `sourceLocation` gives the canonical path and one-based source line and Unicode-scalar column. Top-level `line` remains a JSONL request-record coordinate. The build failure exit code stays `2`, and the terminal error count includes the source records and summary. See the [CLI diagnostic reference](docs/topics/cli/README.md#application-source-diagnostics) for the checked schema and output-preservation contract.
 
 ### D.5 Digest domains
 

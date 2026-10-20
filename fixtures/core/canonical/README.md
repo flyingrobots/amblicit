@@ -11,7 +11,7 @@ using the deterministic compiler context facts:
 
 - `hello.readOnly` -> `continuum.profile.read-only/v1`
 - `hello.tinyBudget` -> `maxSteps=64`, `maxAllocatedBytes=4096`,
-  `maxOutputBytes=1024`
+  `maxOutputBytes=4096`
 
 Artifacts:
 

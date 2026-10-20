@@ -154,8 +154,157 @@ fn direct_bounded_effect_signature_types_enter_source_compilation() {
     let report = lower_to_target_ir(&core, preparation.target_ir_facts());
 
     assert_eq!(report.status, TargetLoweringStatus::Lowered);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        Vec::<edict_syntax::TargetLoweringFailure>::new()
+    );
     assert!(report.artifact.is_some());
+}
+
+#[test]
+fn bare_effect_without_declared_failures_reports_binding_limitation() {
+    let mut exports = hello_echo_exports();
+    let effect = first_array_item_mut(field_mut(&mut exports, "effects"));
+    map_mut(field_mut(effect, "effectFailures")).clear();
+    let mut adapter = decode_canonical_cbor(ADAPTER_BYTES).expect("decode adapter");
+    let implementation = first_map_value_mut(field_mut(&mut adapter, "effectImplementations"));
+    map_mut(field_mut(implementation, "failureMappings")).clear();
+    let (bundle, adapter) = bundle_and_adapter(&exports, &adapter);
+    let mapping = "\n    else { alreadyExists(existing) => hello.AlreadyExists }";
+    assert_eq!(CREATE_GREETING_SOURCE.matches(mapping).count(), 1);
+    let source = CREATE_GREETING_SOURCE
+        .replace(
+            MANIFEST_DIGEST.trim(),
+            &bundle.manifest_digest_review_string(),
+        )
+        .replace(mapping, "");
+    let module = parse_module(&source).expect("bare zero-failure effect parses");
+    let preparation = prepare_lawpack_compilation(&module, &bundle, &adapter)
+        .expect("authenticate a zero-failure signature");
+    let errors = compile_to_core(&module, preparation.compiler_context())
+        .expect_err("bare semantic effects remain unsupported");
+    let cause = &errors[0];
+    assert_eq!(cause.kind, CompilerErrorKind::EffectWithoutFailureMapping);
+    assert_eq!(cause.stage, CompilerStage::TypeCheck);
+    assert!(source[cause.span.start..cause.span.end].contains("hello.createGreeting"));
+    assert!(cause.message.contains("no declared failures"));
+    assert!(cause
+        .message
+        .contains("effect bindings without a failure map are not supported"));
+    assert!(!cause.message.contains("with `else`"));
+}
+
+#[test]
+fn generic_effect_reports_unsupported_shape_before_mapping_guidance() {
+    let mut exports = hello_echo_exports();
+    let effect = first_array_item_mut(field_mut(&mut exports, "effects"));
+    replace_field(
+        effect,
+        "typeParameters",
+        CanonicalValue::Array(vec![text("T")]),
+    );
+    let exports_bytes = encode_canonical_cbor(&exports).expect("encode generic exports");
+    let manifest = hello_echo_manifest(digest_value(EXPORTS_COORDINATE, &exports));
+    let manifest_bytes = encode_canonical_cbor(&manifest).expect("encode generic manifest");
+    let bundle = decode_lawpack_bundle(&manifest_bytes, &exports_bytes)
+        .expect("generic effect metadata is valid");
+    let adapter =
+        decode_lawpack_adapter(&bundle, "echo.dpo@1", ADAPTER_BYTES).expect("load exact adapter");
+    let mapped = CREATE_GREETING_SOURCE.replace(
+        MANIFEST_DIGEST.trim(),
+        &bundle.manifest_digest_review_string(),
+    );
+    let mapping = "\n    else { alreadyExists(existing) => hello.AlreadyExists }";
+    assert_eq!(mapped.matches(mapping).count(), 1);
+    for source in [mapped.clone(), mapped.replace(mapping, "")] {
+        let module = parse_module(&source).expect("generic effect source parses");
+        let preparation = prepare_lawpack_compilation(&module, &bundle, &adapter)
+            .expect("generic signature prepares");
+        let errors = compile_to_core(&module, preparation.compiler_context())
+            .expect_err("generic semantic effects remain unsupported");
+        let cause = &errors[0];
+        assert_eq!(cause.kind, CompilerErrorKind::UnsupportedSourceShape);
+        assert_eq!(cause.stage, CompilerStage::TypeCheck);
+        assert!(source[cause.span.start..cause.span.end].contains("hello.createGreeting(input)"));
+        assert!(cause.message.contains("generic semantic effects"));
+        assert!(!cause.message.contains("with `else`"));
+    }
+}
+
+#[test]
+fn authored_effect_type_arguments_refuse_mapping_guidance() {
+    let bundle = decode_lawpack_bundle(MANIFEST_BYTES, EXPORTS_BYTES).expect("load lawpack");
+    let adapter =
+        decode_lawpack_adapter(&bundle, "echo.dpo@1", ADAPTER_BYTES).expect("load exact adapter");
+    let mapped = CREATE_GREETING_SOURCE.replace(
+        "hello.createGreeting(input)",
+        "hello.createGreeting<U64>(input)",
+    );
+    assert_eq!(
+        mapped.matches("hello.createGreeting<U64>(input)").count(),
+        1
+    );
+    let mapping = "\n    else { alreadyExists(existing) => hello.AlreadyExists }";
+    assert_eq!(mapped.matches(mapping).count(), 1);
+    for source in [mapped.clone(), mapped.replace(mapping, "")] {
+        let module = parse_module(&source).expect("authored type arguments parse");
+        let preparation = prepare_lawpack_compilation(&module, &bundle, &adapter)
+            .expect("authenticate nongeneric effect");
+        let errors = compile_to_core(&module, preparation.compiler_context())
+            .expect_err("effect type arguments remain unsupported");
+        let cause = &errors[0];
+        assert_eq!(cause.kind, CompilerErrorKind::UnsupportedSourceShape);
+        assert_eq!(cause.stage, CompilerStage::TypeCheck);
+        assert!(
+            source[cause.span.start..cause.span.end].contains("hello.createGreeting<U64>(input)")
+        );
+        assert!(cause.message.contains("type arguments"));
+        assert!(!cause.message.contains("with `else`"));
+    }
+}
+
+#[test]
+fn valid_function_does_not_poison_intent_effect_guidance() {
+    let mut adapter_value = decode_canonical_cbor(ADAPTER_BYTES).expect("decode control adapter");
+    let budget = field_mut(
+        field_mut(&mut adapter_value, "budgets"),
+        "hello.echo@1.smallCreateBudget",
+    );
+    replace_field(budget, "maxSteps", CanonicalValue::Integer(1024));
+    replace_field(budget, "maxAllocatedBytes", CanonicalValue::Integer(32768));
+    replace_field(budget, "maxOutputBytes", CanonicalValue::Integer(4096));
+    let bundle = bundle_with_adapter(&adapter_value);
+    let adapter_bytes = encode_canonical_cbor(&adapter_value).expect("encode control adapter");
+    let adapter = decode_lawpack_adapter(&bundle, "echo.dpo@1", &adapter_bytes)
+        .expect("authenticate control adapter");
+    let function = "fn identity(value: U64) -> U64 { return value; }\n\n";
+    let source = CREATE_GREETING_SOURCE
+        .replace(
+            MANIFEST_DIGEST.trim(),
+            &bundle.manifest_digest_review_string(),
+        )
+        .replace(
+            "intent createGreeting",
+            &format!("{function}intent createGreeting"),
+        );
+    let module = parse_module(&source).expect("control source parses");
+    let preparation =
+        prepare_lawpack_compilation(&module, &bundle, &adapter).expect("prepare control closure");
+    compile_to_core(&module, preparation.compiler_context())
+        .expect("valid function and mapped intent compile");
+    let mapping = "\n    else { alreadyExists(existing) => hello.AlreadyExists }";
+    assert_eq!(source.matches(mapping).count(), 1);
+    let bare = source.replace(mapping, "");
+    let module = parse_module(&bare).expect("bare control parses");
+    let preparation =
+        prepare_lawpack_compilation(&module, &bundle, &adapter).expect("prepare bare control");
+    let errors = compile_to_core(&module, preparation.compiler_context())
+        .expect_err("bare intent effect still needs its mapping");
+    assert_eq!(
+        errors[0].kind,
+        CompilerErrorKind::EffectWithoutFailureMapping
+    );
+    assert!(errors[0].message.contains("with `else`"));
 }
 
 #[test]
@@ -564,7 +713,7 @@ intent observe(input: ObserveInput)
         .expect("observe intent");
 
     assert_eq!(intent.external_action_requests.len(), 1);
-    assert!(intent.steps.is_empty());
+    assert_eq!(intent.steps, Vec::<edict_syntax::TargetIrStep>::new());
     assert!(
         adapter.effects().is_empty(),
         "request-only profile must not grant target-call authority"
@@ -782,6 +931,46 @@ fn lawpack_adapter_corroborates_footprint_cost_and_failure_obligations() {
     assert_eq!(
         adapter_failure_kinds(&failures),
         vec![LawpackAdapterFailureKind::FailureMappingMismatch]
+    );
+}
+
+#[test]
+fn lawpack_import_rejects_raw_file_hash_with_manifest_domain_obligation() {
+    let bundle =
+        decode_lawpack_bundle(MANIFEST_BYTES, EXPORTS_BYTES).expect("load Hello Echo lawpack");
+    let adapter =
+        decode_lawpack_adapter(&bundle, "echo.dpo@1", ADAPTER_BYTES).expect("load exact adapter");
+    let correct = parse_module(CREATE_GREETING_SOURCE).expect("parse exact source");
+    prepare_lawpack_compilation(&correct, &bundle, &adapter)
+        .expect("manifest sidecar digest is accepted");
+    let raw_digest = format!("sha256:{:x}", Sha256::digest(MANIFEST_BYTES));
+    assert_ne!(raw_digest, bundle.manifest_digest_review_string());
+    let source = CREATE_GREETING_SOURCE.replace(MANIFEST_DIGEST.trim(), &raw_digest);
+    let module = parse_module(&source).expect("file digest has valid review syntax");
+    let failures = prepare_lawpack_compilation(&module, &bundle, &adapter)
+        .expect_err("raw file hash does not identify the manifest domain");
+    assert_eq!(
+        adapter_failure_kinds(&failures),
+        vec![LawpackAdapterFailureKind::SourceImportMismatch]
+    );
+    assert_eq!(failures[0].path, "module.imports.hello.digest");
+    assert_eq!(
+        failures[0].obligation,
+        format!(
+            "edict.lawpack/v1 domain-framed manifest digest `{}` (not the raw manifest.cbor file hash)",
+            bundle.manifest_digest_review_string()
+        )
+    );
+}
+
+#[test]
+fn malformed_lawpack_import_digest_retains_parser_kind_and_span() {
+    let source = CREATE_GREETING_SOURCE.replace(MANIFEST_DIGEST.trim(), "sha256:not-a-digest");
+    let failure = parse_module(&source).expect_err("malformed digest rejects before loading");
+    assert_eq!(failure.kind, edict_syntax::ParseErrorKind::InvalidDigest);
+    assert_eq!(
+        &source[failure.span.start..failure.span.end],
+        "\"sha256:not-a-digest\""
     );
 }
 
@@ -1012,6 +1201,14 @@ fn exact_u64_pure_helper_application() -> (
     edict_syntax::CoreModule,
     edict_syntax::TargetIrLoweringFacts,
 ) {
+    exact_u64_pure_helper_application_with_source(
+        "examples.pure_helper@1",
+        "",
+        "hello.identityU64(input.value)",
+    )
+}
+
+fn exact_u64_pure_helper_exports() -> CanonicalValue {
     let identity_body = map([
         (
             "params",
@@ -1033,35 +1230,73 @@ fn exact_u64_pure_helper_application() -> (
         ),
     ]);
     let mut exports = hello_echo_exports();
-    array_mut(field_mut(&mut exports, "pureFunctions")).push(pure_function_with_types(
+    let mut helper = pure_function_with_types(
         "hello.echo@1.identityU64",
         &["U64"],
         "U64",
         "edict",
         ("body", identity_body),
-    ));
-    let exports_bytes = encode_canonical_cbor(&exports).expect("encode pure-helper exports");
-    let manifest = hello_echo_manifest(digest_value(EXPORTS_COORDINATE, &exports));
-    let manifest_bytes = encode_canonical_cbor(&manifest).expect("encode pure-helper manifest");
-    let bundle =
-        decode_lawpack_bundle(&manifest_bytes, &exports_bytes).expect("load pure-helper lawpack");
+    );
+    replace_field(
+        &mut helper,
+        "costTemplate",
+        text("hello.echo@1.identityBudget"),
+    );
+    array_mut(field_mut(&mut exports, "pureFunctions")).push(helper);
+    exports
+}
+
+fn exact_u64_pure_helper_adapter() -> CanonicalValue {
+    let mut adapter = decode_canonical_cbor(ADAPTER_BYTES).expect("decode fixture adapter");
+    let budgets = field_mut(&mut adapter, "budgets");
+    replace_field(
+        budgets,
+        "hello.echo@1.smallCreateBudget",
+        map([
+            ("maxSteps", CanonicalValue::Integer(4096)),
+            ("maxAllocatedBytes", CanonicalValue::Integer(65536)),
+            ("maxOutputBytes", CanonicalValue::Integer(4096)),
+        ]),
+    );
+    insert_field(
+        budgets,
+        "hello.echo@1.identityBudget",
+        map([
+            ("maxSteps", CanonicalValue::Integer(16)),
+            ("maxAllocatedBytes", CanonicalValue::Integer(512)),
+            ("maxOutputBytes", CanonicalValue::Integer(64)),
+        ]),
+    );
+    adapter
+}
+
+fn exact_u64_pure_helper_application_with_source(
+    package: &str,
+    functions: &str,
+    expression: &str,
+) -> (
+    edict_syntax::CoreModule,
+    edict_syntax::TargetIrLoweringFacts,
+) {
+    let exports = exact_u64_pure_helper_exports();
+    let adapter = exact_u64_pure_helper_adapter();
+    let (bundle, adapter) = bundle_and_adapter(&exports, &adapter);
     let source = format!(
-        "package examples.pure_helper@1;\n\
+        "package {package};\n\
          use lawpack hello.echo@1 digest \"{}\" as hello;\n\
+         {functions}\n\
          type Input = {{ value: U64, }};\n\
          type Output = {{ value: U64, }};\n\
          intent apply(input: Input) returns Output\n\
            profile hello.createGreeting\n\
            basis none\n\
            budget <= hello.smallCreateBudget {{\n\
-           let value: U64 = hello.identityU64(input.value);\n\
+           let value: U64 = {expression};\n\
            return {{ value }};\n\
          }}",
         bundle.manifest_digest_review_string()
     );
     let module = parse_module(&source).expect("parse pure-helper application");
-    let adapter =
-        decode_lawpack_adapter(&bundle, "echo.dpo@1", ADAPTER_BYTES).expect("load adapter");
     let preparation = prepare_lawpack_compilation(&module, &bundle, &adapter)
         .expect("derive pure-helper compiler fact");
     let core = compile_to_core(&module, preparation.compiler_context())
@@ -1108,14 +1343,17 @@ fn target_lowering_requires_exact_lawpack_pure_helper_authority() {
     let control = lower_to_target_ir(&core, &facts);
 
     assert_eq!(control.status, TargetLoweringStatus::Lowered);
-    assert!(control.failures.is_empty());
+    assert_eq!(
+        control.failures,
+        Vec::<edict_syntax::TargetLoweringFailure>::new()
+    );
     assert!(control.artifact.is_some());
     assert_eq!(facts.pure_functions.len(), 1);
     let helper_fact = &facts.pure_functions[0];
     assert_eq!(helper_fact.coordinate(), "hello.echo@1.identityU64");
     assert_eq!(helper_fact.parameter_types(), ["U64"]);
     assert_eq!(helper_fact.return_type(), "U64");
-    assert!(helper_fact.type_parameters().is_empty());
+    assert_eq!(helper_fact.type_parameters(), Vec::<String>::new());
     assert_eq!(helper_fact.lawpack(), &core.imports[0].resource);
 
     let assert_rejects = |case: &str,
@@ -1177,6 +1415,96 @@ fn target_lowering_requires_exact_lawpack_pure_helper_authority() {
 }
 
 #[test]
+fn source_function_can_call_disjoint_import_in_its_own_package_namespace() {
+    for package in ["examples.pure_helper@1", "hello.echo@1"] {
+        let (core, facts) = exact_u64_pure_helper_application_with_source(
+            package,
+            "fn local(value: U64) -> U64 { return hello.identityU64(value); }",
+            "local(input.value)",
+        );
+        let target = lower_to_target_ir(&core, &facts);
+        assert_eq!(
+            target.status,
+            TargetLoweringStatus::Lowered,
+            "{package}: {target:?}"
+        );
+        assert!(target.artifact.is_some());
+        assert!(matches!(
+            &core.functions["local"].body.result,
+            CoreExpr::Call { callee, .. } if callee == "hello.echo@1.identityU64"
+        ));
+
+        let mut missing_facts = facts.clone();
+        missing_facts.pure_functions.clear();
+        let missing = lower_to_target_ir(&core, &missing_facts);
+        assert_eq!(
+            missing.status,
+            TargetLoweringStatus::Unsupported,
+            "{missing:?}"
+        );
+        assert!(missing.artifact.is_none());
+        assert!(missing.failures.iter().any(|failure| {
+            failure.kind == edict_syntax::TargetLoweringFailureKind::InvalidCoreIdentity
+        }));
+
+        let mut unknown = core;
+        let CoreExpr::Call { callee, .. } =
+            &mut unknown.functions.get_mut("local").unwrap().body.result
+        else {
+            panic!("imported helper call");
+        };
+        *callee = "hello.echo@1.unknownExport".to_owned();
+        let report = lower_to_target_ir(&unknown, &facts);
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Unsupported,
+            "{report:?}"
+        );
+        assert!(report.artifact.is_none());
+        assert!(report.failures.iter().any(|failure| {
+            failure.kind == edict_syntax::TargetLoweringFailureKind::InvalidCoreIdentity
+        }));
+    }
+}
+
+#[test]
+fn target_rejects_unused_source_function_colliding_with_imported_pure_fact() {
+    let (mut core, facts) =
+        exact_u64_pure_helper_application_with_source("hello.echo@1", "", "input.value");
+    assert_eq!(facts.pure_functions.len(), 1);
+    assert_eq!(
+        facts.pure_functions[0].coordinate(),
+        "hello.echo@1.identityU64"
+    );
+    let control = lower_to_target_ir(&core, &facts);
+    assert_eq!(control.status, TargetLoweringStatus::Lowered, "{control:?}");
+
+    let source = parse_module(
+        "package source.functions@1; fn identityU64(value: U64) -> U64 { return value; }",
+    )
+    .expect("parse an unused source-owned function");
+    let functions = compile_to_core(&source, &edict_syntax::CompilerContext::new())
+        .expect("compile the independent source-owned identity");
+    core.functions = functions.functions;
+    edict_syntax::validate_core_module_type_integrity(&core)
+        .expect("the collision is at the imported-authority boundary, not Core scope");
+
+    let report = lower_to_target_ir(&core, &facts);
+    assert_eq!(
+        report.status,
+        TargetLoweringStatus::Unsupported,
+        "{report:?}"
+    );
+    assert!(report.artifact.is_none());
+    assert_eq!(report.failures.len(), 1);
+    assert_eq!(
+        report.failures[0].kind,
+        edict_syntax::TargetLoweringFailureKind::InvalidCoreIdentity
+    );
+    assert_eq!(report.failures[0].intent, None);
+}
+
+#[test]
 fn exact_lawpack_exported_type_enters_pure_helper_signature_closure() {
     let exports = typed_helper_exports(true);
     let exports_bytes = encode_canonical_cbor(&exports).expect("encode typed helper exports");
@@ -1203,7 +1531,10 @@ fn exact_lawpack_exported_type_enters_pure_helper_signature_closure() {
     );
     let target = lower_to_target_ir(&core, preparation.target_ir_facts());
     assert_eq!(target.status, TargetLoweringStatus::Lowered);
-    assert!(target.failures.is_empty());
+    assert_eq!(
+        target.failures,
+        Vec::<edict_syntax::TargetLoweringFailure>::new()
+    );
     assert!(target.artifact.is_some());
 
     let missing_type_exports = typed_helper_exports(false);
@@ -1354,7 +1685,10 @@ fn inline_structural_record_pure_helper_signature_lowers() {
         "{:?}",
         target.failures
     );
-    assert!(target.failures.is_empty());
+    assert_eq!(
+        target.failures,
+        Vec::<edict_syntax::TargetLoweringFailure>::new()
+    );
     assert!(target.artifact.is_some());
     assert!(
         !core
@@ -1376,7 +1710,10 @@ fn inline_structural_record_effect_signature_lowers() {
         "{:?}",
         target.failures
     );
-    assert!(target.failures.is_empty());
+    assert_eq!(
+        target.failures,
+        Vec::<edict_syntax::TargetLoweringFailure>::new()
+    );
     assert!(target.artifact.is_some());
     assert!(
         !core
@@ -2286,6 +2623,127 @@ fn edict_pure_helper_call_graph_depth_is_bounded() {
 }
 
 #[test]
+fn edict_pure_helper_call_graph_depth_is_independent_of_root_order() {
+    let mut observed = Vec::new();
+    let mut expected = Vec::new();
+    for count in [128, 129] {
+        for shallow_first in [false, true] {
+            for reverse_exports in [false, true] {
+                // Coordinate order, not export insertion order, selects DFS roots.
+                let coordinates = (0..count)
+                    .map(|index| {
+                        let key = if shallow_first {
+                            count - 1 - index
+                        } else {
+                            index
+                        };
+                        format!("hello.echo@1.depth{key:03}")
+                    })
+                    .collect::<Vec<_>>();
+                let mut functions = pure_helper_chain(&coordinates);
+                if reverse_exports {
+                    functions.reverse();
+                }
+                observed.push((
+                    count,
+                    shallow_first,
+                    reverse_exports,
+                    pure_helper_graph_outcome(functions),
+                ));
+                expected.push((
+                    count,
+                    shallow_first,
+                    reverse_exports,
+                    if count == 128 {
+                        Ok(())
+                    } else {
+                        Err(vec![LawpackValidationFailureKind::InvalidPureFunctionBody])
+                    },
+                ));
+            }
+        }
+    }
+    assert_eq!(observed, expected);
+}
+
+#[test]
+fn edict_pure_helper_call_graph_depth_includes_shared_suffixes() {
+    let mut observed = Vec::new();
+    let mut expected = Vec::new();
+    for height in [128, 129] {
+        for shallow_first in [false, true] {
+            for reverse_exports in [false, true] {
+                // The root calls a two-helper suffix directly and through a long
+                // prefix. Rename the same graph to visit either edge first.
+                let coordinates = (0..height)
+                    .map(|index| {
+                        let key = if !shallow_first || index == 0 {
+                            index
+                        } else if index >= height - 2 {
+                            index - (height - 3)
+                        } else {
+                            index + 2
+                        };
+                        format!("hello.echo@1.shared{key:03}")
+                    })
+                    .collect::<Vec<_>>();
+                let mut functions = pure_helper_chain(&coordinates);
+                let block = field_mut(field_mut(&mut functions[0], "body"), "body");
+                let binding = local_ref("local:0", "shortPath", "U64");
+                *field_mut(block, "locals") = CanonicalValue::Array(vec![binding.clone()]);
+                *field_mut(block, "bindings") = CanonicalValue::Array(vec![map([
+                    ("kind", text("let")),
+                    ("binding", binding),
+                    ("value", pure_helper_call(&coordinates[height - 2])),
+                ])]);
+                if reverse_exports {
+                    functions.reverse();
+                }
+                observed.push((
+                    height,
+                    shallow_first,
+                    reverse_exports,
+                    pure_helper_graph_outcome(functions),
+                ));
+                expected.push((
+                    height,
+                    shallow_first,
+                    reverse_exports,
+                    if height == 128 {
+                        Ok(())
+                    } else {
+                        Err(vec![LawpackValidationFailureKind::InvalidPureFunctionBody])
+                    },
+                ));
+            }
+        }
+    }
+    assert_eq!(observed, expected);
+}
+
+#[test]
+fn edict_pure_helper_call_graph_depth_is_not_total_helper_count() {
+    let functions = (0..129)
+        .map(|index| {
+            pure_function_with_types(
+                &format!("hello.echo@1.independent{index:03}"),
+                &[],
+                "U64",
+                "edict",
+                (
+                    "body",
+                    pure_body(
+                        Vec::new(),
+                        map([("kind", text("const")), ("value", core_u64(0))]),
+                    ),
+                ),
+            )
+        })
+        .collect();
+    assert_eq!(pure_helper_graph_outcome(functions), Ok(()));
+}
+
+#[test]
 fn edict_pure_helper_call_graph_must_be_acyclic() {
     for (coordinates, callees) in [
         (
@@ -2925,6 +3383,48 @@ fn pure_body(params: Vec<CanonicalValue>, result: CanonicalValue) -> CanonicalVa
     ])
 }
 
+fn pure_helper_call(coordinate: &str) -> CanonicalValue {
+    map([
+        ("kind", text("call")),
+        ("callee", text(coordinate)),
+        ("typeArgs", CanonicalValue::Array(Vec::new())),
+        ("args", CanonicalValue::Array(Vec::new())),
+    ])
+}
+
+fn pure_helper_chain(coordinates: &[String]) -> Vec<CanonicalValue> {
+    coordinates
+        .iter()
+        .enumerate()
+        .map(|(index, coordinate)| {
+            let result = coordinates.get(index + 1).map_or_else(
+                || map([("kind", text("const")), ("value", core_u64(0))]),
+                |callee| pure_helper_call(callee),
+            );
+            pure_function_with_types(
+                coordinate,
+                &[],
+                "U64",
+                "edict",
+                ("body", pure_body(Vec::new(), result)),
+            )
+        })
+        .collect()
+}
+
+fn pure_helper_graph_outcome(
+    functions: Vec<CanonicalValue>,
+) -> Result<(), Vec<LawpackValidationFailureKind>> {
+    let mut exports = hello_echo_exports();
+    array_mut(field_mut(&mut exports, "pureFunctions")).extend(functions);
+    let exports_bytes = encode_canonical_cbor(&exports).expect("encode helper graph");
+    let manifest = hello_echo_manifest(digest_value(EXPORTS_COORDINATE, &exports));
+    let manifest_bytes = encode_canonical_cbor(&manifest).expect("encode helper graph manifest");
+    decode_lawpack_bundle(&manifest_bytes, &exports_bytes)
+        .map(|_| ())
+        .map_err(|failures| failure_kinds(&failures))
+}
+
 fn core_u64(value: i128) -> CanonicalValue {
     map([
         ("kind", text("int")),
@@ -3082,4 +3582,251 @@ fn map_mut(value: &mut CanonicalValue) -> &mut Vec<(CanonicalValue, CanonicalVal
         panic!("fixture map");
     };
     entries
+}
+
+#[test]
+fn effect_inputs_use_authenticated_contextual_types() {
+    for (input_type, control_arg, literal_arg) in [
+        ("U64", "input", "1"),
+        ("Record<value:U64>", "{ value: input, }", "{ value: 1, }"),
+    ] {
+        let mut exports = hello_echo_exports();
+        let effect = first_array_item_mut(field_mut(&mut exports, "effects"));
+        replace_field(effect, "inputType", text(input_type));
+        replace_field(effect, "outputType", text("U64"));
+        let (bundle, adapter) = bundle_and_adapter(
+            &exports,
+            &decode_canonical_cbor(ADAPTER_BYTES).expect("decode adapter"),
+        );
+        let source = format!(
+            "package examples.literal_effect@1;\nuse lawpack hello.echo@1 digest \"{}\" as hello;\nintent apply(input: U64) returns U64\n profile hello.createGreeting\n basis none\n budget <= hello.smallCreateBudget {{\n let receipt: U64 = hello.createGreeting({control_arg})\n else {{ alreadyExists(existing) => hello.AlreadyExists }};\n return receipt;\n}}",
+            bundle.manifest_digest_review_string()
+        );
+        let compile = |source: &str| {
+            let module = parse_module(source).expect("contextual source parses");
+            let prepared = prepare_lawpack_compilation(&module, &bundle, &adapter)
+                .expect("authenticate contextual signature");
+            compile_to_core(&module, prepared.compiler_context())
+        };
+        compile(&source).expect("typed input control compiles");
+        let literal = source.replace(
+            &format!("hello.createGreeting({control_arg})"),
+            &format!("hello.createGreeting({literal_arg})"),
+        );
+        compile(&literal).expect("signature supplies integer literal context");
+        let mapping = "\n else { alreadyExists(existing) => hello.AlreadyExists }";
+        assert_eq!(literal.matches(mapping).count(), 1);
+        let bare = literal.replace(mapping, "");
+        let errors = compile(&bare).expect_err("valid bare effect still needs mapping");
+        assert_eq!(
+            errors[0].kind,
+            CompilerErrorKind::EffectWithoutFailureMapping
+        );
+    }
+}
+
+#[test]
+fn effect_comparison_literals_follow_exported_numeric_output() {
+    for (width, valid, invalid) in [("U64", "1", "-1"), ("I64", "-1", "9223372036854775808")] {
+        let mut exports = hello_echo_exports();
+        let effect = first_array_item_mut(field_mut(&mut exports, "effects"));
+        replace_field(effect, "inputType", text("U64"));
+        replace_field(effect, "outputType", text(width));
+        let (bundle, adapter) = bundle_and_adapter(
+            &exports,
+            &decode_canonical_cbor(ADAPTER_BYTES).expect("adapter"),
+        );
+        let base = format!("package examples.numeric_compare@1;\nuse lawpack hello.echo@1 digest \"{}\" as hello;\nintent apply(input: U64) returns {width}\n profile hello.createGreeting\n basis none\n budget <= hello.smallCreateBudget {{\n let receipt: {width} = hello.createGreeting(input)\n else {{ alreadyExists(existing) => hello.AlreadyExists }};\n require receipt == {valid} else hello.AlreadyExists;\n return receipt;\n}}", bundle.manifest_digest_review_string());
+        let compile = |source: &str| {
+            let module = parse_module(source).expect("numeric comparison source");
+            let prepared =
+                prepare_lawpack_compilation(&module, &bundle, &adapter).expect("numeric signature");
+            compile_to_core(&module, prepared.compiler_context())
+        };
+        compile(&base).expect("mapped numeric comparison control compiles");
+        for (literal, expected) in [
+            (valid, CompilerErrorKind::EffectWithoutFailureMapping),
+            (invalid, CompilerErrorKind::TypeMismatch),
+        ] {
+            for comparison in [
+                format!("hello.createGreeting(input) == {literal}"),
+                format!("{literal} == hello.createGreeting(input)"),
+            ] {
+                let source = base.replace(&format!("receipt == {valid}"), &comparison);
+                let errors = compile(&source).expect_err("bare effect or bad literal rejects");
+                assert_eq!(
+                    errors[0].kind, expected,
+                    "{width}: {comparison}: {errors:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn authenticated_empty_effect_surface_is_not_missing_information() {
+    let (exports, adapter) = request_only_adapter(Some("hello.echo@1.smallCreateBudget"), true);
+    let (bundle, adapter) = bundle_and_adapter(&exports, &adapter);
+    let source = CREATE_GREETING_SOURCE.replace(
+        MANIFEST_DIGEST.trim(),
+        &bundle.manifest_digest_review_string(),
+    );
+    let module = parse_module(&source).expect("empty-surface fixture parses");
+    let prepared = prepare_lawpack_compilation(&module, &bundle, &adapter)
+        .expect("authenticate empty effect surface");
+    let errors = compile_to_core(&module, prepared.compiler_context())
+        .expect_err("requested effect is not exported");
+    assert_eq!(errors[0].kind, CompilerErrorKind::MissingContextFact);
+    assert!(errors[0]
+        .message
+        .contains("no authenticated effect exports"));
+    assert!(!errors[0]
+        .message
+        .contains("missing authenticated effect export information"));
+}
+
+#[test]
+fn failure_guidance_names_only_domain_mappable_coordinates() {
+    for class in [
+        "participantOwned",
+        "integrityFault",
+        "resourceFault",
+        "internalFault",
+    ] {
+        let mut exports = hello_echo_exports();
+        let effect = first_array_item_mut(field_mut(&mut exports, "effects"));
+        let failure = first_map_value_mut(field_mut(effect, "effectFailures"));
+        replace_field(failure, "authorityClass", text(class));
+        let obstruction = first_array_item_mut(field_mut(&mut exports, "obstructions"));
+        replace_field(obstruction, "authorityClass", text(class));
+        let (bundle, adapter) = bundle_and_adapter(
+            &exports,
+            &decode_canonical_cbor(ADAPTER_BYTES).expect("adapter bytes"),
+        );
+        let source = CREATE_GREETING_SOURCE.replace(
+            MANIFEST_DIGEST.trim(),
+            &bundle.manifest_digest_review_string(),
+        );
+        let mapping = "\n    else { alreadyExists(existing) => hello.AlreadyExists }";
+        assert_eq!(source.matches(mapping).count(), 1);
+        let bare = source.replace(mapping, "");
+        let module = parse_module(&bare).expect("non-domain source parses");
+        let prepared = prepare_lawpack_compilation(&module, &bundle, &adapter)
+            .expect("authenticate failure authority");
+        let errors = compile_to_core(&module, prepared.compiler_context())
+            .expect_err("no-map bindings remain unsupported");
+        assert_eq!(
+            errors[0].kind,
+            CompilerErrorKind::EffectWithoutFailureMapping
+        );
+        assert!(
+            errors[0].message.contains("no domain-mappable failures"),
+            "{class}: {errors:?}"
+        );
+        assert!(!errors[0]
+            .message
+            .contains("declared failures: alreadyExists"));
+        assert!(!errors[0].message.contains("with `else`"));
+    }
+}
+
+#[test]
+fn mixed_authority_failure_guidance_labels_only_mappable_names() {
+    for class in [
+        "participantOwned",
+        "integrityFault",
+        "resourceFault",
+        "internalFault",
+    ] {
+        let mut exports = hello_echo_exports();
+        let effect = first_array_item_mut(field_mut(&mut exports, "effects"));
+        let failures = field_mut(effect, "effectFailures");
+        let mut extra = first_map_value_mut(failures).clone();
+        replace_field(&mut extra, "authorityClass", text(class));
+        map_mut(failures).push((text("platformFailure"), extra));
+        let mut adapter = decode_canonical_cbor(ADAPTER_BYTES).expect("adapter");
+        let implementation = first_map_value_mut(field_mut(&mut adapter, "effectImplementations"));
+        let mappings = field_mut(implementation, "failureMappings");
+        let CanonicalValue::Text(original_target) = first_map_value_mut(mappings) else {
+            panic!("target coordinate")
+        };
+        let target = format!("{original_target}.platform");
+        map_mut(mappings).push((text("platformFailure"), text(&target)));
+        let (bundle, adapter) = bundle_and_adapter(&exports, &adapter);
+        let source = CREATE_GREETING_SOURCE.replace(
+            MANIFEST_DIGEST.trim(),
+            &bundle.manifest_digest_review_string(),
+        );
+        let mapping = "\n    else { alreadyExists(existing) => hello.AlreadyExists }";
+        assert_eq!(source.matches(mapping).count(), 1);
+        let bare = source.replace(mapping, "");
+        let module = parse_module(&bare).expect("mixed-authority source");
+        let prepared = prepare_lawpack_compilation(&module, &bundle, &adapter)
+            .expect("authenticate mixed failures");
+        let errors = compile_to_core(&module, prepared.compiler_context())
+            .expect_err("bare binding needs map");
+        assert_eq!(
+            errors[0].kind,
+            CompilerErrorKind::EffectWithoutFailureMapping
+        );
+        assert!(errors[0].message.contains("alreadyExists"));
+        assert!(!errors[0].message.contains("platformFailure"));
+        assert!(errors[0].message.contains("domain-mappable failures:"));
+    }
+}
+
+#[test]
+fn linked_modules_prepare_each_authenticated_lawpack_alias() {
+    use edict_syntax::source_closure::{
+        resolve_source_closure, source_module_digest, SourceClosureLimits,
+    };
+    use edict_syntax::source_linker::link_source_closure;
+    let mut exports = typed_helper_exports(true);
+    // The operation budget must contain the helper's separate cost allowance.
+    for helper in array_mut(field_mut(&mut exports, "pureFunctions")) {
+        replace_field(helper, "costTemplate", text("hello.echo@1.identityBudget"));
+    }
+    let adapter_value = exact_u64_pure_helper_adapter();
+    let (bundle, adapter) = bundle_and_adapter(&exports, &adapter_value);
+    let digest = bundle.manifest_digest_review_string();
+    let library = format!("package library.keys@1; use lawpack hello.echo@1 digest \"{digest}\" as local; fn identity(value: local.GreetingKey) -> local.GreetingKey {{ return local.identityKey(value); }}");
+    let pin = source_module_digest(&library).expect("module pin");
+    let source = typed_helper_source(&bundle)
+        .replacen(
+            "type Input",
+            &format!("use module library.keys@1 digest \"{pin}\" as keys; type Input"),
+            1,
+        )
+        .replace(
+            "hello.identityKey(input.value)",
+            "keys.identity(input.value)",
+        );
+    let closure = resolve_source_closure(&source, &[&library], SourceClosureLimits::default())
+        .expect("closure");
+    let linked = link_source_closure(&closure).expect("link");
+    let preparation = prepare_lawpack_compilation(linked.module(), &bundle, &adapter)
+        .expect("all linked aliases prepare");
+    let core = linked
+        .compile(preparation.compiler_context())
+        .expect("compile imported helper and type");
+    let target = lower_to_target_ir(&core, preparation.target_ir_facts());
+    assert_eq!(target.status, TargetLoweringStatus::Lowered, "{target:?}");
+    assert_eq!(
+        preparation.target_ir_facts().pure_functions.len(),
+        bundle.exports().pure_functions.len(),
+        "canonical helper facts must not duplicate per alias"
+    );
+    // A matching first import must never hide a substituted later import.
+    let mut substituted = linked.module().clone();
+    substituted
+        .imports
+        .last_mut()
+        .expect("library import")
+        .digest = Some(format!("sha256:{}", "0".repeat(64)));
+    let errors = prepare_lawpack_compilation(&substituted, &bundle, &adapter)
+        .expect_err("authenticate every alias");
+    assert_eq!(
+        adapter_failure_kinds(&errors),
+        vec![LawpackAdapterFailureKind::SourceImportMismatch]
+    );
 }

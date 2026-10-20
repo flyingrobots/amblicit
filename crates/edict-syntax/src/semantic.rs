@@ -81,6 +81,23 @@ pub fn validate_surface(module: &Module) -> Result<(), Vec<SemanticError>> {
         match decl {
             Decl::Type(decl) => validate_type_expr(&decl.body, decl.span, &mut errors),
             Decl::Enum(_) => {}
+            Decl::Function(function) => {
+                if PRELUDE_NAMES.contains(&function.name.as_str()) {
+                    errors.push(error(
+                        SemanticErrorKind::ShadowedName,
+                        "function shadows a prelude name",
+                        function.span,
+                    ));
+                }
+                let mut names = NameEnv::new(protected_names.clone());
+                names.push_scope();
+                for param in &function.params {
+                    names.bind(&param.name, param.span, &mut errors);
+                    validate_type_ref(&param.ty, param.span, &mut errors);
+                }
+                validate_type_ref(&function.returns, function.span, &mut errors);
+                validate_block(&function.body, &mut names, &mut errors);
+            }
             Decl::Intent(intent) => {
                 let mut names = NameEnv::new(protected_names.clone());
                 validate_intent(intent, &mut names, &mut errors);
@@ -114,6 +131,7 @@ fn collect_module_names(module: &Module, errors: &mut Vec<SemanticError>) -> BTr
         match decl {
             Decl::Type(decl) => record_module_name(&mut names, &decl.name, decl.span, errors),
             Decl::Enum(decl) => record_module_name(&mut names, &decl.name, decl.span, errors),
+            Decl::Function(decl) => record_module_name(&mut names, &decl.name, decl.span, errors),
             Decl::Intent(decl) => record_module_name(&mut names, &decl.name, decl.span, errors),
         }
     }
@@ -142,6 +160,7 @@ fn protected_names(module_names: &BTreeSet<String>) -> BTreeSet<String> {
 }
 
 const PRELUDE_NAMES: &[&str] = &[
+    "Bool",
     "Bytes",
     "CapabilityRef",
     "I32",
@@ -155,8 +174,10 @@ const PRELUDE_NAMES: &[&str] = &[
     "digest",
     "false",
     "hash",
+    "isUtf8",
     "len",
     "none",
+    "slice",
     "some",
     "true",
 ];
@@ -499,6 +520,7 @@ fn validate_expr(expr: &Expr, names: &mut NameEnv, errors: &mut Vec<SemanticErro
         Expr::Ident { .. }
         | Expr::Int { .. }
         | Expr::Str { .. }
+        | Expr::Bytes { .. }
         | Expr::Bool { .. }
         | Expr::Digest { .. } => {}
         Expr::Field { base, .. } | Expr::Unary { operand: base, .. } => {

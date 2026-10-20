@@ -61,6 +61,8 @@ cargo xtask verify
   reference, request-only profile, and canonical manifest-validation boundary.
 - [Lowerability](./lowerability/README.md): typed v1 lowering requirements,
   target-profile facts, and direct-only support classification.
+- [Numeric Foundation](./numeric-foundation/README.md): checked Bunny Q32.32
+  arithmetic for compiler consumers, with explicit source and artifact limits.
 - [Obstruction Strands](./obstruction-strands/README.md): current terminal and
   preserved-obstruction source/Core boundary plus planned Target IR/runtime
   verification ledger.

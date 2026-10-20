@@ -158,7 +158,10 @@ fn echo_and_kv_bundles_validate_with_the_same_runtime_neutral_contract() {
         let report = validate_contract_bundle_manifest(&bundle);
 
         assert_eq!(report.status, ContractBundleValidationStatus::Valid);
-        assert!(report.failures.is_empty());
+        assert_eq!(
+            report.failures,
+            [] as [edict_syntax::ContractBundleValidationFailure; 0]
+        );
     }
 }
 
@@ -262,7 +265,10 @@ fn optional_artifact_lists_may_be_empty() {
     let report = validate_contract_bundle_manifest(&bundle);
 
     assert_eq!(report.status, ContractBundleValidationStatus::Valid);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        [] as [edict_syntax::ContractBundleValidationFailure; 0]
+    );
 }
 
 #[test]
@@ -341,7 +347,10 @@ fn external_assurance_evidence_is_optional() {
     let report = validate_contract_bundle_manifest(&bundle);
 
     assert_eq!(report.status, ContractBundleValidationStatus::Valid);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        [] as [edict_syntax::ContractBundleValidationFailure; 0]
+    );
 }
 
 #[test]
@@ -561,7 +570,10 @@ mod contract_bundle_assembly {
     fn assert_valid(manifest: &edict_syntax::ContractBundleManifest) {
         let report = edict_syntax::validate_contract_bundle_manifest(manifest);
         assert_eq!(report.status, ContractBundleValidationStatus::Valid);
-        assert!(report.failures.is_empty());
+        assert_eq!(
+            report.failures,
+            [] as [edict_syntax::ContractBundleValidationFailure; 0]
+        );
     }
 
     fn assert_semantic_mutation_changes(
@@ -1120,7 +1132,10 @@ mod contract_bundle_assembly {
     #[test]
     fn assembled_bundle_rejects_inserted_admission_artifacts() {
         let mut manifest = assembled(assembly_input());
-        assert!(manifest.admission_artifacts.is_empty());
+        assert_eq!(
+            manifest.admission_artifacts,
+            [] as [edict_syntax::ResourceRef; 0]
+        );
 
         manifest
             .admission_artifacts

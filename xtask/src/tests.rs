@@ -149,6 +149,7 @@ fn assert_provider_contract_manifest_metadata(manifest: &Value) {
             ("lawpack-manifest", "lawpack-manifest"),
             ("lowering-requirements", "lowering-requirements"),
             ("result-projection", "result-projection"),
+            ("source-closure", "source-closure"),
             ("target-ir-artifact", "target-ir-artifact"),
             ("target-profile-intrinsics", "intrinsics-document"),
             ("target-profile-manifest", "target-profile-manifest"),
@@ -185,6 +186,7 @@ fn assert_provider_contract_manifest_metadata(manifest: &Value) {
                 edict_syntax::RESULT_PROJECTION_DIGEST_DOMAIN,
                 "result-projection"
             ),
+            ("edict.source-closure/v1", "source-closure"),
             (TARGET_IR_ARTIFACT_DIGEST_DOMAIN, "target-ir-artifact"),
             (TARGET_PROFILE_API_VERSION, "target-profile-manifest"),
         ]
@@ -291,6 +293,7 @@ fn provider_contract_pack_check_rejects_drift_without_rewriting() {
         "docs/abi/edict-authority-facts.cddl",
         "docs/abi/edict-result-projection.cddl",
         "docs/abi/edict-target-ir.cddl",
+        "docs/abi/edict-source-closure.cddl",
     ] {
         let destination = root.join(relative);
         fs::create_dir_all(destination.parent().expect("contract source parent"))
@@ -2003,17 +2006,17 @@ fn workspace_msrv_matches_the_ci_toolchain() {
             checked_members += 1;
             assert_eq!(
                 package["rust_version"].as_str(),
-                Some("1.94"),
-                "workspace package {} must inherit Rust 1.94",
+                Some("1.96"),
+                "workspace package {} must inherit Rust 1.96",
                 package["name"].as_str().expect("package name")
             );
         }
     }
     assert_eq!(checked_members, workspace_members.len());
     assert!(
-        workflow.contains("rust-version: \"1.94.0\"")
-            && workflow.contains("rust-label: \"msrv 1.94.0\""),
-        "CI must exercise the exact Rust 1.94.0 MSRV"
+        workflow.contains("rust-version: \"1.96.0\"")
+            && workflow.contains("rust-label: \"msrv 1.96.0\""),
+        "CI must exercise the exact Rust 1.96.0 MSRV"
     );
 }
 
@@ -3082,7 +3085,10 @@ fn release_date_reconciliation_reports_internally_consistent_wrong_dates() {
             ),
         ]
     );
-    assert!(report.gaps.is_empty());
+    assert_eq!(
+        report.gaps,
+        Vec::<crate::release_dates::ReleaseDateFinding>::new()
+    );
 }
 
 #[test]
@@ -3140,7 +3146,10 @@ fn release_date_reconciliation_rejects_lightweight_release_tags() {
     assert_eq!(finding.tag, "v0.8.0-alpha.1");
     assert_eq!(finding.expected.as_deref(), Some("annotated"));
     assert_eq!(finding.actual.as_deref(), Some("lightweight"));
-    assert!(report.gaps.is_empty());
+    assert_eq!(
+        report.gaps,
+        Vec::<crate::release_dates::ReleaseDateFinding>::new()
+    );
 }
 
 /// A tag exists before the post-publication change flips its block from `prep`
@@ -3161,7 +3170,10 @@ fn release_date_reconciliation_tolerates_prep_status_for_a_fresh_tag() {
     let notes = BTreeMap::from([("v0.12.0-alpha.1".to_owned(), Some("2026-08-04".to_owned()))]);
 
     let report = crate::release_dates::reconcile_release_dates(&tags, policy, changelog, &notes);
-    assert!(report.drift.is_empty());
+    assert_eq!(
+        report.drift,
+        Vec::<crate::release_dates::ReleaseDateFinding>::new()
+    );
     assert_eq!(report.gaps.len(), 1);
     let finding = &report.gaps[0];
     assert_eq!(finding.kind, ReleaseDateFindingKind::AwaitingPublication);
@@ -3197,7 +3209,10 @@ fn release_date_reconciliation_fails_when_a_covered_surface_disappears() {
             Surface::ReleaseNotesFile
         ]
     );
-    assert!(report.gaps.is_empty());
+    assert_eq!(
+        report.gaps,
+        Vec::<crate::release_dates::ReleaseDateFinding>::new()
+    );
 }
 
 /// The one release that predates the structured policy stays advisory.
@@ -3211,7 +3226,10 @@ fn release_date_reconciliation_allowlists_the_prepolicy_release() {
         "# Changelog\n\n## [v0.1.0-alpha.1] - 2026-06-21\n",
         &notes,
     );
-    assert!(report.drift.is_empty());
+    assert_eq!(
+        report.drift,
+        Vec::<crate::release_dates::ReleaseDateFinding>::new()
+    );
     assert_eq!(report.gaps.len(), 1);
     let finding = &report.gaps[0];
     assert_eq!(finding.kind, ReleaseDateFindingKind::MissingSurface);
@@ -3278,7 +3296,10 @@ fn release_date_findings_identify_policy_errors_without_prose() {
             ),
         ]
     );
-    assert!(report.gaps.is_empty());
+    assert_eq!(
+        report.gaps,
+        Vec::<crate::release_dates::ReleaseDateFinding>::new()
+    );
 }
 
 #[test]
@@ -3299,7 +3320,10 @@ fn release_date_findings_identify_missing_tagger_date() {
     assert_eq!(finding.tag, "v0.8.0-alpha.1");
     assert_eq!(finding.expected, None);
     assert_eq!(finding.actual, None);
-    assert!(report.gaps.is_empty());
+    assert_eq!(
+        report.gaps,
+        Vec::<crate::release_dates::ReleaseDateFinding>::new()
+    );
 }
 
 fn annotated_tag(date: &str) -> crate::release_dates::TagRecord {
@@ -4450,7 +4474,10 @@ fn release_date_reconciliation_rejects_missing_published_tags() {
         assert_eq!(&finding.tag, removed);
         assert_eq!(finding.expected, None);
         assert_eq!(finding.actual, None);
-        assert!(report.gaps.is_empty());
+        assert_eq!(
+            report.gaps,
+            Vec::<crate::release_dates::ReleaseDateFinding>::new()
+        );
     }
 }
 
@@ -4466,7 +4493,10 @@ fn release_date_reconciliation_allows_untagged_preparation() {
             &BTreeMap::new(),
         );
         assert!(report.drift.is_empty(), "{status}: {:?}", report.drift);
-        assert!(report.gaps.is_empty());
+        assert_eq!(
+            report.gaps,
+            Vec::<crate::release_dates::ReleaseDateFinding>::new()
+        );
     }
 }
 
@@ -4497,7 +4527,10 @@ fn release_policy_list_presence_requires_actual_assignments() {
             })
             .collect();
         assert_eq!(fields, vec![Surface::PolicyScope, Surface::PolicyNonGoals]);
-        assert!(report.gaps.is_empty());
+        assert_eq!(
+            report.gaps,
+            Vec::<crate::release_dates::ReleaseDateFinding>::new()
+        );
     }
 }
 

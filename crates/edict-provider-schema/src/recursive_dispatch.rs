@@ -541,7 +541,53 @@ fn required_text_literals<'a>(
     node: &'a Node,
     rules: &'a RulesByName,
 ) -> Option<Vec<(&'a str, &'a str)>> {
-    let Node::Map(map) = terminal_node(node, rules)? else {
+    required_text_literals_cached(node, rules, 0, &mut BTreeMap::new())
+}
+
+type DiscriminatorLiterals<'a> = Vec<(&'a str, &'a str)>;
+type DiscriminatorCache<'a> = BTreeMap<(&'a str, usize), Option<DiscriminatorLiterals<'a>>>;
+
+fn required_text_literals_cached<'a>(
+    node: &'a Node,
+    rules: &'a RulesByName,
+    depth: usize,
+    cache: &mut DiscriminatorCache<'a>,
+) -> Option<DiscriminatorLiterals<'a>> {
+    if depth > PROVIDER_SCHEMA_VALIDATION_MAX_NESTING_DEPTH {
+        return None;
+    }
+    if let Node::Rule(rule) = node {
+        if !rule.generic_args.is_empty() {
+            return None;
+        }
+        let key = (rule.name.as_str(), depth);
+        if let Some(literals) = cache.get(&key) {
+            return literals.clone();
+        }
+        let literals = required_text_literals_at_depth(node, rules, depth, cache);
+        cache.insert(key, literals.clone());
+        return literals;
+    }
+    required_text_literals_at_depth(node, rules, depth, cache)
+}
+
+fn required_text_literals_at_depth<'a>(
+    node: &'a Node,
+    rules: &'a RulesByName,
+    depth: usize,
+    cache: &mut DiscriminatorCache<'a>,
+) -> Option<DiscriminatorLiterals<'a>> {
+    let node = terminal_node(node, rules)?;
+    if let Node::Choice(choice) = node {
+        let (first, rest) = choice.options.split_first()?;
+        let mut shared = required_text_literals_cached(first, rules, depth + 1, cache)?;
+        for option in rest {
+            let required = required_text_literals_cached(option, rules, depth + 1, cache)?;
+            shared.retain(|literal| required.contains(literal));
+        }
+        return Some(shared);
+    }
+    let Node::Map(map) = node else {
         return Some(Vec::new());
     };
     let mut literals = Vec::new();
@@ -1100,6 +1146,27 @@ fn contains_rule_reference(node: &Node) -> bool {
 mod tests {
     use super::*;
     use cddl_cat::flatten::flatten_from_str;
+
+    #[test]
+    fn shared_discriminator_rules_do_not_expand_exponentially() {
+        use std::fmt::Write;
+
+        const LAYERS: usize = 40;
+        let mut schema = format!("layer{LAYERS} = {{kind: \"leaf\"}}\n");
+        for index in 0..LAYERS {
+            let next = index + 1;
+            writeln!(schema, "layer{index} = layer{next} / layer{next}").expect("write schema");
+        }
+        let rules = flatten_from_str(&schema).expect("shared schema compiles");
+        let mut cache = BTreeMap::new();
+        let required = required_text_literals_cached(&rules["layer0"].node, &rules, 0, &mut cache);
+        assert_eq!(required, Some(vec![("kind", "leaf")]));
+        assert_eq!(
+            cache.len(),
+            LAYERS,
+            "each shared rule/depth pair is computed once"
+        );
+    }
 
     const TAGGED_RECURSION: &str = r#"
         root = leaf / left / right

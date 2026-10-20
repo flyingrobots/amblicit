@@ -666,6 +666,45 @@ fn checked_target_ir_root_constructs_through_required_key_dispatch() {
 }
 
 #[test]
+fn nested_tagged_families_keep_required_key_dispatch_bounded_and_exact() {
+    let schema = br#"
+generated-artifact = phased / ordered
+phased = phased-closed / phased-legacy
+ordered = ordered-closed / ordered-legacy
+phased-closed = {kind: "phased", closure: uint, ? child: generated-artifact}
+phased-legacy = {kind: "phased", value: uint, ? child: generated-artifact}
+ordered-closed = {kind: "ordered", closure: uint, order: [* uint], ? child: generated-artifact}
+ordered-legacy = {kind: "ordered", value: uint, order: [* uint], ? child: generated-artifact}
+"#;
+    let registry = registry_with_generated_schema(schema).expect("nested families compile");
+    let phased = map(&[
+        ("kind", CanonicalValue::Text("phased".to_owned())),
+        ("value", CanonicalValue::Integer(1)),
+    ]);
+    let ordered = map(&[
+        ("kind", CanonicalValue::Text("ordered".to_owned())),
+        ("closure", CanonicalValue::Integer(1)),
+        ("order", CanonicalValue::Array(Vec::new())),
+        ("child", phased.clone()),
+    ]);
+    for value in [phased, ordered] {
+        registry
+            .validate_canonical_value("runtime.generated-artifact/v1", &value)
+            .expect("valid selected family");
+    }
+    for kind in ["ordered", "unknown"] {
+        let missing_order = map(&[
+            ("kind", CanonicalValue::Text(kind.to_owned())),
+            ("value", CanonicalValue::Integer(1)),
+        ]);
+        assert_eq!(
+            registry.validate_canonical_value("runtime.generated-artifact/v1", &missing_order),
+            Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+        );
+    }
+}
+
+#[test]
 fn recursive_map_discriminator_dispatch_rejects_invalid_discriminators() {
     let registry = registry_with_generated_schema(DISCRIMINATED_RECURSIVE_SCHEMA)
         .expect("distinct singleton map discriminators must admit bounded dispatch");

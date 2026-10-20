@@ -17,8 +17,8 @@ use crate::compiler::{
 };
 use crate::core_ir::{CoreBudget, ResourceRef};
 use crate::lawpack::{
-    LawpackExecutionClass, LawpackResourceRef, LawpackSemanticEffect, LawpackTargetAdapter,
-    ValidatedLawpackBundle,
+    LawpackAuthorityClass, LawpackExecutionClass, LawpackResourceRef, LawpackSemanticEffect,
+    LawpackTargetAdapter, ValidatedLawpackBundle, LAWPACK_API_VERSION,
 };
 use crate::lowerability::WriteClass;
 use crate::target_ir::{
@@ -211,14 +211,15 @@ pub fn decode_lawpack_adapter(
 ///
 /// # Errors
 ///
-/// Returns `SourceImportMismatch` unless the module contains exactly one
-/// matching digest-locked lawpack import.
+/// Returns `SourceImportMismatch` unless the module contains at least one
+/// matching lawpack import and every such import has the exact manifest digest
+/// and a distinct alias. All aliases receive the same authenticated facts.
 pub fn prepare_lawpack_compilation(
     module: &Module,
     bundle: &ValidatedLawpackBundle,
     adapter: &ValidatedLawpackAdapter,
 ) -> Result<PreparedLawpackCompilation, Vec<LawpackAdapterFailure>> {
-    let alias = matching_import_alias(module, bundle)?;
+    let aliases = matching_import_aliases(module, bundle)?;
     let prefix = format!("{}@{}.", bundle.manifest().id, bundle.manifest().version);
     let lawpack = ResourceRef {
         coordinate: format!("{}@{}", bundle.manifest().id, bundle.manifest().version),
@@ -227,77 +228,90 @@ pub fn prepare_lawpack_compilation(
     let mut compiler_context = CompilerContext::new();
     let mut operation_profiles = BTreeSet::new();
     let type_shapes = exported_type_shapes(bundle, &lawpack);
+    let mut all_obstructions = BTreeSet::new();
+    let mut all_effect_lowerings = Vec::new();
+    let mut all_effect_signatures = Vec::new();
+    let mut canonical_pure_functions = Vec::new();
 
-    for type_shape in type_shapes.values() {
-        local_coordinate(&alias, &prefix, &type_shape.coordinate)?;
-        compiler_context = compiler_context.with_type_shape(type_shape.clone());
-    }
-
-    for (coordinate, profile) in &adapter.operation_profiles {
-        let local_profile = local_coordinate(&alias, &prefix, coordinate)?;
-        let mut write_classes = BTreeSet::new();
-        for effect_coordinate in &profile.semantic_effects {
-            let effect = adapter.effects.get(effect_coordinate).ok_or_else(|| {
-                one(failure(
-                    LawpackAdapterFailureKind::MissingEffectImplementation,
-                    format!("adapter.operationProfiles.{coordinate}.semanticEffects"),
-                    effect_coordinate,
-                ))
-            })?;
-            write_classes.insert(effect.write_class.clone());
+    for alias in aliases {
+        for type_shape in type_shapes.values() {
+            local_coordinate(&alias, &prefix, &type_shape.coordinate)?;
+            compiler_context = compiler_context.with_type_shape(type_shape.clone());
         }
-        compiler_context = compiler_context
-            .with_operation_profile(local_profile.clone(), profile.core.clone())
-            .with_operation_profile_write_classes(local_profile.clone(), write_classes);
-        if let Some(budget) = &profile.budget_obligation {
-            let local_budget = local_coordinate(&alias, &prefix, budget)?;
-            compiler_context =
-                compiler_context.with_operation_profile_budget(local_profile, local_budget);
+
+        for (coordinate, profile) in &adapter.operation_profiles {
+            let local_profile = local_coordinate(&alias, &prefix, coordinate)?;
+            let mut write_classes = BTreeSet::new();
+            for effect_coordinate in &profile.semantic_effects {
+                let effect = adapter.effects.get(effect_coordinate).ok_or_else(|| {
+                    one(failure(
+                        LawpackAdapterFailureKind::MissingEffectImplementation,
+                        format!("adapter.operationProfiles.{coordinate}.semanticEffects"),
+                        effect_coordinate,
+                    ))
+                })?;
+                write_classes.insert(effect.write_class.clone());
+            }
+            compiler_context = compiler_context
+                .with_operation_profile(local_profile.clone(), profile.core.clone())
+                .with_operation_profile_write_classes(local_profile.clone(), write_classes);
+            if let Some(budget) = &profile.budget_obligation {
+                let local_budget = local_coordinate(&alias, &prefix, budget)?;
+                compiler_context =
+                    compiler_context.with_operation_profile_budget(local_profile, local_budget);
+            }
+            operation_profiles.insert(profile.core.clone());
         }
-        operation_profiles.insert(profile.core.clone());
-    }
 
-    let ProjectedEffects {
-        compiler_context: projected_context,
-        obstruction_coordinates,
-        effect_lowerings,
-        effect_signatures,
-    } = project_effects(
-        compiler_context,
-        bundle,
-        adapter,
-        &lawpack,
-        &alias,
-        &prefix,
-        &type_shapes,
-    )?;
-    compiler_context = projected_context;
+        let ProjectedEffects {
+            compiler_context: projected_context,
+            obstruction_coordinates,
+            effect_lowerings,
+            effect_signatures,
+        } = project_effects(
+            compiler_context,
+            bundle,
+            adapter,
+            &lawpack,
+            &alias,
+            &prefix,
+            &type_shapes,
+        )?;
+        compiler_context = projected_context;
 
-    let (projected_context, pure_functions) = project_pure_functions(
-        compiler_context,
-        bundle,
-        &lawpack,
-        &alias,
-        &prefix,
-        &type_shapes,
-    )?;
-    compiler_context = projected_context;
+        let (projected_context, pure_functions) = project_pure_functions(
+            compiler_context,
+            bundle,
+            &lawpack,
+            &alias,
+            &prefix,
+            &type_shapes,
+        )?;
+        compiler_context = projected_context;
 
-    compiler_context =
-        project_bound_constants(compiler_context, bundle, &lawpack, &alias, &prefix)?;
+        compiler_context =
+            project_bound_constants(compiler_context, bundle, &lawpack, &alias, &prefix)?;
 
-    for (coordinate, budget) in &adapter.budgets {
-        let local_budget = local_coordinate(&alias, &prefix, coordinate)?;
-        compiler_context = compiler_context
-            .with_budget(local_budget.clone(), budget.clone())
-            .with_pure_helper_cost(
-                local_budget,
-                PureHelperCostFact {
-                    lawpack: lawpack.clone(),
-                    coordinate: coordinate.clone(),
-                    budget: budget.clone(),
-                },
-            );
+        for (coordinate, budget) in &adapter.budgets {
+            let local_budget = local_coordinate(&alias, &prefix, coordinate)?;
+            compiler_context = compiler_context
+                .with_budget(local_budget.clone(), budget.clone())
+                .with_pure_helper_cost(
+                    local_budget,
+                    PureHelperCostFact {
+                        lawpack: lawpack.clone(),
+                        coordinate: coordinate.clone(),
+                        budget: budget.clone(),
+                    },
+                );
+        }
+
+        all_obstructions.extend(obstruction_coordinates);
+        all_effect_lowerings.extend(effect_lowerings);
+        all_effect_signatures.extend(effect_signatures);
+        // Pure facts use canonical export coordinates rather than local aliases.
+        // Each alias projects the same exact bundle, so retain one canonical set.
+        canonical_pure_functions = pure_functions;
     }
 
     Ok(PreparedLawpackCompilation {
@@ -309,10 +323,10 @@ pub fn prepare_lawpack_compilation(
             },
             target_ir_domain: adapter.target_ir().id.clone(),
             operation_profiles: operation_profiles.into_iter().collect(),
-            obstruction_coordinates: obstruction_coordinates.into_iter().collect(),
-            effect_lowerings,
-            effect_signatures,
-            pure_functions,
+            obstruction_coordinates: all_obstructions.into_iter().collect(),
+            effect_lowerings: all_effect_lowerings,
+            effect_signatures: all_effect_signatures,
+            pure_functions: canonical_pure_functions,
         },
     })
 }
@@ -338,6 +352,19 @@ fn exported_type_shapes(
         .collect()
 }
 
+fn exported_effect_names(
+    bundle: &ValidatedLawpackBundle,
+    alias: &str,
+    prefix: &str,
+) -> Result<BTreeSet<String>, Vec<LawpackAdapterFailure>> {
+    bundle
+        .exports()
+        .effects
+        .iter()
+        .map(|effect| local_coordinate(alias, prefix, &effect.coordinate))
+        .collect()
+}
+
 fn project_effects(
     mut compiler_context: CompilerContext,
     bundle: &ValidatedLawpackBundle,
@@ -347,6 +374,11 @@ fn project_effects(
     prefix: &str,
     type_shapes: &BTreeMap<String, TypeShapeFact>,
 ) -> Result<ProjectedEffects, Vec<LawpackAdapterFailure>> {
+    compiler_context = compiler_context.with_authenticated_effect_exports(
+        alias.to_owned(),
+        lawpack.clone(),
+        exported_effect_names(bundle, alias, prefix)?,
+    );
     let mut obstruction_coordinates = BTreeSet::new();
     let mut effect_lowerings = Vec::new();
     let mut effect_signatures = Vec::new();
@@ -395,6 +427,14 @@ fn project_effects(
                     input_type: exported.input_type.clone(),
                     output_type: exported.output_type.clone(),
                     failure_payload_types: failure_payload_types.clone(),
+                    domain_mappable_failures: exported
+                        .effect_failures
+                        .iter()
+                        .filter(|(_, failure)| {
+                            failure.authority_class == LawpackAuthorityClass::DomainMappable
+                        })
+                        .map(|(name, _)| name.clone())
+                        .collect(),
                 },
             );
         effect_signatures.push(TargetEffectSignatureFact::from_validated_lawpack_export(
@@ -868,10 +908,10 @@ fn select_descriptor(
     }
 }
 
-fn matching_import_alias(
+fn matching_import_aliases(
     module: &Module,
     bundle: &ValidatedLawpackBundle,
-) -> Result<String, Vec<LawpackAdapterFailure>> {
+) -> Result<Vec<String>, Vec<LawpackAdapterFailure>> {
     let manifest_coordinate = format!("{}@{}", bundle.manifest().id, bundle.manifest().version);
     let manifest_digest = bundle.manifest_digest_review_string();
     let matches = module
@@ -884,21 +924,28 @@ fn matching_import_alias(
                 })
         })
         .collect::<Vec<_>>();
-    let [import] = matches.as_slice() else {
+    if matches.is_empty() {
         return Err(one(failure(
             LawpackAdapterFailureKind::SourceImportMismatch,
             "module.imports",
-            format!("exactly one import of `{manifest_coordinate}`"),
-        )));
-    };
-    if import.digest.as_deref() != Some(manifest_digest.as_str()) {
-        return Err(one(failure(
-            LawpackAdapterFailureKind::SourceImportMismatch,
-            format!("module.imports.{}.digest", import.alias),
-            manifest_digest,
+            format!("at least one import of `{manifest_coordinate}`"),
         )));
     }
-    Ok(import.alias.clone())
+    let mut aliases = BTreeSet::new();
+    for import in matches {
+        if !aliases.insert(import.alias.clone())
+            || import.digest.as_deref() != Some(manifest_digest.as_str())
+        {
+            return Err(one(failure(
+            LawpackAdapterFailureKind::SourceImportMismatch,
+            format!("module.imports.{}.digest", import.alias),
+            format!(
+                "{LAWPACK_API_VERSION} domain-framed manifest digest `{manifest_digest}` (not the raw manifest.cbor file hash)"
+            ),
+        )));
+        }
+    }
+    Ok(aliases.into_iter().collect())
 }
 
 fn local_coordinate(

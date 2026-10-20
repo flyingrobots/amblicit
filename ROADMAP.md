@@ -7,6 +7,50 @@ plan that keeps those artifacts visible from the repository.
 Dates are target dates, not promises. A release can move, but the GitHub
 milestone and this roadmap must move together.
 
+## Author Study Repair Plan
+
+This plan addresses confirmed flaws in the [author study](docs/studies/2026-10-06-edict-feedback.md).
+The [claim audit](docs/plans/study-feedback/AUDIT.md) states source facts and evidence limits.
+The [independent review reconciliation](docs/plans/study-feedback/REVIEW.md) records agy's feedback and accepted revisions.
+These tasks complete the study response. They do not complete the separate release roadmap.
+
+The compiler needs safe ordinary-result bounds, useful effect errors, and controlled recovery.
+The CLI needs structured build records with distinct transport and source coordinates.
+The documentation needs current runtime boundaries, digest guidance, and an application-owned cell recipe.
+Echo must first implement projected compare-and-set and verified key limits.
+Keep storage adoption remains separate work. Keep content identity is not an Echo attachment-value digest.
+
+Execute the tasks in this sequence. Sequence does not imply a prerequisite edge.
+F02 is a tracking container. Its three children own all implementation work.
+F01 keeps required positive-fixture corrections with the compiler check, so its merge leaves the full gate runnable.
+
+- [ ] [F01: Enforce canonical return-size bounds for every intent](docs/plans/study-feedback/F01.md) — [#231](https://github.com/flyingrobots/edict/issues/231).
+- [ ] [F02A: Identify missing effect mappings and unknown exports](docs/plans/study-feedback/F02A.md) — [#238](https://github.com/flyingrobots/edict/issues/238).
+- [x] [F02B: Identify the incompatible field in effect signatures](docs/plans/study-feedback/F02B.md) — [#239](https://github.com/flyingrobots/edict/issues/239), [PR246](https://github.com/flyingrobots/edict/pull/246), main `e60411f`.
+- [ ] [F02C: Suppress errors that depend on failed compiler bindings](docs/plans/study-feedback/F02C.md) — [#240](https://github.com/flyingrobots/edict/issues/240).
+- [x] [F03: Emit structured compiler diagnostics for application builds](docs/plans/study-feedback/F03.md) — [#233](https://github.com/flyingrobots/edict/issues/233); [PR #245](https://github.com/flyingrobots/edict/pull/245), merged as `618aa4f84ff88a0873849f8d9cfa55e1f340ffb9`.
+- [x] [F04: Correct README safety guarantees and compiler/runtime status](docs/plans/study-feedback/F04.md) — [#229](https://github.com/flyingrobots/edict/issues/229); [PR #242](https://github.com/flyingrobots/edict/pull/242), merged as `392ecdc7ae1335a76f96106dad16893d75815a55`.
+- [x] [F05: Explain the lawpack import digest and digest-mismatch error](docs/plans/study-feedback/F05.md) — [#234](https://github.com/flyingrobots/edict/issues/234); [PR #244](https://github.com/flyingrobots/edict/pull/244), merged as `67adee201d9da9d8bae608f3906474a6f31314f9`.
+- [ ] [F06: Document a configurable Echo-executable causal-cell lawpack](docs/plans/study-feedback/F06.md) — [#235](https://github.com/flyingrobots/edict/issues/235).
+- [ ] [E01: Lower and verify projected compare-and-set Edict operations](docs/plans/study-feedback/E01.md) — [#763](https://github.com/flyingrobots/echo/issues/763).
+- [ ] [E02: Enforce declared Unicode key bounds in projected Edict operations](docs/plans/study-feedback/E02.md) — [#764](https://github.com/flyingrobots/echo/issues/764).
+- [ ] [F08: Preserve and enforce causal-cell key bounds at the Echo boundary](docs/plans/study-feedback/F08.md) — [#237](https://github.com/flyingrobots/edict/issues/237).
+- [ ] [F07: Add an executable causal-cell compare-and-set capability](docs/plans/study-feedback/F07.md) — [#236](https://github.com/flyingrobots/edict/issues/236).
+
+The executable graph has twelve tasks: ten Edict tasks and two Echo prerequisites.
+F06 requires F01. F07 requires F01, E01, and E02. F08 requires E02.
+No other unconditional implementation edge exists. Shared files do not establish prerequisites.
+E01 and E02 must each preserve any contract already merged by the other.
+Keep adoption issues Echo #722 and #760 are related work, not prerequisites for these existing operation paths.
+These external edges are plan decisions. They do not assert native GitHub dependency records or merged prerequisites.
+
+Behavior changes require RED, GREEN, and `cargo xtask verify` on the stable candidate.
+Every implementation PR requires Code Lawyer, current-head agy-review, required bot review, green CI, and no actionable findings.
+A plan review is not implementation approval. The retained plan verdict is REQUEST CHANGES; revisions are reconciled without claiming reapproval.
+Record each merged PR and integration commit before marking a task complete.
+
+The [F02C current review handoff](docs/plans/study-feedback/F02C.md#current-review-handoff-2026-10-08) reconciles the published recovery fixes and remaining acceptance work. Passing its focused tests and CI does not close the task or replace independent review.
+
 ## Release Gates
 
 Every release cut must satisfy these gates on the release commit:
@@ -27,61 +71,67 @@ Every release cut must satisfy these gates on the release commit:
 The crate remains `publish = false` until package policy and API stability are
 deliberately changed.
 
-## Current Frontier: Provider Artifact Pipeline Alpha
+## Current Frontier: Bounded Application Build Evidence
 
-Milestone: `Provider Artifact Pipeline Alpha`
+The Provider Artifact Pipeline Alpha milestone is complete. Its
+[closed milestone](https://github.com/flyingrobots/edict/milestone/15) is
+historical delivery evidence, not the current work queue. No new versioned
+release milestone is selected by this frontier update.
 
-Goalpost: #138
+The next acceptance boundary is the real Jedit-owned application build in
+[Jedit #296](https://github.com/flyingrobots/jedit/issues/296), with source and
+its authored lawpack in [Jedit #302](https://github.com/flyingrobots/jedit/pull/302).
+Edict [#192](https://github.com/flyingrobots/edict/issues/192) is closed; its
+bounded compiler foundation is landed. GitHub carries current checklists and PR state;
+the topic shelves describe implemented contracts.
 
-Completed frontier issues: #139, #140, #145, #146, #148
+Delivered compiler and library foundations:
 
-Current frontier issue: #147 under #141
+- Digest-bound pure helpers, bounded loops, conditional values, and explicit
+  branch results: [compiler spine](docs/topics/compiler-spine/README.md).
+- Complete Core type integrity, generic pure Target IR, and validated result
+  projections: [Core IR](docs/topics/core-ir/README.md),
+  [Target IR](docs/topics/target-ir/README.md), and
+  [result projection](docs/topics/result-projections/README.md).
+- Public application-owned lawpack authoring:
+  [lawpack authoring](docs/topics/lawpack-authoring/README.md).
+- The curated Rust facade requested in
+  [#189](https://github.com/flyingrobots/edict/issues/189):
+  [public Rust API](docs/topics/public-rust-api/README.md).
 
-Release labels: `release:lawpacks`, `release:target-profiles`,
-`release:target-ir`, `release:bundles`
+Remaining work:
 
-Scope:
+1. Preserve the deterministic public compiler, independent verifier and runtime
+   package witness for the real consumer. Authenticated source modules,
+   byte literals and UTF-8 validation landed through Edict
+   [#250](https://github.com/flyingrobots/edict/pull/250),
+   [#252](https://github.com/flyingrobots/edict/pull/252) through
+   [#256](https://github.com/flyingrobots/edict/pull/256), and
+   [#258](https://github.com/flyingrobots/edict/pull/258).
+2. Continue the full application acceptance in Jedit #296. The merged Jedit
+   #302 now implements a pure flat-text replacement reference with compiler,
+   verifier and runtime evidence. It does not complete the persistent rope,
+   authored graph effects, admission, settled Tick or fresh-engine recovery.
+   Echo's generic runtime foundations have advanced beyond the historical
+   [#724](https://github.com/flyingrobots/echo/pull/724) candidate. The open
+   [#921](https://github.com/flyingrobots/echo/pull/921) bridge work follows
+   merged [#917](https://github.com/flyingrobots/echo/pull/917); its draft
+   implementation and resource limits remain subject to acceptance. Package
+   acceptance alone does not establish stateful execution.
+3. Prove the facade's independent package closure in
+   [#204](https://github.com/flyingrobots/edict/issues/204), without publication.
 
-- Provider manifest and provenance vocabulary for generated lawpack,
-  target-profile, authority-facts, provider-manifest, review, and generated
-  artifact-profile entries.
-- Provider-owned lowerer and verifier component role declarations.
-- Digest-locked generated semantic-source and generator provenance.
-- Generic envelope validation before any WIT provider host or runtime-specific
-  provider implementation.
-- Explicit in-process Echo and git-warp lowerer compatibility adapters with
-  direct-path Target IR byte/digest and bundle-identity parity evidence.
-- A parser-checked `edict:target-provider@1.0.0` WIT envelope with explicit
-  protocol versions, digest-bound inputs, authority-separated lowerer/verifier
-  output roles, optional logical paths, typed refusal, deterministic response
-  limits, and host-computed output identity.
-- Pure validation of host-authored lowerer/verifier input contracts and
-  WIT-shaped requests/results, including an explicitly injected deterministic
-  owning-schema capability, canonical domain-bound digests, exact
-  role/path/diagnostic contracts, response limits, limit independence, and
-  sealed all-or-nothing host output manifests.
-- Capability-denied component invocation with deterministic replay, stable
-  mismatch identity, failure recovery, concurrency isolation, named ambient
-  capability denial, and reviewed Target IR parity across processes.
+The separate complete-lawpack-closure dependency remains
+[Echo #693](https://github.com/flyingrobots/echo/issues/693) for
+[Edict #171](https://github.com/flyingrobots/edict/issues/171).
+The pure-helper call-graph follow-up
+[#203](https://github.com/flyingrobots/edict/issues/203) is closed; it does not
+reopen merged PR #201.
 
-Exit gates:
-
-- #139, #140, #141, and #142 land or have reviewed scope splits.
-- Existing in-tree target lowering can be represented through provider-shaped
-  wrappers without changing Target IR canonical bytes or semantic bundle
-  identity.
-- WIT provider hosting passes only explicit, digest-locked inputs to provider
-  components and validates returned envelopes before bundle assembly.
-- Echo-owned provider implementation issues exist once the Edict provider ABI is
-  concrete enough to scope them accurately.
-
-Non-goals:
-
-- No Echo-specific lawpack semantics in Edict.
-- No Wesley execution or lawpack generation inside Edict.
-- No runtime execution.
-- No admission or registration.
-- No provider filesystem or network discovery.
+Automated comparison of frontier references with GitHub state is planned in
+[#205](https://github.com/flyingrobots/edict/issues/205). This correction does
+not claim that enforcement exists. Runtime execution, admission, registry
+publication, and release tagging require their own evidence and decisions.
 
 ## v0.1.0-alpha.1 - Front-End Alpha
 

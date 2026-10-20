@@ -5,7 +5,13 @@
   "description": "JSONL diagnostics projection record emitted by the public Edict CLI `project` operation.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "type", "command", "input", "diagnostics"],
+  "required": [
+    "schema",
+    "type",
+    "command",
+    "input",
+    "diagnostics"
+  ],
   "properties": {
     "schema": {
       "const": "edict.projection.diagnostics/v1"
@@ -24,7 +30,12 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["stage", "kind", "severity", "span"],
+        "required": [
+          "stage",
+          "kind",
+          "severity",
+          "span"
+        ],
         "properties": {
           "stage": {
             "enum": [
@@ -47,8 +58,30 @@
           },
           "message": {
             "type": "string"
+          },
+          "signatureMismatch": {
+            "$ref": "#/$defs/signatureMismatch"
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "signatureMismatch"
+              ]
+            },
+            "then": {
+              "properties": {
+                "kind": {
+                  "const": "TypeMismatch"
+                },
+                "stage": {
+                  "const": "typeCheck"
+                }
+              }
+            }
+          }
+        ]
       }
     }
   },
@@ -56,11 +89,110 @@
     "span": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["start", "end"],
+      "required": [
+        "start",
+        "end"
+      ],
       "properties": {
-        "start": { "type": "integer", "minimum": 0 },
-        "end": { "type": "integer", "minimum": 0 }
+        "start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
+    },
+    "signatureMismatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "effect",
+        "position",
+        "path",
+        "expectedType",
+        "actualType"
+      ],
+      "properties": {
+        "effect": {
+          "type": "string",
+          "minLength": 1
+        },
+        "position": {
+          "enum": [
+            "input",
+            "receipt"
+          ]
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "field"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "listItem",
+                      "settlement"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "expectedType": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "actualType": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "anyOf": [
+        {
+          "properties": {
+            "expectedType": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "properties": {
+            "actualType": {
+              "type": "string"
+            }
+          }
+        }
+      ]
     }
   }
 }

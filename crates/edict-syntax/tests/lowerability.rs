@@ -96,7 +96,10 @@ fn native_target_facts_satisfy_lowering_requirements() {
         report.obstruction_coordinates,
         vec!["hello.optics@1.GreetingMissing".to_owned()]
     );
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        [] as [edict_syntax::LowerabilityFailure; 0]
+    );
     assert_eq!(report.effect_results.len(), 1);
     assert!(report.effect_results[0].is_native());
 }
@@ -110,7 +113,10 @@ fn one_direct_adapter_satisfies_v1_lowering_requirements() {
     let report = check_lowerability(&read_requirements(), &facts);
 
     assert_eq!(report.status, LowerabilityStatus::Adapted);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        [] as [edict_syntax::LowerabilityFailure; 0]
+    );
     assert_eq!(
         report.effect_results[0].adapter_coordinate(),
         Some("hello.optics@1.kv.transactional.adapter/v1")
@@ -323,7 +329,10 @@ fn direct_adapter_can_satisfy_guard_when_native_intrinsic_cannot() {
     let report = check_lowerability(&read_requirements(), &facts);
 
     assert_eq!(report.status, LowerabilityStatus::Adapted);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        [] as [edict_syntax::LowerabilityFailure; 0]
+    );
     assert_eq!(
         report.effect_results[0].adapter_coordinate(),
         Some("hello.optics@1.kv.transactional.adapter/v1")
@@ -408,7 +417,10 @@ fn guard_incompatible_adapter_does_not_make_compatible_adapter_ambiguous() {
     let report = check_lowerability(&read_requirements(), &facts);
 
     assert_eq!(report.status, LowerabilityStatus::Adapted);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        [] as [edict_syntax::LowerabilityFailure; 0]
+    );
     assert_eq!(
         report.effect_results[0].adapter_coordinate(),
         Some("hello.optics@1.kv.transactional.adapter/v1")

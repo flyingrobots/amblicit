@@ -5335,11 +5335,13 @@ mod tests {
         test_ok(fs::remove_dir_all(&missing_root), "remove dependency root");
         let output = missing_root.join("generated");
 
-        assert!(test_ok(
-            load_dependencies(&missing_root, &[], &output),
-            "empty dependency set skips root access",
-        )
-        .is_empty());
+        assert_eq!(
+            test_ok(
+                load_dependencies(&missing_root, &[], &output),
+                "empty dependency set skips root access",
+            ),
+            [] as [edict_syntax::ValidatedLawpackBundle; 0]
+        );
 
         let definitions = [LawpackDependencyBundle {
             manifest: PathBuf::from("manifest.cbor"),

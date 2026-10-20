@@ -7,9 +7,10 @@ use std::{collections::BTreeSet, fmt::Write as _};
 
 use edict_syntax::{
     compile_to_core, decode_canonical_cbor, digest_core_module, encode_core_module,
-    encode_target_ir_artifact, lower_to_target_ir, parse_module, CanonicalValue, CompilerContext,
-    CompilerErrorKind, CoreBlock, CoreBound, CoreBudget, CoreExpr, CoreNode, CoreValue, LocalRef,
-    ResourceRef, TargetIrLoweringFacts, TargetLoweringFailureKind, TargetLoweringStatus,
+    encode_target_ir_artifact, lower_to_target_ir, parse_module,
+    validate_core_module_type_integrity, CanonicalValue, CompilerContext, CompilerErrorKind,
+    CoreBlock, CoreBound, CoreBudget, CoreExpr, CoreNode, CoreTypeIntegrityFailureKind, CoreValue,
+    LocalRef, ResourceRef, TargetIrLoweringFacts, TargetLoweringFailureKind, TargetLoweringStatus,
     WriteClass, ECHO_DPO_TARGET_PROFILE, ECHO_SPAN_IR_DOMAIN, MAX_CANONICAL_NESTING_DEPTH,
 };
 
@@ -179,7 +180,10 @@ fn external_request_expressions_require_closed_helper_authority() {
     let core = compile_source(&baseline_source());
     let control = lower_to_target_ir(&core, &target_facts());
     assert_eq!(control.status, TargetLoweringStatus::Lowered);
-    assert!(control.failures.is_empty());
+    assert_eq!(
+        control.failures,
+        [] as [edict_syntax::TargetLoweringFailure; 0]
+    );
     assert!(control.artifact.is_some());
 
     let unbound_call = || CoreExpr::Call {
@@ -435,7 +439,7 @@ fn validated_patch_request_compiles_as_non_callable_data() {
     assert_application_input_field(&budget.max_attempts, "maxAttempts");
 
     let intent = target.intents.get("observe").expect("patch intent lowers");
-    assert!(intent.steps.is_empty());
+    assert_eq!(intent.steps, [] as [edict_syntax::TargetIrStep; 0]);
     assert_eq!(intent.external_action_requests.len(), 1);
     let target_request = &intent.external_action_requests[0];
     assert_eq!(target_request.id, "observe.request.0");
@@ -496,7 +500,7 @@ fn request_operation_must_remain_in_core_and_target_capability_closure() {
 }
 
 #[test]
-fn nested_request_collection_distinguishes_canonical_depth_boundary() {
+fn nested_request_validation_distinguishes_graph_depth_and_closure_failures() {
     let nested_core = |loop_count: usize| {
         let mut core = compile_source(&baseline_source());
         core.imports.clear();
@@ -504,7 +508,28 @@ fn nested_request_collection_distinguishes_canonical_depth_boundary() {
             .intents
             .get_mut("observe")
             .expect("observe intent exists");
-        let request = intent.body.nodes.remove(0);
+        let mut request = intent.body.nodes.remove(0);
+        let CoreNode::ExternalActionRequest {
+            input,
+            authority_scope,
+            basis,
+            budget,
+            ..
+        } = &mut request
+        else {
+            panic!("request node");
+        };
+        // Atomic operands isolate block depth from expression nesting. This
+        // fixture exercises integrity and closure, not request operand typing.
+        for operand in [
+            input,
+            authority_scope,
+            basis,
+            &mut budget.max_settlement_bytes,
+            &mut budget.max_attempts,
+        ] {
+            *operand = CoreExpr::Const(CoreValue::Null);
+        }
         let mut nested = CoreBlock {
             locals: Vec::new(),
             nodes: vec![request],
@@ -530,18 +555,30 @@ fn nested_request_collection_distinguishes_canonical_depth_boundary() {
         core
     };
 
+    let at_limit = nested_core(MAX_CANONICAL_NESTING_DEPTH);
+    validate_core_module_type_integrity(&at_limit).expect("at-limit graph passes Core integrity");
     assert_eq!(
-        encode_core_module(&nested_core(MAX_CANONICAL_NESTING_DEPTH))
+        encode_core_module(&at_limit)
             .expect_err("at-limit traversal reaches request closure validation")
             .kind(),
         edict_syntax::CanonicalErrorKind::UnsupportedValue
     );
 
+    let beyond = nested_core(MAX_CANONICAL_NESTING_DEPTH + 1);
+    let failure = validate_core_module_type_integrity(&beyond).unwrap_err();
+    assert_eq!(failure.kind(), CoreTypeIntegrityFailureKind::DepthExceeded);
     assert_eq!(
-        encode_core_module(&nested_core(MAX_CANONICAL_NESTING_DEPTH + 1))
+        failure.path(),
+        format!(
+            "intents.observe.body{}",
+            ".nodes[0].for.body".repeat(MAX_CANONICAL_NESTING_DEPTH + 1)
+        )
+    );
+    assert_eq!(
+        encode_core_module(&beyond)
             .expect_err("excessive nested request traversal rejects before closure checks")
             .kind(),
-        edict_syntax::CanonicalErrorKind::NestingLimitExceeded
+        edict_syntax::CanonicalErrorKind::UnsupportedValue
     );
 }
 

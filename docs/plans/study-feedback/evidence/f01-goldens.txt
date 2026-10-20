@@ -1,0 +1,123 @@
+ Downloading crates ...
+  Downloaded float-ord v0.3.2
+  Downloaded bitflags v2.13.0
+  Downloaded foldhash v0.2.0
+  Downloaded escape8259 v0.5.3
+  Downloaded ciborium-ll v0.2.2
+  Downloaded ciborium-io v0.2.2
+  Downloaded id-arena v2.3.0
+  Downloaded equivalent v1.0.2
+  Downloaded hex v0.4.3
+  Downloaded heck v0.3.3
+  Downloaded unicode-xid v0.2.6
+  Downloaded serde_spanned v1.1.1
+  Downloaded leb128fmt v0.1.0
+  Downloaded wat v1.251.0
+  Downloaded thiserror-impl v1.0.69
+  Downloaded toml_datetime v1.1.1+spec-1.1.0
+  Downloaded thiserror v1.0.69
+  Downloaded rustversion v1.0.23
+  Downloaded toml_writer v1.1.2+spec-1.1.0
+  Downloaded strum_macros v0.23.1
+  Downloaded wasm-metadata v0.251.0
+  Downloaded ciborium v0.2.2
+  Downloaded toml_parser v1.1.3+spec-1.1.0
+  Downloaded half v2.7.1
+  Downloaded anyhow v1.0.103
+  Downloaded toml v1.1.5+spec-1.1.0
+  Downloaded semver v1.0.28
+  Downloaded log v0.4.33
+  Downloaded base64 v0.22.1
+  Downloaded cddl-cat v0.7.1
+  Downloaded minimal-lexical v0.2.1
+  Downloaded wasm-encoder v0.251.0
+  Downloaded indexmap v2.14.0
+  Downloaded bumpalo v3.20.3
+  Downloaded zerocopy-derive v0.8.54
+  Downloaded unicode-segmentation v1.13.3
+  Downloaded nom v7.1.3
+  Downloaded regex v1.12.4
+  Downloaded hashbrown v0.17.1
+  Downloaded wast v251.0.0
+  Downloaded aho-corasick v1.1.4
+  Downloaded wit-parser v0.251.0
+  Downloaded winnow v1.0.4
+  Downloaded syn v1.0.109
+  Downloaded wit-component v0.251.0
+  Downloaded zerocopy v0.8.54
+  Downloaded wasmparser v0.251.0
+  Downloaded unicode-width v0.2.2
+  Downloaded regex-syntax v0.8.11
+  Downloaded regex-automata v0.4.14
+   Compiling proc-macro2 v1.0.106
+   Compiling serde_core v1.0.228
+   Compiling quote v1.0.46
+   Compiling memchr v2.8.2
+   Compiling foldhash v0.2.0
+   Compiling hashbrown v0.17.1
+   Compiling serde v1.0.228
+   Compiling equivalent v1.0.2
+   Compiling zerocopy v0.8.54
+   Compiling bitflags v2.13.0
+   Compiling syn v2.0.118
+   Compiling semver v1.0.28
+   Compiling syn v1.0.109
+   Compiling anyhow v1.0.103
+   Compiling rustversion v1.0.23
+   Compiling leb128fmt v0.1.0
+   Compiling aho-corasick v1.1.4
+   Compiling regex-syntax v0.8.11
+   Compiling indexmap v2.14.0
+   Compiling wasmparser v0.251.0
+   Compiling serde_json v1.0.150
+   Compiling unicode-segmentation v1.13.3
+   Compiling thiserror v1.0.69
+   Compiling ciborium-io v0.2.2
+   Compiling heck v0.3.3
+   Compiling regex-automata v0.4.14
+   Compiling serde_derive v1.0.228
+   Compiling zerocopy-derive v0.8.54
+   Compiling thiserror-impl v1.0.69
+   Compiling wasm-encoder v0.251.0
+   Compiling half v2.7.1
+   Compiling ciborium-ll v0.2.2
+   Compiling minimal-lexical v0.2.1
+   Compiling strum_macros v0.23.1
+   Compiling nom v7.1.3
+   Compiling ciborium v0.2.2
+   Compiling regex v1.12.4
+   Compiling unicode-width v0.2.2
+   Compiling escape8259 v0.5.3
+   Compiling float-ord v0.3.2
+   Compiling log v0.4.33
+   Compiling id-arena v2.3.0
+   Compiling hex v0.4.3
+   Compiling base64 v0.22.1
+   Compiling bumpalo v3.20.3
+   Compiling unicode-xid v0.2.6
+   Compiling winnow v1.0.4
+   Compiling wast v251.0.0
+   Compiling cddl-cat v0.7.1
+   Compiling wit-parser v0.251.0
+   Compiling toml_parser v1.1.3+spec-1.1.0
+   Compiling edict-syntax v0.11.0-alpha.1 (/work/edict/crates/edict-syntax)
+   Compiling wasm-metadata v0.251.0
+   Compiling serde_spanned v1.1.1
+   Compiling toml_datetime v1.1.1+spec-1.1.0
+   Compiling toml v1.1.5+spec-1.1.0
+   Compiling wit-component v0.251.0
+   Compiling wat v1.251.0
+   Compiling edict-provider-schema v0.11.0-alpha.1 (/work/edict/crates/edict-provider-schema)
+   Compiling xtask v0.0.0 (/work/edict/xtask)
+    Finished `dev` profile [unoptimized] target(s) in 8.69s
+     Running `/cache/target/debug/xtask lawpack-goldens --write`
+lawpack-goldens: fixtures/lawpack/hello-echo, fixtures/lawpack/causal-cell, fixtures/lawpack/workspace-snapshot, and fixtures/lawpack/workspace-patch written
+    Finished `dev` profile [unoptimized] target(s) in 0.02s
+     Running `/cache/target/debug/xtask core-goldens --write`
+core-goldens: 2 case(s) written
+    Finished `dev` profile [unoptimized] target(s) in 0.02s
+     Running `/cache/target/debug/xtask target-ir-goldens --write`
+target-ir-goldens: 3 case(s) written
+    Finished `dev` profile [unoptimized] target(s) in 0.02s
+     Running `/cache/target/debug/xtask bundle-goldens --write`
+bundle-goldens: 1 case(s) written

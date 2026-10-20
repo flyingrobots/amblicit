@@ -73,7 +73,7 @@ fn pure_lowering() -> (CoreModule, TargetLoweringReport) {
                 CoreBudget {
                     max_steps: 8,
                     max_allocated_bytes: 256,
-                    max_output_bytes: 64,
+                    max_output_bytes: 128,
                 },
             ),
     )
@@ -200,7 +200,7 @@ fn exact_core_and_target_ir_emit_the_typed_hello_echo_projection() {
         artifact.projection().output_type,
         "examples.hello_echo@1.GreetingCreated"
     );
-    assert_eq!(artifact.projection().max_output_bytes, 512);
+    assert_eq!(artifact.projection().max_output_bytes, 2048);
     assert_eq!(artifact.projection().expression, expected_expression());
     assert_eq!(
         decode_result_projection(artifact.canonical_bytes()).expect("decode emitted projection"),
@@ -391,7 +391,10 @@ fn target_lowering_exposes_an_unsupported_result_projection_without_claiming_one
     assert_eq!(report.status, TargetLoweringStatus::Lowered);
     assert!(report.artifact.is_some());
     assert!(report.result_projections.is_empty());
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        [] as [edict_syntax::TargetLoweringFailure; 0]
+    );
     assert_eq!(
         report.result_projection_failures["createGreeting"].kind(),
         ResultProjectionFailureKind::UnsupportedExpression
@@ -715,7 +718,7 @@ fn exact_byte_projection_refuses_a_max_only_source() {
                 CoreBudget {
                     max_steps: 8,
                     max_allocated_bytes: 256,
-                    max_output_bytes: 64,
+                    max_output_bytes: 128,
                 },
             ),
     )

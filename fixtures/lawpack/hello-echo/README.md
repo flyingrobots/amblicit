@@ -34,6 +34,15 @@ a fake transport, or a handwritten Echo executable package.
 - `create-greeting.result-projection.sha256` is its
   `edict.result-projection.artifact/v1` domain-framed identity.
 
+## Source Import Digest
+
+Copy the full review string from `manifest.sha256` into the source lawpack
+import. This sidecar holds the `edict.lawpack/v1` domain-framed manifest identity.
+A raw file hash from `shasum -a 256 manifest.cbor` identifies different bytes
+and fails source preparation with `SourceImportMismatch`. The failure obligation
+names the required manifest domain and matching digest. The exports, adapter,
+and target-configuration sidecars cannot be substituted for this import value.
+
 Regenerate only through:
 
 ```sh
@@ -54,3 +63,13 @@ and identities. This fixture does not yet bind the projected result during
 Echo execution. Edict corroborates the target-configuration reference but
 deliberately leaves its Echo-specific semantics and runtime evaluation to the
 Echo-owned target provider.
+
+## Result Budget Compatibility
+
+The stock output budget is 2,048 bytes. `GreetingCreated` has a worst-case
+canonical size of 1,299 bytes when its bounded strings use four-byte scalars.
+The application compiler rejects an ordinary result above its selected budget.
+The corrected budget changes adapter, manifest, Core, Target IR, and result
+projection identities. Use the regenerated source import and complete closure.
+This change does not update an external consumer's frozen producer lock or prove
+runtime compatibility for a different producer pair.

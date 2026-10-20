@@ -1,0 +1,1492 @@
+   Compiling edict-syntax v0.11.0-alpha.1 (/work/edict/crates/edict-syntax)
+   Compiling edict-provider-schema v0.11.0-alpha.1 (/work/edict/crates/edict-provider-schema)
+   Compiling xtask v0.0.0 (/work/edict/xtask)
+    Finished `dev` profile [unoptimized] target(s) in 3.04s
+     Running `/cache/target/debug/xtask verify`
+$ cargo fmt --all --check
+$ cargo clippy --workspace --all-targets --all-features -- -D warnings
+    Checking edict-syntax v0.11.0-alpha.1 (/work/edict/crates/edict-syntax)
+    Checking edict-provider-schema v0.11.0-alpha.1 (/work/edict/crates/edict-provider-schema)
+    Checking flyingrobots-edict v0.11.0-alpha.1 (/work/edict/crates/edict)
+    Checking edict-provider-host-wasmtime v0.11.0-alpha.1 (/work/edict/crates/edict-provider-host-wasmtime)
+    Checking xtask v0.0.0 (/work/edict/xtask)
+    Checking edict-cli v0.11.0-alpha.1 (/work/edict/crates/edict-cli)
+    Finished `dev` profile [unoptimized] target(s) in 3.02s
+$ cargo test --workspace --all-features
+   Compiling edict-syntax v0.11.0-alpha.1 (/work/edict/crates/edict-syntax)
+   Compiling edict-provider-schema v0.11.0-alpha.1 (/work/edict/crates/edict-provider-schema)
+   Compiling flyingrobots-edict v0.11.0-alpha.1 (/work/edict/crates/edict)
+   Compiling edict-provider-host-wasmtime v0.11.0-alpha.1 (/work/edict/crates/edict-provider-host-wasmtime)
+   Compiling xtask v0.0.0 (/work/edict/xtask)
+   Compiling edict-cli v0.11.0-alpha.1 (/work/edict/crates/edict-cli)
+    Finished `test` profile [unoptimized] target(s) in 10.38s
+     Running unittests src/lib.rs (/cache/target/debug/deps/edict_cli-5f42c9ce45ea399d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (/cache/target/debug/deps/edict-4a87165e531b0c97)
+
+running 106 tests
+test application_build::tests::application_artifact_reads_are_bounded_before_allocation ... ok
+test application_build::tests::application_manifest_accepts_an_explicit_external_action_build_kind ... ok
+test application_build::tests::application_manifest_accepts_one_root_and_its_complete_dependency_closure ... ok
+test application_build::tests::application_build_rejects_source_symlink_escape ... ok
+test application_build::tests::application_manifest_rejects_absolute_and_parent_traversal_paths ... ok
+test application_build::tests::executable_publication_removes_stale_external_action_outputs ... ok
+test application_build::tests::application_configuration_rejects_effect_outside_selected_profile ... ok
+test application_build::tests::application_build_requires_one_projection_and_no_projection_failures ... ok
+test application_build::tests::compiler_result_projection_is_bound_into_the_provider_closure ... ok
+test application_build::tests::external_action_build_accepts_request_only_target_ir ... ok
+test application_build::tests::external_action_build_rejects_a_substituted_capability_manifest ... ok
+test application_build::tests::external_action_build_binds_operation_authority_by_manifest_digest ... ok
+test application_build::tests::external_action_build_requires_a_typed_request ... ok
+test application_build::tests::external_action_publication_removes_stale_executable_outputs ... ok
+test application_build::tests::external_action_publication_writes_the_exact_compiler_pair ... ok
+test application_build::tests::external_action_resource_configuration_has_a_fixed_boundary ... ok
+test application_build::tests::failed_external_action_pair_publication_preserves_previous_core ... ok
+test application_build::tests::failed_pair_publication_preserves_the_previous_package ... ok
+test application_build::tests::external_action_build_rejects_mixed_callable_execution ... ok
+test application_build::tests::external_action_pair_publication_is_deterministic_for_a_fixed_seed_corpus ... ok
+test application_build::tests::provider_schema_selection_loads_every_bound_role_under_bounded_stress ... ok
+test application_build::tests::external_action_pair_publication_remains_bounded_under_stress ... ok
+test application_build::tests::operation_profile_configuration_is_selected_when_adapter_has_no_effects ... ok
+test application_build::tests::public_external_action_build_rejects_a_disconnected_lawpack ... ok
+test application_build::tests::public_external_action_build_emits_exact_compiler_artifacts ... ok
+test application_build::tests::public_external_action_build_rejects_capability_substitution ... ok
+test application_build::tests::public_external_action_build_rejects_opaque_resource_definitions ... ok
+test application_build::tests::public_application_selects_and_binds_configuration_from_compiled_core_profiles ... ok
+test application_build::tests::relative_application_config_uses_the_current_directory_as_root ... ok
+test application_build::tests::repeated_effect_references_to_one_configuration_are_deduplicated ... ok
+test application_build::tests::selected_adapter_reference_follows_the_selected_target_profile ... ok
+test application_build::tests::selected_effectful_profile_without_invocations_uses_unique_advertised_configuration ... ok
+test application_build::tests::public_external_action_build_rejects_sentinel_resource_identities ... ok
+test application_build::tests::successful_publication_leaves_no_lock_in_output_directory ... ok
+test application_build::tests::unused_effect_configuration_does_not_enter_application_selection ... ok
+test application_build::tests::sixty_four_request_resources_resolve_as_one_bounded_closure ... ok
+test application_build::tests::unused_operation_profile_configuration_does_not_enter_application_selection ... ok
+test lawpack_build::tests::build_preflights_nul_and_collisions_before_missing_dependency_io ... ok
+test lawpack_build::tests::activation_refuses_to_replace_a_concurrently_installed_empty_output ... ok
+test lawpack_build::tests::check_only_accepts_an_exact_tree_without_creating_coordination_state ... ok
+test lawpack_build::tests::check_only_output_resolution_uses_read_only_failure_kinds ... ok
+test lawpack_build::tests::check_only_detects_exact_tree_drift ... ok
+test lawpack_build::tests::check_only_parent_chain_rejects_a_symlink_substitution ... ok
+test lawpack_build::tests::check_only_parent_chain_rejects_non_normal_components ... ok
+test application_build::tests::public_external_action_build_rejects_invalid_request_resource_closure ... ok
+test lawpack_build::tests::check_only_parent_chain_uses_read_only_failure_kinds ... ok
+test lawpack_build::tests::check_only_rechecks_ancestor_ownership_through_retained_chain ... ok
+test lawpack_build::tests::check_only_rejects_a_post_validation_ancestor_substitution ... ok
+test lawpack_build::tests::check_only_rejects_in_place_tree_mutation_after_traversal ... ok
+test lawpack_build::tests::check_only_rejects_output_symlinked_after_inspection ... ok
+test lawpack_build::tests::check_only_rejects_output_directory_identity_substitution ... ok
+test lawpack_build::tests::check_only_reports_missing_nested_output_as_drift_without_creating_parent ... ok
+test lawpack_build::tests::check_only_traversal_refuses_a_directory_link_substituted_after_inspection ... ok
+test lawpack_build::tests::check_only_traversal_refuses_a_file_link_substituted_after_inspection ... ok
+test lawpack_build::tests::check_root_rejects_ancestor_symlink_substitution ... ok
+test lawpack_build::tests::check_root_substituted_with_a_symlink_after_inspection_rejects ... ok
+test lawpack_build::tests::check_only_reports_drift_during_atomic_publication ... ok
+test lawpack_build::tests::check_only_rejects_an_unexpected_file_before_reading_it ... ok
+test lawpack_build::tests::dependency_confinement_uses_filesystem_identity ... ok
+test lawpack_build::tests::dependency_file_substituted_with_a_symlink_after_inspection_rejects ... ok
+test lawpack_build::tests::dependency_inputs_inside_the_owned_output_tree_reject_before_reading ... ok
+test lawpack_build::tests::dependency_root_is_opened_only_for_reads_and_uses_read_failure_kinds ... ok
+test lawpack_build::tests::dependency_root_rejects_an_ancestor_symlink ... ok
+test lawpack_build::tests::dependency_reads_keep_the_identity_that_passed_output_confinement ... ok
+test lawpack_build::tests::filesystem_equivalent_dependency_output_alias_rejects ... ok
+test lawpack_build::tests::filesystem_equivalent_output_locks_share_process_exclusion ... ok
+test lawpack_build::tests::failed_activation_cleans_the_retained_transaction_not_its_reused_name ... ok
+test lawpack_build::tests::generated_artifacts_reject_their_own_read_limit ... ok
+test lawpack_build::tests::identical_output_lock_blocks_competing_transaction_creation ... ok
+test lawpack_build::tests::lawpack_target_support_keeps_check_only_available ... ok
+test lawpack_build::tests::injected_pre_activation_failure_restores_the_previous_tree ... ok
+test lawpack_build::tests::nested_output_rejects_an_ancestor_owned_lawpack_tree ... ok
+test lawpack_build::tests::output_directory_bounds_derived_lock_names ... ok
+test lawpack_build::tests::output_directory_rejects_internal_publication_namespaces ... ok
+test lawpack_build::tests::nested_output_intent_conflicts_with_parent_publication ... ok
+test lawpack_build::tests::output_directory_rejects_nonportable_raw_paths ... ok
+test lawpack_build::tests::ownership_index_substituted_with_a_symlink_after_inspection_rejects ... ok
+test lawpack_build::tests::post_activation_cleanup_failure_keeps_the_committed_success ... ok
+test lawpack_build::tests::post_revalidation_parent_swap_cannot_escape_root ... ok
+test lawpack_build::tests::publication_authority_rejects_ancestor_symlink_substitution ... ok
+test lawpack_build::tests::publication_authority_rejects_root_symlink_substitution ... ok
+test lawpack_build::tests::publication_bounds_internal_names_for_long_output_components ... ok
+test lawpack_build::tests::publication_authorizes_the_tree_it_captures_for_replacement ... ok
+test lawpack_build::tests::publication_keeps_the_locked_root_identity_after_real_directory_substitution ... ok
+test lawpack_build::tests::publication_rebinds_the_activated_name_after_tree_validation ... ok
+test lawpack_build::tests::publication_refuses_a_captured_backup_symlink_before_pinning ... ok
+test lawpack_build::tests::publication_refuses_a_transaction_symlink_before_pinning ... ok
+test lawpack_build::tests::publication_rejects_a_symlinked_output_lock ... ok
+test lawpack_build::tests::publication_rejects_a_substituted_staged_transaction ... ok
+test lawpack_build::tests::publication_rejects_an_output_owned_by_another_lawpack ... ok
+test lawpack_build::tests::publication_rejects_staged_bytes_changed_before_activation ... ok
+test lawpack_build::tests::publication_replaces_the_owned_tree_and_removes_stale_files ... ok
+test lawpack_build::tests::raw_authoring_json_rejects_duplicate_hash_significant_keys ... ok
+test lawpack_build::tests::publication_requires_backup_to_match_the_pre_rename_output_identity ... ok
+test lawpack_build::tests::rollback_refuses_to_delete_a_concurrently_installed_output ... ok
+test lawpack_build::tests::rollback_refuses_a_reused_captured_backup_name ... ok
+test lawpack_build::tests::rollback_requires_the_restored_destination_to_match_the_captured_identity ... ok
+test lawpack_build::tests::sibling_output_intents_share_ancestors_without_serializing ... ok
+test lawpack_build::tests::staging_refuses_an_intermediate_directory_link_substitution ... ok
+test lawpack_build::tests::symlinked_dependency_inputs_resolving_inside_output_reject ... ok
+test lawpack_build::tests::symlinked_ownership_index_cannot_authorize_replacement ... ok
+test lawpack_build::tests::vanished_activation_restores_before_reused_transaction_check ... ok
+test tests::core_type_review_is_total_for_unit ... ok
+test lawpack_build::tests::vanished_activation_restores_the_captured_output ... ok
+test application_build::tests::fixed_seed_request_resource_mutations_fail_closed ... ok
+test lawpack_build::tests::generated_ownership_index_rejects_its_own_read_limit ... ok
+
+test result: ok. 106 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/application_diagnostics_cli.rs (/cache/target/debug/deps/application_diagnostics_cli-a518d0442b17e9db)
+
+running 4 tests
+test application_build_emits_parser_eof_location_without_publishing ... ok
+test application_build_emits_compiler_records_and_preserves_output_on_failure ... ok
+test application_signature_mismatch_has_structured_field_context ... ok
+test diagnostic_schemas_preserve_check_and_project_streams ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/configurable_causal_cell.rs (/cache/target/debug/deps/configurable_causal_cell-5bf609228580b808)
+
+running 7 tests
+test configurable_cell_command_refuses_invalid_arguments ... ok
+test configurable_cell_budgets_match_maximum_unicode_encoding ... ok
+test configurable_cell_limits_reject_inconsistent_and_overflowing_parameters ... ok
+test configurable_cell_real_provider_accepts_both_variants ... ignored, requires the pinned real Echo package in EDICT_F06_PROVIDER
+test configurable_cell_command_renders_compilable_source ... ok
+test configurable_cell_documents_author_repeatable_valid_closures ... ok
+test configurable_cell_public_authoring_matches_in_memory_artifacts ... ok
+
+test result: ok. 6 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/golden_cli.rs (/cache/target/debug/deps/golden_cli-d3f9f7e212c0232f)
+
+running 1 test
+test golden_cli_fixtures_replay_exactly ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/jsonl_cli.rs (/cache/target/debug/deps/jsonl_cli-cc88d87123f73e52)
+
+running 29 tests
+test build_rejects_an_empty_lawpack_path_as_invalid_settings ... ok
+test build_rejects_compiler_input_records_instead_of_ignoring_them ... ok
+test build_accepts_application_request_without_compiler_input_records ... ok
+test build_rejects_unused_directory_extension_settings ... ok
+test check_accepts_inline_source_jsonl_and_emits_jsonl_stdout ... ok
+test check_accepts_path_directory_path_list_glob_and_source_records ... ok
+test cli_schema_constants_match_checked_in_artifacts ... ok
+test check_rejects_invalid_source_with_jsonl_stderr_only ... ok
+test build_rejects_explicit_default_values_for_forbidden_settings ... ok
+test input_root_glob_skips_dangling_symlink_matches ... ok
+test input_root_null_rejects_as_invalid_settings ... ok
+test input_root_rejects_glob_outside_configured_root ... ok
+test help_flag_emits_info_record ... ok
+test input_root_rejects_path_outside_configured_root ... ok
+test invalid_project_settings_report_project_command ... ok
+test non_jsonl_input_rejects_with_jsonl_cli_diagnostic ... ok
+test oversized_stdin_rejects_with_input_too_large_diagnostic ... ok
+test project_exposes_external_requests_as_non_callable_review_data ... ok
+test project_exposes_ordered_effect_binding_and_guard_without_hoisting ... ok
+test project_invalid_source_emits_diagnostics_without_process_failure ... ok
+test project_accepts_dirty_source_and_emits_syntax_core_target_ir_projection ... ok
+test project_reserved_type_identity_emits_the_stable_compiler_kind ... ok
+test project_syntax_only_does_not_run_authoritative_compiler_path ... ok
+test project_syntax_only_lex_failure_emits_visible_diagnostics ... ok
+test lawpack_build_writes_checks_repairs_and_is_cwd_independent ... ok
+test unknown_argument_rejected_with_actionable_diagnostic ... ok
+test project_target_lowering_failure_is_structured_projection_data ... ok
+test version_flag_emits_info_record ... ok
+test projection_object_settings_null_reject_as_invalid_settings ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/lawpack_authoring_cli.rs (/cache/target/debug/deps/lawpack_authoring_cli-8cd2d73576ec74d2)
+
+running 2 tests
+test external_application_authors_vendors_and_builds_its_own_lawpack ... ok
+test public_build_requires_repinning_an_authored_helper_body_change ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/source_functions_cli.rs (/cache/target/debug/deps/source_functions_cli-ec4728c494c5efa8)
+
+running 2 tests
+test public_project_deep_expression_returns_a_diagnostic_without_aborting ... ok
+test public_project_compiles_jim_source_functions_to_authenticated_core_and_target ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/cache/target/debug/deps/edict_provider_host_wasmtime-1543b82d2658952c)
+
+running 2 tests
+test replay::tests::every_replay_mismatch_has_a_distinct_stable_kind ... ok
+test replay::tests::opaque_engine_diagnostics_do_not_define_replay_identity ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/invocation.rs (/cache/target/debug/deps/invocation-94b47c72518d987d)
+
+running 21 tests
+test component_instantiation_failure_is_stable ... ok
+test emit_reviewed_target_ir_replay_observation ... ignored, child entrypoint exercised by the independent-process replay test
+test concurrent_invocations_share_no_guest_store_state ... ok
+test conforming_lowerer_and_verifier_results_cross_complete_admission ... ok
+test failed_provider_does_not_poison_another_prepared_provider ... ok
+test diagnostic_and_schema_envelope_limits_are_separate ... ok
+test generic_lowerer_matches_reviewed_target_ir_bytes_and_digest ... ok
+test independent_processes_reproduce_reviewed_target_ir_observation ... ok
+test failed_invocations_cannot_poison_a_later_fresh_store ... ok
+test instantiation_fuel_exhaustion_preserves_budget_identity ... ok
+test malformed_canonical_abi_result_is_not_a_guest_trap_or_envelope_failure ... ok
+test hostcall_and_logical_response_limits_are_separate ... ok
+test input_and_authorized_output_limits_reject_before_invocation ... ok
+test prepared_component_cannot_cross_the_host_engine_boundary ... ok
+test fuel_resource_and_guest_traps_remain_distinct ... ok
+test prepared_component_request_and_registry_must_share_one_authority ... ok
+test registry_address_alias_cannot_substitute_another_validator_type ... ok
+test typed_provider_refusal_remains_distinct_from_host_failure ... ok
+test repeated_preparation_preserves_invocation_observation ... ok
+test provider_output_failure_matrix_preserves_stable_validation_kinds ... ok
+test replay_proves_equal_completed_and_rejected_observations ... ok
+
+test result: ok. 20 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 1.90s
+
+     Running tests/preflight.rs (/cache/target/debug/deps/preflight-9225a5c4a50092b9)
+
+running 7 tests
+test digest_matching_invalid_bytes_have_a_stable_decode_failure ... ok
+test digest_mismatch_rejects_before_component_decoding ... ok
+test exact_attestation_does_not_replace_structural_contract_validation ... ok
+test any_callable_component_import_is_denied_before_instantiation ... ok
+test exact_contract_attestation_precedes_structural_type_checking ... ok
+test concrete_ambient_capability_imports_are_denied_during_preflight ... ok
+test checked_in_lowerer_fixture_passes_complete_preflight ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running unittests src/lib.rs (/cache/target/debug/deps/edict_provider_schema-07d7e6aa6261f049)
+
+running 4 tests
+test contract_pack::tests::static_binding_guard_rejects_unsorted_and_duplicate_keys ... ok
+test recursive_dispatch::tests::unknown_tag_does_not_specialize_a_recursive_child ... ok
+test recursive_dispatch::tests::specialization_selects_one_arm_and_eliminates_rule_reentry ... ok
+test recursive_dispatch::tests::shared_discriminator_rules_do_not_expand_exponentially ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/authority_facts_abi.rs (/cache/target/debug/deps/authority_facts_abi-82022b02869c33a0)
+
+running 1 test
+test authority_facts_cddl_accepts_only_the_frozen_root ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/provider_contract_pack.rs (/cache/target/debug/deps/provider_contract_pack-ac1d04ab84c86edc)
+
+running 16 tests
+test assembly_rejects_uninspectable_schema_controls_explicitly ... ok
+test core_root_accepts_reference_encoded_operation_basis ... ok
+test assembly_rejects_missing_invalid_uncompilable_and_incomplete_schema_fragments ... ok
+test core_root_matches_reference_encoder ... ok
+test every_published_root_validates_reference_and_rejects_mutation ... ok
+test contract_pack_is_self_contained_and_repeatable ... ok
+test ordered_target_ir_schema_requires_explicit_execution_order ... ok
+test result_projection_root_enforces_decoder_path_limit ... ok
+test manifest_validation_recomputes_schema_and_resource_identity ... ok
+test result_projection_root_matches_reference_encoder ... ok
+test result_projection_root_enforces_output_and_record_node_limits ... ok
+test contract_pack_rejects_missing_duplicate_and_tampered_members ... ok
+test target_ir_root_accepts_encoder_valid_line_feed_coordinate ... ok
+test target_ir_root_accepts_only_closed_nonempty_pure_bindings ... ok
+test source_function_contract_preserves_old_modules_and_requires_new_schema_selection ... ok
+test target_ir_root_matches_reference_encoder ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/registry.rs (/cache/target/debug/deps/registry-13f5e05e0e48ffc6)
+
+running 15 tests
+test construction_accepts_unbounded_occurrences_that_must_consume_input ... ok
+test construction_rejects_latent_or_non_progressing_validator_shapes ... ok
+test construction_rejects_missing_ambiguous_and_digest_mismatched_schema_bytes ... ok
+test construction_requires_complete_domain_closure_and_compilable_roots ... ok
+test construction_rejects_ambiguous_recursive_choice_shapes ... ok
+test every_registered_domain_performs_real_schema_instance_validation ... ok
+test guarded_recursive_validation_is_bounded_and_rejects_invalid_descendants ... ok
+test nested_tagged_families_keep_required_key_dispatch_bounded_and_exact ... ok
+test recursive_map_discriminator_dispatch_is_independent_of_encoded_key_order ... ok
+test recursive_map_discriminator_dispatch_rejects_invalid_discriminators ... ok
+test recursive_dispatch_preserves_native_regexp_map_key_semantics ... ok
+test registry_receipt_and_behavior_are_independent_of_input_order ... ok
+test recursive_required_key_dispatch_accepts_compatible_untagged_arms ... ok
+test construction_accepts_guarded_recursive_roots ... ok
+test checked_target_ir_root_constructs_through_required_key_dispatch ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running unittests src/lib.rs (/cache/target/debug/deps/edict_syntax-61565aa050155eaa)
+
+running 52 tests
+test canonical::bundle_layer_digest_tests::domain_separates_semantic_from_release ... ok
+test canonical::bundle_layer_digest_tests::digest_is_deterministic ... ok
+test canonical::bundle_layer_digest_tests::component_order_changes_the_digest ... ok
+test canonical::bundle_layer_digest_tests::invalid_digest_review_string_is_rejected ... ok
+test canonical::bundle_layer_digest_tests::list_structure_is_distinct_from_flattened_singles ... ok
+test canonical::bundle_layer_digest_tests::resource_without_digest_is_rejected ... ok
+test canonical::bundle_layer_digest_tests::source_artifact_logical_paths_are_rejected ... ok
+test canonical::bundle_layer_digest_tests::uppercase_bundle_digest_review_string_is_rejected ... ok
+test canonical::bundle_layer_digest_tests::resource_preimage_shape_matches_checked_digest ... ok
+test canonical::bundle_layer_digest_tests::resource_coordinate_change_moves_digest_with_same_digest ... ok
+test canonical::bundle_layer_digest_tests::source_logical_path_change_moves_digest_with_same_artifact ... ok
+test canonical::canonical_artifact_tests::canonical_artifact_decode_rejects_noncanonical_bytes ... ok
+test canonical::canonical_artifact_tests::canonical_artifact_digest_accepts_the_public_nesting_boundary ... ok
+test canonical::canonical_artifact_tests::canonical_artifact_digest_decodes_and_domain_frames_bytes ... ok
+test canonical::canonical_artifact_tests::canonical_nesting_limit_is_enforced_on_encode_and_decode ... ok
+test canonical::canonical_artifact_tests::logical_package_relative_path_contract_is_shared ... ok
+test check_facade_tests::unparsable_source_is_parse_failed_with_stable_kind ... ok
+test check_facade_tests::unbounded_scalar_is_semantic_failed_with_stable_kind ... ok
+test check_facade_tests::valid_source_is_valid ... ok
+test canonical::canonical_artifact_tests::canonical_nesting_limit_counts_empty_terminal_containers ... ok
+test core_ir::structural_type_reference_tests::named_type_cycles_remain_distinct_from_depth_exhaustion ... ok
+test core_ir::structural_type_reference_tests::named_type_depth_accepts_exact_boundary ... ok
+test core_ir::structural_type_reference_tests::named_type_depth_checks_every_occurrence ... ok
+test core_ir::structural_type_reference_tests::named_type_depth_is_independent_of_table_order ... ok
+test core_ir::structural_type_reference_tests::named_type_closure_is_independent_of_root_order ... ok
+test core_ir::structural_type_reference_tests::named_type_expansion_bounds_recursive_descent ... ok
+test core_ir::structural_type_reference_tests::valid_unused_named_definition_mints_a_borrowed_witness ... ok
+test core_ir::structural_type_reference_tests::whole_module_type_integrity_reports_stable_kinds_and_paths ... ok
+test lawpack_authoring::tests::portable_output_path_grammar_rejects_windows_separators ... ok
+test parser::parse_error_kind_codes::each_variant_has_its_stable_wire_code ... ok
+test provider_invocation::tests::response_byte_accounting_rejects_u64_overflow ... ok
+test result_projection::tests::expression_parser_refuses_recursion_beyond_the_node_budget ... ok
+test semantic::semantic_error_kind_codes::each_variant_has_its_stable_wire_code ... ok
+test target_ir::byte_length::tests::nested_byte_length_validation_work_is_bounded ... ok
+test target_ir::tests::authenticated_named_type_closure_rejects_unrelated_extra_entry ... ok
+test target_ir::totality::tests::totality_block_depth_has_an_exact_boundary ... ok
+test target_ir::totality::tests::totality_expression_depth_has_an_exact_boundary ... ok
+test target_ir::totality::tests::totality_mixed_depth_does_not_reset_at_predicates ... ok
+test target_ir::unsigned_subtraction::tests::conditional_subtraction_validation_work_is_bounded ... ok
+test target_ir::unsigned_subtraction::tests::nested_subtraction_validation_work_is_bounded ... ok
+test target_ir::unsigned_subtraction::tests::record_field_subtraction_validation_work_is_bounded ... ok
+test token::tests::integer_underscores_only_between_digits ... ok
+test token::tests::lexes_package_ref ... ok
+test token::tests::lexes_refined_scalar_and_ops ... ok
+test token::tests::multibyte_utf8_string_is_not_corrupted ... ok
+test token::tests::skips_comments_and_keeps_strings ... ok
+test token::tests::string_escapes_decode ... ok
+test token::tests::typed_integer_suffix ... ok
+test token::tests::unterminated_string_errors ... ok
+test core_ir::structural_type_reference_tests::named_type_depth_uses_resolved_table_identity ... ok
+test core_ir::structural_type_reference_tests::named_type_expansion_height_covers_every_structural_constructor ... ok
+test core_ir::structural_type_reference_tests::canonical_structural_type_references_round_trip ... ok
+
+test result: ok. 52 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/admission.rs (/cache/target/debug/deps/admission-a8f9f2bd70293c1a)
+
+running 19 tests
+test admission_receipt_must_echo_policy_epoch ... ok
+test accepted_receipt_cannot_carry_rejection_evidence ... ok
+test accepted_receipt_and_invocation_capability_authorize_gate_c_invocation ... ok
+test accepted_receipt_must_admit_invoked_operation ... ok
+test hidden_host_inputs_are_rejected_below_the_determinism_boundary ... ok
+test admission_receipt_must_echo_request_digest ... ok
+test invocation_capability_must_match_policy_epoch ... ok
+test admission_receipt_must_echo_request_subject ... ok
+test invocation_capability_must_match_receipt_participant ... ok
+test llm_authored_artifact_still_requires_admission_receipt ... ok
+test invocation_capability_scope_must_be_admitted ... ok
+test operation_requirements_bind_subject_basis_and_canonical_variables ... ok
+test invoked_operation_must_be_in_requested_operations ... ok
+test receipt_admitted_capabilities_must_be_requested ... ok
+test receipt_admitted_operations_must_be_requested ... ok
+test participant_policy_rejection_is_evidence_not_invocation_authority ... ok
+test receipt_body_must_not_reference_its_signing_envelope ... ok
+test semantic_and_release_subjects_are_checked_independently ... ok
+test registration_receipt_does_not_authorize_invocation ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/authority_facts.rs (/cache/target/debug/deps/authority_facts-fa77fb62ccc43a57)
+
+running 14 tests
+test duplicate_fact_coordinates_in_direct_document_reject_before_context ... ok
+test direct_authority_fact_documents_validate_before_context_merge ... ok
+test conflicting_file_backed_authority_facts_reject_before_context ... ok
+test abi_custom_write_class_loads_and_prefixed_custom_rejects ... ok
+test duplicate_fact_coordinates_in_one_json_document_reject_before_context ... ok
+test loader_failure_kinds_cover_public_branches ... ok
+test invalid_loaded_profile_coordinates_reject_with_stable_kind ... ok
+test file_backed_authority_facts_reject_write_effect_profile_mismatch ... ok
+test file_backed_authority_facts_compile_bounded_hello ... ok
+test malformed_authority_facts_file_rejects_with_stable_kind ... ok
+test mixed_authority_source_digests_reject_before_context ... ok
+test nondigest_authority_fact_source_rejects_with_stable_kind ... ok
+test non_abi_write_class_casing_rejects_with_stable_kind ... ok
+test omitted_authority_fact_source_coordinate_rejects_with_stable_kind ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/authority_facts_cbor.rs (/cache/target/debug/deps/authority_facts_cbor-e81207bcaf73f58f)
+
+running 4 tests
+test canonical_authority_facts_rejections_have_stable_kinds ... ok
+test digest_review_hex_case_does_not_create_a_source_conflict ... ok
+test canonical_authority_facts_encoding_is_insertion_order_independent ... ok
+test canonical_authority_facts_decode_into_existing_compiler_context ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/byte_concat.rs (/cache/target/debug/deps/byte_concat-ed3702fb17d5c067)
+
+running 7 tests
+test byte_concat_rejects_narrow_destinations_and_wrong_operand_families ... ok
+test byte_concat_rejects_overflowing_static_sum_without_wrapping ... ok
+test byte_concat_order_and_nesting_are_explicit_in_core_identity ... ok
+test target_rejects_byte_concat_overflow_and_nominal_unwrapping ... ok
+test existing_string_concat_remains_unchanged ... ok
+test target_rejects_forged_byte_concat_calls ... ok
+test bounded_byte_concat_preserves_order_coordinates_and_summed_maximum ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/byte_length.rs (/cache/target/debug/deps/byte_length-5fdb36c574280e72)
+
+running 5 tests
+test bounded_byte_length_preserves_operand_type_and_u64_result ... ok
+test byte_length_rejects_wrong_source_operands_and_call_shapes ... ok
+test target_checks_byte_length_authority_inside_nested_predicates ... ok
+test target_rejects_forged_byte_length_signatures_and_authority ... ok
+test target_independently_accepts_byte_length_and_preserves_projection ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/byte_slice.rs (/cache/target/debug/deps/byte_slice-9fb2197437328219)
+
+running 10 tests
+test byte_slice_accepts_full_and_empty_ranges_without_assumptions ... ok
+test byte_slice_proofs_do_not_leak_into_basis_constraints_or_other_intents ... ok
+test byte_slice_rejects_unproven_ranges ... ok
+test byte_slice_accepts_equivalent_exact_order_evidence ... ok
+test byte_slice_rejects_wrong_call_shapes_and_types ... ok
+test byte_slice_source_name_cannot_be_shadowed ... ok
+test byte_slice_type_errors_identify_each_invalid_operand ... ok
+test byte_slice_preserves_operand_identity_and_weakens_length_bound ... ok
+test byte_slice_source_mutation_changes_core_identity ... ok
+test target_rejects_forged_byte_slice_signatures_and_proofs ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/canonical_encoding.rs (/cache/target/debug/deps/canonical_encoding-ecd371e6e810259f)
+
+running 23 tests
+test canonical_core_bytes_are_independent_of_input_constraint_order ... ok
+test canonical_cbor_integer_widths_are_platform_independent ... ok
+test canonical_cbor_rejects_duplicate_map_keys_on_encode ... ok
+test canonical_core_bytes_are_independent_of_import_order ... ok
+test canonical_core_bytes_are_independent_of_map_construction_order ... ok
+test canonical_core_bytes_are_source_alpha_rename_invariant ... ok
+test canonical_core_bytes_are_parameter_alpha_rename_invariant ... ok
+test canonical_core_bytes_change_when_core_meaning_changes ... ok
+test canonical_core_bytes_change_when_effect_coordinate_changes ... ok
+test canonical_core_bytes_change_when_local_identity_changes ... ok
+test canonical_core_bytes_decode_and_reencode_stably ... ok
+test canonical_core_bytes_ignore_import_alias_spelling ... ok
+test canonical_core_bytes_treat_required_capabilities_as_a_set ... ok
+test canonical_core_rejects_unresolved_import_digest ... ok
+test canonical_core_bytes_normalize_digest_hex_case ... ok
+test invalid_byte_interval_rejects_before_core_identity ... ok
+test max_only_bytes_preserve_prior_canonical_shape ... ok
+test core_type_table_rejects_self_describing_reference_keys ... ok
+test noncanonical_cbor_bytes_reject_with_stable_error_kind ... ok
+test oversized_cbor_array_length_returns_error_without_panicking ... ok
+test valid_unused_named_definition_remains_hash_significant ... ok
+test statement_branch_omits_binding_and_preserves_exact_canonical_identity ... ok
+test canonical_core_rejects_every_invalid_named_definition_including_unused_entries ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/compiler_spine.rs (/cache/target/debug/deps/compiler_spine-1aee428391d345e6)
+
+running 80 tests
+test bounded_list_loop_lowers_to_core ... ok
+test assert_reason_matches_payload_key_sets_without_order_sensitivity ... ok
+test bounded_hello_compiles_to_initial_core ... ok
+test bounded_list_loop_rejects_unsound_or_over_budget_bounds ... ok
+test bounded_list_loop_bound_mutation_moves_core_digest ... ok
+test bounded_list_loops_reject_cumulative_and_nested_over_budget_work ... ok
+test branch_yield_bare_integer_inherits_width_from_either_branch ... ok
+test branch_yield_does_not_leak_locals ... ok
+test branch_yield_bounded_strings_choose_the_wider_type_in_either_order ... ok
+test branch_yield_inference_cache_distinguishes_equal_spans ... ok
+test branch_yield_complementary_record_integers_join_structurally ... ok
+test branch_yield_inside_loop_preserves_cumulative_budget ... ok
+test branch_yield_lists_join_item_and_length_bounds_independently ... ok
+test branch_yield_record_bare_integer_inherits_field_width_from_either_branch ... ok
+test branch_yield_integer_inference_preserves_source_order_local_identities ... ok
+test branch_yield_rejects_incompatible_anonymous_record_shapes ... ok
+test branch_yield_records_join_compatible_fields_independently ... ok
+test branch_yield_rejects_pure_helper_that_is_a_disallowed_write_effect ... ok
+test chained_effect_calls_reject_before_core_lowering ... ok
+test compatible_helper_conditionals_are_branch_order_independent ... ok
+test continue_obstructed_reason_rejects_local_expression ... ok
+test compiler_spine_exposes_distinct_stage_boundaries ... ok
+test compiler_emits_authored_and_authenticated_named_types_without_field_scratch_entries ... ok
+test continue_obstructed_require_lowers_to_core_failure_arm ... ok
+test coordinate_bound_fact_with_foreign_coordinate_rejects_before_core ... ok
+test coordinate_bound_source_qualifier_must_match_the_owning_import ... ok
+test coordinate_bound_fact_without_exact_owning_import_rejects_before_core ... ok
+test coordinate_loop_cap_rejects_unsound_or_over_budget_fact_values ... ok
+test digest_bound_coordinate_loop_cap_lowers_to_core ... ok
+test digest_bound_pure_helper_call_lowers_to_core ... ok
+test duplicate_obstruction_reason_payload_fields_reject_before_core_digest ... ok
+test duplicate_obstruction_failures_reject_before_core_lowering ... ok
+test effectful_branch_yield_lowers_to_bound_core_branch ... ok
+test effectful_branch_yield_rejects_incompatible_results ... ok
+test effectful_write_intent_lowers_to_typed_core_from_file_backed_facts ... ok
+test effectful_branch_yield_mutation_moves_core_digest ... ok
+test exported_list_loop_preserves_the_declared_item_coordinate ... ok
+test exact_bytes_and_imported_nominal_aliases_preserve_core_identity ... ok
+test deeply_nested_branch_yield_integer_inference_compiles ... ok
+test imported_nominal_byte_interval_preserves_both_bounds ... ok
+test imported_nominal_identifiers_reject_cross_assignment ... ok
+test initial_core_lowering_makes_no_canonical_or_target_claim ... ok
+test malformed_imported_string_policy_rejects_as_unresolved_type ... ok
+test missing_context_facts_reject_in_resolve_stage ... ok
+test missing_coordinate_loop_cap_rejects_before_core ... ok
+test missing_pure_helper_rejects_before_core ... ok
+test missing_return_rejects_in_type_check_stage ... ok
+test mutually_exclusive_helper_and_loop_work_share_branch_correlation ... ok
+test nested_imported_type_fact_with_foreign_coordinate_rejects_before_core ... ok
+test imported_type_alias_depth_rejects_with_a_structured_error ... ok
+test non_nested_byte_intervals_join_independently_of_branch_order ... ok
+test obstruction_binder_ids_are_stable_by_failure_key ... ok
+test public_lower_core_rejects_an_invalid_typed_type_table ... ok
+test pure_conditional_bare_integer_inherits_width_from_either_branch ... ok
+test pure_conditional_expression_lowers_to_core ... ok
+test obstruction_reason_mutations_move_core_digest ... ok
+test pure_conditional_branch_mutation_moves_core_digest ... ok
+test pure_conditional_expression_rejects_incompatible_branches ... ok
+test pure_helper_argument_type_mismatch_rejects_before_core ... ok
+test pure_helper_coordinate_with_effect_authority_rejects_even_when_profile_allows_write ... ok
+test pure_helper_cost_requires_exact_lawpack_ownership ... ok
+test pure_helper_costs_are_charged_at_call_sites_and_inside_loops ... ok
+test pure_helper_fact_with_foreign_coordinate_rejects_before_core ... ok
+test pure_helper_fact_without_exact_owning_import_rejects_before_core ... ok
+test read_only_profile_rejects_write_effect_body ... ok
+test pure_helper_source_qualifier_must_match_the_owning_import ... ok
+test read_only_profile_rejects_write_effect_let_without_else ... ok
+test record_return_shape_mismatch_rejects_in_type_check_stage ... ok
+test statement_conditional_does_not_leak_locals ... ok
+test source_type_declarations_require_core_named_identities ... ok
+test statement_conditional_rejects_branch_return ... ok
+test statement_conditional_lowers_to_isolated_core_branches ... ok
+test terminal_require_obstruction_lowers_to_core_failure_arm ... ok
+test terminal_require_preserves_reason_payload_field ... ok
+test unresolved_local_types_reject_in_type_check_stage ... ok
+test typed_effect_calls_reject_before_core_lowering ... ok
+test terminal_and_continue_obstructed_require_arms_are_core_distinct ... ok
+test unresolved_loop_bound_fails_closed_during_helper_cost_accounting ... ok
+test unresolved_record_field_types_reject_in_type_check_stage ... ok
+test deeply_nested_complementary_record_inference_compiles ... ok
+
+test result: ok. 80 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/contract_bundle.rs (/cache/target/debug/deps/contract_bundle-de4e58cda325a187)
+
+running 38 tests
+test admission_artifacts_are_rejected_from_contract_bundles ... ok
+test assurance_evidence_must_match_target_ir_digest ... ok
+test assurance_evidence_must_match_bundle_subject ... ok
+test assurance_evidence_must_match_target_profile_digest ... ok
+test bundle_artifact_references_must_be_digest_locked ... ok
+test canonicalization_profile_must_be_the_v1_cbor_profile ... ok
+test contract_bundle_assembly::assembled_bundle_rejects_inserted_admission_artifacts ... ok
+test contract_bundle_assembly::assembled_bundle_from_real_core_validates ... ok
+test contract_bundle_assembly::assembly_from_target_ir_preserves_canonical_core_failure ... ok
+test contract_bundle_assembly::assembly_from_target_ir_accepts_exact_provider_supplied_closure ... ok
+test contract_bundle_assembly::assembly_from_target_ir_canonicalizes_bundle_lawpacks ... ok
+test contract_bundle_assembly::assembly_from_target_ir_rejects_artifact_capability_substitution ... ok
+test contract_bundle_assembly::assembly_from_target_ir_rejects_artifact_lawpack_substitution ... ok
+test contract_bundle_assembly::assembled_bundle_from_real_target_ir_computes_target_ir_digest ... ok
+test contract_bundle_assembly::assembly_from_target_ir_rejects_core_digest_substitution ... ok
+test contract_bundle_assembly::assembly_from_target_ir_rejects_lawpack_set_substitution ... ok
+test contract_bundle_assembly::assembly_from_target_ir_rejects_invalid_target_profile_digest_with_stable_field ... ok
+test contract_bundle_assembly::assembly_from_target_ir_rejects_mismatched_core_source ... ok
+test contract_bundle_assembly::assembly_from_target_ir_rejects_mismatched_provider_semantic_closure ... ok
+test contract_bundle_assembly::assembly_from_target_ir_rejects_missing_provider_closure ... ok
+test contract_bundle_assembly::assembly_from_target_ir_rejects_provider_closure_core_substitution ... ok
+test contract_bundle_assembly::assembly_rejects_uppercase_supplied_artifact_digest ... ok
+test contract_bundle_assembly::assembly_from_target_ir_rejects_provider_closure_lawpack_substitution ... ok
+test contract_bundle_assembly::assembly_rejects_uppercase_supplied_target_ir_digest ... ok
+test contract_bundle_assembly::assembly_from_target_ir_rejects_stripped_lawpack_only_closure ... ok
+test contract_bundle_assembly::assembly_rejects_inputs_that_would_not_validate ... ok
+test contract_bundle_assembly::optional_assurance_evidence_is_not_a_top_level_digest_preimage ... ok
+test contract_bundle_assembly::target_ir_digest_is_single_source_of_truth ... ok
+test echo_and_kv_bundles_validate_with_the_same_runtime_neutral_contract ... ok
+test external_assurance_evidence_is_optional ... ok
+test malformed_bundle_artifact_digest_is_rejected ... ok
+test optional_artifact_lists_may_be_empty ... ok
+test release_bundle_inputs_must_be_digest_locked ... ok
+test uppercase_artifact_digest_rendering_is_rejected ... ok
+test source_artifact_paths_must_be_logical_package_relative_paths ... ok
+test uppercase_bundle_digest_rendering_is_rejected ... ok
+test contract_bundle_assembly::release_only_preimage_mutations_leave_semantic_digest_unchanged ... ok
+test contract_bundle_assembly::semantic_preimage_mutations_change_semantic_and_release_digests ... ok
+
+test result: ok. 38 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/core_golden_fixtures.rs (/cache/target/debug/deps/core_golden_fixtures-cc1a8414261f9ebc)
+
+running 5 tests
+test reviewed_core_digest_matches_exact_fixture ... ok
+test core_module_digest_changes_when_core_meaning_changes ... ok
+test core_module_digest_changes_when_local_identity_changes ... ok
+test core_module_digest_is_stable_for_equivalent_core_ordering ... ok
+     Running tests/core_graph_depth.rs (/cache/target/debug/deps/core_graph_depth-b377816be85be7b4)
+test reviewed_core_golden_bytes_match_executable_encoder ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test core_graph_predicate_depth_has_an_exact_boundary ... ok
+test core_graph_expression_depth_has_an_exact_boundary ... ok
+test core_graph_expression_predicate_transitions_share_one_depth_budget ... ok
+test core_graph_nested_blocks_share_the_expression_depth_budget ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/effect_signature_diagnostics.rs (/cache/target/debug/deps/effect_signature_diagnostics-57a6d301e0c5bb63)
+
+running 7 tests
+test receipt_signature_error_identifies_first_incompatible_field ... ok
+test input_signature_error_identifies_first_incompatible_field ... ok
+test nominal_signature_mismatch_names_exact_identity_without_unwrapping ... ok
+test signature_mismatch_context_is_structured_at_the_input_root ... ok
+test signature_first_difference_is_lexical_and_preserves_independent_errors ... ok
+test signature_missing_and_extra_fields_have_typed_absence ... ok
+test nested_and_list_signature_paths_preserve_bounds_and_order ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/external_action_requests.rs (/cache/target/debug/deps/external_action_requests-8eb84d8a8b23e293)
+
+running 18 tests
+test capability_import_cannot_be_called_as_an_effect ... ok
+test capability_import_cannot_be_used_as_an_obstruction_coordinate ... ok
+test ambient_operation_families_are_not_requestable ... ok
+test dynamic_admission_values_survive_without_compile_time_execution ... ok
+test duplicate_target_request_ids_reject_before_identity ... ok
+test external_request_settlement_type_must_match_binding ... ok
+test external_request_expressions_require_closed_helper_authority ... ok
+test non_call_request_operation_has_a_request_specific_parse_kind ... ok
+test nested_request_validation_distinguishes_graph_depth_and_closure_failures ... ok
+test request_artifacts_are_reproducible ... ok
+test request_resource_coordinates_must_be_nonempty ... ok
+test request_operation_must_remain_in_core_and_target_capability_closure ... ok
+test undeclared_or_floating_operation_families_fail_closed ... ok
+test validated_patch_request_compiles_as_non_callable_data ... ok
+test workspace_observation_request_compiles_as_non_callable_data ... ok
+test every_request_authority_field_moves_core_and_target_identity ... ok
+test fixed_seed_request_identity_corpus_is_deterministic ... ok
+test sixty_four_requests_remain_bounded_non_callable_data ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/highlighting.rs (/cache/target/debug/deps/highlighting-c548d81d9fda3e6c)
+
+running 2 tests
+test request_statement_introducer_is_highlighted_as_a_keyword ... ok
+test highlight_source_emits_editor_roles_for_fixture ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/lawpack.rs (/cache/target/debug/deps/lawpack-b3380b6fb8bbd5bd)
+
+running 65 tests
+test callable_export_coordinates_must_be_disjoint ... ok
+test all_hash_bound_helper_and_verifier_variants_load ... ok
+test adapter_budget_closure_includes_dedicated_pure_helper_cost_templates ... ok
+test dependency_graph_rejects_cycles_before_digest_corroboration ... ok
+test duplicate_export_coordinates_reject_within_their_category ... ok
+test dependency_graph_requires_the_complete_exact_set_independent_of_input_order ... ok
+test dependency_graph_rejects_missing_and_substituted_manifests ... ok
+test edict_pure_helper_body_must_match_the_closed_pure_core_schema ... ok
+test direct_bounded_effect_signature_types_enter_source_compilation ... ok
+test edict_pure_helper_body_must_match_its_exported_signature ... ok
+test edict_pure_helper_byte_constants_obey_complete_intervals ... ok
+test edict_pure_helper_call_graph_depth_is_not_total_helper_count ... ok
+test edict_pure_helper_call_graph_must_be_acyclic ... ok
+test edict_pure_helper_collection_constants_obey_bounded_item_types ... ok
+test edict_pure_helper_constants_obey_scalar_map_and_variant_types ... ok
+test edict_pure_helper_field_results_come_from_the_base_record ... ok
+test edict_pure_helper_signature_checks_params_locals_bindings_and_calls ... ok
+test edict_pure_helpers_reject_effectful_and_unresolved_callees ... ok
+test effect_failure_names_must_be_source_mappable_identifiers ... ok
+test edict_pure_helper_call_graph_depth_is_bounded ... ok
+test exact_lawpack_constant_enters_loop_bound_compilation ... ok
+test effect_failure_payload_types_enter_the_authenticated_signature_closure ... ok
+test exact_lawpack_numeric_constants_reject_type_and_budget_violations ... ok
+test exact_lawpack_exported_type_enters_pure_helper_signature_closure ... ok
+test exact_lawpack_pure_helper_signature_enters_source_compilation ... ok
+test exact_lawpack_u32_constant_enters_loop_bound_compilation ... ok
+test executable_verifier_must_carry_component_sandbox_and_fuel ... ok
+test export_digest_substitution_rejects ... ok
+test exported_type_outside_lawpack_namespace_rejects_before_compiler_facts ... ok
+test generic_lawpack_helper_rejects_before_core ... ok
+test hello_echo_lawpack_bundle_loads_from_exact_canonical_resources ... ok
+test inline_structural_record_effect_signature_lowers ... ok
+test hello_echo_source_compiles_to_echo_target_ir_from_exact_lawpack_adapter ... ok
+test lawpack_adapter_bytes_must_be_canonical_and_digest_bound ... ok
+test inline_structural_record_pure_helper_signature_lowers ... ok
+test lawpack_adapter_rejects_an_undeclared_write_class_at_the_effect_path ... ok
+test lawpack_adapter_corroborates_footprint_cost_and_failure_obligations ... ok
+test lawpack_adapter_rejects_profiles_that_collapse_to_one_core_coordinate ... ok
+test lawpack_adapter_requires_a_typed_target_configuration_reference ... ok
+test lawpack_adapter_selection_requires_one_exact_target_profile ... ok
+test lawpack_adapter_requires_complete_exported_effect_coverage ... ok
+test lawpack_compilation_requires_the_exact_digest_locked_source_import ... ok
+test lawpack_effect_signature_requires_exported_type_closure ... ok
+test lawpack_import_rejects_raw_file_hash_with_manifest_domain_obligation ... ok
+test lawpack_effect_signatures_reject_source_type_substitution ... ok
+test malformed_lawpack_import_digest_retains_parser_kind_and_span ... ok
+test manifest_and_export_maps_are_closed ... ok
+test manifest_must_accept_the_supported_core_abi ... ok
+test lawpack_pure_helper_signature_rejects_type_definition_substitution ... ok
+test nested_exported_type_closure_enters_pure_helper_compilation ... ok
+test noncanonical_manifest_bytes_reject_before_shape_validation ... ok
+test operation_profile_optic_template_is_a_closed_typed_contract ... ok
+test proof_only_effect_does_not_invent_a_runtime_adapter_requirement ... ok
+test named_signature_closure_rejects_parent_and_leaf_tampering ... ok
+test request_only_profile_requires_an_exact_budget_obligation ... ok
+test request_only_profile_rejects_another_profiles_budget ... ok
+test request_only_profile_requires_an_exact_target_configuration ... ok
+test runtime_effect_requires_at_least_one_target_adapter ... ok
+test request_only_profile_supplies_budget_without_callable_effect_authority ... ok
+test target_lowering_requires_exact_lawpack_pure_helper_authority ... ok
+test source_function_can_call_disjoint_import_in_its_own_package_namespace ... ok
+test target_rejects_unused_source_function_colliding_with_imported_pure_fact ... ok
+test typed_digests_and_target_adapter_selectors_are_exact ... ok
+test edict_pure_helper_call_graph_depth_is_independent_of_root_order ... ok
+test edict_pure_helper_call_graph_depth_includes_shared_suffixes ... ok
+
+test result: ok. 65 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/lawpack_authoring.rs (/cache/target/debug/deps/lawpack_authoring-92b65bba226fa4ac)
+
+running 16 tests
+test artifact_paths_reject_file_ancestors_and_the_ownership_index_namespace ... ok
+test deeply_nested_canonical_values_reject_before_stack_exhaustion ... ok
+test authored_consumer_branch_mutation_moves_compiled_identity ... ok
+test derived_digest_sidecars_use_reserved_portable_headroom ... ok
+test authored_consumer_loop_mutations_move_core_identity_before_target_rejection ... ok
+test exported_semantic_mutation_moves_exports_and_manifest_identity ... ok
+test exact_dependency_closure_is_required_and_corroborated ... ok
+test authored_helper_body_mutation_moves_compiled_identity_or_rejects_stale_pins ... ok
+test full_surface_round_trips_through_existing_decoders ... ok
+test minimal_authoring_emits_a_deterministic_valid_bundle ... ok
+test preflight_rejects_duplicate_artifact_coordinates ... ok
+test malformed_inputs_fail_with_stable_categories ... ok
+test tagged_authoring_variants_reject_unknown_fields ... ok
+test export_values_account_for_their_enclosing_canonical_containers ... ok
+test semantic_surface_mutations_move_their_owning_identities ... ok
+test large_unique_artifact_path_set_authors_successfully ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/lowerability.rs (/cache/target/debug/deps/lowerability-e70aad6d389cf08b)
+
+running 20 tests
+test all_non_effect_obligation_failures_report_stable_kinds_together ... ok
+test missing_cost_obligation_reports_stable_failure_kind ... ok
+test direct_adapter_can_satisfy_guard_when_native_intrinsic_cannot ... ok
+test guard_incompatible_adapter_does_not_make_compatible_adapter_ambiguous ... ok
+test missing_footprint_obligation_reports_stable_failure_kind ... ok
+test missing_native_or_adapter_support_is_unsupported ... ok
+test missing_obstruction_reports_stable_failure_kind ... ok
+test missing_operation_profile_reports_stable_failure_kind ... ok
+test native_effects_must_support_required_per_effect_guards ... ok
+test one_direct_adapter_satisfies_v1_lowering_requirements ... ok
+test native_target_facts_satisfy_lowering_requirements ... ok
+test unsupported_atomicity_reports_stable_failure_kind ... ok
+test unsupported_global_guard_reports_stable_failure_kind ... ok
+test unsupported_optic_contract_reports_stable_failure_kind ... ok
+test unsupported_postcondition_reports_stable_failure_kind ... ok
+test unsupported_required_write_class_reports_stable_failure_kind ... ok
+test v1_rejects_ambiguous_direct_adapters ... ok
+test v1_rejects_ambiguous_native_support ... ok
+test v1_rejects_floating_direct_adapter_claims ... ok
+test v1_rejects_chained_adapter_claims ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/operation_prerequisites.rs (/cache/target/debug/deps/operation_prerequisites-43662c1c46268b23)
+
+running 18 tests
+test bare_integer_literals_inherit_unambiguous_fixed_width_context ... ok
+test body_local_cannot_become_an_intent_basis ... ok
+test direct_type_check_refuses_duplicate_basis_clauses ... ok
+test explicit_basis_target_ir_cannot_drop_its_semantic_closure ... ok
+test canonical_core_rejects_values_outside_their_declared_integer_domain ... ok
+test direct_type_check_refuses_a_missing_basis_without_panicking ... ok
+test fixed_width_integer_types_and_suffixes_preserve_exact_domains ... ok
+test legacy_target_ir_encoder_rejects_an_empty_source_core_coordinate ... ok
+test invalid_or_conflicting_lawpack_resources_refuse_before_target_artifact ... ok
+test out_of_range_u64_and_cross_width_values_reject_before_core ... ok
+test operation_prerequisite_fixture_preserves_fixed_width_basis_and_lawpack_closure ... ok
+test semantic_closure_cannot_substitute_a_different_source_core_coordinate ... ok
+test target_lowering_refuses_an_empty_source_core_coordinate ... ok
+test signed_fixed_width_minima_preserve_exact_domains ... ok
+test target_lowering_refuses_an_unidentifiable_semantic_closure ... ok
+test unconstrained_bare_integer_literal_refuses_before_core ... ok
+test explicit_basis_and_semantic_input_mutations_move_target_identity ... ok
+test semantic_closure_lawpack_set_is_order_invariant ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/parse_control_flow.rs (/cache/target/debug/deps/parse_control_flow-0e9158c4315ca09d)
+
+running 6 tests
+test branch_yield_without_yield_is_rejected ... ok
+test if_statement_with_else_if_chain_parses ... ok
+test branch_yield_parses_only_as_let_rhs ... ok
+test conditional_blob_fixture_parses ... ok
+test pure_ternary_parses_as_let_value ... ok
+test ternary_is_usable_in_nested_expression_position ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/parse_greeting.rs (/cache/target/debug/deps/parse_greeting-9fd4cb44cd21c159)
+
+running 3 tests
+test generic_call_vs_comparison_disambiguation ... ok
+test obstruction_map_with_binders_and_payload_parses ... ok
+test read_greeting_parses ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/parse_hello.rs (/cache/target/debug/deps/parse_hello-b4c547d18f1afdf7)
+
+running 3 tests
+test multi_part_package_version ... ok
+test missing_semicolon_is_a_parse_error ... ok
+test bounded_hello_parses ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/parse_keywords.rs (/cache/target/debug/deps/parse_keywords-a8041f28d98f6901)
+
+running 5 tests
+test keywords_are_rejected_as_let_binder_names ... ok
+test keywords_are_legal_as_member_names ... ok
+test prelude_constructors_are_not_reserved ... ok
+test keywords_are_rejected_as_bare_values ... ok
+test ternary_is_not_a_bare_operand ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/parse_loops.rs (/cache/target/debug/deps/parse_loops-a3ba2ff0ff7499ae)
+
+running 3 tests
+test for_with_coordinate_bound_parses ... ok
+test for_with_integer_bound_parses ... ok
+test for_without_bounded_is_rejected ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/parse_negative.rs (/cache/target/debug/deps/parse_negative-03c4f70ca24a07f3)
+
+running 4 tests
+test unterminated_string_is_rejected ... ok
+test bytes_rejects_canonical_policy ... ok
+test reserved_future_decls_are_rejected_at_top_level ... ok
+test missing_package_is_rejected ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/parse_review_regressions.rs (/cache/target/debug/deps/parse_review_regressions-c7e8a935b0c65f58)
+
+running 24 tests
+test bytes_accept_exact_bounds ... ok
+test bound_integer_suffixes_are_preserved ... ok
+test bytes_accept_coordinate_bounds ... ok
+test capability_imports_parse_as_external_operation_references ... ok
+test bool_and_digest_literals_are_real_literals ... ok
+test continue_obstructed_is_contextual_to_require_else ... ok
+test continue_obstructed_requires_reason_field ... ok
+test continue_obstructed_rejects_duplicate_reason_field ... ok
+test continue_obstructed_source_arm_parses ... ok
+test effect_positions_must_be_calls ... ok
+test empty_enum_and_empty_obstruction_maps_reject ... ok
+test helper_shaped_continue_in_obstructed_strand_is_terminal ... ok
+test import_digest_literals_are_validated ... ok
+test import_versions_preserve_underscore_labels ... ok
+test package_versions_preserve_underscores ... ok
+test reserved_keywords_are_rejected_as_import_aliases ... ok
+test require_statement_parses_terminal_obstruction_source_shape ... ok
+test reserved_words_are_rejected_as_coordinate_roots ... ok
+test reserved_words_are_rejected_as_record_shorthand ... ok
+test reserved_words_are_rejected_in_all_binder_positions ... ok
+test stale_basis_obstruction_strand_fixture_parses ... ok
+test upper_ident_productions_are_enforced ... ok
+test type_call_suffix_requires_adjacency_to_call_paren ... ok
+test yield_blocks_reject_return_statements ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/parse_variants.rs (/cache/target/debug/deps/parse_variants-776156e0d4e09aa2)
+
+running 7 tests
+test enum_decl_parses ... ok
+test match_expr_with_binders_parses ... ok
+test palette_fixture_parses ... ok
+test empty_match_is_rejected ... ok
+test variant_literal_without_payload_parses ... ok
+test variant_type_with_and_without_payloads_parses ... ok
+test variant_literal_with_payload_parses ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/provider.rs (/cache/target/debug/deps/provider-4034ea24a7a6c206)
+
+running 23 tests
+test component_selection_rejects_unknown_and_wrong_kind_roles ... ok
+test provider_manifest_rejects_component_identity_disagreement ... ok
+test generated_provider_manifest_fixture_validates ... ok
+test generation_provenance_is_generated_provider_metadata ... ok
+test provider_manifest_rejects_component_metadata_roles ... ok
+test provider_manifest_rejects_duplicate_artifact_roles ... ok
+test provider_manifest_rejects_empty_artifact_role ... ok
+test provider_manifest_rejects_missing_artifacts ... ok
+test provider_manifest_rejects_generated_component_roles ... ok
+test provider_manifest_rejects_unknown_api_version ... ok
+test provider_manifest_rejects_missing_or_unknown_schema_roles ... ok
+test provider_manifest_rejects_missing_duplicate_and_out_of_order_schema_domains ... ok
+test provider_manifest_rejects_unlocked_component ... ok
+test provider_manifest_rejects_unlocked_generated_artifact ... ok
+test provider_manifest_rejects_unlocked_generated_provenance ... ok
+test provider_manifest_rejects_unlocked_generator_provenance ... ok
+test provider_manifest_rejects_unlocked_provider ... ok
+test provider_manifest_rejects_path_like_artifact_roles ... ok
+test provider_manifest_requires_schema_bindings ... ok
+test provider_manifest_requires_the_exact_provider_abi ... ok
+test provider_manifest_requires_schema_kind_and_root_rule ... ok
+test validated_manifest_selects_one_exact_world_contract ... ok
+test selected_component_outlives_temporary_manifest_proof ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/provider_invocation.rs (/cache/target/debug/deps/provider_invocation-376a6d96f51b78df)
+
+running 25 tests
+test diagnostics_require_wit_tuple_order_without_duplicates ... ok
+test diagnostic_order_uses_every_wit_tuple_key ... ok
+test lowering_request_accepts_digest_bound_canonical_inputs ... ok
+test logical_paths_are_package_relative_and_collision_free ... ok
+test every_semantic_input_kind_and_target_ir_recomputes_its_digest ... ok
+test every_input_class_must_match_its_owning_schema ... ok
+test owning_schema_validation_order_is_explicit_and_deterministic ... ok
+test outputs_reject_noncanonical_bytes_before_identity ... ok
+test owning_schema_validation_precedes_output_identity ... ok
+test repeated_validation_is_structurally_deterministic ... ok
+test requests_reject_malformed_and_mismatched_input_digests ... ok
+test requests_reject_unsupported_protocol_version ... ok
+test returned_output_roles_require_nonempty_unique_utf8_order ... ok
+test requests_reject_wrong_fixed_and_semantic_input_domains ... ok
+test requests_reject_malformed_or_unbound_contract_fields ... ok
+test success_requires_exact_requested_role_kind_and_domain_set ... ok
+test response_limits_apply_exactly_to_success_and_refusal ... ok
+test runtime_owned_output_domains_require_their_registered_schemas ... ok
+test valid_success_produces_host_digested_manifest_and_refusal_is_preserved ... ok
+test verification_request_binds_canonical_target_ir ... ok
+test verification_success_uses_verifier_only_output_vocabulary ... ok
+test zero_response_limits_allow_only_empty_counted_values ... ok
+test verifier_results_are_limit_independent_too ... ok
+test sufficient_limit_changes_cannot_change_provider_result ... ok
+test semantic_input_closure_and_role_order_are_exact ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/provider_lowering.rs (/cache/target/debug/deps/provider_lowering-027bf923571fba50)
+
+running 8 tests
+test builtin_lowerer_compatibility_failure_is_standard_error ... ok
+test builtin_echo_lowerer_matches_direct_target_ir ... ok
+test builtin_gitwarp_lowerer_matches_direct_target_ir ... ok
+test builtin_lowerers_preserve_structured_lowering_failures ... ok
+test builtin_lowerers_reject_mismatched_target_profiles ... ok
+test builtin_lowerers_preserve_target_profile_digest_failures ... ok
+test changing_builtin_lowerer_identity_changes_only_release_identity ... ok
+test builtin_lowerer_bundles_preserve_semantic_and_release_identity ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/result_projection.rs (/cache/target/debug/deps/result_projection-eb47a99af348c3d8)
+
+running 23 tests
+test canonical_bytes_and_digest_are_independently_enforced ... ok
+test exact_byte_projection_refuses_a_max_only_source ... ok
+test hostile_decoded_values_fail_closed_before_semantic_admission ... ok
+test echo_target_lowering_emits_the_verified_result_projection ... ok
+test exact_core_and_target_ir_emit_the_typed_hello_echo_projection ... ok
+test canonical_maps_are_insertion_order_independent_for_fixed_seed_cases ... ok
+test malformed_raw_core_cannot_emit_or_verify_a_result_projection ... ok
+test independent_verifier_reconstructs_the_authored_core_result ... ok
+test mutated_target_core_closure_fails_closed ... ok
+test incomplete_output_and_zero_output_bound_fail_closed ... ok
+test path_text_artifact_and_structure_bounds_fail_closed ... ok
+test mutated_target_lawpack_closure_fails_closed ... ok
+test mutated_target_result_fails_closed ... ok
+test projection_rejects_local_identity_shared_with_application_input ... ok
+test projection_node_limit_accepts_the_boundary_and_rejects_the_next_node ... ok
+test pure_binding_result_projection_round_trips_through_independent_verification ... ok
+test pure_binding_projection_rejects_missing_substituted_reordered_and_duplicate_target_authority ... ok
+test target_lowering_exposes_an_unsupported_result_projection_without_claiming_one ... ok
+test structured_core_effects_cannot_disappear_from_projection_validation ... ok
+test undeclared_locals_and_unsupported_calls_fail_closed ... ok
+test over_depth_named_expansion_cannot_emit_or_verify_a_result_projection ... ok
+test unknown_steps_and_invalid_application_input_bindings_fail_closed ... ok
+test repeated_emit_and_verify_is_stable_under_bounded_stress ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/return_budget.rs (/cache/target/debug/deps/return_budget-02ee32d5a5777bf5)
+
+running 6 tests
+test return_budget_preserves_imported_nominal_representation_bounds ... ok
+test return_budget_refuses_opaque_requests_but_preserves_bounded_outputs ... ok
+test return_budget_overflow_rejects_before_core ... ok
+test return_budget_unicode_record_maximum_matches_canonical_encoder ... ok
+test return_budget_supports_every_accepted_imported_integer_width ... ok
+test return_budget_exact_fit_accepts_and_one_byte_less_rejects ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/semantic_validation.rs (/cache/target/debug/deps/semantic_validation-d8d1e47299727448)
+
+running 19 tests
+test duplicate_implements_and_footprint_clauses_are_rejected ... ok
+test branch_and_loop_binders_are_scoped ... ok
+test clause_expression_binders_see_parameters ... ok
+test duplicate_singleton_intent_clauses_are_rejected ... ok
+test branch_yield_binders_are_scoped ... ok
+test intent_required_clauses_are_validated ... ok
+test expression_binders_cannot_shadow_visible_names ... ok
+test local_binders_cannot_shadow_visible_names ... ok
+test module_namespace_collisions_are_rejected ... ok
+test obstruction_map_binders_cannot_shadow_visible_names ... ok
+test profile_or_implements_satisfies_operation_mode ... ok
+test surface_validation_defers_import_and_name_resolution ... ok
+test surface_validation_defers_contextual_typing_and_loop_bound_proof ... ok
+test phase1_fixtures_validate_semantically ... ok
+test surface_validation_defers_obstruction_exhaustiveness ... ok
+test unbounded_runtime_scalars_are_rejected_in_declaration_type_surfaces ... ok
+test unbounded_runtime_scalars_are_rejected_in_intent_and_expression_surfaces ... ok
+test unbounded_runtime_scalars_are_rejected_recursively ... ok
+test validate_module_remains_surface_stage_compatibility_alias ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/source_functions.rs (/cache/target/debug/deps/source_functions-b5ed0dfd42451bfb)
+
+running 37 tests
+test boolean_functions_compose_as_values_and_lazy_predicates ... ok
+test boolean_predicate_reification_storage_is_budgeted ... ok
+test caller_expressions_remain_single_ordered_arguments_even_when_unused ... ok
+test function_free_core_omits_the_new_table ... ok
+test independent_target_checks_function_results_calls_and_totality ... ok
+test forward_calls_and_ordered_function_locals_keep_lexical_frames ... ok
+test graph_expression_depth_diagnostic_identifies_its_owning_function ... ok
+test jim_range_assembly_calls_an_authored_function_through_core_and_target ... ok
+test independent_target_rejects_even_unused_source_imported_authority_collisions ... ok
+test predicate_operand_diagnostics_are_independent_of_call_syntax ... ok
+test public_core_function_scope_and_cycle_checks_do_not_trust_the_compiler ... ok
+test pure_functions_reject_assertions_and_effect_statements_without_erasure ... ok
+test rejected_function_statements_identify_the_offending_statement_span ... ok
+test require_only_source_function_program_binds_the_complete_core_identity ... ok
+test request_value_shapes_are_unsupported_in_source_accounting_not_overflow ... ok
+test source_calls_remain_in_conditional_and_prebody_positions ... ok
+test source_function_arity_and_return_types_are_checked ... ok
+test repeated_source_diamonds_have_checked_cost_without_expansion ... ok
+test source_function_byte_comparison_work_is_in_the_static_budget ... ok
+test source_function_body_and_unused_definition_change_identity ... ok
+test source_function_costs_do_not_depend_on_diagnostic_spans ... ok
+test source_function_costs_include_original_branch_yield_bindings ... ok
+test source_function_duplicate_binders_and_names_are_rejected ... ok
+test source_function_identity_is_not_an_imported_fact ... ok
+test source_function_imported_calls_require_owned_cost_evidence_even_if_unused ... ok
+test source_function_local_alpha_renaming_preserves_semantic_identity ... ok
+test source_function_recursion_is_rejected_even_when_unused ... ok
+test source_function_returns_are_terminal_and_required ... ok
+test source_function_zero_arguments_and_nominal_records_preserve_types ... ok
+test source_functions_charge_all_imported_cost_dimensions_and_own_storage ... ok
+test transitive_imported_cost_counts_repeated_calls_and_unused_arguments ... ok
+test transitive_totality_cannot_be_bypassed_by_a_source_function ... ok
+test typed_non_boolean_conditional_predicate_reports_expected_predicate ... ok
+test unused_functions_cannot_capture_callers_or_forward_locals ... ok
+test shared_suffix_depth_is_independent_of_definition_order ... ok
+test source_function_call_depth_accepts_128_and_rejects_129 ... ok
+test graph_diagnostic_origin_distinguishes_global_work_from_a_function_named_work ... ok
+
+test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.35s
+
+     Running tests/target_ir.rs (/cache/target/debug/deps/target_ir-11a1f0cda4037462)
+
+running 88 tests
+test ambiguous_effect_lowering_rejects_without_artifact ... ok
+test colliding_target_obstruction_mappings_reject_without_artifact ... ok
+test caller_authored_byte_comparisons_require_directional_compatibility ... ok
+test compiler_emitted_core_type_closure_uses_named_entries_only ... ok
+test compiler_produced_anonymous_record_fields_preserve_structural_types ... ok
+test compiler_bound_list_record_joins_use_canonical_structural_identity ... ok
+test compiler_bound_record_joins_use_canonical_structural_identity ... ok
+test compiler_produced_bounded_lists_lower_through_target_ir ... ok
+test compiler_produced_conditional_comparisons_infer_compatible_branch_types ... ok
+test compiler_produced_conditional_record_comparisons_preserve_structural_compatibility ... ok
+test compiler_produced_crossed_list_conditionals_lower_through_target_ir ... ok
+test dangling_pure_result_rejects_before_target_artifact ... ok
+test core_type_table_rejects_self_describing_reference_keys ... ok
+test echo_target_ir_contains_obstruction_requirement_payload ... ok
+test compiler_produced_string_concat_uses_raw_result_canonicalization ... ok
+test effect_result_bindings_are_preserved_in_echo_span_ir ... ok
+test empty_core_modules_reject_without_artifact ... ok
+test empty_target_step_intents_reject_without_artifact ... ok
+test empty_aggregate_predicates_reject_on_every_target_surface ... ok
+test empty_local_identities_reject_across_all_producer_classes ... ok
+test every_copied_target_expression_requires_closed_helper_authority ... ok
+test foreign_target_intrinsic_rejects_without_artifact ... ok
+test intent_constraints_and_budget_are_preserved_in_echo_span_ir ... ok
+test intent_result_is_preserved_in_echo_span_ir ... ok
+test lowerability_bridge_carries_only_selected_native_effect ... ok
+test lowerability_bridge_deduplicates_identical_native_effect_selection ... ok
+test lowerability_bridge_requires_matching_target_profile_reference ... ok
+test lowerability_bridge_uses_report_operation_profile_identity ... ok
+test lowerability_bridge_uses_report_target_profile_identity ... ok
+test lawpack_effect_signatures_reject_mismatched_core_values ... ok
+test every_core_type_bearing_surface_crosses_one_integrity_boundary ... ok
+test lowerability_native_support_feeds_echo_target_lowering ... ok
+test lowerability_native_support_feeds_gitwarp_target_lowering ... ok
+test missing_effect_lowering_rejects_without_artifact ... ok
+test malformed_pure_binding_graphs_reject_before_target_artifact ... ok
+test nested_string_conditional_predicates_require_compatible_bounded_operands ... ok
+test non_raw_string_constant_rejects_before_target_artifact ... ok
+test obstruction_arm_values_are_preserved_in_echo_span_ir ... ok
+test ordered::effect_result_guard_preserves_execution_order ... ok
+test ordered::effect_pure_binding_and_guard_keep_interleaving ... ok
+test narrow_core_integer_widths_lower_as_builtin_types ... ok
+test ordered::encoder_binds_valid_independent_orderings_into_identity ... ok
+test ordered::encoder_refuses_missing_duplicate_foreign_and_forward_order_entries ... ok
+test ordered::guard_between_effects_is_not_hoisted_or_delayed ... ok
+test ordered::ordered_encoder_rejects_cross_table_ids_and_inconsistent_local_references ... ok
+test ordered::input_only_guard_after_effect_stays_after_effect ... ok
+test ordered::ordered_contract_does_not_silently_drop_external_requests ... ok
+test ordered::ordered_selection_keeps_legacy_guard_refusal ... ok
+test ordered::ordered_selection_still_rejects_forward_and_duplicate_producers ... ok
+test ordered::payload_only_effect_dependency_keeps_guard_after_effect ... ok
+test pure_binding_encoder_rejects_duplicate_identity_or_missing_closure ... ok
+test pure_conditional_comparison_accepts_supported_call_operands ... ok
+test pure_conditional_predicates_require_compatible_bounded_operands ... ok
+test pure_binding_semantic_mutations_move_target_ir_identity ... ok
+test pure_core_bindings_lower_as_generic_target_program ... ok
+test over_depth_named_expansion_cannot_lower_to_target_ir ... ok
+test pure_program_without_imports_or_basis_still_binds_source_core_identity ... ok
+test ranged_core_byte_coordinates_lower_as_builtin_types ... ok
+test requirement_after_target_step_rejects_with_stable_feature_kind ... ok
+test requirement_that_reads_step_output_rejects_with_stable_feature_kind ... ok
+test supported_effectful_core_lowers_to_echo_span_ir ... ok
+test supported_gitwarp_core_lowers_to_commit_reducer_ir ... ok
+test target_comparisons_require_one_record_compatibility_direction ... ok
+test target_ir_artifact_canonicalization_ignores_equivalent_construction_order ... ok
+test target_ir_artifact_bytes_and_digests_are_deterministic ... ok
+test target_ir_encoder_rejects_local_identity_shared_across_producer_classes ... ok
+test target_ir_encoder_rejects_unlocked_or_uppercase_target_profile_digest ... ok
+test target_ir_encoder_reserves_application_input_local_identity ... ok
+test target_ir_obstruction_arm_value_mutation_moves_digest ... ok
+test target_ir_digest_moves_for_artifact_semantic_mutations ... ok
+test target_ir_step_order_changes_digest ... ok
+test target_ir_requirement_mutations_move_digest ... ok
+test targets_without_obstruction_requirement_support_reject_with_stable_feature_kind ... ok
+test type_incompatible_pure_binding_rejects_before_target_artifact ... ok
+test terminal_and_preserved_requirements_are_target_ir_distinct ... ok
+test undigested_core_import_rejects_without_artifact ... ok
+test undigested_target_profile_rejects_without_artifact ... ok
+test unsupported_core_abi_rejects_without_artifact ... ok
+test unsupported_core_capability_rejects_without_artifact ... ok
+test unsupported_lowerability_report_does_not_build_target_ir_facts ... ok
+test unsupported_core_nodes_reject_without_artifact ... ok
+test unsupported_obstruction_key_rejects_without_artifact ... ok
+test unsupported_operation_profile_rejects_without_artifact ... ok
+test unsupported_target_ir_domain_rejects_without_artifact ... ok
+test unsupported_target_profile_rejects_without_artifact ... ok
+test unused_duplicate_effect_lowerings_do_not_reject_supported_effect ... ok
+test target_lowering_accepts_compiler_type_depth_boundary ... ok
+test compiler_target_semantic_parity_matrix ... ok
+
+test result: ok. 88 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/target_profile.rs (/cache/target/debug/deps/target_profile-b67eec346055ec4d)
+
+running 8 tests
+test accepted_core_abi_must_include_v1_core ... ok
+test echo_and_kv_profiles_conform_to_the_same_runtime_neutral_manifest_contract ... ok
+test direct_lawpack_adapter_abi_is_supported_in_v1 ... ok
+test atomic_application_semantics_are_required_for_v1_conformance ... ok
+test malformed_digest_on_normative_manifest_slot_is_rejected ... ok
+test multi_target_profiles_are_rejected_until_composite_validation_exists ... ok
+test missing_digest_on_normative_manifest_slot_is_rejected ... ok
+test unknown_or_duplicate_lawpack_adapter_abis_are_rejected ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/target_profile_contract_resources.rs (/cache/target/debug/deps/target_profile_contract_resources-c7fb78fd152a359f)
+
+running 5 tests
+test canonical_contract_resources_are_complete_and_reproducible ... ok
+test semantic_mutation_moves_digest_without_gaining_authority ... ok
+test contract_resource_validation_is_input_order_independent ... ok
+test validated_contract_resources_bind_runtime_neutral_profiles ... ok
+test contract_resource_boundary_rejects_every_identity_mismatch ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/target_unsigned_subtraction.rs (/cache/target/debug/deps/target_unsigned_subtraction-e575425b4eca420e)
+
+running 10 tests
+test target_checks_nested_result_arithmetic_and_isolates_intents ... ok
+test target_does_not_use_body_evidence_to_authorize_metadata_arithmetic ... ok
+test target_lowers_proven_unsigned_difference_without_changing_operands ... ok
+test target_rejects_negated_evidence_and_underflowing_literals ... ok
+test target_rejects_malformed_subtraction_signatures_and_literals ... ok
+test target_rejects_unsigned_difference_when_core_guard_is_stripped ... ok
+test target_rejects_unsigned_difference_when_core_operands_are_reversed ... ok
+test target_rejects_unsigned_difference_with_disjunctive_evidence ... ok
+test target_accepts_both_unsigned_widths_and_unconditional_constant_bounds ... ok
+test target_checks_nested_operands_without_repeated_validation ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/unsigned_subtraction.rs (/cache/target/debug/deps/unsigned_subtraction-e46b362eec3d3fb4)
+
+running 7 tests
+test unsigned_difference_cannot_use_guards_to_evaluate_basis_or_guards ... ok
+test boolean_connectives_preserve_predicate_structure_in_core ... ok
+test unsigned_difference_accepts_self_zero_and_ordered_constants ... ok
+test unsigned_difference_proof_does_not_leak_between_intents ... ok
+test unsigned_difference_rejects_unproven_or_wrong_evidence ... ok
+test guarded_unsigned_difference_preserves_width_order_and_guard ... ok
+test unsigned_difference_identity_tracks_semantics ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/cache/target/debug/deps/edict-0eb69d378a217780)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/artifact_models.rs (/cache/target/debug/deps/artifact_models-caec6e817e091386)
+
+running 2 tests
+test facade_consumer_names_diagnostic_spans ... ok
+test facade_consumer_constructs_and_verifies_artifacts ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/numeric_foundation.rs (/cache/target/debug/deps/numeric_foundation-f59a5814fc5f162b)
+
+running 6 tests
+test checked_linear_operations_preserve_exact_boundaries ... ok
+test checked_products_and_quotients_refuse_invalid_results ... ok
+test division_uses_signed_ties_to_even ... ok
+test multiplication_uses_signed_ties_to_even ... ok
+test public_numeric_profile_has_the_normative_identity ... ok
+test raw_values_preserve_bits_and_order ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/public_surface.rs (/cache/target/debug/deps/public_surface-b30900030fe32259)
+
+running 2 tests
+test curated_facade_checks_source_and_reports_stable_failures ... ok
+test implementation_modules_are_unavailable_to_consumers ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.54s
+
+     Running unittests src/main.rs (/cache/target/debug/deps/xtask-361f7aa51eaad4da)
+
+running 90 tests
+test release_prep::date_tests::release_prep_default_date_uses_supplied_utc_clock ... ok
+test release_prep::date_tests::release_prep_clock_failures_are_structured ... ok
+test release_prep::date_tests::release_prep_explicit_date_overrides_clock ... ok
+test release_prep::date_tests::release_prep_rejects_noncanonical_iso_date ... ok
+test tests::auto_release_tag_checks_milestone_before_tag_push ... ok
+test release_prep::date_tests::release_prep_date_validation_has_one_stable_failure ... ok
+test tests::auto_release_tag_dispatches_release_from_tag_ref ... ok
+test tests::auto_release_tag_dispatches_with_explicit_repo ... ok
+test tests::auto_release_tag_uses_ephemeral_push_credentials ... ok
+test tests::auto_release_tag_manual_dispatch_checks_verified_main_sha ... ok
+test tests::auto_release_tag_workflow_is_guarded ... ok
+test tests::auto_release_tag_workflow_scopes_job_permissions ... ok
+test tests::cargo_deny_supply_chain_gate_covers_root_and_fixture_guest ... ok
+test tests::authority_facts_goldens_match_executable_codec ... ok
+test tests::check_result_schema_declares_jsonl_contract ... ok
+test tests::cli_goldens_command_is_wired_into_verify ... ok
+test tests::cli_golden_binary_path_uses_cargo_metadata_target_directory ... ok
+test tests::compiler_input_schema_declares_jsonl_contract ... ok
+test tests::compiler_settings_schema_declares_jsonl_contract ... ok
+test tests::contract_graph_accepts_policy_rows_without_rust_evidence ... ok
+test tests::contract_graph_rejects_truncated_registry_bracket_ids ... ok
+test tests::bundle_digest_goldens_match_assembly ... ok
+test tests::contract_graph_rejects_unknown_registry_source_ids ... ok
+test tests::contract_graph_rejects_unknown_requirement_status ... ok
+test tests::contract_graph_requires_implemented_evidence_for_implemented_requirements ... ok
+test tests::core_cddl_declares_v1_semantic_model ... ok
+test tests::core_cddl_has_no_digest_freeze_fields ... ok
+test tests::diagnostic_schema_declares_jsonl_contract ... ok
+test tests::diff_check_base_selection_falls_back_without_origin_main ... ok
+test tests::diff_check_base_selection_prefers_origin_main ... ok
+test tests::core_schema_shape_fixtures_match_cddl ... ok
+test tests::event_schema_declares_jsonl_contract ... ok
+test tests::info_schema_declares_jsonl_contract ... ok
+test tests::core_goldens_match_executable_encoder ... ok
+test tests::link_check_rejects_local_links_outside_repo ... ok
+test tests::milestone_lookup_contract_rejects_head_truncation ... ok
+test tests::obstruction_taxonomy_boundary_uses_layer_authority_terms ... ok
+test tests::legacy_target_profile_wit_is_not_provider_envelope ... ok
+test tests::projection_record_schemas_declare_jsonl_contract ... ok
+test tests::lawpack_goldens_match_executable_codec ... ok
+test tests::provider_fixture_inventory_is_an_explicit_ci_gate ... ok
+test tests::provider_contract_pack_goldens_match_executable_contract ... ok
+test tests::provider_wit_declares_explicit_lowering_envelope ... ok
+test tests::release_automation_policy_is_structured ... ok
+test tests::release_date_findings_identify_missing_tagger_date ... ok
+test tests::release_date_findings_identify_policy_errors_without_prose ... ok
+test tests::release_date_reconciliation_accepts_dates_matching_their_tags ... ok
+test tests::release_date_reconciliation_allowlists_the_prepolicy_release ... ok
+test tests::release_date_reconciliation_allows_untagged_preparation ... ok
+test tests::release_date_reconciliation_fails_when_a_covered_surface_disappears ... ok
+test tests::release_date_reconciliation_rejects_lightweight_release_tags ... ok
+test tests::release_date_reconciliation_rejects_missing_published_tags ... ok
+test tests::release_date_reconciliation_reports_internally_consistent_wrong_dates ... ok
+test tests::release_date_reconciliation_tolerates_prep_status_for_a_fresh_tag ... ok
+test tests::release_milestone_lookup_consumes_complete_paginated_stream ... ok
+test tests::release_policy_block_parsing_scopes_fields_to_their_own_release ... ok
+test tests::release_policy_blocks_are_structurally_complete ... ok
+test tests::release_policy_dates_require_real_calendar_days ... ok
+test tests::release_policy_history_cannot_be_replaced_by_a_new_release ... ok
+test tests::release_policy_list_presence_requires_actual_assignments ... ok
+test tests::release_policy_lists_accept_toml_assignment_spacing ... ok
+test tests::release_policy_structure_accepts_additional_completed_prep ... ok
+test tests::provider_contract_pack_check_rejects_drift_without_rewriting ... ok
+test tests::release_prep_rejects_existing_release_notes_before_writing ... ok
+test tests::contract_graph_is_valid ... ok
+test tests::release_runbook_policy_is_structured ... ok
+test tests::release_tag_recovery_policy_is_structured ... ok
+test tests::release_topic_audit_policy_sets_minimums ... ok
+test tests::release_prep_scaffolds_version_policy_changelog_and_notes ... ok
+test tests::release_workflow_checks_out_release_tag_for_dispatch ... ok
+test tests::release_workflow_paginates_milestone_lookup ... ok
+test tests::release_workflow_publishes_only_main_reachable_tags ... ok
+test tests::release_workflow_supports_dispatch_and_milestone_closure ... ok
+test tests::review_bot_fallback_policy_is_structured ... ok
+test tests::rust_workspace_lints_define_safety_baseline ... ok
+test tests::target_profile_resource_goldens_match_executable_contract ... ok
+test tests::target_ir_goldens_match_executable_encoder ... ok
+test tests::textmate_grammar_declares_current_editor_contract ... ok
+test tests::textmate_grammar_scopes_public_number_spans_in_version_labels ... ok
+test tests::tree_sitter_corpus_examples_match_reference_parser ... ok
+test tests::tree_sitter_grammar_declares_current_editor_contract ... ok
+test tests::tree_sitter_query_covers_public_keyword_roles ... ok
+test tests::tree_sitter_query_operator_and_punctuation_roles_match_public_highlighter ... ok
+test tests::verify_rust_commands_runs_one_default_workspace_test_pass ... ok
+test tests::vscode_extension_declares_textmate_language_contract ... ok
+test tests::vscode_language_configuration_matches_lexer_boundaries ... ok
+test tests::workspace_msrv_matches_the_ci_toolchain ... ok
+test tests::release_prep_keeps_facade_exact_dependency_resolvable ... ok
+test tests::textmate_grammar_covers_public_highlight_roles ... ok
+test tests::provider_runtime_dependency_boundary_is_narrow ... ok
+
+test result: ok. 90 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/literal_evidence.rs (/cache/target/debug/deps/literal_evidence-0f5a30784e1e82b6)
+
+running 1 test
+test literal_execution_evidence_retains_source_whitespace_checks ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests edict_cli
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests edict_provider_host_wasmtime
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests edict_provider_schema
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests edict_syntax
+
+running 5 tests
+test crates/edict-syntax/src/lib.rs - (line 55) ... ok
+test crates/edict-syntax/src/lib.rs - topic_shelf_doctests::SemanticValidationTopicDocs (line 370) ... ok
+test crates/edict-syntax/src/lib.rs - check (line 278) ... ok
+test crates/edict-syntax/src/lib.rs - topic_shelf_doctests::SyntaxTopicDocs (line 366) ... ok
+test crates/edict-syntax/src/target_ir.rs - target_ir::TargetPureFunctionFact (line 84) - compile fail ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
+
+   Doc-tests edict
+
+running 3 tests
+test crates/edict/src/lib.rs - (line 19) - compile fail ... ok
+test crates/edict/src/lib.rs - numeric (line 61) ... ok
+test crates/edict/src/lib.rs - (line 8) ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+authority-facts-goldens: 1 case(s) checked
+target-profile-resource-goldens: 5 resource(s) checked
+core-goldens: 2 case(s) checked
+target-ir-goldens: 3 case(s) checked
+lawpack-goldens: fixtures/lawpack/hello-echo, fixtures/lawpack/causal-cell, fixtures/lawpack/workspace-snapshot, and fixtures/lawpack/workspace-patch checked
+bundle-goldens: 1 case(s) checked
+$ cargo build -p edict-cli
+   Compiling edict-syntax v0.11.0-alpha.1 (/work/edict/crates/edict-syntax)
+   Compiling edict-provider-schema v0.11.0-alpha.1 (/work/edict/crates/edict-provider-schema)
+   Compiling edict-provider-host-wasmtime v0.11.0-alpha.1 (/work/edict/crates/edict-provider-host-wasmtime)
+   Compiling edict-cli v0.11.0-alpha.1 (/work/edict/crates/edict-cli)
+    Finished `dev` profile [unoptimized] target(s) in 4.21s
+cli-goldens: 13 case(s) checked
+provider-component-fixtures: checked 5 fixture(s)
+provider-contract-pack: checked schema and manifest
+provider-runtime-dependencies: Wasmtime boundary verified
+contract-check: 28 topic shelf(s) validated
+release-dates: uncovered - MissingSurface: v0.1.0-alpha.1 [policy block]
+release-dates: 11 tag(s) reconciled against git, 1 uncovered surface(s)
+$ git diff --check origin/main...HEAD
+   Compiling edict-syntax v0.11.0-alpha.1 (/work/edict/crates/edict-syntax)
+   Compiling edict-provider-schema v0.11.0-alpha.1 (/work/edict/crates/edict-provider-schema)
+   Compiling edict-provider-host-wasmtime v0.11.0-alpha.1 (/work/edict/crates/edict-provider-host-wasmtime)
+   Compiling edict-cli v0.11.0-alpha.1 (/work/edict/crates/edict-cli)
+    Finished `test` profile [unoptimized] target(s) in 4.54s
+     Running tests/configurable_causal_cell.rs (/cache/target/debug/deps/configurable_causal_cell-3abdf7b078f42465)
+
+running 1 test
+test configurable_cell_real_provider_accepts_both_variants has been running for over 60 seconds
+test configurable_cell_real_provider_accepts_both_variants ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 86.06s
+

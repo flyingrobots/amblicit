@@ -1,0 +1,9 @@
+   Compiling edict-syntax v0.11.0-alpha.1 (/work/edict/crates/edict-syntax)
+    Finished `test` profile [unoptimized] target(s) in 2.03s
+     Running tests/return_budget.rs (/cache/target/debug/deps/return_budget-5c382101c80058c3)
+
+running 1 test
+test return_budget_supports_every_accepted_imported_integer_width ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+

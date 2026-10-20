@@ -1,32 +1,37 @@
 # Edict: Safe, Statically Verifiable Operations for Autonomous Runtimes
 
-**Edict is a secure programming language (DSL) that guarantees what your code is allowed to do is verified by the compiler—not left to trust.**
+**Edict is a restricted language for declared, digest-bound operations.** Its compiler checks supported types, effects, and cost facts before producing artifacts for a target runtime.
 
-Unlike general-purpose runtimes where code has unrestricted access to the filesystem, network, or database, Edict isolates operations at the compiler level. If an operation tries to access unauthorized state, mutate a forbidden table, or exceed its execution budget, it fails to compile.
+Authored Edict has no ambient filesystem, network, or database access. Imported lawpacks supply explicit operation facts. The target verifier and destination runtime own their respective checks, authorization, and execution limits. A digest identifies an artifact; it does not prove every safety claim or authorize its caller.
 
 ## Edict in 10 Seconds
 
+The implemented compiler-to-runtime path has four boundaries. Application build ends at provider packaging. Runtime admission is a separate step.
+
 ```mermaid
 flowchart LR
-    A["1. Write Intent\n(Declare inputs, outputs, & budgets)"] -->|Compile & Prove| B["2. Cryptographic Seal\n(Core IR + Hash-Locked Manifest)"]
-    B -->|Submit Bundle| C["3. Participant Admission\n(Inspect 'Nutrition Label')"]
-    C -->|Execute Safely| D["4. WASM Sandbox\n(Enforced limits & auto-rollback)"]
+    A["Application source\nDeclared inputs, results, profile and budget"] --> B["Edict compiler\nCore and Target IR"]
+    B --> C["Selected provider\nLowering and verification"]
+    C --> D["Echo runtime\nAdmission, authority and execution"]
 ```
 
-> **Shipping today vs. envisioned.** This diagram is the full architecture. The
-> current alpha (`v0.11.0-alpha.1`) implements stage 1 and the front half of
-> stage 2 — writing intents and **compiling + validating** them through the
-> `edict check` CLI and `edict_syntax` library, plus canonical Core IR,
-> canonical Target IR artifact bytes, and participant-neutral contract-bundle
-> assembly with reviewed digest goldens. Participant admission, runtime
-> execution, canonical full-manifest bytes, and the WASM sandbox are **not
-> implemented yet** (see
-> [Current Status](#current-status) and [`ROADMAP.md`](./ROADMAP.md)). To run
-> what exists today, see [Build & Run](#build--run).
+<details>
+<summary>Caption: Compiler-to-runtime ownership</summary>
+
+1. The application owns its source and selected digest-bound lawpack closure.
+2. Edict compiles the supported language and binds artifact identities.
+3. Provider components produce and verify packages for their supported target subset.
+4. Echo applies its own runtime admission and execution contract.
+
+</details>
+
+Edict's WASM host isolates compiler provider components. It is separate from Echo's operation evaluator. A successful build is evidence about those compiler/provider checks, not proof of every runtime behavior.
+
+The JSONL CLI implements `build`, `check`, and `project`. Application builds can produce executable packages through a selected provider; lawpack builds author canonical capability artifacts. The [CLI contract](./docs/topics/cli/README.md) defines each operation. The [compiler contract](./docs/topics/compiler-spine/README.md) records its supported subset and cost-analysis limits. See [Build & Run](#build--run) and [Run it on Echo](#run-it-on-echo) for the current paths.
 
 ## Why it Matters
 
-Traditional security runs at the boundary (firewalls, sandboxes). But if you hand an AI agent a tool, it inherits the permissions of the parent process. Edict makes the code *declare* and *prove* its capabilities beforehand, preventing malicious prompt injections or library updates from causing harm.
+Traditional security runs at the boundary (firewalls, sandboxes). But if you hand an AI agent a tool, it inherits the permissions of the parent process. Edict makes intended capabilities and imported law explicit before execution. Digest binding exposes changes for review. The runtime must still enforce its admitted authority and input contract.
 
 ---
 
@@ -100,9 +105,10 @@ allowed to do?
 
 ## Enter Edict
 
-Edict is a restricted deterministic language where the compiler enforces what an
-operation is actually allowed to do — not as a convention, but as a verified
-contract.
+Edict is a restricted deterministic language with explicit operation contracts.
+The compiler checks the supported source model against supplied, digest-bound
+lawpack and target facts. These checks give reviewers and runtimes an inspectable
+artifact; destination authorization remains a separate decision.
 
 You write an *intent*. The intent declares:
 
@@ -112,38 +118,43 @@ You write an *intent*. The intent declares:
 - **How it can fail** — typed obstructions, not generic exceptions
 - **What law governs it** — imported, digest-locked law packages
 
-The compiler verifies all of these. Not at runtime — before admission. If the code
-tries to reach beyond its declared aperture, it doesn't compile. If an effect can
-fail and the failure isn't mapped to a typed outcome, it doesn't compile. If the
-cost bounds aren't satisfiable, it doesn't compile.
+The implemented compiler rejects unsupported shapes, incompatible profile/effect
+facts, and missing required failure mappings. Its cost checks include bounded
+loop work and declared helper costs. Source functions have additional conservative
+accounting. It does not infer every primitive allocation or establish every
+runtime byte-copy cost. The [compiler-spine contract](./docs/topics/compiler-spine/README.md)
+states the exact boundary. Runtime input values must also satisfy their locked
+types; compilation alone does not enforce that ingress condition.
 
-The result isn't a function. It's a **sealed, verifiable artifact**: a contract
-bundle with a canonical identity, a cryptographic fingerprint over every layer of
-the compilation, and a structured record of what it does and what it's allowed to
-do.
+The result has canonical artifact identities and a structured operation contract.
+Those identities bind the selected artifacts. They do not replace target
+verification, participant policy, or runtime evidence.
 
 ---
 
 ## What An Intent Looks Like
 
-The smallest useful Edict program is deliberately boring:
+This illustrative pure intent shows the declaration shape. Its profile and budget
+require supplied compiler facts; the placeholder import is not an application
+build closure:
 
 ```graphql
 package examples.hello@1;
 
-use lawpack hello.optics@1 digest "sha256:a3f..." as hello;
+use lawpack hello.optics@1 digest "sha256:0000000000000000000000000000000000000000000000000000000000000000" as hello;
 
 type HelloInput = {
-  name: String,
+  name: String<max=256>,
 };
 
 type HelloReading = {
-  message: String,
+  message: String<max=512>,
 };
 
 intent sayHello(input: HelloInput)
   returns HelloReading
   profile hello.readOnly
+  basis none
   budget <= hello.tinyBudget
   where input.name != ""
 {
@@ -153,14 +164,14 @@ intent sayHello(input: HelloInput)
 ```
 
 No ambient access. No clock. No filesystem. No network. No database. This intent
-compiles to a Core IR with zero runtime effects. The current compiler-spine can
-prove the pure subset and can reject known profile/effect write-class conflicts
-from deterministic compiler context facts, including facts loaded from explicit
-authority-facts files. Loading full lawpack and target-profile manifests remains
-future target/lawpack work.
+contains no authored runtime effect. With the required context facts, the
+compiler checks this supported pure subset and rejects known profile/effect
+write-class conflicts. Application build loads its explicit lawpack, adapter,
+and provider closure through the [CLI boundary](./docs/topics/cli/README.md).
 
-A more realistic intent — one that actually reads from a backing store — looks like
-this:
+The broader design includes backing-store reads such as the illustrative intent
+below. This example uses proposed integration syntax; it is not a runnable
+current application:
 
 ```graphql
 package examples.greeting@1;
@@ -200,8 +211,9 @@ Walk through this line by line:
   caller supplies deterministic profile and effect write-class facts, including
   facts loaded from explicit authority-facts files. If the body contains a known
   write effect under a read-only profile, this claim fails and compilation
-  fails. Loading full target-profile manifests remains future target-profile
-  work.
+  fails. See the current [compiler contract](./docs/topics/compiler-spine/README.md)
+  for the supported source form and the [application build](./docs/topics/cli/README.md)
+  for explicit target-provider loading.
 - `budget <= greeting.readGreetingBudget` — the current compiler resolves the
   budget through explicit deterministic context facts. Full inferred operation
   cost from imported effect signatures is future lowerability work.
@@ -225,7 +237,8 @@ inside function arguments, conditions, or record literals. This isn't an
 inconvenient restriction — it makes effect ordering visible and unambiguous by
 construction.
 
-This is rejected:
+The effect-order rule rejects nested effects. These snippets illustrate the
+ordering rule and omit their capability declarations:
 
 ```graphql
 // ❌ Can't tell which effect runs first, or if the failure is handled
@@ -252,9 +265,10 @@ not by running the code, but by inspecting the artifact.
 
 ## What The Compiler Produces
 
-An Edict intent doesn't compile to a binary that you run. It compiles to a
-**contract bundle** — a structured, participant-neutral artifact that can be
-inspected, admitted, and executed by a runtime that accepts it.
+The implemented stages produce Core, Target IR, and selected package artifacts.
+The contract-bundle design combines reviewable, participant-neutral evidence.
+The diagram below shows that broader architecture; it includes proposed profiles
+and analysis that the current compiler does not fully implement.
 
 ```mermaid
 flowchart TD
@@ -276,17 +290,16 @@ flowchart TD
     CB --> PA
 ```
 
-The bundle's identity is a cryptographic hash over every layer: source, Core IR,
-target IR, verifier evidence, imported law packages, and target profile. Change
-*any* line of source, any dependency, or any target profile — and you get a
-different bundle. You cannot silently patch a bundle. You cannot claim the same
-identity after a change.
+The current [bundle contract](./docs/topics/contract-bundles/README.md) defines
+separate semantic and release preimages. Each digest binds the artifacts in its
+own preimage. Cosmetic source changes and alpha-normalization can preserve a
+semantic identity. An artifact identity does not establish caller permission or
+prove a provider's every semantic claim.
 
 ### The Nutrition Label
 
-Every contract bundle carries what the design calls a *nutrition label*: a
-human-readable (and machine-readable) summary of what the operation is declared
-to do:
+The design calls its proposed human-readable operation summary a *nutrition
+label*. This rendering illustrates that idea; it is not current CLI output:
 
 ```text
 Contract Bundle: examples.greeting@1 / readGreeting
@@ -301,15 +314,19 @@ Core hash:    sha256:7a2...
 Bundle hash:  sha256:d83...
 ```
 
-This isn't documentation you maintain. It's generated from the artifact. The
-compiler produced it; the compiler can verify it; a participant runtime can check
-it before executing anything.
+A generated label must derive from the same artifact the participant checks.
+This illustrative label is not itself executable evidence. Current structured
+artifacts and checks are described by the owning topic contracts.
 
 ---
 
 ## The Assurance Toolchain
 
-Three roles operate over the sealed bundle before a participant admits it:
+The design names three assurance roles. Edict does not ship complete HOLMES,
+Watson, or Moriarty implementations. The [assurance topic](./docs/topics/assurance/README.md)
+distinguishes executable manifest checks from these proposed tools.
+
+These roles describe the intended checks before participant admission:
 
 **HOLMES** — the assurance engine. HOLMES takes the complete, SHA-locked bundle
 and evaluates every invariant: Is the Core hash consistent with the source? Does
@@ -327,9 +344,9 @@ If a declared profile claim is false, Watson explains which effect violated it.
 **Moriarty** — the adversarial falsifier. Moriarty mutates the bundle — flipping
 bits in the source, swapping dependency versions, altering effect orderings —
 and checks whether the hash changes as expected. The *hash-impact matrix* is a
-record of which mutations propagate through which artifact layers. If a mutation
-to the source doesn't change the Core hash, that's a bug in the canonicalization,
-not a feature.
+record of which mutations propagate through which artifact layers. A semantic mutation must affect its relevant semantic identity. Cosmetic or
+alpha-equivalent source edits can preserve the Core hash. A mutation witness must
+state which preimage and proposition it tests.
 
 ```mermaid
 flowchart TD
@@ -352,7 +369,7 @@ flowchart TD
 
 ## YOLO: You Only Lawfully Operate
 
-The formal lane for autonomous agent execution is called `lawful-autonomous`.
+The proposed formal lane for autonomous agent execution is called `lawful-autonomous`.
 Inside the project it goes by a more honest name: **YOLO** — *You Only Lawfully
 Operate*.
 
@@ -361,7 +378,7 @@ what might be called FIDLAR mode: they're given a capability, they use it, and
 whatever happens was technically authorized because the process allowed it. Nobody
 checked the footprint. Nobody verified the law. The operation just ran.
 
-The YOLO lane is the alternative. An agent may execute autonomously *only after*:
+The YOLO design is the alternative. Its proposed admission sequence is:
 
 1. Its intent is expressed in Edict source.
 2. The source compiles to a Core IR with verified footprint, budget, and effects.
@@ -407,8 +424,9 @@ When a conventional function fails to find a record, it throws `NotFoundExceptio
 returns `null`, or crashes. The failure is an escape hatch from the type system.
 Callers catch it or don't; nothing enforces that they handle it correctly.
 
-In Edict, effects that can fail must declare typed *obstructions* — named,
-structured failure outcomes that are part of the intent's return type:
+Edict models declared effect failures with typed obstructions. The following
+illustrates the broader outcome design, including syntax outside the current
+lowerable subset:
 
 ```graphql
 intent createEntry(input: shape.EntryInput)
@@ -474,7 +492,7 @@ That's the gap Edict fills.
 ## Build & Run
 
 Edict is not on crates.io yet (the alpha train keeps `publish = false`), so build
-from source. Requires Rust 1.85+.
+from source. Requires Rust 1.96+.
 
 Build the CLI:
 
@@ -511,9 +529,57 @@ A clean check writes result and status records to stdout and exits `0`:
 Inputs can be inline `source`, a file `path`, a `directory`, an ordered
 `pathList`, or a `glob`; diagnostics and the terminal status go to stderr.
 
-**Exit codes:** `0` ok · `1` compiler or validation diagnostics · `2` invalid CLI
-input. The full stream contract and JSON Schemas are in the
+**Exit codes for `check`:** `0` ok · `1` compiler or validation diagnostics · `2`
+invalid CLI input. Build failures use the build stream contract. The full stream contract and JSON Schemas are in the
 [CLI topic](./docs/topics/cli/README.md).
+
+### Build an application or lawpack
+
+A `build` request contains one settings record and no compiler-input records.
+These examples require the named documents and their complete referenced closure
+in the application directory:
+
+```sh
+printf '%s\n' \
+  '{"schema":"edict.compiler.settings/v1","type":"compilerSettings","operation":"build","application":"edict.application.json"}' \
+  | /path/to/edict/target/debug/edict
+```
+
+For an application-owned lawpack definition, write publication is supported on
+Apple platforms, Linux, Android, and Redox. Windows lawpack builds refuse before
+document I/O: write mode returns `LawpackOutputWriteUnsupported`, and check-only
+mode returns `LawpackCheckUnsupported`.
+See the [lawpack build platform contract](./docs/topics/cli/README.md#lawpack-builds)
+for other platform restrictions. On a supported platform:
+
+```sh
+printf '%s\n' \
+  '{"schema":"edict.compiler.settings/v1","type":"compilerSettings","operation":"build","lawpack":"edict.lawpack.json"}' \
+  | /path/to/edict/target/debug/edict
+```
+
+Application build either invokes the selected provider for its supported
+executable package or publishes the supported request-only Core/Target IR slice.
+Lawpack build publishes canonical declarations, adapters, local resources, and
+digest sidecars. Neither path grants destination authority. See the
+[lawpack authoring guide](./docs/topics/lawpack-authoring/README.md) and
+[CLI stream contract](./docs/topics/cli/README.md).
+
+`project` accepts the same source input records as `check` and can emit syntax,
+diagnostic, Core, and Target IR projections. Authoritative projections require
+their compiler context. `check` parses and surface-validates source; a clean
+check is not proof of a complete application build or runtime execution.
+
+### Run it on Echo
+
+[Hello Echo](https://github.com/flyingrobots/hello-echo/tree/ee45716e8839efa14798b3e9e35c87538f456b25)
+is the external compiler-to-runtime witness. Its
+[producer lock](https://github.com/flyingrobots/hello-echo/blob/ee45716e8839efa14798b3e9e35c87538f456b25/producers.lock.json)
+pins the exact Edict and Echo commits. Use those clean producer checkouts with
+its `tests/build.sh` and `tests/runtime.sh`; different producer pairs require
+their own evidence. The witness invokes Echo's generic
+[`cargo xtask run-edict-operation`](https://github.com/flyingrobots/echo/blob/490134c0753a3df6a74da366cc71c1248764dc5a/xtask/src/run_edict_operation.rs).
+This pointer does not claim that current producer heads match the locked pair.
 
 ### Using the library
 
@@ -545,8 +611,11 @@ The current implementation includes the front end, Core semantic schema, the
 first source-to-in-memory-Core compiler spine, target-profile and bundle
 validation, Gate C admission-boundary checks, editor-facing lexical
 highlighting roles plus initial Tree-sitter, TextMate, and VS Code/Cursor
-integration artifacts, and a public JSONL `edict` CLI for the `check` workflow.
-It is not a complete compiler or full admission execution stack.
+integration artifacts, and a public JSONL `edict` CLI for `build`, `check`, and
+`project`. Application build loads explicit closures and can cross selected
+provider lowering and verification components. Lawpack build authors canonical
+capability artifacts. Edict does not own destination authorization or a complete
+participant admission policy stack.
 
 What exists today:
 
@@ -568,7 +637,8 @@ What exists today:
 - Phase 2 source-AST semantic validation for checks that do not require Core IR
 - `edict.core/v1` semantic model and normative CDDL schema
 - Initial compiler-spine APIs: `resolve_module`, `type_check`, `lower_core`, and
-  `compile_to_core` for the first pure local-record subset
+  `compile_to_core` for supported pure records, bounded control flow, imported
+  helpers, source-owned pure functions, and the annotated effect subset
 - Compiler-spine profile/effect compatibility checks for effectful source bodies
   against explicit in-memory profile and effect write-class facts
 - File-backed authority-facts loading for the first compiler context facts:
@@ -634,20 +704,22 @@ What exists today:
 
 What doesn't exist yet:
 
-- Full source-language lowering beyond the initial pure local-record subset and
-  first annotated effectful `let ... else` shape
-- Compiler CLI workflows beyond JSONL `check`, including compile, lower,
-  explain, bundle, admission, and human-pretty output modes
-- Deferred minimal-v1 syntax (`fn`/`const`, `record` effects, list/map/unit
+- Complete v1 language lowering beyond the current bounded source-function,
+  control-flow, primitive, and annotated effect subset
+- Separate compile, lower, explain, bundle, admission, and human-pretty CLI
+  operations beyond the implemented JSONL `build`, `check`, and `project`
+- Deferred minimal-v1 syntax (`const`, `record` effects, list/map/unit
   expression literals)
 - Packaged Tree-sitter bindings plus Vim, Zed, and jedit integrations
-- Full file-backed target-profile, lawpack, and contract-bundle manifest loading
+- General target/profile dispatch beyond explicitly supplied supported provider
+  and lawpack closures
 - Authority-facts loading for obstruction, obligation, adapter, footprint, cost,
   and target-capability corpora beyond the first compiler context facts
 - Trusted lawpack and target-profile authorship, review provenance, or
   participant acceptance policy
-- Target-runtime execution, Echo verifier reports, git-warp commit object
-  creation, or git-warp CRDT reducer verification
+- Runtime execution owned by this repository; Echo separately owns its operation
+  evaluator and verifier packages. See [Run it on Echo](#run-it-on-echo).
+- git-warp commit object creation or git-warp CRDT reducer verification
 - External-action admission, adapter execution, settlement witnessing, or
   settlement-driven resumption
 - Canonical bytes for full `ContractBundleManifest` values
@@ -671,8 +743,10 @@ published `v0.11.0-alpha.1` release covers contract-bundle assembly and
 canonical Target IR artifact byte/digest goldens before the train moves through
 admission workflow harnessing, trusted fact authorship, publication policy, and
 language-server diagnostics.
-None of the published releases claims target-runtime execution, full admission
-execution tooling, or trusted fact governance.
+Those release scopes do not make Edict a runtime or a complete admission policy
+engine. Main can contain later integration slices than a published alpha tag.
+Use exact commits and producer locks when assessing compiler-to-runtime support.
+Trusted fact governance remains separate planned work.
 
 ---
 

@@ -8,7 +8,172 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Lower proven same-width U32/U64 sums to `core.integer.add` and independently
+  validate no-overflow bounds at the Target IR boundary. Unproved sums refuse
+  rather than wrapping; provider and runtime acceptance remain separate.
+
+- Preserve primary conditional-branch and complete concatenation-bound errors before failure-map guidance, including nested expressions and the UTF-8 byte predicate.
+
+- Check effect output families for concatenation, length, slicing and unsigned subtraction before failure-mapping advice, including exported field projections and mismatched string/byte concatenation peers and nested concatenation family requirements.
+
+- Check authenticated effect result field paths and their enclosing type constraints before failure-map guidance.
+
+- Check unsuffixed comparison literals against authenticated effect output types and numeric ranges before advising a failure map.
+
+- Label filtered effect failure guidance as domain-mappable failures; mixed authority classes remain excluded from the advised map.
+
+- Check direct bare effect comparison outputs against their peer before failure-map guidance, preserving symmetric comparison rules.
+- Add an application-owned configurable-cell example command and how-to with checked Unicode/byte limits, derived result budgets, repeatable public lawpack/application builds, and pinned Echo provider witnesses.
+- Retain a surviving yield arm's known annotation mismatch after its peer fails; keep UTF-8 operand errors visible under unavailable outer annotations.
+
+- Retain independent explicit-value and shorthand diagnostics on duplicate obstruction payload keys.
+
+- Reject overflowing string concatenation bounds with InvalidBound, including independent operands visited during error recovery.
+
+- Preserve independent obstruction-arm diagnostics when a failure map contains duplicate keys, without publishing a recovered map.
+
+- Preserve independent branch-yield statement errors after an effect profile refusal, while retaining predicate and yielded-value profile checks.
+
+- Retain independent argument errors after helper resolution fails, without inventing parameter types or constructing a call.
+
+- Preserve independent supplied-argument diagnostics after source/imported helper arity errors, without constructing invalid calls or inventing types for extra arguments.
+
+- Preserve independent effect-binding diagnostics after a rejected operation profile, without constructing the rejected effect in Core.
+
+- Recover failed lexical let bindings without reporting dependent name errors or inventing Core values. Preserve independent record siblings and non-record annotation mismatches, branches, annotated yield branches, logical/comparison/concatenation operands, require failure arms and later source-function statements; distinguish failed returns from absent returns. Preserve contextual-yield type context in both branch orders and conditional siblings, closed-record key mismatches, poisoned reason-root suppression, subtraction siblings and duplicate payload names. Preserve later helper arguments and independent invalid-annotation initializer errors, and poison failed external-action request binders. Check independent request clauses even after an earlier clause or annotation fails. Retain independent argument errors when imported parameter types are unavailable. Prevent poisoned callee roots from resolving outer helpers while preserving independent argument errors. Retain independent byte-slice operands, loop-body failures and obstruction-map errors after unavailable effect inputs. Keep intrinsic concatenation, byte-input and comparison-width errors visible through unavailable outer annotations. The complete recovery requirement still awaits its production-path audit and final review.
+
+- Correct the retained study validation helper to remove staged deletions and old rename paths from copied validation snapshots.
+
+
+- Signature mismatch spans identify exactly the effect call, excluding its enclosing binding and failure handler.
+
+- Add typed first-difference detail to explicit effect signature `TypeMismatch` diagnostics, retaining the kind and call span. Build diagnostics expose optional `signatureMismatch` metadata; strict schema consumers must update their schema. `edict-syntax::CompilerError` struct-literal users must initialize its new optional field.
+
 ### Changed
+
+- Propagate predicate output requirements into direct and conditional effect calls before failure-map guidance; describe only domain-mappable names in the current contract.
+
+- Use authenticated contextual input/output types for effect diagnostics; distinguish validated empty effect surfaces and name only domain-mappable failures in map guidance.
+
+- Validate bare semantic-effect input expressions and exported input types before failure-map guidance.
+
+- Check intent profile permissions before failure-map guidance in all bare effect expression positions.
+
+- Reject unsupported effect call arity before recommending failure-map syntax.
+
+- Reject explicit semantic-effect type arguments before suggesting an unsupported failure-map rewrite.
+
+- Report `EffectWithoutFailureMapping` for exact imported effects used as pure
+  calls in intent bodies, with declared failure names and the call span. Generic
+  effects and effects in pure contexts report `UnsupportedSourceShape`,
+  preserving their unsupported execution boundary. Zero-failure effects
+  report the unsupported binding shape instead of suggesting an empty map.
+  Unknown-effect `MissingContextFact` diagnostics list available exact-owner
+  effects under the selected alias. This changes primary guidance only; effect
+  authority, signature compatibility, and dependent-error recovery remain unchanged.
+
+- Check every ordinary intent result against its declared canonical-CBOR output
+  budget, including UTF-8 expansion, exact headers, nested records/lists, and
+  nominal representations. Oversized or overflowing results now report
+  `InvalidBound` without requiring source functions. Direct external-action
+  request results retain their separate protocol boundary; opaque requests
+  nested in ordinary results reject. Corrected positive fixture budgets and
+  regenerated their dependent digest closures. Old producer locks remain
+  frozen; new compiler/old lawpack combinations can reject impossible results.
+  No runtime input-validation or complete allocation claim is added.
+
+
+- Application builds emit individual structured parser and compiler diagnostics
+  with byte spans and separate source file/line/scalar-column locations. Existing
+  summaries and build exit code remain; terminal counts include each emitted
+  error. Diagnostic and event schemas now include build records.
+
+- Explain the `edict.lawpack/v1` domain-framed manifest identity in import
+  guidance. `SourceImportMismatch` now names the required domain and exact
+  manifest digest, preserving the failure kind and import digest path.
+
+- Added first-order nongeneric source pure functions with ordered typed
+  parameters, immutable bindings and terminal returns. Source-owned Core bodies
+  retain call authority, alpha-normalized identity, conservative checked costs,
+  bounded nonrecursive graphs and independent Target validation. Function-free
+  Core bytes and the prior provider publication remain unchanged; providers
+  must explicitly adopt the new function-bearing contract. This does not claim
+  Echo runtime support or complete Jim buffer/rope behavior. Well-typed
+  non-Boolean predicates report `ExpectedPredicate`; rejected pure-function
+  statements and graph failures retain precise source ownership. Request-bearing
+  shapes in function-bearing modules report `UnsupportedSourceShape` rather
+  than arithmetic overflow; this does not broaden their accepted subset.
+
+- Made pure-helper call-depth validation independent of traversal order by
+  accounting for each shared suffix's full height. Paths of 128 helpers remain
+  valid; paths of 129 reject with `InvalidPureFunctionBody` even when their
+  suffixes were visited earlier. Independent helpers retain separate depth
+  allowances, and recursive helper graphs still reject.
+
+- Adopted pinned Bunny 0.6.0 as the normative checked Q32.32 numeric foundation
+  and exposed raw fixed-point evaluation through the Rust facade, with explicit
+  overflow and division-by-zero failures. Existing integer semantics and Core
+  artifacts are unchanged; fixed-point source syntax and Target instructions
+  remain unsupported. The workspace, CI and current-source consumer witness
+  now require Rust 1.96 for the dependency.
+
+- Added bounded raw-byte `+`, preserving operand order and exact coordinates in
+  Core and Target with a checked sum of operand maxima. Overflow, narrowing,
+  wrong operand families and forged Target calls fail closed. This generic
+  compiler capability does not add runtime concatenation or text semantics.
+
+- Byte-slice proof-scope regression checks now identify the exact rejected
+  basis, input-predicate or later-intent call and retain a compiling control.
+
+- Core integrity validation and Target totality now bound combined expression,
+  predicate and nested-block descent at 128 edges. Over-limit public Core
+  returns a structured depth failure before canonical or Target traversal.
+  Canonical encoding maps this earlier integrity failure to `UnsupportedValue`,
+  including nested requests that previously reached its container-depth refusal.
+
+- Byte-slice type diagnostics now identify each invalid operand, including
+  separate errors when both endpoint types are wrong.
+
+- Added proven half-open `slice` over bounded raw bytes, preserving the operand
+  maximum and explicit U64 endpoints through Core and Target IR. Source and
+  Target independently require exact input-domain proof; invalid signatures,
+  unavailable operands and pre-proof evaluation fail closed. This compiler
+  capability does not supply runtime slicing, UTF-8 semantics or new provider
+  pins.
+
+- Added explicitly selected `echo.span-ir/v2` ordered Target IR for interleaved
+  effects, pure bindings, and dependent guards. The canonical artifact binds an
+  exact instruction order and rejects malformed dependency references. Legacy
+  v1 artifacts retain their byte identities and pre-step restrictions. The CLI
+  exposes the new order and its binding payloads. This compiler capability does
+  not add Echo execution support or change existing consumer producer pins.
+
+- Avoided exponential repeated byte-length validation through nested conditional
+  predicates while retaining inner local-authority refusal.
+
+- Lowered `len` on bounded structural Bytes to a generic U64 byte-length
+  operation with exact operand identity. Target validation independently
+  checks the signature, byte shape, local authority, and result width before
+  preserving the operation in its pure bindings and projection.
+
+- Removed exponential repeated Target IR operand validation for nested unsigned
+  arithmetic, including conditional and record-field operands, while preserving
+  malformed literal and reference rejection.
+
+- Independently validated unsigned subtraction in raw Core before Target IR
+  construction, preserving widths and operands and rejecting invalid signatures,
+  unproven underflow, and input-proof scope leakage. This does not add Echo
+  execution support or change a consumer producer pin.
+
+- Lowered same-width unsigned subtraction into Core only when exact operands,
+  ordered literals, or dominating conjunctive input constraints prove no
+  underflow. Proofs are isolated to each intent body; signed, mixed-width, and
+  unproven differences reject. Target support remains a separate boundary.
+
+- Upgraded the capability-denied provider host to exact Wasmtime 48.0.4 for
+  RUSTSEC-2026-0316 and RUSTSEC-2026-0327. The workspace now requires Rust 1.95,
+  matching that dependency's minimum; the explicit host feature set is unchanged.
+  Historical component-fixture producer pins remain unchanged.
 
 - Reused release preparation's calendar validator in the policy structural
   guard, rejecting impossible target dates in manually edited policy blocks.
@@ -801,6 +966,8 @@ versions still track specification maturity rather than a released product.
   auto-close text such as `Closes #123` in the pull request body.
 
 ### Fixed
+
+- Preserve nested conditional literal context in effect diagnostics and prevent recursive peer-probe work multiplication.
 
 - Rejected Core canonical encoding when an import resource digest is unresolved,
   preventing floating imports from entering the canonical preimage.

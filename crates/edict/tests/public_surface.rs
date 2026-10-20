@@ -80,7 +80,7 @@ fn implementation_modules_are_unavailable_to_consumers() {
         "supported consumer must compile: {}",
         String::from_utf8_lossy(&positive.stderr)
     );
-    assert!(compiler_error_codes(&positive).is_empty());
+    assert_eq!(compiler_error_codes(&positive), Vec::<String>::new());
 
     let negative = check_consumer(
         &root,

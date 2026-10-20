@@ -1326,6 +1326,13 @@ Lexical conformance fixtures must pin these details before parser freeze:
   rejected unless escaped as explicit byte escapes.
 - `string-lit` decodes to Unicode scalar values and does not normalize by
   default.
+- String and byte literals accept `\"`, `\\`, `\n`, `\t`, `\r`, `\0` and
+  `\xHH`. The hexadecimal form consumes exactly two ASCII hexadecimal digits
+  and inserts one octet. A decoded string must remain valid UTF-8; a byte
+  literal may contain any octet. `\u{...}` escapes are not supported in v1.
+  Literal byte length is the decoded payload length, independent of escape
+  spelling. Adjacent `b` and an opening quote form one byte literal token;
+  a separated `b` remains an identifier.
 - Integer underscores may appear only between digits, never at the beginning,
   end, or adjacent to another underscore.
 - Integer width and signedness are hash-significant, so every integer value
@@ -1350,6 +1357,74 @@ Lexical conformance fixtures must pin these details before parser freeze:
 - Unicode normalization policies such as `canonical=nfc` resolve to a versioned
   normalization profile pinned by digest.
 
+## Source compilation closures
+
+A source-module import uses `use module package@version digest "sha256:..." as alias;`.
+The digest is mandatory. It identifies the exact dependency UTF-8 bytes encoded
+as one canonical CBOR byte string under `edict.source/v1`. The domain-framed
+preimage is `["edict.digest/v1", "edict.source/v1", source-byte-string]`.
+Comments and whitespace are part of source identity. Import digest spelling
+must match the canonical lowercase review rendering during authentication.
+
+`source_closure::resolve_source_closure` accepts one explicit root and all
+explicit dependency sources. It performs no filesystem discovery. The fixed
+ceilings are 64 units including root, 1 MiB of aggregate original source bytes,
+and 32 units on any root-to-leaf import path. Caller apertures may narrow these
+ceilings. Count and aggregate-byte checks precede parsing; parsed package
+coordinates must be unique and source surfaces must validate.
+
+Every module import must resolve within the supplied set, every supplied unit
+must be root-reachable, every import pin must match, and the graph must be
+acyclic. Topology refusal precedes pin comparison. No authenticated witness is
+returned until all checks pass. Shared dependency height is independent of the
+path that first visits it, so a shallow occurrence cannot hide a deeper path.
+
+The witness retains immutable exact sources and parsed surfaces. Its canonical
+artifact follows [edict-source-closure.cddl](abi/edict-source-closure.cddl), with
+common digest framing from [edict-common.cddl](abi/edict-common.cddl). `root`
+selects the entry package. The `modules` map is keyed by exact package
+coordinates; each value contains `source` bytes and a typed `["sha256", bstr32]`
+digest. It embeds no closure self-digest. Its external identity uses the same
+canonical three-element digest frame under `edict.source-closure/v1`.
+Dependency input order does not affect canonical bytes or identity.
+
+The application manifest's `sources` array supplies this same explicit closure:
+the first path selects the root and later paths supply dependencies. Source
+paths remain confined to the manifest root and canonical path duplicates are
+refused. A single source with no module import retains the legacy canonical
+source-byte-string artifact. Module builds supply the new closure artifact,
+domain and auxiliary kind to both provider invocations; provider support for
+that form is required. Parse, linking and compilation failures retain original
+file paths and source-local byte spans. An error without a source ownership
+witness stays in the summary rather than acquiring a guessed file location.
+
+Source authentication does not grant execution authority. The separate
+`source_linker::link_source_closure` API creates an immutable compiler-owned
+linked surface while retaining the original witness. Its `compile` method
+accepts explicit compiler facts and reports failures against original package
+coordinates and source-local byte spans.
+
+Source imports expose a dependency's own type and pure-function declarations
+through its explicit alias, without implicit transitive re-exports. Every
+linked definition is checked, including unused definitions. Library functions
+and types resolve only in their own lexical module. Compiler names are fresh
+and deterministic; root intent entry names and runtime record/member labels
+remain authored. Imported intent entries refuse as `ImportedIntent`. Built-in
+`ExternalActionRequest` constructors and capability request callees remain
+supported. Authored namespace calls, including `core.*`, require an import
+owned by the same source module.
+
+A source record retains its module-owned `package@version.Type` coordinate
+across importing applications. Root record table keys retain original local
+names. Renaming MUST NOT bypass reserved-type checks or original-coordinate
+collisions with imported callable/type authority. Aliases remain transparent.
+Type traversal accepts constructor height 128 and refuses 129 independently
+of lexical statement/expression frames; active lexical traversal and flattened
+member paths have fixed limits of 128.
+
+Standalone `compile_to_core` refuses unresolved module imports as
+`MissingContextFact`, including imports that are not referenced by a declaration.
+
 ## Grammar
 
 This grammar is normative for v1 syntax shape. Operator precedence and exact
@@ -1364,7 +1439,8 @@ import-decl     = shape-import
                 | lawpack-import
                 | target-import
                 | core-import
-                | capability-import ;
+                | capability-import
+                | module-import ;
 
 shape-import    = "use" , "shape" , string-lit , digest-clause? ,
                   "as" , ident , ";" ;
@@ -1376,6 +1452,8 @@ core-import     = "use" , "core" , package-ref , digest-clause? ,
                   "as" , ident , ";" ;
 capability-import = "use" , "capability" , package-ref , digest-clause ,
                     "as" , ident , ";" ;
+module-import   = "use" , "module" , package-ref , digest-clause ,
+                  "as" , ident , ";" ;
 digest-clause   = "digest" , digest-lit ;
 
 declaration     = type-decl
@@ -1602,6 +1680,10 @@ Semantic grammar rules:
   the same type.
 - `yield` is legal only as the final statement of an effect-yield block.
 - `return` is not legal inside an effect-yield block.
+- Pure function calls evaluate arguments left to right exactly once, including
+  arguments unused by the callee, then enter a fresh lexical parameter/local
+  frame. Calls preserve their conditional and pre-body evaluation positions;
+  inlining must not duplicate, discard or eagerly evaluate an argument.
 - Function declarations are pure. `pure-block` cannot contain imported effects,
   `require`, `guarantee`, branch-yield effect expressions, semantic record
   statements, or effect statements.
@@ -1621,6 +1703,39 @@ Semantic grammar rules:
 ## Core Types
 
 Edict v1 defines a small deterministic type universe.
+
+### Source aliases and declaration dependencies
+
+A source declaration `type Alias = Target;` is transparent. It resolves to the
+target's existing type coordinate and bounded representation. It creates no
+additional nominal contract or Core type table entry. In particular, an alias
+of a digest-bound imported nominal type preserves that exact contract and does
+not permit substitution of its raw storage representation.
+
+The current compiler resolves acyclic source aliases and record dependencies
+before checking function signatures or intent bodies. Declaration ordering does
+not change the resulting canonical Core. Alias targets must already belong to
+the currently lowerable type subset; this does not introduce generic,
+recursive or variant lowering.
+
+Source type dependency paths have a ceiling of 128 declarations. Fully expanded
+structural height, including inline constructors, cached alias targets and
+record fields, follows the Core height rule below: height 128 is accepted and
+129 refuses as `InvalidBound`. A traversal of source type reference occurrences
+has 65,536 work units.
+Cumulative source-defined declaration expansion also has 65,536 units: scalar
+and opaque imported references cost one; containers add one plus child weights;
+records add one plus field weights. A reference to another source declaration
+uses that declaration's complete expanded weight at every occurrence. These
+checks precede expanded shape construction. Imported representation checks and
+runtime budgets remain separate.
+
+Missing types refuse as `UnresolvedType`, cycles as `InvalidCoreTypeIntegrity`,
+and depth/work exhaustion as `InvalidBound`. Shared dependency heights are
+context-independent, so an earlier cached occurrence cannot hide a deeper path.
+Duplicate source type declarations also refuse as `SurfaceValidation` through
+the public staged `resolve_module` then `type_check` API. Unsupported string
+canonicalization refuses as `UnsupportedSourceShape`, including unused aliases.
 
 ### Scalar Types
 
@@ -1689,6 +1804,74 @@ Length and bound units are pinned (`EDICT-LANG-LEN-001`):
 - String/bytes concatenation result bounds are derived as the sum of operand
   maxima; a concatenation whose derived bound exceeds the destination type bound
   rejects at compile time.
+
+The current compiler and target implementation support the bounded structural
+Bytes specialization through `core.bytes.length<OperandType>(value)`, retaining
+the exact operand coordinate and returning U64. The prelude takes one argument
+and no authored type arguments. Other operand families, including String's
+specified Unicode-scalar specialization, remain unsupported by this lowering;
+they must not be silently measured in byte units instead.
+
+### Fixed-Point Numeric Authority
+
+Bunny is the normative authority for Edict fixed-point arithmetic
+(`EDICT-LANG-FIXED-NUMERIC-001`). Edict's integration profile
+`bunny.q32_32.checked/v1` selects the **checked** Q32.32 subset of
+[`bunny-num` 0.6.0's Numeric Constitution](https://github.com/flyingrobots/bunny/blob/9bf43600d08ff8e2a0ab888713948b409e386513/docs/NUMERIC_CONSTITUTION.md).
+The dependency is pinned exactly; an unreviewed newer Bunny release does not
+change this profile. This Edict integration identifier is distinct from Bunny's
+SDL scalar profile name `q32.32`.
+
+The adopted rules are:
+
+- A value has one signed two's-complement raw `i64`; its mathematical value is
+  `raw / 2^32`. Raw construction and extraction preserve bits. Equality and
+  ordering compare raw values exactly, without epsilon.
+- Addition, subtraction and negation use exact raw arithmetic and reject when
+  the result is outside `i64`.
+- Multiplication and division use Bunny's `i128` intermediates, round to the
+  nearest Q32.32 value with ties to even for either sign, then reject an
+  out-of-range **rounded** result. Quantization may legitimately turn a small
+  nonzero mathematical result into zero.
+- A zero divisor is a distinct domain failure, including `0 / 0`. Checked
+  failure must be explicit; it cannot become saturation, wrapping or a panic.
+- Saturating operators, square root and floating-point conversion APIs are
+  outside this adopted subset. No host float participates in canonical math.
+  A future explicit float-ingress boundary must reject non-finite or
+  out-of-range input using Bunny's validated conversion policy; its rounding
+  and failure behavior require separate conformance evidence.
+
+This does not reinterpret `I32`, `I64`, `U32` or `U64` as fixed-point values.
+Their exact domains, canonical identity, range proofs and signed division's
+truncation-toward-zero rule remain unchanged. There is no implicit conversion
+between an integer and this fixed-point domain.
+
+The current implementation exposes only a checked Rust numeric foundation for
+compiler consumers. It adds no fixed-point source type, literal, prelude
+operation, Core value tag, Target instruction, or provider capability. Existing
+integer artifact tags cannot be used as unmarked fixed-point encodings.
+
+Before a future compiler fold or target implementation can claim this profile,
+its accepted representation and capability must be explicit and hash-bound.
+Compiler and runtime conformance must agree on literal raw-result vectors,
+structured failures and canonical artifact bytes. Bunny's generated
+[`i64-le-q32.32` wire profile](https://github.com/flyingrobots/bunny/blob/9bf43600d08ff8e2a0ab888713948b409e386513/generated/bunny-graphics.manifest.json)
+is an eight-byte little-endian raw representation; it is not an existing Edict
+canonical-CBOR fixed-point tag. A future Edict schema must specify how it binds
+this raw representation and the profile identity without silently repurposing
+integer values. No such wire extension is implemented by this foundation.
+
+A dependency/profile upgrade requires review of results, failures and encoding
+compatibility, with compiler/runtime conformance rerun before adoption. A
+changed arithmetic or identity contract requires an explicit profile/version
+transition; changing a manifest alone is not that transition.
+
+| Relationship | Targets |
+| --- | --- |
+| `refines` | [Core types](#core-types), [Integer safety](#integer-safety) |
+| `supersedes` | none |
+| `depends_on` | [Pinned Bunny Numeric Constitution](https://github.com/flyingrobots/bunny/blob/9bf43600d08ff8e2a0ab888713948b409e386513/docs/NUMERIC_CONSTITUTION.md) |
+| `related` | [Numeric foundation](./topics/numeric-foundation/README.md), [Core IR](./topics/core-ir/README.md), [Target profiles](./topics/target-profiles/README.md) |
 
 ### Compound Types
 
@@ -1927,6 +2110,28 @@ The Edict Core prelude is intentionally small:
 - `len(value) -> U64` (Unicode scalar count for `String`, byte count for
   `Bytes`, element count for `List`/`Map`; see Refined Scalar Types,
   `EDICT-LANG-LEN-001`)
+- `isUtf8(bytes: Bytes<max=N>) -> Bool` validates a complete UTF-8 byte
+  sequence (`EDICT-LANG-BYTE-UTF8-001`). Empty bytes and embedded NUL are valid;
+  incomplete sequences, overlong encodings, surrogate encodings and code points
+  above U+10FFFF are invalid. It neither normalizes nor repairs bytes. The
+  source prelude takes one bounded structural byte operand and no authored type
+  arguments; it lowers to `core.bytes.isUtf8<OperandType>(bytes)` with a Bool
+  result. The exact operand coordinate is retained. String values and implicit
+  nominal unwrapping are not accepted by this specialization. Compiler and
+  Target support establish typing and authority, not runtime execution evidence.
+  A prefix slice passed to this predicate still needs its own bounds proof.
+  Direct scans contribute the operand byte maximum to the static intent step
+  bound, including metadata predicates. Sequential scans add; lazy alternatives
+  use the maximum branch cost. Source-helper summaries already include their
+  scans and are not charged twice at the call site. Runtime metering also
+  charges the selected profile's expression, value and validation work.
+- `slice(bytes: Bytes<max=N>, start: U64, end: U64) -> Bytes<max=N>`
+  selects the half-open byte range `[start,end)` only when the compiler proves
+  `start <= end <= len(bytes)` (`EDICT-LANG-BYTE-SLICE-001`). The bytes remain
+  raw: slicing does not decode UTF-8, normalize text, clip invalid endpoints,
+  or supply missing bytes. The result drops the operand's positive minimum or
+  exact-length refinement; it may be empty. The source call has three arguments
+  and no authored type arguments.
 - `some<T>(value: T) -> Option<T>`
 - `none<T>() -> Option<T>`
 - `default<T>(value: Option<T>, fallback: T) -> T`
@@ -1950,7 +2155,9 @@ String:
   ordered comparison only if the type pins a canonicalization/collation profile
   no slice, split, trim, case-fold, locale, or regex helper in minimal-v1
 Bytes:
+  +                       # bounded raw-byte concatenation
   == !=
+  slice(bytes, start, end) # proven, bounded half-open byte range
   no implicit string conversion
 ```
 
@@ -1976,8 +2183,73 @@ All integer arithmetic in the lawful-autonomous lane is overflow-safe and total
   never a silent or runtime-panicking outcome; it is a compile-time rejection or
   a typed `Option` the author must handle.
 
+The current source-to-Core compiler supports a conservative unsigned subtraction
+slice. Operands must have the same `U32` or `U64` type. It accepts `x - x`,
+`x - 0`, ordered literals, and differences whose exact operands are ordered by
+an intent input constraint (`<=`, `<`, `>=`, `>`, or `==`). Conjunctive clauses
+can supply this evidence; disjunction and negation cannot. The compiler does
+not infer transitive relationships or propagate aliases for this proof.
+
+The resulting Core call is `core.integer.subtract<T>(minuend, subtrahend)`;
+width, operand order, and input predicates remain explicit and hash-significant.
+Input constraints justify body arithmetic only: they cannot justify evaluation
+of the basis or of the constraints themselves. Each intent has an isolated
+proof scope. Target lowering and verification must independently support and
+validate this operation before accepting executable output. This compiler
+slice does not imply support for the other arithmetic forms specified above.
+
 Every prelude function must be total over valid input or must expose a typed
 diagnostic that the compiler can force authors to handle.
+
+The source-to-Core compiler also supports same-width `U32`/`U64` addition as
+`core.integer.add<T>(left, right)`. It composes literal and nested-sum upper
+bounds and literal bounds on the exact operands from dominating conjunctive
+input comparisons. Both comparison directions and equality can establish a
+bound; disjunction and negation cannot. A sum is accepted only when its proved
+upper bound fits the width, including the exact maximum. Width inference does
+not require a `let` annotation when an operand determines the unsigned type.
+The Target IR boundary independently checks signatures and totality over raw
+Core and rejects removed or weakened proofs. This source/Target slice does not
+establish provider or runtime support for the new call.
+
+The implemented byte concatenation accepts two bounded structural byte operands
+and preserves their order in `core.bytes.concat<LeftType,RightType>(left,right)`
+(`EDICT-LANG-BYTE-CONCAT-001`). The result has the conservative bound
+`Bytes<max=L+R>`, using the operand maxima even when exact or minimum lengths are
+known. A static sum beyond U64 rejects with `InvalidBound`; incompatible operand
+families and narrower destinations reject with `TypeMismatch`. There is no
+implicit conversion from strings or nominal wrappers. Target independently
+checks signature, exact operand coordinates, local authority, checked sum and
+result compatibility. Compilation or provider acceptance does not prove runtime
+byte-copy budget compliance or execution support for this call.
+The [canonical lowering decision](topics/target-ir/README.md#byte-concatenation-boundary)
+records the implementation relationships for this language rule.
+
+The implemented byte-slice proof uses exact operands in conjunctive intent
+input constraints, identical endpoints, unsigned zero lower bounds, and ordered
+unsigned literals. The upper endpoint must be ordered against `len` of the
+same byte expression and exact operand coordinate. It does not infer alias,
+transitive, negated, disjunctive, or branch-local relationships. Separate input
+constraints form a canonical set and cannot justify one another or the earlier
+basis. Within an ordered `&&` predicate, the checked left predicate establishes
+positive proof for evaluation of its right predicate, including nested
+conjunctions (`EDICT-LANG-GUARD-ORDER-001`). A predicate cannot use its own or
+a later predicate's facts. These temporary facts do not escape that conjunction.
+After all input constraints hold, they justify body evaluation.
+An unproven slice rejects before Core with `UnsupportedSourceShape`; wrong
+operand families or endpoint widths reject with `TypeMismatch`.
+
+Core retains the call as `core.bytes.slice<OperandType>(bytes,start,end)` and
+Target independently validates its signature, authority, result bound, and
+evaluation-scope proof. The existing Call encoding carries the operation;
+existing source and artifact identities without it do not change. Public
+`project` may expose Core and Target review artifacts, while application
+`build` additionally crosses provider packaging and verification. A provider may
+preserve the call in a package and accept its artifact relation without a
+consumer evaluator implementing slice execution. Neither successful build,
+accepted report, nor a type maximum proves runtime budget compliance: the
+declared Core budget remains explicit, and the evaluator must independently
+implement byte-copy charging and input-constraint enforcement.
 
 `hash` is a source-level helper, not the artifact hash primitive. The label must
 be a string literal so digest domains are stable and reviewable.
@@ -2632,6 +2904,33 @@ If these crates temporarily live in the Wesley workspace, they should carry an
 explicit extraction note and must not be imported by `wesley-core` in a way that
 makes Edict, Continuum, or Echo part of generic GraphQL lowering.
 
+### Implemented Effect Diagnostic Boundary
+
+The source compiler distinguishes exact imported semantic effects from pure
+helpers. A bare nongeneric effect in a pure-call position within an intent body reports
+`EffectWithoutFailureMapping` and names the domain-mappable failure variants. Authors
+must use the supported annotated effect binding and its required mapping.
+Bare effect input expressions and their authenticated input types are checked
+before failure-map guidance. Their existing primary error kinds and spans remain.
+Authenticated input types provide context for integer literals. Bare effect
+outputs must satisfy the surrounding expected type. Failure-map advice names
+only domain-mappable coordinates; other failure classes remain platform-owned.
+Generic semantic effects remain unsupported in both bare and mapped calls.
+Explicit effect type arguments also report `UnsupportedSourceShape` in mapped
+and bare forms before failure-map guidance.
+Effects in source-owned pure functions and intent clauses report
+`UnsupportedSourceShape` without recommending a binding that is illegal there.
+An effect with no declared failures reports that bindings without a failure map
+are unsupported; the diagnostic does not suggest an empty `else` map.
+An unknown effect in an explicit effect binding reports `MissingContextFact`
+with available exact-owner exports under the selected source alias. A bare
+unknown call retains `UnresolvedFunction`; an unknown coordinate does not
+establish whether the author intended an effect or a pure helper. This diagnostic guidance does not
+provide a capability or alter effect/profile compatibility. If the context has
+no authenticated export signatures, the diagnostic reports missing information
+rather than asserting an empty lawpack export surface. Dependent-error
+recovery remains a separate compiler behavior.
+
 ### Edict Source Pipeline
 
 ```text
@@ -2650,6 +2949,22 @@ Edict source
   -> canonicalize Core IR through edict.canonical-value/v1
   -> compute Core IR hash
 ```
+
+### Implemented Ordinary Result Budget Boundary
+
+The source compiler checks the declared ordinary result's canonical-CBOR maximum
+against `maxOutputBytes` before it emits Core. This applies without source
+functions. The check includes exact definite-length headers, field keys,
+fixed-width integer maxima, bounded lists, and nominal representations.
+`String<max=N>` permits up to `4 * N` UTF-8 bytes. Overflow or an output maximum
+above the selected budget reports `InvalidBound`.
+
+Direct `ExternalActionRequest` results retain the separate request-only protocol
+contract. This pass does not assign them an ordinary result-projection encoding
+maximum. Nested opaque request shapes in ordinary results report
+`UnsupportedSourceShape`. Source-function accounting retains its existing
+separate restrictions and conservative costs. This check does not add complete
+primitive allocation inference or runtime input validation.
 
 ### GraphQL/Wesley Source Profile Pipeline
 
@@ -3693,3 +4008,7 @@ The snapshot intent uses a semantic query effect because a pure lawpack helper
 cannot observe history state. If a future lawpack exposes a proof-only plan
 constructor, it must be named and classified as a non-runtime symbolic plan; it
 must not smuggle state-dependent output through a pure helper.
+
+## Exported effect signature mismatch detail
+
+An explicit mapped effect binding with incompatible authenticated input or receipt types reports `TypeMismatch` at the effect call span. Optional structured context identifies the input or receipt position and the deterministic first incompatible structural path. Expected input is the exported signature; expected receipt is the authored binding annotation. Actual input is the argument type; actual receipt is the exported output. Record fields compare in lexical depth-first order, missing/extra fields have an absent corresponding type, and nominal identity remains distinct. This diagnostic detail changes no type compatibility or effect authority.

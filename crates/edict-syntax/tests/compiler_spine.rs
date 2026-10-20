@@ -221,7 +221,7 @@ fn hello_context() -> CompilerContext {
             CoreBudget {
                 max_steps: 64,
                 max_allocated_bytes: 4096,
-                max_output_bytes: 1024,
+                max_output_bytes: 4096,
             },
         )
 }
@@ -1803,7 +1803,7 @@ fn effectful_branch_yield_lowers_to_bound_core_branch() {
         then_block.nodes.as_slice(),
         [CoreNode::Effect { .. }]
     ));
-    assert!(else_block.nodes.is_empty());
+    assert_eq!(else_block.nodes, [] as [edict_syntax::CoreNode; 0]);
     assert!(matches!(then_block.result, CoreExpr::Field { .. }));
     assert!(matches!(
         else_block.result,
@@ -2238,7 +2238,15 @@ fn branch_yield_lists_join_item_and_length_bounds_independently() {
 
     for source in [source.to_owned(), mirrored] {
         let module = parse_module(&source).expect("fieldwise list join source parses");
-        compile_to_core(&module, &pure_context())
+        let context = pure_context().with_budget(
+            "p.tiny",
+            CoreBudget {
+                max_steps: 8,
+                max_allocated_bytes: 1024,
+                max_output_bytes: 1064,
+            },
+        );
+        compile_to_core(&module, &context)
             .expect("opposing list item and length bounds join independently");
     }
 }
@@ -2725,7 +2733,10 @@ fn initial_core_lowering_makes_no_canonical_or_target_claim() {
     let module = parse_module(BOUNDED_HELLO).expect("fixture parses");
     let core = compile_to_core(&module, &hello_context()).expect("fixture compiles to Core");
 
-    assert!(core.required_core_capabilities.is_empty());
+    assert_eq!(
+        core.required_core_capabilities,
+        [] as [std::string::String; 0]
+    );
     assert!(core
         .imports
         .iter()

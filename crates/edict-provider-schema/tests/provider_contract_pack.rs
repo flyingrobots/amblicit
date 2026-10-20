@@ -52,12 +52,13 @@ const RESULT_PROJECTION_FIXTURE: &[u8] =
     include_bytes!("../../../fixtures/lawpack/hello-echo/create-greeting.result-projection.cbor");
 const OPERATION_SOURCE: &str =
     include_str!("../../../fixtures/lang/operations/explicit-basis-u64.edict");
-const EXPECTED_DOMAIN_BINDINGS: [(&str, &str); 7] = [
+const EXPECTED_DOMAIN_BINDINGS: [(&str, &str); 8] = [
     (AUTHORITY_FACTS_API_VERSION, "authority-facts"),
     (CORE_MODULE_DIGEST_DOMAIN, "core-module"),
     (PROVIDER_LAWPACK_ARTIFACT_DOMAIN, "lawpack-manifest"),
     ("edict.lowering-requirements/v1", "lowering-requirements"),
     (RESULT_PROJECTION_DIGEST_DOMAIN, "result-projection"),
+    ("edict.source-closure/v1", "source-closure"),
     (TARGET_IR_ARTIFACT_DIGEST_DOMAIN, "target-ir-artifact"),
     (TARGET_PROFILE_API_VERSION, "target-profile-manifest"),
 ];
@@ -82,8 +83,8 @@ fn contract_pack_is_self_contained_and_repeatable() {
         PROVIDER_CONTRACT_PACK_COORDINATE
     );
     assert_eq!(forward.manifest().license, PROVIDER_CONTRACT_PACK_LICENSE);
-    assert_eq!(forward.manifest().contracts.len(), 11);
-    assert_eq!(forward.manifest().domains.len(), 7);
+    assert_eq!(forward.manifest().contracts.len(), 12);
+    assert_eq!(forward.manifest().domains.len(), 8);
     assert_eq!(forward.manifest().resources.len(), 5);
     assert!(forward
         .cddl_bytes()
@@ -305,6 +306,44 @@ fn target_ir_root_matches_reference_encoder() {
     assert_eq!(
         pack.validate_domain("runtime.unknown/v1", &invalid),
         Err(ProviderArtifactSchemaValidationErrorKind::UnsupportedDomain)
+    );
+}
+
+#[test]
+fn ordered_target_ir_schema_requires_explicit_execution_order() {
+    let pack = assemble(canonical_target_profile_contract_resources());
+    let mut artifact = representative_target_ir("echo.dpo@1");
+    artifact.domain = "echo.span-ir/v2".to_owned();
+    artifact
+        .intents
+        .get_mut("apply")
+        .expect("intent")
+        .execution_order = Some(vec![
+        "apply.require.0".to_owned(),
+        "apply.require.1".to_owned(),
+    ]);
+    let value = encode_target_ir_value(&artifact);
+    pack.validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &value)
+        .expect("v2 schema agrees with encoder");
+    let mut missing = value.clone();
+    let intents = map_value_mut(&mut missing, "intents");
+    remove_map_field(map_value_mut(intents, "apply"), "executionOrder");
+    assert_eq!(
+        pack.validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &missing),
+        Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+    );
+    let mut downgrade = value;
+    *map_value_mut(&mut downgrade, "domain") = CanonicalValue::Text("echo.span-ir/v1".to_owned());
+    assert_eq!(
+        pack.validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &downgrade),
+        Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+    );
+
+    let mut missing_closure = encode_target_ir_value(&artifact);
+    remove_map_field(&mut missing_closure, "semanticClosure");
+    assert_eq!(
+        pack.validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &missing_closure),
+        Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
     );
 }
 
@@ -680,7 +719,12 @@ fn assemble(resources: Vec<TargetProfileContractResource>) -> ProviderContractPa
 }
 
 fn input(resources: Vec<TargetProfileContractResource>) -> ProviderContractPackInput<'static> {
-    input_with(CORE_CDDL, TARGET_IR_CDDL, resources)
+    ProviderContractPackInput {
+        source_closure_cddl: Some(include_bytes!(
+            "../../../docs/abi/edict-source-closure.cddl"
+        )),
+        ..input_with(CORE_CDDL, TARGET_IR_CDDL, resources)
+    }
 }
 
 fn input_with(
@@ -697,6 +741,7 @@ fn input_with(
         authority_facts_cddl: AUTHORITY_FACTS_CDDL,
         result_projection_cddl: RESULT_PROJECTION_CDDL,
         target_ir_cddl,
+        source_closure_cddl: None,
         contract_resources: resources,
     }
 }
@@ -750,6 +795,7 @@ fn representative_contract_instances() -> Vec<(&'static str, CanonicalValue)> {
         ("lawpack-manifest", lawpack_manifest()),
         ("lowering-requirements", lowering_requirements()),
         ("result-projection", representative_result_projection()),
+        ("source-closure", representative_source_closure()),
         (
             "target-ir-artifact",
             decode_canonical_cbor(TARGET_IR_FIXTURE).expect("Target IR fixture is canonical"),
@@ -923,6 +969,7 @@ fn representative_target_ir(coordinate: &str) -> TargetIrArtifact {
         intents: BTreeMap::from([(
             "apply".to_owned(),
             TargetIrIntent {
+                execution_order: None,
                 operation_profile: "example.operation/v1".to_owned(),
                 basis: Some(CoreExpr::Const(CoreValue::String(
                     "example.basis@1".to_owned(),
@@ -1141,4 +1188,180 @@ fn remove_map_field(value: &mut CanonicalValue, field: &str) {
 fn assert_sorted_unique<'a>(values: impl IntoIterator<Item = &'a str>) {
     let values = values.into_iter().collect::<Vec<_>>();
     assert!(values.windows(2).all(|pair| pair[0] < pair[1]));
+}
+
+#[test]
+fn source_function_contract_preserves_old_modules_and_requires_new_schema_selection() {
+    let context = CompilerContext::new()
+        .with_operation_profile("text.replaceRange", "continuum.profile.read-only/v1")
+        .with_budget(
+            "text.replaceRangeBudget",
+            CoreBudget {
+                max_steps: 4096,
+                max_allocated_bytes: 65536,
+                max_output_bytes: 4096,
+            },
+        );
+    let values = [
+        include_str!("../../../fixtures/lang/functions/range-assembly-baseline.edict"),
+        include_str!("../../../fixtures/lang/functions/range-assembly.edict"),
+    ]
+    .map(|source| {
+        let core = compile_to_core(&parse_module(source).unwrap(), &context).unwrap();
+        decode_canonical_cbor(&encode_core_module(&core).unwrap()).unwrap()
+    });
+    let old = assemble_provider_contract_pack(input_with(
+        include_bytes!("../../../fixtures/lang/functions/legacy-core.cddl"),
+        TARGET_IR_CDDL,
+        canonical_target_profile_contract_resources(),
+    ))
+    .unwrap();
+    let new = assemble(canonical_target_profile_contract_resources());
+    assert_ne!(old.raw_sha256(), new.raw_sha256());
+    assert_eq!(
+        old.cddl_bytes(),
+        include_bytes!("../../../fixtures/provider-contracts/v1/edict-provider-contracts.cddl")
+    );
+    assert_eq!(
+        old.manifest_bytes(),
+        include_bytes!("../../../fixtures/provider-contracts/v1/manifest.json")
+    );
+    old.validate_domain(CORE_MODULE_DIGEST_DOMAIN, &values[0])
+        .unwrap();
+    assert_eq!(
+        old.validate_domain(CORE_MODULE_DIGEST_DOMAIN, &values[1]),
+        Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+    );
+    for value in &values {
+        new.validate_domain(CORE_MODULE_DIGEST_DOMAIN, value)
+            .unwrap();
+    }
+    let mut missing_result = values[1].clone();
+    let function = map_value_mut(
+        map_value_mut(&mut missing_result, "functions"),
+        "assembleFragments",
+    );
+    remove_map_field(function, "returnType");
+    assert_eq!(
+        new.validate_domain(CORE_MODULE_DIGEST_DOMAIN, &missing_result),
+        Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+    );
+    let mut empty_table = values[1].clone();
+    *map_value_mut(&mut empty_table, "functions") = CanonicalValue::Map(vec![]);
+    assert_eq!(
+        new.validate_domain(CORE_MODULE_DIGEST_DOMAIN, &empty_table),
+        Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+    );
+}
+
+#[test]
+fn source_closure_contract_has_its_own_domain_and_closed_typed_wire() {
+    use edict_syntax::source_closure::SOURCE_CLOSURE_DIGEST_DOMAIN;
+    let pack = assemble(canonical_target_profile_contract_resources());
+    let value = representative_source_closure();
+    pack.validate_domain(SOURCE_CLOSURE_DIGEST_DOMAIN, &value)
+        .expect("source closure publication has a distinct typed domain");
+    let old = assemble_provider_contract_pack(input_with(
+        CORE_CDDL,
+        TARGET_IR_CDDL,
+        canonical_target_profile_contract_resources(),
+    ))
+    .unwrap();
+    assert_eq!(old.cddl_bytes(), include_bytes!("../../../fixtures/provider-contracts/source-functions-v1/edict-provider-contracts.cddl"));
+    assert_eq!(
+        old.manifest_bytes(),
+        include_bytes!("../../../fixtures/provider-contracts/source-functions-v1/manifest.json")
+    );
+    assert_eq!(
+        old.validate_domain(SOURCE_CLOSURE_DIGEST_DOMAIN, &value),
+        Err(ProviderArtifactSchemaValidationErrorKind::UnsupportedDomain)
+    );
+    let mut extra = value.clone();
+    let CanonicalValue::Map(fields) = &mut extra else {
+        panic!("closure envelope")
+    };
+    fields.push((CanonicalValue::Text("extra".into()), CanonicalValue::Null));
+    let mut wrong_digest = value.clone();
+    let module = map_value_mut(
+        map_value_mut(&mut wrong_digest, "modules"),
+        "example.modules@1",
+    );
+    *map_value_mut(module, "digest") = CanonicalValue::Text(format!("sha256:{}", "0".repeat(64)));
+    for invalid in [
+        CanonicalValue::Bytes(b"package example.modules@1;".to_vec()),
+        extra,
+        wrong_digest,
+    ] {
+        assert_eq!(
+            pack.validate_domain(SOURCE_CLOSURE_DIGEST_DOMAIN, &invalid),
+            Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+        );
+    }
+}
+
+fn representative_source_closure() -> CanonicalValue {
+    use edict_syntax::source_closure::{resolve_source_closure, SourceClosureLimits};
+    let closure = resolve_source_closure(
+        "package example.modules@1;",
+        &[],
+        SourceClosureLimits::default(),
+    )
+    .unwrap();
+    decode_canonical_cbor(closure.canonical_bytes()).unwrap()
+}
+
+#[test]
+fn source_closure_domain_enforces_typed_digest_and_module_count_boundaries() {
+    use edict_syntax::source_closure::{
+        resolve_source_closure, source_module_digest, SourceClosureLimits,
+        SOURCE_CLOSURE_DIGEST_DOMAIN,
+    };
+    use std::fmt::Write as _;
+    let pack = assemble(canonical_target_profile_contract_resources());
+    let value = representative_source_closure();
+    for (algorithm, length) in [("sha256", 31), ("sha256", 33), ("sha512", 32)] {
+        let mut invalid = value.clone();
+        *map_value_mut(
+            map_value_mut(map_value_mut(&mut invalid, "modules"), "example.modules@1"),
+            "digest",
+        ) = CanonicalValue::Array(vec![
+            text(algorithm),
+            CanonicalValue::Bytes(vec![0; length]),
+        ]);
+        assert_eq!(
+            pack.validate_domain(SOURCE_CLOSURE_DIGEST_DOMAIN, &invalid),
+            Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+        );
+    }
+    let dependencies = (0..63)
+        .map(|index| format!("package example.module{index}@1;"))
+        .collect::<Vec<_>>();
+    let mut root = String::from("package example.modules@1;");
+    for (index, source) in dependencies.iter().enumerate() {
+        write!(
+            root,
+            " use module example.module{index}@1 digest \"{}\" as m{index};",
+            source_module_digest(source).unwrap()
+        )
+        .unwrap();
+    }
+    let sources = dependencies.iter().map(String::as_str).collect::<Vec<_>>();
+    let closure = resolve_source_closure(&root, &sources, SourceClosureLimits::default()).unwrap();
+    let maximum = decode_canonical_cbor(closure.canonical_bytes()).unwrap();
+    pack.validate_domain(SOURCE_CLOSURE_DIGEST_DOMAIN, &maximum)
+        .expect("exactly 64 authenticated modules satisfy the published wire");
+    let mut empty = value;
+    *map_value_mut(&mut empty, "modules") = CanonicalValue::Map(Vec::new());
+    let mut overflow = maximum;
+    let CanonicalValue::Map(modules) = map_value_mut(&mut overflow, "modules") else {
+        panic!("module map")
+    };
+    assert_eq!(modules.len(), 64);
+    modules.push((text("example.overflow@1"), modules[0].1.clone()));
+    for invalid in [empty, overflow] {
+        assert_eq!(
+            pack.validate_domain(SOURCE_CLOSURE_DIGEST_DOMAIN, &invalid),
+            Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+        );
+    }
 }

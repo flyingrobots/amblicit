@@ -31,6 +31,8 @@ pub enum ImportKind {
     Core,
     /// Digest-bound external operation family available only to `request`.
     Capability,
+    /// Digest-bound source compilation unit, resolved before Core lowering.
+    Module,
 }
 
 /// An `use <kind> ... [digest "..."] as <alias>;` import.
@@ -61,6 +63,17 @@ pub enum Decl {
     Type(TypeDecl),
     Enum(EnumDecl),
     Intent(IntentDecl),
+    Function(FunctionDecl),
+}
+
+/// A nongeneric source-owned pure function. Statement purity is checked by the compiler.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionDecl {
+    pub name: String,
+    pub params: Vec<Param>,
+    pub returns: TypeRef,
+    pub body: Block,
+    pub span: Span,
 }
 
 /// `enum Name { CASE, CASE, ... }` — a closed set of payload-free cases.
@@ -373,6 +386,10 @@ pub enum Expr {
     },
     Str {
         value: String,
+        span: Span,
+    },
+    Bytes {
+        value: Vec<u8>,
         span: Span,
     },
     Bool {

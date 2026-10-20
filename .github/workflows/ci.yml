@@ -20,8 +20,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - rust-version: "1.94.0"
-            rust-label: "msrv 1.94.0"
+          - rust-version: "1.96.0"
+            rust-label: "msrv 1.96.0"
           - rust-version: stable
             rust-label: "stable"
     steps:

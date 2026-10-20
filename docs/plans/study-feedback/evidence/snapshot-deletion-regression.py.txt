@@ -1,0 +1,61 @@
+"""Exercise the retained runner's file selection against real Git snapshots."""
+import ast
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+
+source = Path(__file__).with_name("guard-runner.py.txt").read_text()
+parsed = ast.parse(source)
+prepare = next(n for n in parsed.body if isinstance(n, ast.FunctionDef) and n.name == "prepare")
+selection = []
+for node in prepare.body:
+    if isinstance(node, ast.Assign) and any(
+        isinstance(t, ast.Name) and t.id in {"files", "deleted"} for t in node.targets
+    ):
+        selection.append(node)
+    elif (isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+          and isinstance(node.value.func, ast.Attribute)
+          and isinstance(node.value.func.value, ast.Name)
+          and node.value.func.value.id == "deleted"):
+        selection.append(node)
+
+def read(args):
+    return subprocess.check_output(args, text=True).strip()
+
+with tempfile.TemporaryDirectory(prefix="edict-snapshot-") as directory:
+    base = Path(directory)
+    root, snapshot = base / "source", base / "snapshot"
+    root.mkdir()
+    def git(*args):
+        return subprocess.run(["git", "-C", str(root), *args], check=True,
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    git("init", "--quiet")
+    for name in ["staged.txt", "unstaged.txt", "rename-old.txt", "retained.txt"]:
+        (root / name).write_text(name)
+    git("add", ".")
+    git("-c", "user.name=validation", "-c", "user.email=validation@example.invalid",
+        "commit", "--quiet", "-m", "snapshot baseline")
+    subprocess.run(["git", "clone", "--quiet", str(root), str(snapshot)], check=True)
+    git("rm", "staged.txt")
+    (root / "unstaged.txt").unlink()
+    git("mv", "rename-old.txt", "rename-new.txt")
+    (root / "added-then-missing.txt").write_text("temporary staged addition")
+    git("add", "added-then-missing.txt")
+    (root / "added-then-missing.txt").unlink()
+    (root / "retained.txt").write_text("modified bytes")
+    (root / "untracked.txt").write_text("new bytes")
+    namespace = {"ROOT": root, "Path": Path, "read": read}
+    exec(compile(ast.Module(body=selection, type_ignores=[]), "runner-selection", "exec"), namespace)
+    for name in namespace["files"]:
+        destination = snapshot / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(root / name, destination)
+    for name in namespace["deleted"]:
+        (snapshot / name).unlink(missing_ok=True)
+    actual = {p.name: p.read_text() for p in snapshot.iterdir() if p.is_file()}
+    expected = {"rename-new.txt": "rename-old.txt", "retained.txt": "modified bytes",
+                "untracked.txt": "new bytes"}
+    if actual != expected:
+        raise AssertionError(f"snapshot differs from working tree: {actual!r} != {expected!r}")
+print("PASS: staged/unstaged deletions, rename, missing addition, modifications and untracked bytes")

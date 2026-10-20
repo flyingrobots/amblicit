@@ -1,0 +1,11 @@
+   Compiling edict-syntax v0.11.0-alpha.1 (/work/edict/crates/edict-syntax)
+   Compiling edict-provider-schema v0.11.0-alpha.1 (/work/edict/crates/edict-provider-schema)
+   Compiling xtask v0.0.0 (/work/edict/xtask)
+    Finished `test` profile [unoptimized] target(s) in 3.11s
+     Running tests/literal_evidence.rs (/cache/target/debug/deps/literal_evidence-657c063372741763)
+
+running 1 test
+test literal_execution_evidence_retains_source_whitespace_checks ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -37,6 +37,14 @@ Out of scope:
 
 | ID | Status | Requirement | Source |
 | --- | --- | --- | --- |
+| TIR-REQ-056 | implemented | Independently validate same-width unsigned addition and a dominating no-overflow bound over raw Core; source compiler success cannot authorize a missing or weakened proof. | docs/SPEC_edict-language-v1.md |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-086 | implemented | Addition totality | TIR-REQ-056 | Actual compiled bounded sums lower; removing a guard or replacing conjunction by disjunction refuses with InvalidCoreIdentity and no artifact. | proven_unsigned_addition_preserves_operands_and_lowers_independently, target_rejects_unsigned_addition_when_core_proof_is_removed_or_weakened | crates/edict-syntax/tests/unsigned_addition.rs | Native provider and runtime proof remain separate. |
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
 | TIR-REQ-001 | implemented | `edict_syntax` exposes a typed target-lowering API that consumes Core and explicit target-profile facts without reading ambient environment or runtime state. | issue #66 |
 | TIR-REQ-002 | implemented | The first target lowerer supports `echo.dpo@1` and emits a deterministic `echo.span-ir/v1` review artifact for the supported effectful Core shape. | issue #66, docs/SPEC_edict-target-profile-abi-v1.md |
 | TIR-REQ-003 | implemented | Target lowering rejects unsupported target profiles with stable structured failure kinds before producing an artifact. | issue #66 |
@@ -58,10 +66,10 @@ Out of scope:
 | TIR-REQ-019 | implemented | Target lowering recognizes every fixed-width integer in the Core ABI and validates constants against the declared scalar domain without requiring redundant built-in entries in `core.types`. | issue #201 |
 | TIR-REQ-020 | implemented | Target lowering independently validates caller-supplied pure Core conditional predicates and rejects incompatible operand types or constants outside their declared scalar domains before producing an artifact. | issue #201 |
 | TIR-REQ-021 | implemented | Canonical Target IR permits only one producer for each local identity across pure bindings, target steps, and external-action requests. | issue #201 |
-| TIR-REQ-022 | implemented | Target lowering accepts each non-intrinsic pure call only when its canonical coordinate and complete non-generic signature are proven by the exact digest-locked lawpack in the Core import closure. | issue #200, issue #201 |
+| TIR-REQ-022 | implemented | Target lowering accepts each imported non-intrinsic pure call only when its canonical coordinate and complete non-generic signature are proven by the exact digest-locked lawpack in the Core import closure. | issue #200, issue #201 |
 | TIR-REQ-023 | implemented | Pure-helper authority facts are opaque public values created only from validated lawpack exports, so a caller cannot fabricate or substitute an undeclared in-namespace helper identity or signature. | issue #201 |
 | TIR-REQ-024 | implemented | Target lowering recovers the bounded result type of every supported pure call shape when validating comparison operands. | issue #201 |
-| TIR-REQ-025 | implemented | Every expression copied into Target IR—including intent basis and constraints, requirement predicates and payloads, effect inputs and obstruction values, and the complete external-request value envelope—must have closed local references, valid Core scalar/type structure, and exact pure-helper authority before artifact emission. | issue #201 |
+| TIR-REQ-025 | implemented | Every expression copied into Target IR—including intent basis and constraints, requirement predicates and payloads, effect inputs and obstruction values, and the complete external-request value envelope—must have closed local references, valid Core scalar/type structure, and exact lawpack authority for imported pure-helper calls before artifact emission; source calls instead resolve against the authenticated Core function table. | issue #201 |
 | TIR-REQ-026 | implemented | Comparison-operand inference validates each conditional predicate and derives one compatible bounded type across both `CoreExpr::If` branches instead of requiring their type coordinates to be textually identical. | issue #201 |
 | TIR-REQ-027 | implemented | Conditional comparison validation preserves compiler-admitted anonymous record structure and recursively checks compatible field shapes even when no named Core type coordinate exists. | issue #201 |
 | TIR-REQ-028 | implemented | Canonical Target IR reserves the implicit application-input local identity from pure bindings, target steps, and external-action requests so every local reference has one producer. | issue #201 |
@@ -82,6 +90,10 @@ Out of scope:
 | TIR-REQ-043 | implemented | Pure-helper and effect signature validation reconstruct one complete exact closure of reachable named lawpack definitions from the signature roots. Structural constructors are traversed transparently; omitted, substituted, foreign, or unrelated named entries reject without weakening lawpack namespace authentication. | issue #201 |
 | TIR-REQ-044 | implemented | Target lowering invokes the authoritative whole-module Core type-integrity judgment before artifact construction, so malformed or unresolved references in unused definitions or any type-bearing intent, local, binder, expression, request, branch, loop, or result surface reject uniformly as `InvalidCoreIdentity`. | issue #201, docs/topics/core-ir/test-plan.md |
 | TIR-REQ-045 | implemented | Target lowering rejects every named type whose fully expanded structural height exceeds the Core limit, regardless of prior shallow validation, table order, graph occurrence, or reference spelling, before emitting a Target artifact. | issue #201, docs/topics/core-ir/test-plan.md |
+| TIR-REQ-046 | implemented | Unsigned subtraction crosses the target boundary only after independent same-width and no-underflow validation of raw Core; compiler success does not establish target authority. | issue #212 |
+| TIR-REQ-047 | implemented | Nested unsigned arithmetic validates operand types without exponential repeated traversal, including conditional and record-field wrappers; malformed operands still reject. | issue #212 |
+| TIR-REQ-048 | implemented | Target validation independently reconstructs byte-length arity, exact operand coordinate, bounded byte shape, local authority, and U64 result. | issue #216 |
+| TIR-REQ-049 | implemented | Byte-length type inference reuses validated operand coordinates without exponential traversal through nested predicates. | issue #216 |
 
 ## Fixtures
 
@@ -127,7 +139,7 @@ Out of scope:
 | TIR-TP-023 | implemented | Golden path | TIR-REQ-011 | Echo lowering emits explicit Target IR requirements for terminal and preserved-obstruction Core `require` arms while leaving effect steps unchanged. | echo_target_ir_contains_obstruction_requirement_payload, terminal_and_preserved_requirements_are_target_ir_distinct | crates/edict-syntax/tests/target_ir.rs | Target IR emission remains distinct from Echo acceptance or runtime execution. |
 | TIR-TP-024 | implemented | Mutation sensitivity | TIR-REQ-012 | Requirement reason kind, reason payload value, predicate, and terminal-vs-preserved disposition mutations move the Target IR digest. | target_ir_requirement_mutations_move_digest | crates/edict-syntax/tests/target_ir.rs | Prevents obstruction semantics from collapsing in canonical Target IR bytes. |
 | TIR-TP-025 | implemented | Boundary guard | TIR-REQ-003, TIR-REQ-011 | Targets without obstruction-strand requirement support reject Core `require` nodes with a stable target-feature failure kind and no artifact. | targets_without_obstruction_requirement_support_reject_with_stable_feature_kind | crates/edict-syntax/tests/target_ir.rs | Unsupported feature is not a generic lowering crash. |
-| TIR-TP-026 | implemented | Boundary guard | TIR-REQ-011, TIR-REQ-012 | A Target IR requirement after an emitted target step rejects with a stable target-feature failure kind and no artifact, with a more specific detail when it reads an earlier step output. | requirement_after_target_step_rejects_with_stable_feature_kind, requirement_that_reads_step_output_rejects_with_stable_feature_kind | crates/edict-syntax/tests/target_ir.rs | Intent-level requirements are pre-step guards until the artifact model owns ordered or step-attached guards. |
+| TIR-TP-026 | implemented | Boundary guard | TIR-REQ-011, TIR-REQ-012 | A Target IR requirement after an emitted target step rejects with a stable target-feature failure kind and no artifact, with a more specific detail when it reads an earlier step output. | requirement_after_target_step_rejects_with_stable_feature_kind, requirement_that_reads_step_output_rejects_with_stable_feature_kind | crates/edict-syntax/tests/target_ir.rs | Legacy v1 requirements remain pre-step guards; v2 ordering is covered separately by TIR-REQ-050. |
 | TIR-TP-027 | implemented | Integration | TIR-REQ-013 | Built-in Echo and git-warp lowerer adapters return the same artifacts, canonical bytes, and digests as direct lowering for identical Core and facts. | builtin_echo_lowerer_matches_direct_target_ir, builtin_gitwarp_lowerer_matches_direct_target_ir | crates/edict-syntax/tests/provider_lowering.rs | No Target IR golden moves when the invocation path changes. |
 | TIR-TP-028 | implemented | Boundary guard | TIR-REQ-013 | Matched-profile target and target-profile-digest failures pass through unchanged, while cross-profile lowerer selection rejects with a stable compatibility failure before invocation. | builtin_lowerers_preserve_structured_lowering_failures, builtin_lowerers_preserve_target_profile_digest_failures, builtin_lowerers_reject_mismatched_target_profiles | crates/edict-syntax/tests/provider_lowering.rs | Lowerer selection compatibility remains distinct from target semantic refusal; coordinate matching does not bypass target artifact validation. |
 | TIR-TP-029 | implemented | Schema fidelity | TIR-REQ-014, TIR-REQ-017 | Canonical Echo, git-warp, and typed workspace-request Target IR bytes plus encoder output containing both requirement dispositions satisfy `target-ir-artifact`; null, missing envelope fields, malformed nested Target IR values, and an external request injected into the closure-free legacy artifact reject through the same compiled root. | target_ir_root_matches_reference_encoder, every_published_root_validates_reference_and_rejects_mutation, target_ir_goldens_match_executable_encoder | docs/abi/edict-target-ir.cddl, fixtures/target-ir/canonical/echo-effectful.target-ir.cbor, fixtures/target-ir/canonical/gitwarp-append.target-ir.cbor, fixtures/target-ir/canonical/workspace-snapshot.target-ir.cbor, crates/edict-provider-schema/tests/provider_contract_pack.rs, xtask/src/tests.rs | The schema is derived from the canonical encoder contract, including the rule that external requests require exact semantic authority rather than the legacy compatibility shape. |
@@ -169,17 +181,57 @@ Out of scope:
 | TIR-TP-065 | implemented | Exact named signature closure | TIR-REQ-018, TIR-REQ-025, TIR-REQ-034, TIR-REQ-043 | Pure-helper and effect signatures whose named roots contain inline structural records prepare, compile, and lower. Removing or substituting a named parent or reachable named leaf rejects with `InvalidCoreIdentity` before Target artifact emission, and an unrelated extra authenticated entry fails the shared exact-closure judgment. | `inline_structural_record_pure_helper_signature_lowers`, `inline_structural_record_effect_signature_lowers`, `named_signature_closure_rejects_parent_and_leaf_tampering`, `authenticated_named_type_closure_rejects_unrelated_extra_entry` | crates/edict-syntax/tests/lawpack.rs, crates/edict-syntax/src/target_ir.rs | Both producer classes use the same reconstructed named-closure judgment. |
 | TIR-TP-066 | implemented | Whole-module type-integrity boundary | TIR-REQ-018, TIR-REQ-025, TIR-REQ-044 | A compact mutation matrix places malformed or unresolved type references in every modeled graph-bearing surface and in an otherwise unused type definition. Every case returns exactly one `InvalidCoreIdentity` failure and no Target or projection artifact; valid unused authored names remain accepted. | `every_core_type_bearing_surface_crosses_one_integrity_boundary` | crates/edict-syntax/tests/target_ir.rs | Target graph semantics add further checks only after the shared Core witness exists. |
 | TIR-TP-067 | implemented | Expanded-depth boundary | TIR-REQ-018, TIR-REQ-044, TIR-REQ-045 | An otherwise unused named definition that reaches a shallow-cached name one level beyond the semantic depth limit returns exactly one `InvalidCoreIdentity` failure with no Target artifact; the shared kernel separately exercises the same bypass in a nested graph occurrence. | `over_depth_named_expansion_cannot_lower_to_target_ir`, `named_type_depth_checks_every_occurrence` | crates/edict-syntax/tests/target_ir.rs, crates/edict-syntax/src/core_ir.rs | The shared Core witness, not Target traversal order, owns the verdict. |
+| TIR-TP-068 | implemented | Arithmetic totality | TIR-REQ-046 | Compiled subtraction preserves exact operands; stripped, reversed, and disjunctive evidence in mutated Core rejects with InvalidCoreIdentity and no artifact. | target_lowers_proven_unsigned_difference_without_changing_operands, target_rejects_unsigned_difference_when_core_guard_is_stripped, target_rejects_unsigned_difference_when_core_operands_are_reversed, target_rejects_unsigned_difference_with_disjunctive_evidence | crates/edict-syntax/tests/target_unsigned_subtraction.rs | Docker RED/GREEN observed; malformed signatures, signed and invalid constants, metadata scope, nested results, and cross-intent isolation also exercised. Provider/runtime acceptance remain separate. |
+| TIR-TP-069 | implemented | Validation work bound | TIR-REQ-047 | Deterministic per-thread visit counts for eight nested subtraction nodes remain within a linear allowance for direct, conditional, and record-field expressions; public lowering retains malformed-operand refusal. | nested_subtraction_validation_work_is_bounded, conditional_subtraction_validation_work_is_bounded, record_field_subtraction_validation_work_is_bounded, target_checks_nested_operands_without_repeated_validation | crates/edict-syntax/src/target_ir/unsigned_subtraction.rs, crates/edict-syntax/tests/target_unsigned_subtraction.rs | Test-only work counter; no timing threshold or production telemetry. |
+| TIR-TP-070 | implemented | Byte-length signature and authority | TIR-REQ-048 | Compiler output preserves values/projections; forged Core signatures, operands, dangling locals, and result width reject with InvalidCoreIdentity and no artifact. | target_independently_accepts_byte_length_and_preserves_projection, target_rejects_forged_byte_length_signatures_and_authority | crates/edict-syntax/tests/byte_length.rs | Public provider build succeeds; runtime evidence remains separate. |
+| TIR-TP-071 | implemented | Byte-length validation work | TIR-REQ-049 | Eight nested length operations in conditional predicates validate within a deterministic linear visit allowance. | nested_byte_length_validation_work_is_bounded, target_checks_byte_length_authority_inside_nested_predicates | crates/edict-syntax/src/target_ir/byte_length.rs, crates/edict-syntax/tests/byte_length.rs | Test-only counter; no timing threshold. |
+| TIR-TP-078 | implemented | Public authored semantic mutation | TIR-REQ-018, TIR-REQ-025 | Publicly authored helper-body changes reach exact Target lawpack closure, canonical bytes, and identity after source repinning; source-only conditional mutations also move identity. Bounded-loop specimens compile to distinct Core identities but every Target attempt rejects at the loop node with UnsupportedCoreNode and no artifact. | authored_helper_body_mutation_moves_compiled_identity_or_rejects_stale_pins, authored_consumer_branch_mutation_moves_compiled_identity, authored_consumer_loop_mutations_move_core_identity_before_target_rejection, public_build_requires_repinning_an_authored_helper_body_change | crates/edict-syntax/tests/lawpack_authoring.rs, crates/edict-cli/tests/lawpack_authoring_cli.rs | This is compiler evidence, not a provider-package, evaluator, or runtime-loop claim; issue #192. |
 
 ## Determinism Obligations
 
-- Tests inspect structured Rust values and canonical Target IR bytes only.
+- Direct Target IR tests inspect structured Rust values and canonical bytes;
+  public CLI witnesses additionally inspect structured protocol records.
 - Target facts are in-memory constants.
 - Output ordering is derived from Core order and sorted maps, not hash maps.
 - Target IR golden bytes and digest review strings are regenerated by
   `cargo xtask target-ir-goldens --write` and checked by
   `cargo xtask target-ir-goldens --check`.
-- No test reads stdout, stderr, logs, wall-clock time, random values, network
-  state, or filesystem ordering.
+- Direct Target IR tests do not read stdout or stderr. Public CLI witnesses may
+  assert empty output and parse deterministic JSONL diagnostic fields, following
+  the CLI topic's stream contract. No oracle depends on diagnostic prose, logs,
+  wall-clock time, random values, network state, or filesystem ordering.
+
+## Ordered execution prerequisite (#218)
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| TIR-REQ-050 | implemented | Explicit `echo.span-ir/v2` selection preserves an exact execution-order permutation of pure bindings, effects, and guards, with independent source-order authority checks; v1 bytes and pre-step refusals remain unchanged. | issue #218 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-072 | implemented | Ordered program | TIR-REQ-050 | Effect-result guards, intervening pure bindings, two effects separated by a guard, input-only post-effect guards, and payload dependencies retain exact order. | effect_result_guard_preserves_execution_order, effect_pure_binding_and_guard_keep_interleaving, guard_between_effects_is_not_hoisted_or_delayed, input_only_guard_after_effect_stays_after_effect, payload_only_effect_dependency_keeps_guard_after_effect | crates/edict-syntax/tests/target_ir/ordered.rs | The terminal result follows the complete sequence. |
+| TIR-TP-073 | implemented | Boundary guard | TIR-REQ-050 | Malformed local identities and order permutations refuse; independent valid reorderings move identity; v1 restrictions persist; ordered external requests refuse. | ordered_selection_still_rejects_forward_and_duplicate_producers, encoder_refuses_missing_duplicate_foreign_and_forward_order_entries, ordered_encoder_rejects_cross_table_ids_and_inconsistent_local_references, encoder_binds_valid_independent_orderings_into_identity, ordered_selection_keeps_legacy_guard_refusal, ordered_contract_does_not_silently_drop_external_requests | crates/edict-syntax/tests/target_ir/ordered.rs | Canonical checks are additional to independent Core type and authority validation. |
+| TIR-TP-074 | implemented | Public boundary | TIR-REQ-050 | Public projection exposes the order and referenced bindings, and independent CDDL validation requires the ordered shape. | project_exposes_ordered_effect_binding_and_guard_without_hoisting, ordered_target_ir_schema_requires_explicit_execution_order | crates/edict-cli/tests/jsonl_cli.rs, crates/edict-provider-schema/tests/provider_contract_pack.rs | The separate Docker consumer witness below demonstrates the old-provider refusal; no runtime execution is claimed. |
+
+Executable evidence for TIR-REQ-050: the eleven ordered cases in
+`crates/edict-syntax/tests/target_ir/ordered.rs`,
+`ordered_target_ir_schema_requires_explicit_execution_order` in
+`crates/edict-provider-schema/tests/provider_contract_pack.rs`,
+`project_exposes_ordered_effect_binding_and_guard_without_hoisting` in
+`crates/edict-cli/tests/jsonl_cli.rs`, and the public source/lawpack build in
+`scripts/consumer-witnesses/jedit-state-read.py` (run through its Dockerfile).
+The public witness asserts the structured refusal kinds and absence of output;
+it does not treat compiler Target IR as proof of runtime support.
+
+## Proven byte slicing
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| TIR-REQ-051 | implemented | Target validation independently checks the bounded byte-slice signature, operand authority, result maximum and totality in the evaluation scope before emitting an artifact. | EDICT-LANG-BYTE-SLICE-001 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-075 | implemented | Slice authority and totality | TIR-REQ-051 | Source-produced slices lower with projections; mutated signatures, missing or disjunctive proofs, unavailable operands and pre-proof evaluation reject with InvalidCoreIdentity and no artifact. | byte_slice_preserves_operand_identity_and_weakens_length_bound, byte_slice_accepts_full_and_empty_ranges_without_assumptions, byte_slice_accepts_equivalent_exact_order_evidence, target_rejects_forged_byte_slice_signatures_and_proofs | crates/edict-syntax/tests/byte_slice.rs | Runtime support is a separate provider/evaluator capability. |
 
 ## Open Gaps
 
@@ -189,3 +241,49 @@ Out of scope:
 - Source-to-target fixture through `fixtures/lang/effects/read-greeting.edict`
   once the compiler spine supports its non-`basis none` Echo source shape.
 - Additional target profiles beyond Echo and git-warp.
+
+## Totality traversal depth
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| TIR-REQ-052 | implemented | The independent totality walker shares the Core graph depth ceiling across expressions, predicates and nested blocks and fails closed on over-limit graphs. | issue #220, crates/edict-syntax/src/target_ir/totality.rs |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-076 | implemented | Totality depth | TIR-REQ-052 | Bounded expression, mixed predicate-expression, nested block and mixed block-expression witnesses accept depth 128 and refuse 129. | totality_expression_depth_has_an_exact_boundary, totality_mixed_depth_does_not_reset_at_predicates, totality_block_depth_has_an_exact_boundary | crates/edict-syntax/src/target_ir/totality.rs | Deterministic boolean refusal, independently of the earlier public Core validator. |
+
+## Bounded byte concatenation
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| TIR-REQ-053 | implemented | Target independently validates generic byte-concatenation arity, exact operand coordinates, authority and checked result maximum before artifact emission. | issue #222 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-077 | implemented | Independent byte concatenation | TIR-REQ-053 | Valid source-produced calls lower; malformed signatures, mismatched coordinates, foreign locals, narrowed results, overflowing sums and nominal wrappers reject without artifacts. | bounded_byte_concat_preserves_order_coordinates_and_summed_maximum, target_rejects_forged_byte_concat_calls, target_rejects_byte_concat_overflow_and_nominal_unwrapping | crates/edict-syntax/tests/byte_concat.rs | The overflow and nominal fixtures first pass public Core type integrity. |
+
+## Source-function authority and totality
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| TIR-REQ-054 | implemented | Source calls resolve against the authenticated Core function table rather than fabricated imported facts; calls preserve expression placement, signatures and transitive totality before Target artifacts can be emitted. | issue #226 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-083 | implemented | Source functions | TIR-REQ-054 | Real source identity/concatenation/forward calls lower with no imported function facts; partial operations hidden inside source functions refuse. | source_function_identity_is_not_an_imported_fact, jim_range_assembly_calls_an_authored_function_through_core_and_target, forward_calls_and_ordered_function_locals_keep_lexical_frames, transitive_totality_cannot_be_bypassed_by_a_source_function, public_project_compiles_jim_source_functions_to_authenticated_core_and_target | crates/edict-syntax/tests/source_functions.rs, crates/edict-cli/tests/source_functions_cli.rs | Public JSONL projection and forged Core controls are compiler/Target witnesses; the public old-provider application case has separate ownership. |
+| TIR-TP-079 | implemented | Independent source-function validation | TIR-REQ-054 | Forged function result/argument types, foreign calls and unproved subtraction refuse without Target artifacts. | independent_target_checks_function_results_calls_and_totality | crates/edict-syntax/tests/source_functions.rs | Public Core is adversarial input. |
+| TIR-TP-080 | implemented | Source function semantic closure | TIR-REQ-054 | A require-only source-function program with no imports, basis or pure lets still binds the exact complete Core digest. | require_only_source_function_program_binds_the_complete_core_identity | crates/edict-syntax/tests/source_functions.rs | Guarded source-function and regression suites pass. |
+| TIR-TP-081 | implemented | Disjoint source/imported authority | TIR-REQ-054 | An unused source definition cannot claim the same canonical coordinate as a real validated imported effect or pure function; the original imported program remains accepted. | independent_target_rejects_even_unused_source_imported_authority_collisions, target_rejects_unused_source_function_colliding_with_imported_pure_fact | crates/edict-syntax/tests/source_functions.rs, crates/edict-syntax/tests/lawpack.rs | Imported facts come through the public exact lawpack preparation path. |
+| TIR-TP-082 | implemented | Disjoint imported calls | TIR-REQ-054 | A source function calls an authenticated imported helper with a disjoint name even when module and lawpack share a coordinate; a separate-package control succeeds, while missing authority and unknown exports refuse. | source_function_can_call_disjoint_import_in_its_own_package_namespace | crates/edict-syntax/tests/lawpack.rs | Graph membership follows declared source definitions; exact imported authority remains independently checked. |
+
+| TIR-TP-084 | implemented | Conjunctive proof scope | TIR-REQ-051 | The independently validated conjunction prefix permits later partial operations; moving the partial operation before its proof refuses InvalidCoreIdentity without artifact. | conjunctive_prefix_guards_prove_later_slices_and_unsigned_differences | crates/edict-syntax/tests/byte_slice.rs | Separate input constraints remain canonical sets; only ordered conjunction children carry prefix proof. |
+
+## Bounded byte UTF-8 predicate
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| TIR-REQ-055 | implemented | isUtf8 preserves bounded byte operand identity and produces Bool; Target independently rejects forged signatures, and guarded prefix slices require prior bounds. | EDICT-LANG-BYTE-UTF8-001 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-085 | implemented | UTF-8 primitive typing | TIR-REQ-055 | Bytes/exact/empty operands lower with Boolean projections; wrong signatures, foreign operands and unproven slices refuse. | byte_utf8_call_retains_operand_identity_and_boolean_projection, byte_utf8_rejects_wrong_operands_signatures_and_result_type, byte_utf8_target_refuses_forged_signature_or_operand_authority, byte_utf8_predicate_accepts_proven_prefix_and_rejects_unproven_slice, byte_utf8_prelude_name_cannot_be_shadowed, byte_utf8_source_function_budget_includes_bounded_scan, linker_preserves_utf8_prelude_with_an_imported_byte_alias | crates/edict-syntax/tests/byte_utf8.rs, crates/edict-syntax/tests/source_module_compilation.rs | Runtime byte validation is separate evidence. |

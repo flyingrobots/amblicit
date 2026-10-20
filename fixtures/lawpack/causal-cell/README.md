@@ -20,6 +20,15 @@ create-if-absent capability and its typed `AlreadyExists` obstruction.
 - `echo-operation-configuration.cbor` and its digest sidecar bind the generic
   Echo operation-lowering configuration.
 
+## Source Import Digest
+
+Copy the full review string from `manifest.sha256` into the source lawpack
+import. This sidecar holds the `edict.lawpack/v1` domain-framed manifest identity.
+A raw file hash from `shasum -a 256 manifest.cbor` identifies different bytes
+and fails source preparation with `SourceImportMismatch`. The failure obligation
+names the required manifest domain and matching digest. The exports, adapter,
+and target-configuration sidecars cannot be substituted for this import value.
+
 Regenerate only through:
 
 ```sh
@@ -38,3 +47,14 @@ digest and consumes those imported record types, compiles it to Core, and
 requires successful Target IR lowering. The
 source witness is deliberately not published as fixture authority; it proves
 the generated portable closure remains usable by a real Edict application.
+
+## Result Budget Compatibility
+
+The stock adapter uses `maxOutputBytes=2048`. Its application witness can return
+64 key scalars and 256 message scalars, with a 1,299-byte canonical maximum.
+String limits count Unicode scalars. The existing `maxReplacementBytes=256`
+remains a runtime byte cap; this change does not broaden replacement writes.
+The budget change produces new adapter and manifest domain digests. Import the
+matching manifest sidecar. Existing Hello Echo producer pins remain historical
+compatibility witnesses. A new compiler rejects an old lawpack budget when the
+application's declared ordinary result cannot fit it.

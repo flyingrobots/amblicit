@@ -1110,7 +1110,10 @@ fn sufficient_limit_changes_cannot_change_provider_result() {
 
     let report =
         validate_provider_lowering_limit_independence(&first, &baseline, &second, &baseline);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        [] as [edict_syntax::ProviderInvocationValidationFailure; 0]
+    );
 
     let mut substituted = baseline.clone();
     substituted.as_mut().unwrap().outputs[0].artifact.bytes = canonical_bytes("substitute");
@@ -1186,7 +1189,10 @@ fn verifier_results_are_limit_independent_too() {
 
     let report =
         validate_provider_verification_limit_independence(&first, &baseline, &second, &baseline);
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        [] as [edict_syntax::ProviderInvocationValidationFailure; 0]
+    );
 
     let mut substituted = baseline.clone();
     substituted.as_mut().unwrap().outputs[0].artifact.bytes = canonical_bytes("changedReport");

@@ -825,12 +825,18 @@ fn run_request(request: &Request) -> Result<i32, CliFailure> {
 
 fn run_build_request(settings: &CompilerSettings) -> Result<i32, CliFailure> {
     if let Some(path) = &settings.application {
-        application_build::build_application(path).map_err(|failure| CliFailure {
-            command: COMMAND_BUILD,
-            kind: failure.kind,
-            line: None,
-            message: failure.message,
-        })?;
+        if let Err(failure) = application_build::build_application(path) {
+            if let Some(diagnostics) = &failure.source_diagnostics {
+                write_application_source_failure(&failure, diagnostics);
+                return Ok(EXIT_CLI_FAILED);
+            }
+            return Err(CliFailure {
+                command: COMMAND_BUILD,
+                kind: failure.kind,
+                line: None,
+                message: failure.message,
+            });
+        }
     } else if let Some(path) = &settings.lawpack {
         lawpack_build::build_lawpack(path, settings.check_only).map_err(|failure| CliFailure {
             command: COMMAND_BUILD,
@@ -1219,12 +1225,16 @@ fn parse_diagnostic_item(error: &ParseError) -> Value {
 }
 
 fn compiler_diagnostic_item(error: &CompilerError) -> Value {
-    json!({
+    let mut record = json!({
         "stage": compiler_stage_name(error.stage),
         "kind": compiler_error_kind_name(error.kind),
         "severity": "error",
         "span": span_value(error.span),
-    })
+    });
+    if let Some(detail) = &error.signature_mismatch {
+        record["signatureMismatch"] = json!(detail);
+    }
+    record
 }
 
 fn span_value(span: Span) -> Value {
@@ -1263,6 +1273,7 @@ fn compiler_error_kind_name(kind: CompilerErrorKind) -> &'static str {
         CompilerErrorKind::UnsupportedSourceShape => "UnsupportedSourceShape",
         CompilerErrorKind::UnresolvedType => "UnresolvedType",
         CompilerErrorKind::UnresolvedFunction => "UnresolvedFunction",
+        CompilerErrorKind::EffectWithoutFailureMapping => "EffectWithoutFailureMapping",
         CompilerErrorKind::InvalidBound => "InvalidBound",
         CompilerErrorKind::UnknownField => "UnknownField",
         CompilerErrorKind::TypeMismatch => "TypeMismatch",
@@ -1277,7 +1288,7 @@ fn compiler_error_kind_name(kind: CompilerErrorKind) -> &'static str {
 }
 
 fn core_review(core: &edict_syntax::CoreModule) -> Value {
-    json!({
+    let mut review = json!({
         "apiVersion": core.api_version,
         "coordinate": core.coordinate,
         "imports": core.imports.iter().map(core_import_review).collect::<Vec<_>>(),
@@ -1290,7 +1301,21 @@ fn core_review(core: &edict_syntax::CoreModule) -> Value {
             .map(|(name, intent)| (name.clone(), core_intent_review(intent)))
             .collect::<BTreeMap<_, _>>(),
         "requiredCoreCapabilities": core.required_core_capabilities,
-    })
+    });
+    if !core.functions.is_empty() {
+        review["functions"] = Value::Object(core.functions.iter().map(|(name, function)| (name.clone(), json!({
+            "params": function.params.iter().map(local_ref_review).collect::<Vec<_>>(),
+            "returnType": function.return_type,
+            "body": {
+                "locals": function.body.locals.iter().map(local_ref_review).collect::<Vec<_>>(),
+                "bindings": function.body.bindings.iter().map(|binding| json!({
+                    "kind": "let", "binding": local_ref_review(&binding.binding), "value": core_expr_review(&binding.value)
+                })).collect::<Vec<_>>(),
+                "result": core_expr_review(&function.body.result)
+            }
+        }))).collect());
+    }
+    review
 }
 
 fn core_intent_review(intent: &CoreIntent) -> Value {
@@ -1378,6 +1403,26 @@ fn target_ir_intent_review(intent: &TargetIrIntent) -> Value {
         "basis",
         intent.basis.as_ref().map(core_expr_review),
     );
+    insert_optional_review_field(
+        &mut review,
+        "executionOrder",
+        intent.execution_order.as_ref().map(|order| json!(order)),
+    );
+    if !intent.pure_bindings.is_empty() {
+        insert_optional_review_field(
+            &mut review,
+            "pureBindings",
+            Some(json!(intent
+                .pure_bindings
+                .iter()
+                .map(|binding| json!({
+                    "id": binding.id,
+                    "binding": local_ref_review(&binding.binding),
+                    "value": core_expr_review(&binding.value),
+                }))
+                .collect::<Vec<_>>())),
+        );
+    }
     review
 }
 
@@ -2161,7 +2206,7 @@ fn help_record() -> Value {
             },
             ExitCodeRecord {
                 code: EXIT_CLI_FAILED,
-                meaning: "CLI input or usage was invalid",
+                meaning: "CLI input or usage was invalid, or a build failed",
             },
         ],
         request_schemas: &[edict_cli::COMPILER_SETTINGS_SCHEMA, INPUT_SCHEMA],
@@ -2264,6 +2309,120 @@ fn record_value(record: impl Serialize) -> Value {
 fn write_info(record: &Value) {
     let mut stdout = io::stdout().lock();
     write_record(&mut stdout, record);
+}
+
+fn write_application_source_failure(
+    failure: &application_build::ApplicationBuildFailure,
+    diagnostics: &[application_build::ApplicationSourceDiagnostics],
+) {
+    use application_build::ApplicationSourceError;
+
+    let mut stderr = io::stderr().lock();
+    for diagnostics in diagnostics {
+        let path = diagnostics.path.display().to_string();
+        let input = json!({ "kind": "path", "path": path });
+        let positions = application_source_positions(&diagnostics.source, &diagnostics.errors);
+        for (error, (line, column)) in diagnostics.errors.iter().zip(positions) {
+            let (stage, kind, message) = match error {
+                ApplicationSourceError::Parse(error) => {
+                    ("parse", error.kind.code(), error.message.clone())
+                }
+                ApplicationSourceError::Compiler(error) => (
+                    compiler_stage_name(error.stage),
+                    compiler_error_kind_name(error.kind),
+                    error.message.clone(),
+                ),
+                ApplicationSourceError::Linker(error) => {
+                    use edict_syntax::source_linker::SourceLinkErrorKind;
+                    let kind = match error.kind {
+                        SourceLinkErrorKind::UnresolvedName => "UnresolvedName",
+                        SourceLinkErrorKind::UnknownExport => "UnknownExport",
+                        SourceLinkErrorKind::ImportedIntent => "ImportedIntent",
+                        SourceLinkErrorKind::NameCollision => "NameCollision",
+                        SourceLinkErrorKind::SpanOverflow => "SpanOverflow",
+                        SourceLinkErrorKind::DepthExceeded => "DepthExceeded",
+                        SourceLinkErrorKind::ReservedTypeIdentity => "ReservedTypeIdentity",
+                    };
+                    ("resolve", kind, error.to_string())
+                }
+            };
+            let mut record = diagnostic_record(
+                COMMAND_BUILD,
+                stage,
+                kind,
+                &input,
+                Some(error.span()),
+                None,
+                Some(&message),
+            );
+            record["sourceLocation"] = json!({ "path": path, "line": line, "column": column });
+            if let ApplicationSourceError::Compiler(error) = error {
+                if let Some(detail) = &error.signature_mismatch {
+                    record["signatureMismatch"] = json!(detail);
+                }
+            }
+            write_record(&mut stderr, &record);
+        }
+    }
+    let summary = CliFailure {
+        command: COMMAND_BUILD,
+        kind: failure.kind,
+        line: None,
+        message: failure.message.clone(),
+    };
+    write_record(&mut stderr, &cli_diagnostic(&summary));
+    write_record(
+        &mut stderr,
+        &status_record(
+            COMMAND_BUILD,
+            "error",
+            0,
+            diagnostics
+                .iter()
+                .map(|group| group.errors.len())
+                .sum::<usize>()
+                + 1,
+            EXIT_CLI_FAILED,
+        ),
+    );
+}
+
+// Traverse source once in byte-offset order, then restore diagnostic order.
+// This avoids rescanning the whole source for every error or indexing UTF-8.
+fn application_source_positions(
+    source: &str,
+    errors: &[application_build::ApplicationSourceError],
+) -> Vec<(usize, usize)> {
+    let mut offsets = errors
+        .iter()
+        .enumerate()
+        .map(|(ordinal, error)| (error.span().start, ordinal))
+        .collect::<Vec<_>>();
+    offsets.sort_unstable();
+    let mut characters = source.char_indices().peekable();
+    let mut line = 1;
+    let mut column = 1;
+    let mut positions = Vec::with_capacity(offsets.len());
+    for (offset, ordinal) in offsets {
+        while let Some(&(byte, character)) = characters.peek() {
+            if byte >= offset {
+                break;
+            }
+            characters.next();
+            if character == '\n' {
+                line += 1;
+                column = 1;
+            } else {
+                column += 1;
+            }
+        }
+        positions.push((ordinal, line, column));
+    }
+    positions.sort_unstable_by_key(|(ordinal, _, _)| *ordinal);
+    positions
+        .into_iter()
+        .map(|(_, line, column)| (line, column))
+        .collect()
 }
 
 fn write_cli_failure(failure: &CliFailure) {

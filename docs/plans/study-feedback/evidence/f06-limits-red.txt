@@ -1,0 +1,34 @@
+   Compiling edict-syntax v0.11.0-alpha.1 (/work/edict/crates/edict-syntax)
+   Compiling edict-provider-schema v0.11.0-alpha.1 (/work/edict/crates/edict-provider-schema)
+   Compiling edict-provider-host-wasmtime v0.11.0-alpha.1 (/work/edict/crates/edict-provider-host-wasmtime)
+   Compiling edict-cli v0.11.0-alpha.1 (/work/edict/crates/edict-cli)
+    Finished `test` profile [unoptimized] target(s) in 4.76s
+     Running tests/configurable_causal_cell.rs (/cache/target/debug/deps/configurable_causal_cell-3abdf7b078f42465)
+
+running 2 tests
+test configurable_cell_budgets_match_maximum_unicode_encoding ... FAILED
+test configurable_cell_limits_reject_inconsistent_and_overflowing_parameters ... FAILED
+
+failures:
+
+---- configurable_cell_budgets_match_maximum_unicode_encoding stdout ----
+
+thread 'configurable_cell_budgets_match_maximum_unicode_encoding' (261) panicked at crates/edict-cli/tests/configurable_causal_cell.rs:13:39:
+consistent finite parameters: Zero
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- configurable_cell_limits_reject_inconsistent_and_overflowing_parameters stdout ----
+
+thread 'configurable_cell_limits_reject_inconsistent_and_overflowing_parameters' (262) panicked at crates/edict-cli/tests/configurable_causal_cell.rs:35:5:
+assertion `left == right` failed
+  left: Err(Zero)
+ right: Err(ScalarBytesExceedCap)
+
+
+failures:
+    configurable_cell_budgets_match_maximum_unicode_encoding
+    configurable_cell_limits_reject_inconsistent_and_overflowing_parameters
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p edict-cli --test configurable_causal_cell`

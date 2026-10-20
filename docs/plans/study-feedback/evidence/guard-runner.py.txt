@@ -1,0 +1,130 @@
+import os,sys,json,time,subprocess,signal,tarfile,shutil
+from pathlib import Path
+WORKER='edict-validation'
+CACHE='edict-build-cache'
+ROOT=Path('/Users/j/git/edict-study-feedback')
+SCRATCH=Path('/Users/j/.codex/tmp/edict-feedback')
+GiB=1024**3
+JOURNAL_RESERVATION=128*1024**2
+
+def run(args,**kw):
+    return subprocess.run(args,check=True,timeout=kw.pop('timeout',30),**kw)
+def read(args):
+    return run(args,stdout=subprocess.PIPE,text=True).stdout.strip()
+def stop():
+    subprocess.run(['docker','stop','--timeout','5',WORKER],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=15)
+def metrics():
+    stat=json.loads(read(['docker','inspect','--size',WORKER]))[0]
+    host=shutil.disk_usage(SCRATCH).free
+    # Cargo atomically removes this one short-lived journal. Reserve its full
+    # admitted ceiling, so a disappearing pathname cannot undercount output.
+    journal_probe = "import os; p='/cache/cargo/.global-cache-journal';\ntry: print(os.stat(p).st_blocks*512)\nexcept FileNotFoundError: print(0)"
+    journal_bytes=int(read(['docker','exec',WORKER,'python3','-c',journal_probe]))
+    check(journal_bytes <= JOURNAL_RESERVATION, 'Cargo metadata journal exceeded its accounted reservation')
+    out=read(['docker','exec',WORKER,'sh','-c','du -sk --exclude=/cache/cargo/.global-cache-journal /cache /tmp /work /data && df -Pk /cache'])
+    lines=out.splitlines(); sizes=[int(line.split()[0])*1024 for line in lines[:4]]
+    vm=int(lines[-1].split()[3])*1024
+    logs=sum(p.stat().st_size for p in SCRATCH.glob('*.log'))
+    return dict(build=sum(sizes)+JOURNAL_RESERVATION,journal_reserved=JOURNAL_RESERVATION,journal_observed=journal_bytes,data=sum(sizes[1:])+stat.get('SizeRw',0)+sum(p.stat().st_size for p in SCRATCH.glob('*.tar'))+sum(p.stat().st_size for p in SCRATCH.glob('*.bundle')),logs=logs,layer=stat.get('SizeRw',0),host_free=host,vm_free=vm)
+def check(condition, message):
+    if not condition:
+        raise RuntimeError(message)
+
+def guard(m):
+    check(m['host_free'] >= 50*GiB and m['vm_free'] >= 50*GiB, 'free space below 50 GiB')
+    check(m['build'] < 20*GiB, 'project build cache reached 20 GiB')
+    check(m['data'] < 4*GiB-128*1024**2, 'project data budget reached')
+    check(m['logs'] < 124*1024**2, 'host logs reached budget (4 MiB reserved for Docker logs)')
+    check(m['layer'] == 237568, 'readonly container layer changed from inspected OrbStack certificate baseline')
+
+def prepare():
+    known=run(['docker','container','ls','-a','--filter',f'name=^{WORKER}$','--format','{{.Names}}'],stdout=subprocess.PIPE,text=True).stdout.strip()
+    if not known:
+        run(['docker','volume','create',CACHE],stdout=subprocess.DEVNULL)
+        run(['docker','create','--name',WORKER,'--label','project=edict','--read-only','--cpus','4','--memory','12g','--memory-swap','12g','--pids-limit','512','--log-driver','json-file','--log-opt','max-size=1m','--log-opt','max-file=3','--mount',f'type=volume,src={CACHE},dst=/cache','--tmpfs','/work:rw,exec,size=128m','--tmpfs','/tmp:rw,exec,size=512m','--tmpfs','/data:rw,exec,size=3g','--env','CARGO_HOME=/cache/cargo','--env','CARGO_TARGET_DIR=/cache/target','--env','CARGO_INCREMENTAL=0','--env','CARGO_BUILD_JOBS=4','--env','CARGO_PROFILE_DEV_DEBUG=0','--env','CARGO_PROFILE_TEST_DEBUG=0','--env','TMPDIR=/data','rust:1.96.0','sleep','infinity'],stdout=subprocess.DEVNULL)
+    cfg=json.loads(read(['docker','inspect',WORKER]))[0]
+    check(cfg['Config']['Labels'].get('project') == 'edict', 'validation guard rejected configuration or path')
+    check(cfg['HostConfig']['ReadonlyRootfs'] and cfg['HostConfig']['Memory'] == 12*GiB, 'validation guard rejected configuration or path')
+    check(cfg['Mounts'][0]['Name']==CACHE and len(cfg['Mounts'])==1, 'validation guard rejected configuration or path')
+    run(['docker','start',WORKER],stdout=subprocess.DEVNULL)
+    m=metrics();guard(m)
+    print(json.dumps({'launch_contract':{'worker':WORKER,'image':'rust:1.96.0','lock':['host/heavy-work','host/docker/edict-validation/'],'outputs':['/cache cargo+target+owned toolchain','/work source+git snapshot','/tmp','/data tests',str(SCRATCH)+' bounded logs+snapshots'],'build_limit':20*GiB,'data_limit':4*GiB,'log_limit':128*1024**2,'cpu':4,'memory':12*GiB,'guard':'fail-closed 2-second usage monitor; read-only layer; bounded tmpfs; 3 x 1MiB Docker logs','timeout_seconds':2400,'stop':WORKER,'measurements':m}}),flush=True)
+    run(['git','bundle','create',str(SCRATCH/'source.bundle'),'--all'],cwd=ROOT)
+    files=read(['git','ls-files','--cached','--others','--exclude-standard']).splitlines() if Path.cwd()==ROOT else read(['git','-C',str(ROOT),'ls-files','--cached','--others','--exclude-standard']).splitlines()
+    # HEAD-relative deletions include staged removals and rename sources.
+    # Index-relative missing files also cover additions deleted before commit.
+    deleted=set(read(['git','-C',str(ROOT),'diff','--no-renames','--name-only','--diff-filter=D','HEAD','--']).splitlines())
+    deleted.update(read(['git','-C',str(ROOT),'ls-files','--deleted']).splitlines())
+    files=[file for file in files if file not in deleted]
+    if os.environ.get('EDICT_PARENT_WITNESS') == '1':
+        files=['crates/edict-syntax/tests/return_budget.rs']
+    with tarfile.open(SCRATCH/'source.tar','w') as archive:
+        for file in files: archive.add(ROOT/file,arcname=file,recursive=False)
+    guard(metrics())
+    run(['docker','exec',WORKER,'sh','-c','rm -rf /work/edict; mkdir -p /work/edict'])
+    with (SCRATCH/'source.bundle').open('rb') as bundle:
+        run(['docker','exec','-i',WORKER,'sh','-c','cat > /work/source.bundle'],stdin=bundle)
+    run(['docker','exec',WORKER,'git','clone','--quiet','/work/source.bundle','/work/edict'])
+    branch=read(['git','-C',str(ROOT),'branch','--show-current'])
+    run(['docker','exec',WORKER,'git','-C','/work/edict','checkout',branch],stdout=subprocess.DEVNULL)
+    base=read(['git','-C',str(ROOT),'rev-parse','origin/main'])
+    run(['docker','exec',WORKER,'git','-C','/work/edict','update-ref','refs/remotes/origin/main',base])
+    with (SCRATCH/'source.tar').open('rb') as source_tar:
+        run(['docker','exec','-i',WORKER,'tar','xf','-','-C','/work/edict'],stdin=source_tar)
+    run(['docker','exec',WORKER,'rm','/work/source.bundle'])
+    if deleted:
+        deletion_code = "import json,sys; from pathlib import Path; root=Path('/work/edict');\nfor item in json.loads(sys.argv[1]):\n p=root/item\n if root not in p.resolve().parents: raise RuntimeError('source deletion escaped its owned snapshot')\n p.unlink(missing_ok=True)"
+        run(['docker','exec',WORKER,'python3','-c',deletion_code,json.dumps(sorted(deleted))])
+    (SCRATCH/'source.tar').unlink(); (SCRATCH/'source.bundle').unlink()
+    # Copy snapshots can carry timestamps older than another revision's build.
+    # Invalidate only this workspace's artifacts in the stable target; retain
+    # all downloaded and compiled third-party dependencies.
+    run(['docker','exec','--env','RUSTUP_HOME=/cache/rustup','--workdir','/work/edict',WORKER,
+         'cargo','clean','-p','edict-syntax','-p','edict-cli','-p','edict-provider-schema',
+         '-p','edict-provider-host-wasmtime','-p','flyingrobots-edict','-p','xtask'])
+    guard(metrics())
+
+process=None
+try:
+    prepare()
+    log=SCRATCH/(sys.argv[1]+'.log')
+    with log.open('wb') as out:
+        process=subprocess.Popen(['docker','exec','--env','RUSTUP_HOME=/cache/rustup','--workdir','/work/edict',WORKER,*sys.argv[2:]],stdout=out,stderr=subprocess.STDOUT,start_new_session=True)
+        began=time.monotonic()
+        while process.poll() is None:
+            guard(metrics())
+            if time.monotonic()-began > 2400: raise RuntimeError('workload timeout')
+            time.sleep(2)
+        code=process.returncode
+    guard(metrics())
+    if code == 0 and sys.argv[1].endswith('-goldens'):
+        exported = SCRATCH/'generated-fixtures.tar'
+        with exported.open('wb') as archive:
+            run(['docker','exec',WORKER,'tar','cf','-','-C','/work/edict','fixtures'],stdout=archive)
+        guard(metrics())
+        with tarfile.open(exported) as archive:
+            for member in archive.getmembers():
+                check(member.name.startswith('fixtures/') or member.name == 'fixtures', 'validation guard rejected configuration or path')
+                target=(ROOT/member.name).resolve()
+                check(ROOT.resolve() in target.parents, 'validation guard rejected configuration or path')
+                if member.isdir(): target.mkdir(exist_ok=True,parents=True)
+                elif member.isfile():
+                    target.parent.mkdir(exist_ok=True,parents=True)
+                    with archive.extractfile(member) as source, target.open('wb') as dest:
+                        shutil.copyfileobj(source,dest)
+                else: raise RuntimeError('unexpected generated archive entry')
+        exported.unlink()
+    print(json.dumps({'exit_code':code,'log':str(log),'measurements':metrics()}),flush=True)
+    tail=log.read_text(errors='replace').splitlines()[-45:]
+    print('\n'.join(tail),flush=True)
+    sys.exit(code)
+except BaseException as e:
+    if isinstance(e, SystemExit):
+        stop()
+        raise
+    print(f'GUARD STOP: {type(e).__name__}: {e}',flush=True)
+    stop()
+    if process is not None and process.poll() is None:
+        os.killpg(process.pid,signal.SIGTERM)
+        process.wait(timeout=10)
+    raise
