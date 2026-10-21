@@ -1430,7 +1430,9 @@ fn validate_source_function_bodies(
                 .map(|binding| (&binding.binding, &binding.value)),
             &function.body.result,
         ) {
-            return Some(invalid("binding has invalid type, authority, or totality"));
+            return Some(invalid(
+                "a binding or the result failed totality validation",
+            ));
         }
         for binding in &function.body.bindings {
             if !expression_fits_declared_type(
@@ -1440,7 +1442,9 @@ fn validate_source_function_bodies(
                 &binding.binding.ty,
                 &available,
             ) {
-                return Some(invalid("binding has invalid type, authority, or totality"));
+                return Some(invalid(
+                    "binding does not fit its declared type or available scope",
+                ));
             }
             available.insert(binding.binding.id.as_str(), &binding.binding);
         }

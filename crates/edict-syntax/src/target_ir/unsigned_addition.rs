@@ -1,11 +1,12 @@
 //! Target-owned upper-bound proof over untrusted Core, independent of source checking.
-use super::{CoreExpr, CoreModule, CorePredicate, CoreValue};
+use super::totality::Scope;
+use super::{CoreExpr, CorePredicate, CoreValue};
 use crate::core_ir::{CompareOp, MAX_CORE_GRAPH_DEPTH};
 
 pub(super) const OPERATION: &str = "core.integer.add";
 
 pub(super) fn is_total(
-    core: &CoreModule,
+    core: &Scope<'_>,
     type_args: &[String],
     args: &[CoreExpr],
     constraints: &[&CorePredicate],
@@ -77,7 +78,7 @@ fn collect_limits<'a>(predicate: &'a CorePredicate, limits: &mut Vec<(&'a CoreEx
 }
 
 fn bound(
-    core: &CoreModule,
+    core: &Scope<'_>,
     expr: &CoreExpr,
     max: u64,
     limits: &[(&CoreExpr, u64)],
@@ -91,6 +92,9 @@ fn bound(
     }
     let structural = if let Some(value) = constant(expr) {
         value
+    } else if let CoreExpr::Local { reference } = expr {
+        core.local_bound(reference)
+            .map_or(max, |upper| upper.min(max))
     } else if let CoreExpr::Call { callee, args, .. } = expr {
         if callee == OPERATION {
             let [left, right] = args.as_slice() else {
@@ -107,7 +111,8 @@ fn bound(
             let CoreExpr::Call { type_args, .. } = expr else {
                 return None;
             };
-            super::byte_count::result_bound(core, type_args).map_or(max, |bound| bound.min(max))
+            super::byte_count::result_bound(core.module(), type_args)
+                .map_or(max, |bound| bound.min(max))
         } else {
             max
         }
@@ -123,15 +128,14 @@ fn bound(
     )
 }
 
-/// A pure binding of unsigned width carries its proven upper bound to later
-/// evaluation in the same scope. Local identities are unique and immutable,
-/// so the derived limit names exactly the bound value.
-pub(super) fn binding_limit(
-    core: &CoreModule,
+/// The proven upper bound a pure binding of unsigned width carries to later
+/// evaluation in the same scope, when it is below the width maximum.
+pub(super) fn binding_bound(
+    core: &Scope<'_>,
     binding: &crate::core_ir::LocalRef,
     value: &CoreExpr,
     constraints: &[&CorePredicate],
-) -> Option<CorePredicate> {
+) -> Option<u64> {
     let max = match binding.ty.as_str() {
         "U32" => u64::from(u32::MAX),
         "U64" => u64::MAX,
@@ -141,15 +145,5 @@ pub(super) fn binding_limit(
     for constraint in constraints {
         collect_limits(constraint, &mut limits);
     }
-    let upper = bound(core, value, max, &limits, 0).filter(|upper| *upper < max)?;
-    Some(CorePredicate::Compare {
-        op: CompareOp::Le,
-        left: CoreExpr::Local {
-            reference: binding.clone(),
-        },
-        right: CoreExpr::Const(CoreValue::Int {
-            width: binding.ty.clone(),
-            value: upper.to_string(),
-        }),
-    })
+    bound(core, value, max, &limits, 0).filter(|upper| *upper < max)
 }

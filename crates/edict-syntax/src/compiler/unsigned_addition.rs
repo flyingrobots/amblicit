@@ -150,6 +150,7 @@ impl TypeChecker<'_> {
                 &right.expr,
                 &BoundFacts {
                     constraints: &self.input_proof_constraints,
+                    local_bounds: &self.local_bounds,
                     count_maxima: &self.count_operand_maxima,
                 },
                 if matches!(&left.ty.kind, TypeKind::Int { width } if width == "U32") {
@@ -210,10 +211,12 @@ fn proven_sum(left: &CoreExpr, right: &CoreExpr, facts: &BoundFacts<'_>, max: u6
     left.checked_add(right).is_some_and(|sum| sum <= max)
 }
 
-/// What an upper-bound proof may use: dominating predicates, and the byte
-/// maximum of every operand coordinate a `count` call resolved.
+/// What an upper-bound proof may use: dominating predicates, the proven bounds
+/// of earlier `let` bindings by local id, and the byte maximum of every operand
+/// coordinate a `count` call resolved.
 struct BoundFacts<'a> {
     constraints: &'a [CorePredicate],
+    local_bounds: &'a BTreeMap<String, (LocalRef, u64)>,
     count_maxima: &'a BTreeMap<String, u64>,
 }
 
@@ -222,6 +225,14 @@ fn upper_bound(expr: &CoreExpr, facts: &BoundFacts<'_>, max: u64, depth: usize) 
         return max;
     }
     let mut bound = constant(expr).unwrap_or_else(|| {
+        if let CoreExpr::Local { reference } = expr {
+            // Only the exact bound reference: same id, name and type.
+            if let Some((bound_reference, bound)) = facts.local_bounds.get(&reference.id) {
+                if bound_reference == reference {
+                    return (*bound).min(max);
+                }
+            }
+        }
         if let CoreExpr::Call {
             callee,
             type_args,
@@ -291,20 +302,13 @@ impl TypeChecker<'_> {
         };
         let facts = BoundFacts {
             constraints: &self.input_proof_constraints,
+            local_bounds: &self.local_bounds,
             count_maxima: &self.count_operand_maxima,
         };
         let upper = upper_bound(value, &facts, max, 0);
         if upper < max {
-            self.input_proof_constraints.push(CorePredicate::Compare {
-                op: CompareOp::Le,
-                left: CoreExpr::Local {
-                    reference: binding.clone(),
-                },
-                right: CoreExpr::Const(CoreValue::Int {
-                    width: binding.ty.clone(),
-                    value: upper.to_string(),
-                }),
-            });
+            self.local_bounds
+                .insert(binding.id.clone(), (binding.clone(), upper));
         }
     }
 }

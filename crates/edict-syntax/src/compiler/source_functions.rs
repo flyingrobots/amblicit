@@ -105,6 +105,7 @@ impl TypeChecker<'_> {
     fn check_source_function(&mut self, definition: &FunctionDecl) -> Option<CoreFunction> {
         let signature = self.function_signatures.get(&definition.name)?.clone();
         self.input_proof_constraints.clear();
+        self.local_bounds.clear();
         let mut env = LocalEnvironment::default();
         let params = definition
             .params

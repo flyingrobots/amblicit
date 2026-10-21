@@ -1,11 +1,54 @@
 //! Evaluation-scope traversal for partial Core operations at the Target boundary.
 use super::{
     byte_slice, unsigned_addition, unsigned_subtraction, CoreExpr, CoreIntent, CoreModule,
-    CoreNode, CorePredicate, CoreRequireFailureArm, InputConstraint,
+    CoreNode, CorePredicate, CoreRequireFailureArm, InputConstraint, LocalRef,
 };
+use std::cell::RefCell;
+use std::collections::BTreeMap;
+
 use crate::core_ir::{CoreBlock, MAX_CORE_GRAPH_DEPTH};
 
-pub(super) fn intent_is_total(core: &CoreModule, intent: &CoreIntent) -> bool {
+/// One totality walk: the module whose type table resolves coordinates, and
+/// the proven upper bounds of the unsigned `let` bindings walked so far, by
+/// local id. Ids are unique and bindings immutable within a body, so a
+/// binding's bound stays true wherever its reference is in scope.
+pub(super) struct Scope<'a> {
+    module: &'a CoreModule,
+    local_bounds: RefCell<BTreeMap<String, (LocalRef, u64)>>,
+}
+
+impl<'a> Scope<'a> {
+    fn new(module: &'a CoreModule) -> Self {
+        Self {
+            module,
+            local_bounds: RefCell::new(BTreeMap::new()),
+        }
+    }
+
+    pub(super) fn module(&self) -> &'a CoreModule {
+        self.module
+    }
+
+    /// The bound proven for exactly this reference: same id, name and type.
+    pub(super) fn local_bound(&self, reference: &LocalRef) -> Option<u64> {
+        self.local_bounds
+            .borrow()
+            .get(&reference.id)
+            .filter(|(bound, _)| bound == reference)
+            .map(|(_, upper)| *upper)
+    }
+
+    fn record_binding(&self, binding: &LocalRef, value: &CoreExpr, constraints: &[&CorePredicate]) {
+        if let Some(upper) = unsigned_addition::binding_bound(self, binding, value, constraints) {
+            self.local_bounds
+                .borrow_mut()
+                .insert(binding.id.clone(), (binding.clone(), upper));
+        }
+    }
+}
+
+pub(super) fn intent_is_total(module: &CoreModule, intent: &CoreIntent) -> bool {
+    let core = &Scope::new(module);
     intent
         .basis
         .as_ref()
@@ -17,7 +60,7 @@ pub(super) fn intent_is_total(core: &CoreModule, intent: &CoreIntent) -> bool {
         && block_is_total(core, &intent.body, &intent.input_constraints)
 }
 
-fn block_is_total(core: &CoreModule, block: &CoreBlock, constraints: &[InputConstraint]) -> bool {
+fn block_is_total(core: &Scope<'_>, block: &CoreBlock, constraints: &[InputConstraint]) -> bool {
     block_is_total_at_depth(
         core,
         block,
@@ -30,7 +73,7 @@ fn block_is_total(core: &CoreModule, block: &CoreBlock, constraints: &[InputCons
 }
 
 fn block_is_total_at_depth(
-    core: &CoreModule,
+    core: &Scope<'_>,
     block: &CoreBlock,
     constraints: &[&CorePredicate],
     depth: usize,
@@ -39,25 +82,17 @@ fn block_is_total_at_depth(
         return false;
     }
     // Proven bounds of earlier unsigned bindings extend the evaluation scope.
-    let mut derived: Vec<CorePredicate> = Vec::new();
     block.nodes.iter().all(|node| {
-        let (total, limit) = {
-            let constraints = scope(constraints, &derived);
-            let limit = match node {
-                CoreNode::Let { binding, value } => {
-                    unsigned_addition::binding_limit(core, binding, value, &constraints)
-                }
-                _ => None,
-            };
-            (node_is_total(core, node, &constraints, depth), limit)
-        };
-        derived.extend(limit);
+        let total = node_is_total(core, node, constraints, depth);
+        if let CoreNode::Let { binding, value } = node {
+            core.record_binding(binding, value, constraints);
+        }
         total
-    }) && expression_is_total_at_depth(core, &block.result, &scope(constraints, &derived), depth)
+    }) && expression_is_total_at_depth(core, &block.result, constraints, depth)
 }
 
 fn node_is_total(
-    core: &CoreModule,
+    core: &Scope<'_>,
     node: &CoreNode,
     constraints: &[&CorePredicate],
     depth: usize,
@@ -118,7 +153,7 @@ fn node_is_total(
 }
 
 fn predicate_is_total(
-    core: &CoreModule,
+    core: &Scope<'_>,
     predicate: &CorePredicate,
     constraints: &[InputConstraint],
 ) -> bool {
@@ -134,7 +169,7 @@ fn predicate_is_total(
 }
 
 fn predicate_is_total_at_depth(
-    core: &CoreModule,
+    core: &Scope<'_>,
     predicate: &CorePredicate,
     constraints: &[&CorePredicate],
     depth: usize,
@@ -168,7 +203,7 @@ fn predicate_is_total_at_depth(
 }
 
 pub(super) fn expression_is_total(
-    core: &CoreModule,
+    core: &Scope<'_>,
     expression: &CoreExpr,
     constraints: &[InputConstraint],
 ) -> bool {
@@ -184,7 +219,7 @@ pub(super) fn expression_is_total(
 }
 
 fn expression_is_total_at_depth(
-    core: &CoreModule,
+    core: &Scope<'_>,
     expression: &CoreExpr,
     constraints: &[&CorePredicate],
     depth: usize,
@@ -240,32 +275,23 @@ fn expression_is_total_at_depth(
 /// Pure function bindings evaluate in order; each sees the proven bounds of
 /// the unsigned bindings before it.
 pub(super) fn bindings_are_total<'a>(
-    core: &CoreModule,
+    module: &CoreModule,
     bindings: impl IntoIterator<Item = (&'a crate::core_ir::LocalRef, &'a CoreExpr)>,
     result: &CoreExpr,
 ) -> bool {
-    let mut derived: Vec<CorePredicate> = Vec::new();
+    let core = &Scope::new(module);
     for (binding, value) in bindings {
-        let constraints = derived.iter().collect::<Vec<_>>();
-        if !expression_is_total_at_depth(core, value, &constraints, 0) {
+        if !expression_is_total_at_depth(core, value, &[], 0) {
             return false;
         }
-        let limit = unsigned_addition::binding_limit(core, binding, value, &constraints);
-        derived.extend(limit);
+        core.record_binding(binding, value, &[]);
     }
-    expression_is_total_at_depth(core, result, &derived.iter().collect::<Vec<_>>(), 0)
-}
-
-fn scope<'a>(
-    constraints: &[&'a CorePredicate],
-    derived: &'a [CorePredicate],
-) -> Vec<&'a CorePredicate> {
-    constraints.iter().copied().chain(derived).collect()
+    expression_is_total_at_depth(core, result, &[], 0)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{block_is_total, expression_is_total};
+    use super::{block_is_total, expression_is_total, Scope};
     use crate::core_ir::{
         CompareOp, CoreBlock, CoreExpr, CoreModule, CoreNode, CorePredicate, CoreValue,
     };
@@ -295,8 +321,12 @@ mod tests {
 
     #[test]
     fn totality_expression_depth_has_an_exact_boundary() {
-        assert!(expression_is_total(&core(), &fields(128), &[]));
-        assert!(!expression_is_total(&core(), &fields(129), &[]));
+        assert!(expression_is_total(&Scope::new(&core()), &fields(128), &[]));
+        assert!(!expression_is_total(
+            &Scope::new(&core()),
+            &fields(129),
+            &[]
+        ));
     }
 
     #[test]
@@ -310,9 +340,9 @@ mod tests {
             then_value: Box::new(leaf()),
             else_value: Box::new(leaf()),
         });
-        assert!(expression_is_total(&core(), &mixed, &[]));
+        assert!(expression_is_total(&Scope::new(&core()), &mixed, &[]));
         assert!(!expression_is_total(
-            &core(),
+            &Scope::new(&core()),
             &CoreExpr::Field {
                 base: Box::new(mixed),
                 field: "value".into()
@@ -347,7 +377,7 @@ mod tests {
                     ..block()
                 },
             );
-            assert!(block_is_total(&core(), &nested, &[]));
+            assert!(block_is_total(&Scope::new(&core()), &nested, &[]));
             let beyond = CoreBlock {
                 nodes: vec![CoreNode::Branch {
                     binding: None,
@@ -357,7 +387,7 @@ mod tests {
                 }],
                 ..block()
             };
-            assert!(!block_is_total(&core(), &beyond, &[]));
+            assert!(!block_is_total(&Scope::new(&core()), &beyond, &[]));
         }
     }
 }
