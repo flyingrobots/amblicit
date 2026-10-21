@@ -201,6 +201,15 @@ execute UTF-8 validation. [CSPINE-REQ-053]
 The byte requirement reaches authenticated effect outputs before failure-mapping
 advice, so a record-valued effect reports its primary `TypeMismatch`. [CSPINE-REQ-047]
 
+`count(bytes, b"x")` takes one bounded structural byte operand, a byte literal of
+exactly one decoded byte, and no authored type arguments. It lowers to
+`core.bytes.count<OperandType>(bytes, b"x")`, retaining the operand coordinate
+and the counted byte, and returns U64. It is a reserved prelude name, including
+through authenticated source-module linking. Unsigned addition proofs bound the
+result by the operand maximum. The cost bound charges one complete scan of the
+bounded operand storage, once, whether the call is direct or inside a helper.
+This compiler evidence does not execute the count. [CSPINE-REQ-056]
+
 A list literal `[a, b]` is checked against its expected `List<T, max=N>`, from a
 binding annotation, a parameter, a record field or a return type. It has at
 most `N` elements, each checked against `T`, and lowers in source order to Core

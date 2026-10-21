@@ -418,6 +418,18 @@ results refuse with `InvalidCoreIdentity` and no artifact. A nested slice still
 requires the existing totality proof in its evaluation scope. These checks do
 not claim provider or runtime UTF-8 execution. [TIR-REQ-055]
 
+## Byte count boundary
+
+`core.bytes.count<OperandType>(bytes, b"x")` retains exactly one structural byte
+coordinate, one operand and one constant needle of exactly one byte, producing
+U64. Target validation independently checks the operand's authority, exact
+coordinate, needle shape and result compatibility. Forged arity, substituted
+coordinates, empty, multi-byte or non-constant needles, foreign locals and
+non-U64 binding results refuse with `InvalidCoreIdentity` and no artifact.
+Target's own unsigned-addition proof bounds the count by the structural operand
+maximum and refuses sums that could exceed the width. These checks do not claim
+provider or runtime execution. [TIR-REQ-057]
+
 ## Byte-slice boundary
 
 `core.bytes.slice<OperandType>(bytes,start,end)` takes one exact structural byte
