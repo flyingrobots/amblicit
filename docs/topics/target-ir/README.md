@@ -377,6 +377,20 @@ elements, wrong element types, foreign locals and non-list binding types refuse
 with `InvalidCoreIdentity` and no artifact. These checks do not claim runtime
 list evaluation. [TIR-REQ-058]
 
+## Target pure intrinsic boundary
+
+Target accepts a call to a target pure intrinsic only against facts pinned to
+exactly the lowering target profile and a matching digest-locked target import,
+with the contract's arity, argument fit and result type. It recomputes each
+call's cost itself from operand bounds it establishes: a literal's size, the
+larger branch of a conditional, or the resolved type maximum. Helper calls are
+charged to the calling intent, with each helper body metered from a fresh
+expression depth and call height bounded separately. Unknown coordinates, type
+arguments, wrong arity, unaccepted arguments, missing or foreign facts, a
+source function claiming an intrinsic coordinate, and budgets below the
+recomputed cost refuse with `InvalidCoreIdentity` and no artifact. These checks
+do not claim provider or runtime execution. [TIR-REQ-059]
+
 ## Byte-length boundary
 
 `core.bytes.length` accepts exactly one operand and one exact operand type
