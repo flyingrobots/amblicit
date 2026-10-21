@@ -896,3 +896,112 @@ fn linked_source_functions_cannot_collide_with_admitted_intrinsics() {
         "{failures:?}"
     );
 }
+
+// --- Review regressions -------------------------------------------------------
+
+#[test]
+fn admission_refuses_a_duplicate_requirement() {
+    let bytes = encode_canonical_cbor(&catalog_value()).expect("canonical");
+    let mut required = required();
+    required.push(required[0].clone());
+    let failures = admit_target_pure_intrinsics(&target(), &pinned(&bytes), &bytes, &required)
+        .expect_err("a repeated requirement refuses admission");
+    assert_eq!(
+        failures
+            .iter()
+            .map(|failure| failure.kind)
+            .collect::<Vec<_>>(),
+        [TargetPureIntrinsicFailureKind::DuplicateRequirement]
+    );
+}
+
+/// An intrinsic call whose atom operand is a branch-local binding.
+fn branch_local_source() -> String {
+    let import = target_import();
+    format!(
+        "package app.ids@1;
+        {import}
+        type Input = {{
+          warp: Bytes<exact=32>, nodeType: Bytes<exact=32>, atomType: Bytes<exact=32>,
+          text: Bytes<max=4096>, flag: Bool,
+        }};
+        type Output = {{ node: Bytes<exact=32>, }};
+        intent ids(input: Input) returns Output
+          profile p.read basis none budget <= p.small {{
+          let node: Bytes<exact=32> = if input.flag {{
+            let atom = input.text;
+            yield echo.contentAddress(input.warp, input.nodeType, input.atomType, atom, []);
+          }} else {{
+            yield input.warp;
+          }};
+          return {{ node }};
+        }}"
+    )
+}
+
+#[test]
+fn target_meters_intrinsic_calls_on_branch_local_operands() {
+    let kinds = |core: &CoreModule| {
+        lower_to_target_ir(core, &facts())
+            .failures
+            .into_iter()
+            .map(|failure| failure.kind)
+            .collect::<Vec<_>>()
+    };
+    let text = branch_local_source();
+    let budget = minimal_budget(&text);
+    let mut core = compile_to_core(&parse_module(&text).unwrap(), &context(budget)).unwrap();
+    // Target lowers no branch nodes yet, but its cost meter must establish the
+    // branch-local operand's bound rather than refuse the compiler-accepted call.
+    assert_eq!(
+        kinds(&core),
+        [TargetLoweringFailureKind::UnsupportedCoreNode]
+    );
+    // Below the branch-local call's own cost, the meter refuses it.
+    core.intents
+        .get_mut("ids")
+        .unwrap()
+        .core_evaluation_budget
+        .max_steps = 64 + 4096 - 1;
+    assert!(
+        kinds(&core).contains(&TargetLoweringFailureKind::InvalidCoreIdentity),
+        "budget below the branch-local call"
+    );
+}
+
+/// An intent whose loop body calls an intrinsic, directly or through a helper.
+fn loop_source(call: &str) -> String {
+    let import = target_import();
+    format!(
+        "package app.ids@1;
+        {import}
+        fn slot(warp: Bytes<exact=32>, from: Bytes<exact=32>, ty: Bytes<exact=32>) -> Bytes<exact=32> {{
+          return echo.slotEdgeId(warp, from, ty);
+        }}
+        type Input = {{
+          warp: Bytes<exact=32>, ty: Bytes<exact=32>, items: List<Bytes<exact=32>, max=2>,
+        }};
+        type Output = {{ warp: Bytes<exact=32>, }};
+        intent ids(input: Input) returns Output
+          profile p.read basis none budget <= p.small {{
+          for item in input.items bounded 2 {{ let edge = {call}; }}
+          return {{ warp: input.warp }};
+        }}"
+    )
+}
+
+#[test]
+fn target_refuses_intrinsic_calls_inside_loop_bodies() {
+    for (case, call) in [
+        ("direct", "echo.slotEdgeId(input.warp, item, input.ty)"),
+        ("helper", "slot(input.warp, item, input.ty)"),
+    ] {
+        // The compiler charges the call per iteration and accepts it.
+        let core = compile_to_core(
+            &parse_module(&loop_source(call)).unwrap(),
+            &context(1_000_000),
+        )
+        .unwrap_or_else(|errors| panic!("{case}: {errors:?}"));
+        refused(&core, &facts(), case);
+    }
+}

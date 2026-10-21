@@ -87,6 +87,11 @@ impl<'a> Meter<'a> {
         if depth > MAX_CORE_GRAPH_DEPTH {
             return None;
         }
+        // A nested block's own bindings (branch yields, loop bodies) are in
+        // scope for its nodes but are not in the intent's local table.
+        let mut scope = available.clone();
+        scope.extend(locals(block.locals.iter()));
+        let available = &scope;
         let mut steps = 0_u64;
         for node in &block.nodes {
             let node_steps = match node {

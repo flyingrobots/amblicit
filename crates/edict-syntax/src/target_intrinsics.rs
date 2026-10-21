@@ -46,10 +46,12 @@ pub enum TargetPureIntrinsicFailureKind {
     NonCanonicalCatalog,
     /// The catalog bytes do not match the trusted pinned digest.
     DigestMismatch,
-    /// The catalog document is not a v1 intrinsic catalog.
+    /// The catalog document is not an `edict.target-profile.intrinsics/v2` catalog.
     MalformedCatalog,
     /// A required coordinate is absent from the catalog.
     MissingIntrinsic,
+    /// The required list names the same coordinate more than once.
+    DuplicateRequirement,
     /// A required coordinate names an effect intrinsic.
     NotPure,
     /// The contract's version differs from the required version.
@@ -246,7 +248,14 @@ pub fn admit_target_pure_intrinsics(
     let mut failures = Vec::new();
     let provider = provider_types(fields.get("types").copied(), target, &mut failures);
     let mut admitted = Vec::with_capacity(required.len());
+    let mut seen = BTreeSet::new();
     for requirement in required {
+        // A repeated requirement would yield two facts for one coordinate,
+        // which Target refuses later for a reason that hides the cause.
+        if !seen.insert(requirement.coordinate.as_str()) {
+            failures.push(failure(K::DuplicateRequirement, &requirement.coordinate));
+            continue;
+        }
         match admit_one(target, catalog, &intrinsics, &provider, requirement) {
             Ok(fact) => admitted.push(fact),
             Err(kind) => failures.push(failure(kind, &requirement.coordinate)),
