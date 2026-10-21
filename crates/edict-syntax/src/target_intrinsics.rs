@@ -306,13 +306,39 @@ fn record_fields_are_structural(record: &CoreType) -> bool {
     let CoreType::Record { fields } = record else {
         return false;
     };
-    !fields.is_empty()
-        && fields.values().all(|field| {
-            matches!(
-                classify_core_type_reference(field),
-                Some(CoreTypeReference::Intrinsic(_) | CoreTypeReference::Structural(_))
-            )
-        })
+    !fields.is_empty() && fields.values().all(|field| structurally_closed(field))
+}
+
+/// A type reference that names no type at any depth: intrinsic, or structural
+/// with every child structurally closed. Classification already bounds the
+/// nesting depth.
+fn structurally_closed(reference: &str) -> bool {
+    match classify_core_type_reference(reference) {
+        Some(CoreTypeReference::Intrinsic(_)) => true,
+        Some(CoreTypeReference::Structural(core_type)) => child_references(&core_type)
+            .iter()
+            .all(|child| structurally_closed(child)),
+        _ => false,
+    }
+}
+
+/// Every type reference a structural type contains.
+fn child_references(core_type: &CoreType) -> Vec<String> {
+    match core_type {
+        CoreType::Bool
+        | CoreType::Unit
+        | CoreType::Int { .. }
+        | CoreType::String { .. }
+        | CoreType::Bytes { .. } => Vec::new(),
+        CoreType::Nominal { representation, .. } => vec![representation.clone()],
+        CoreType::Record { fields } => fields.values().cloned().collect(),
+        CoreType::Variant { cases } => cases.values().flatten().cloned().collect(),
+        CoreType::Option { item }
+        | CoreType::List { item, .. }
+        | CoreType::CapabilityRef { item } => vec![item.clone()],
+        CoreType::Map { key, value, .. } => vec![key.clone(), value.clone()],
+        CoreType::ExternalActionRequest { settlement } => vec![settlement.clone()],
+    }
 }
 
 fn admit_one(
@@ -428,27 +454,16 @@ fn resolve_signature_type(
             let (definition, core_type) = provider.get(reference).ok_or(K::UnresolvedType)?;
             closure.insert(reference.to_owned(), core_type.clone());
             definitions.insert(reference.to_owned(), definition.clone());
+            // Provider records are structurally closed; walking them anyway
+            // keeps admission complete if that rule ever widens.
+            for child in child_references(core_type) {
+                resolve_signature_type(&child, target, provider, closure, definitions)?;
+            }
             Ok(false)
         }
         CoreTypeReference::Structural(core_type) => {
-            let mut children = Vec::new();
-            let sized = match &core_type {
-                CoreType::Bytes { .. } => true,
-                CoreType::List { item, .. } => {
-                    children.push(item.clone());
-                    true
-                }
-                CoreType::Record { fields } => {
-                    children.extend(fields.values().cloned());
-                    false
-                }
-                CoreType::Option { item } => {
-                    children.push(item.clone());
-                    false
-                }
-                _ => false,
-            };
-            for child in children {
+            let sized = matches!(core_type, CoreType::Bytes { .. } | CoreType::List { .. });
+            for child in child_references(&core_type) {
                 resolve_signature_type(&child, target, provider, closure, definitions)?;
             }
             Ok(sized)

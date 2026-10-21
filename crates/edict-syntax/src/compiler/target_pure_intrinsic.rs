@@ -192,14 +192,27 @@ fn provider_type_shapes(fact: &TargetPureIntrinsicFact) -> BTreeMap<String, Type
         .collect()
 }
 
-/// The size bound this checker established for one argument.
+/// The size bound this checker established for one argument: a literal's own
+/// size, the larger branch of a conditional of literals, or else its type's.
 fn established_max(value: &TypedValue) -> u64 {
-    match &value.expr {
-        CoreExpr::List { values } => u64::try_from(values.len()).unwrap_or(u64::MAX),
-        CoreExpr::Const(CoreValue::Bytes(bytes)) => u64::try_from(bytes.len()).unwrap_or(u64::MAX),
-        _ => match &value.ty.kind {
-            TypeKind::Bytes { max, .. } | TypeKind::List { max, .. } => *max,
-            _ => 0,
-        },
+    literal_max(&value.expr, 0).unwrap_or(match &value.ty.kind {
+        TypeKind::Bytes { max, .. } | TypeKind::List { max, .. } => *max,
+        _ => 0,
+    })
+}
+
+fn literal_max(expr: &CoreExpr, depth: usize) -> Option<u64> {
+    if depth > crate::core_ir::MAX_CORE_GRAPH_DEPTH {
+        return None;
+    }
+    match expr {
+        CoreExpr::List { values } => u64::try_from(values.len()).ok(),
+        CoreExpr::Const(CoreValue::Bytes(bytes)) => u64::try_from(bytes.len()).ok(),
+        CoreExpr::If {
+            then_value,
+            else_value,
+            ..
+        } => Some(literal_max(then_value, depth + 1)?.max(literal_max(else_value, depth + 1)?)),
+        _ => None,
     }
 }

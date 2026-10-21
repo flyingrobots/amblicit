@@ -454,9 +454,45 @@ fn contract_mutations() -> [(&'static str, Mutation, TargetPureIntrinsicFailureK
     ]
 }
 
+/// Types nested at any depth, and inside provider records, must resolve.
+fn nested_type_mutations() -> [(&'static str, Mutation, TargetPureIntrinsicFailureKind); 3] {
+    use TargetPureIntrinsicFailureKind as K;
+    [
+        (
+            "unresolved type nested in a map return",
+            |v| {
+                let nested = text("Map<U64,echo.dpo@1.Missing,max=1>");
+                set_entry(v, SLOT_EDGE_ID, "returnType", nested);
+            },
+            K::UnresolvedType,
+        ),
+        (
+            "foreign type nested in a map return",
+            |v| {
+                let nested = text("Map<U64,other.Missing,max=1>");
+                set_entry(v, SLOT_EDGE_ID, "returnType", nested);
+            },
+            K::OutsideNamespace,
+        ),
+        (
+            "provider record field nesting an unresolved type",
+            |v| {
+                *field_mut(v, "types") = map(vec![(
+                    "echo.dpo@1.OutgoingEdge",
+                    text("Record<edgeType:Bytes<exact=32>,to:List<other.Missing,max=1>>"),
+                )]);
+            },
+            K::InvalidProviderType,
+        ),
+    ]
+}
+
 #[test]
 fn admission_fails_closed_on_unknown_or_mismatched_contracts() {
-    for (case, mutate, kind) in contract_mutations() {
+    for (case, mutate, kind) in contract_mutations()
+        .into_iter()
+        .chain(nested_type_mutations())
+    {
         let mut value = catalog_value();
         mutate(&mut value);
         let failures = admit_value(&value).expect_err(case);
@@ -506,7 +542,7 @@ fn source_calls_lower_to_the_pinned_coordinate_and_target_accepts_them() {
             .any(|import| import.kind == CoreImportKind::Target));
         let (type_args, args, actual) = first_call(&mut core);
         assert_eq!(actual, callee);
-        assert!(type_args.is_empty());
+        assert_eq!(*type_args, Vec::<String>::new());
         assert_eq!(args.len(), arity);
         let report = lower_to_target_ir(&core, &facts());
         assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
@@ -546,7 +582,7 @@ fn narrower_operands_are_accepted_and_wider_ones_rejected() {
         ),
         1_000_000,
     );
-    assert!(!errors.is_empty());
+    assert_eq!(errors, [CompilerErrorKind::TypeMismatch]);
 }
 
 #[test]
@@ -562,8 +598,9 @@ fn calls_require_an_explicit_matching_target_import() {
         pinned.replace("echo.dpo@1", "echo.dpo@2"),
     ] {
         let text = source("Bytes<max=16>", NODE).replace(&pinned, &replacement);
-        assert!(
-            !compile_errors(&text, 1_000_000).is_empty(),
+        assert_eq!(
+            compile_errors(&text, 1_000_000),
+            [CompilerErrorKind::UnresolvedFunction],
             "{replacement}"
         );
     }
@@ -571,12 +608,18 @@ fn calls_require_an_explicit_matching_target_import() {
         "Bytes<max=16>",
         "echo.contentAddres(input.warp, input.nodeType, input.atomType, input.text, [])",
     );
-    assert!(!compile_errors(&unknown, 1_000_000).is_empty());
+    assert_eq!(
+        compile_errors(&unknown, 1_000_000),
+        [CompilerErrorKind::UnresolvedFunction]
+    );
     let generic = source(
         "Bytes<max=16>",
         "echo.slotEdgeId<U64>(input.warp, input.buffer, input.nodeType)",
     );
-    assert!(!compile_errors(&generic, 1_000_000).is_empty());
+    assert_eq!(
+        compile_errors(&generic, 1_000_000),
+        [CompilerErrorKind::UnsupportedSourceShape]
+    );
 }
 
 // --- Cost ----------------------------------------------------------------------
@@ -619,6 +662,21 @@ fn target_recomputes_cost_and_refuses_a_forged_budget() {
         &facts(),
         "budget below the recomputed intrinsic cost",
     );
+}
+
+#[test]
+fn target_bounds_a_conditional_list_by_its_larger_branch() {
+    let conditional = "echo.contentAddress(input.warp, input.nodeType, input.atomType, input.text, if true then [] else [{ edgeType: input.anchor, to: input.buffer }])";
+    // One edge in the larger branch costs the same as one literal edge.
+    let mut core = compile("Bytes<max=4096>", conditional, node_cost(4096));
+    let report = lower_to_target_ir(&core, &facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+    core.intents
+        .get_mut("ids")
+        .unwrap()
+        .core_evaluation_budget
+        .max_steps = node_cost(4096) - 1;
+    refused(&core, &facts(), "budget below the larger branch");
 }
 
 #[test]

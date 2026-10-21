@@ -285,14 +285,35 @@ impl<'a> Meter<'a> {
     }
 
     /// The size bound Target itself establishes for a charged argument.
+    /// A conditional is bounded by its larger branch, each established the same way.
     fn established_max(
         &self,
         argument: &CoreExpr,
         available: &BTreeMap<&str, &LocalRef>,
     ) -> Option<u64> {
+        self.established_max_at(argument, available, 0)
+    }
+
+    fn established_max_at(
+        &self,
+        argument: &CoreExpr,
+        available: &BTreeMap<&str, &LocalRef>,
+        depth: usize,
+    ) -> Option<u64> {
+        if depth > MAX_CORE_GRAPH_DEPTH {
+            return None;
+        }
         match argument {
             CoreExpr::List { values } => u64::try_from(values.len()).ok(),
             CoreExpr::Const(CoreValue::Bytes(bytes)) => u64::try_from(bytes.len()).ok(),
+            CoreExpr::If {
+                then_value,
+                else_value,
+                ..
+            } => Some(
+                self.established_max_at(then_value, available, depth + 1)?
+                    .max(self.established_max_at(else_value, available, depth + 1)?),
+            ),
             _ => {
                 let coordinate = expression_type_coordinate(
                     self.core,
