@@ -1,10 +1,11 @@
 //! Target-owned upper-bound proof over untrusted Core, independent of source checking.
-use super::{CoreExpr, CorePredicate, CoreValue};
+use super::{CoreExpr, CoreModule, CorePredicate, CoreValue};
 use crate::core_ir::{CompareOp, MAX_CORE_GRAPH_DEPTH};
 
 pub(super) const OPERATION: &str = "core.integer.add";
 
 pub(super) fn is_total(
+    core: &CoreModule,
     type_args: &[String],
     args: &[CoreExpr],
     constraints: &[&CorePredicate],
@@ -20,8 +21,8 @@ pub(super) fn is_total(
     for constraint in constraints {
         collect_limits(constraint, &mut limits);
     }
-    bound(left, max, &limits, 0)
-        .zip(bound(right, max, &limits, 0))
+    bound(core, left, max, &limits, 0)
+        .zip(bound(core, right, max, &limits, 0))
         .and_then(|(left, right)| left.checked_add(right))
         .is_some_and(|sum| sum <= max)
 }
@@ -75,7 +76,13 @@ fn collect_limits<'a>(predicate: &'a CorePredicate, limits: &mut Vec<(&'a CoreEx
     }
 }
 
-fn bound(expr: &CoreExpr, max: u64, limits: &[(&CoreExpr, u64)], depth: usize) -> Option<u64> {
+fn bound(
+    core: &CoreModule,
+    expr: &CoreExpr,
+    max: u64,
+    limits: &[(&CoreExpr, u64)],
+    depth: usize,
+) -> Option<u64> {
     // Target refuses when traversal cannot establish a bound. Source uses
     // the width maximum at its cutoff, so a source-accepted sum with zero
     // can still be refused here. Target remains the final authority.
@@ -89,7 +96,8 @@ fn bound(expr: &CoreExpr, max: u64, limits: &[(&CoreExpr, u64)], depth: usize) -
             let [left, right] = args.as_slice() else {
                 return None;
             };
-            bound(left, max, limits, depth + 1)?.checked_add(bound(
+            bound(core, left, max, limits, depth + 1)?.checked_add(bound(
+                core,
                 right,
                 max,
                 limits,
@@ -99,7 +107,7 @@ fn bound(expr: &CoreExpr, max: u64, limits: &[(&CoreExpr, u64)], depth: usize) -
             let CoreExpr::Call { type_args, .. } = expr else {
                 return None;
             };
-            super::byte_count::result_bound(type_args).map_or(max, |bound| bound.min(max))
+            super::byte_count::result_bound(core, type_args).map_or(max, |bound| bound.min(max))
         } else {
             max
         }
@@ -119,6 +127,7 @@ fn bound(expr: &CoreExpr, max: u64, limits: &[(&CoreExpr, u64)], depth: usize) -
 /// evaluation in the same scope. Local identities are unique and immutable,
 /// so the derived limit names exactly the bound value.
 pub(super) fn binding_limit(
+    core: &CoreModule,
     binding: &crate::core_ir::LocalRef,
     value: &CoreExpr,
     constraints: &[&CorePredicate],
@@ -132,7 +141,7 @@ pub(super) fn binding_limit(
     for constraint in constraints {
         collect_limits(constraint, &mut limits);
     }
-    let upper = bound(value, max, &limits, 0).filter(|upper| *upper < max)?;
+    let upper = bound(core, value, max, &limits, 0).filter(|upper| *upper < max)?;
     Some(CorePredicate::Compare {
         op: CompareOp::Le,
         left: CoreExpr::Local {

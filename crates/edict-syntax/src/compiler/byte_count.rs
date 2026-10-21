@@ -1,6 +1,6 @@
 //! The bounded Bytes single-byte occurrence count prelude.
 use super::{
-    error, expression_identity, CompilerErrorKind, CompilerStage, CoreExpr, CoreValue,
+    error, expression_identity, CompilerErrorKind, CompilerStage, CoreExpr,
     EffectOutputExpectation, Expr, HelperCost, LocalEnvironment, Span, TypeChecker, TypeKind,
     TypeRef, TypeShape, TypedValue,
 };
@@ -14,7 +14,67 @@ impl TypeChecker<'_> {
         span: Span,
         source: &Expr,
     ) -> Option<TypedValue> {
-        let [argument, needle] = args else {
+        // The operand is checked whatever else is wrong with the call, so its
+        // own diagnostics surface alongside the signature's.
+        let value = args.first().and_then(|argument| {
+            self.check_expr_with_intrinsic_effect_context(
+                argument,
+                env,
+                EffectOutputExpectation::Bytes,
+            )
+        });
+        let needle = self.check_count_signature(type_args, args, env, span);
+        let value = value?;
+        let TypeKind::Bytes { max, .. } = &value.ty.kind else {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::TypeMismatch,
+                "the implemented count specialization requires bounded Bytes",
+                span,
+            ));
+            return None;
+        };
+        let needle = needle?;
+        let coordinate = value.ty.value_type_coord();
+        self.count_operand_maxima.insert(coordinate.clone(), *max);
+        if self.resolved.source_functions.is_empty() {
+            // Helper-bearing modules already record this scan in their complete
+            // expression costs. The legacy intent path still needs its scan bound.
+            self.source_expression_costs.insert(
+                expression_identity(source),
+                HelperCost {
+                    steps: *max,
+                    ..HelperCost::default()
+                },
+            );
+        }
+        Some(TypedValue {
+            expr: CoreExpr::Call {
+                callee: "core.bytes.count".into(),
+                type_args: vec![coordinate],
+                args: vec![value.expr, needle],
+            },
+            ty: TypeShape {
+                coord: "U64".into(),
+                kind: TypeKind::Int {
+                    width: "U64".into(),
+                },
+                preserve_named_identity: false,
+            },
+        })
+    }
+
+    /// Checks arity, type arguments and the needle, returning the needle's
+    /// Core value. The needle goes through ordinary expression checking so its
+    /// evaluation and storage are charged like any other operand.
+    fn check_count_signature(
+        &mut self,
+        type_args: &[TypeRef],
+        args: &[Expr],
+        env: &LocalEnvironment,
+        span: Span,
+    ) -> Option<CoreExpr> {
+        let [_, needle] = args else {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
                 CompilerErrorKind::UnsupportedSourceShape,
@@ -32,9 +92,9 @@ impl TypeChecker<'_> {
             ));
             return None;
         }
-        // The counted byte is a literal so what the scan looks for never
-        // depends on runtime data.
-        let Expr::Bytes { value: needle, .. } = needle else {
+        // The counted byte is a literal: a scope decision for this first
+        // specialization, so what the scan looks for is fixed in the program.
+        let Expr::Bytes { value: literal, .. } = needle else {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
                 CompilerErrorKind::UnsupportedSourceShape,
@@ -43,7 +103,7 @@ impl TypeChecker<'_> {
             ));
             return None;
         };
-        let [byte] = needle.as_slice() else {
+        if literal.len() != 1 {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
                 CompilerErrorKind::UnsupportedSourceShape,
@@ -51,45 +111,8 @@ impl TypeChecker<'_> {
                 span,
             ));
             return None;
-        };
-        let value = self.check_expr_with_intrinsic_effect_context(
-            argument,
-            env,
-            EffectOutputExpectation::Bytes,
-        )?;
-        let TypeKind::Bytes { max, .. } = &value.ty.kind else {
-            self.errors.push(error(
-                CompilerStage::TypeCheck,
-                CompilerErrorKind::TypeMismatch,
-                "the implemented count specialization requires bounded Bytes",
-                span,
-            ));
-            return None;
-        };
-        if self.resolved.source_functions.is_empty() {
-            // Helper-bearing modules already record this scan in their complete
-            // expression costs. The legacy intent path still needs its scan bound.
-            self.source_expression_costs.insert(
-                expression_identity(source),
-                HelperCost {
-                    steps: *max,
-                    ..HelperCost::default()
-                },
-            );
         }
-        Some(TypedValue {
-            expr: CoreExpr::Call {
-                callee: "core.bytes.count".into(),
-                type_args: vec![value.ty.value_type_coord()],
-                args: vec![value.expr, CoreExpr::Const(CoreValue::Bytes(vec![*byte]))],
-            },
-            ty: TypeShape {
-                coord: "U64".into(),
-                kind: TypeKind::Int {
-                    width: "U64".into(),
-                },
-                preserve_named_identity: false,
-            },
-        })
+        self.check_expr_with_expected(needle, env, None)
+            .map(|checked| checked.expr)
     }
 }

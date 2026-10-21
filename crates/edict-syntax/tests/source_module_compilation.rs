@@ -535,3 +535,28 @@ fn linker_preserves_count_prelude_with_an_imported_byte_alias() {
     let core = compile(&source, &[library]);
     assert!(core.intents.contains_key("evaluate"));
 }
+
+#[test]
+fn count_over_an_imported_byte_alias_keeps_its_bound_in_source_and_target() {
+    // The imported alias keeps its named coordinate, so both the compiler and
+    // Target must resolve it to its byte maximum to prove `count + 1`.
+    let library = "package library.bytes@1; type Blob=Bytes<max=32>;";
+    let source=format!("package app.example@1; {} type Input={{bytes:bytes.Blob,}}; intent evaluate(input:Input) returns U64 profile p.read basis none budget <= p.small {{let lines = count(input.bytes, b\"\\n\") + 1u64; return lines;}}",import("library.bytes@1",library,"bytes"));
+    let core = compile(&source, &[library]);
+    let target = lower_to_target_ir(
+        &core,
+        &TargetIrLoweringFacts {
+            target_profile: ResourceRef {
+                coordinate: "echo.dpo@1".into(),
+                digest: Some(format!("sha256:{}", "1".repeat(64))),
+            },
+            target_ir_domain: "echo.span-ir/v1".into(),
+            operation_profiles: vec!["continuum.profile.read-only/v1".into()],
+            obstruction_coordinates: Vec::new(),
+            effect_lowerings: Vec::new(),
+            effect_signatures: Vec::new(),
+            pure_functions: Vec::new(),
+        },
+    );
+    assert_eq!(target.status, TargetLoweringStatus::Lowered, "{target:?}");
+}

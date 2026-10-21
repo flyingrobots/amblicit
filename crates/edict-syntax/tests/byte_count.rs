@@ -450,3 +450,75 @@ fn a_count_read_back_through_a_record_field_has_no_bound() {
         "{errors:?}"
     );
 }
+
+/// The smallest budget component at which a module compiles.
+fn smallest_budget(text: &str, budget: impl Fn(u64) -> CoreBudget) -> u64 {
+    let parsed = parse_module(text).unwrap();
+    let fits = |limit: u64| {
+        let context = CompilerContext::new()
+            .with_operation_profile("p.read", "continuum.profile.read-only/v1")
+            .with_budget("p.small", budget(limit));
+        compile_to_core(&parsed, &context).is_ok()
+    };
+    let (mut low, mut high) = (0_u64, 1_u64 << 40);
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if fits(middle) {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    low
+}
+
+#[test]
+fn a_helper_count_charges_its_needle_literal() {
+    // `isUtf8` scans the same operand with the same cost rule and has no
+    // needle, so a helper `count` must cost strictly more in steps and storage.
+    let helper = |body: &str, result: &str| {
+        format!("package count.needle@1; fn h(value:Bytes<max=1024>) -> {result} {{return {body};}} type Input={{bytes:Bytes<max=1024>,}}; intent measure(input:Input) returns {result} profile p.read basis none budget <= p.small {{let r = h(input.bytes); return r;}}")
+    };
+    let count = helper("count(value, b\"\\n\")", "U64");
+    let scan = helper("isUtf8(value)", "Bool");
+    let steps = |limit| CoreBudget {
+        max_steps: limit,
+        max_allocated_bytes: u64::MAX,
+        max_output_bytes: u64::MAX,
+    };
+    let storage = |limit| CoreBudget {
+        max_steps: u64::MAX,
+        max_allocated_bytes: limit,
+        max_output_bytes: u64::MAX,
+    };
+    assert!(smallest_budget(&count, steps) > smallest_budget(&scan, steps));
+    assert!(smallest_budget(&count, storage) > smallest_budget(&scan, storage));
+}
+
+#[test]
+fn count_operand_errors_surface_alongside_signature_errors() {
+    for expression in [
+        "count(input.missing)",
+        "count(input.missing, b\"ab\")",
+        "count<U64>(input.missing, b\"\\n\")",
+        "count(input.missing, input.other)",
+    ] {
+        let errors = compile_to_core(
+            &parse_module(&source("Bytes<max=32>", expression, "U64")).unwrap(),
+            &context(),
+        )
+        .unwrap_err();
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.kind == CompilerErrorKind::UnsupportedSourceShape),
+            "{expression}: {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.kind != CompilerErrorKind::UnsupportedSourceShape),
+            "{expression}: the unknown operand field is diagnosed too: {errors:?}"
+        );
+    }
+}

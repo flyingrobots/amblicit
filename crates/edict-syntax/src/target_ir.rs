@@ -747,7 +747,7 @@ fn validate_pure_binding_graphs(
                     "Core local table or producer contains an empty or duplicate identity",
                 ));
             }
-            if !totality::intent_is_total(intent) {
+            if !totality::intent_is_total(core, intent) {
                 return Some(invalid_pure_binding(
                     intent_name,
                     None,
@@ -1422,6 +1422,7 @@ fn validate_source_function_bodies(
             .map(|local| (local.id.as_str(), local))
             .collect::<BTreeMap<_, _>>();
         if !totality::bindings_are_total(
+            core,
             function
                 .body
                 .bindings

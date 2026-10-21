@@ -952,6 +952,9 @@ struct TypeChecker<'a> {
     source_expression_costs: BTreeMap<usize, HelperCost>,
     source_predicate_costs: BTreeMap<usize, HelperCost>,
     source_value_bounds: BTreeMap<usize, (u64, u64)>,
+    /// Byte maximum of every operand coordinate a `count` call resolved, so the
+    /// addition proof can bound named coordinates without a type table.
+    count_operand_maxima: BTreeMap<String, u64>,
     input_proof_constraints: Vec<CorePredicate>,
     effect_binding_profile: Option<EffectBindingProfile>,
     errors: Vec<CompilerError>,
@@ -972,6 +975,7 @@ impl<'a> TypeChecker<'a> {
             source_expression_costs: BTreeMap::new(),
             source_predicate_costs: BTreeMap::new(),
             source_value_bounds: BTreeMap::new(),
+            count_operand_maxima: BTreeMap::new(),
             input_proof_constraints: Vec::new(),
             effect_binding_profile: None,
             errors: Vec::new(),

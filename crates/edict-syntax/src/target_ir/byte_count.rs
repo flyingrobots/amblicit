@@ -3,7 +3,6 @@ use super::{
     expression_type_coordinate, resolved_core_type, BTreeMap, CoreExpr, CoreModule, CoreType,
     CoreValue, LocalRef, TargetPureFunctionFact,
 };
-use crate::core_ir::{classify_core_type_reference, CoreTypeReference};
 
 pub(super) const OPERATION: &str = "core.bytes.count";
 
@@ -31,13 +30,12 @@ pub(super) fn type_coordinate(
     Some("U64".into())
 }
 
-/// A count never exceeds the operand's byte maximum. Only structural operand
-/// coordinates carry that maximum without the module's type table, so named
-/// operands fall back to the caller's conservative width bound.
-pub(super) fn result_bound(type_args: &[String]) -> Option<u64> {
+/// A count never exceeds its operand's byte maximum, resolved through the
+/// module's type table so named and imported byte coordinates keep it.
+pub(super) fn result_bound(core: &CoreModule, type_args: &[String]) -> Option<u64> {
     let [coordinate] = type_args else { return None };
-    match classify_core_type_reference(coordinate)? {
-        CoreTypeReference::Structural(CoreType::Bytes { max, .. }) => Some(max),
+    match resolved_core_type(core, coordinate)? {
+        CoreType::Bytes { max, .. } => Some(max),
         _ => None,
     }
 }
