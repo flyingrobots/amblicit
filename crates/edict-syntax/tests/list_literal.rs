@@ -192,9 +192,13 @@ fn list_literals_flow_into_records_returns_and_loops() {
           return {{ edges: [input.a, input.a] }};
         }}"
     );
-    let errors = compile_to_core(&parse_module(&text).unwrap(), &context());
     // A bare loop iterator has no expected list type, so it needs an annotation.
-    assert!(errors.is_err());
+    let kinds = compile_to_core(&parse_module(&text).unwrap(), &context())
+        .unwrap_err()
+        .iter()
+        .map(|error| error.kind)
+        .collect::<Vec<_>>();
+    assert_eq!(kinds, [CompilerErrorKind::UnsupportedSourceShape]);
     let text = text.replace(
         "for edge in [input.a] bounded 1 { let seen = edge; }",
         "let pending: List<Edge, max=1> = [input.a]; for edge in pending bounded 1 { let seen = edge; }",
