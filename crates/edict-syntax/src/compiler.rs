@@ -21,6 +21,7 @@ use crate::core_ir::{
     CORE_API_VERSION, CORE_APPLICATION_INPUT_LOCAL_ID, MAX_CORE_TYPE_DEPTH,
 };
 mod byte_concat;
+mod byte_count;
 mod byte_length;
 mod byte_slice;
 mod byte_utf8;
@@ -4108,6 +4109,9 @@ impl<'a> TypeChecker<'a> {
                 }
                 Expr::Ident { name, .. } if name == "isUtf8" => {
                     self.check_byte_utf8(type_args, args, env, *span, expr)
+                }
+                Expr::Ident { name, .. } if name == "count" => {
+                    self.check_byte_count(type_args, args, env, *span, expr)
                 }
                 Expr::Ident { name, .. } if name == "slice" => {
                     self.check_byte_slice(type_args, args, env, *span)

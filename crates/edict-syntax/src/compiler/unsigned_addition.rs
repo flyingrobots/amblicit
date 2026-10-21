@@ -224,6 +224,10 @@ fn upper_bound(expr: &CoreExpr, constraints: &[CorePredicate], max: u64, depth: 
                         .min(max);
                 }
             }
+            if callee == "core.bytes.count" {
+                // A count never exceeds the operand's byte maximum.
+                return count_bound(type_args).map_or(max, |bound| bound.min(max));
+            }
         }
         max
     });
@@ -254,5 +258,16 @@ fn refine_bound(predicate: &CorePredicate, expr: &CoreExpr, bound: &mut u64) {
             }
         }
         _ => {}
+    }
+}
+
+fn count_bound(type_args: &[String]) -> Option<u64> {
+    let [coordinate] = type_args else { return None };
+    match crate::core_ir::classify_core_type_reference(coordinate)? {
+        crate::core_ir::CoreTypeReference::Structural(crate::core_ir::CoreType::Bytes {
+            max,
+            ..
+        }) => Some(max),
+        _ => None,
     }
 }

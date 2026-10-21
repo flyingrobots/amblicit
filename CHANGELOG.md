@@ -8,6 +8,12 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Add the `count(bytes, b"x")` prelude: a bounded single-byte occurrence count
+  over `Bytes<max=N>` with an exactly-one-byte literal needle, lowering to
+  `core.bytes.count` with a U64 result bounded by `N`. Source and Target
+  addition proofs use that bound, scans are charged once, and Target refuses
+  forged operands, needles and results. Runtime support remains separate.
+
 - Lower proven same-width U32/U64 sums to `core.integer.add` and independently
   validate no-overflow bounds at the Target IR boundary. Unproved sums refuse
   rather than wrapping; provider and runtime acceptance remain separate.

@@ -527,3 +527,11 @@ fn linker_preserves_utf8_prelude_with_an_imported_byte_alias() {
     let core = compile(&source, &[library]);
     assert!(core.intents.contains_key("evaluate"));
 }
+
+#[test]
+fn linker_preserves_count_prelude_with_an_imported_byte_alias() {
+    let library = "package library.bytes@1; type Blob=Bytes<max=32>;";
+    let source=format!("package app.example@1; {} type Input={{bytes:bytes.Blob,}}; intent evaluate(input:Input) returns U64 profile p.read basis none budget <= p.small {{let lines = count(input.bytes, b\"\\n\"); return lines;}}",import("library.bytes@1",library,"bytes"));
+    let core = compile(&source, &[library]);
+    assert!(core.intents.contains_key("evaluate"));
+}

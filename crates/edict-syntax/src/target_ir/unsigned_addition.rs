@@ -95,6 +95,11 @@ fn bound(expr: &CoreExpr, max: u64, limits: &[(&CoreExpr, u64)], depth: usize) -
                 limits,
                 depth + 1,
             )?)?
+        } else if callee == super::byte_count::OPERATION {
+            let CoreExpr::Call { type_args, .. } = expr else {
+                return None;
+            };
+            super::byte_count::result_bound(type_args).map_or(max, |bound| bound.min(max))
         } else {
             max
         }

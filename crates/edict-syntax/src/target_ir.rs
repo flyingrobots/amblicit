@@ -5,6 +5,7 @@
 //! execute a runtime, run a verifier, assemble bundles, or perform admission.
 
 mod byte_concat;
+mod byte_count;
 mod byte_length;
 mod byte_slice;
 mod byte_utf8;
@@ -1201,6 +1202,13 @@ fn expression_has_closed_authority(
             callee,
             type_args,
             args,
+        } if callee == byte_count::OPERATION => {
+            byte_count::type_coordinate(core, pure_functions, type_args, args, available).is_some()
+        }
+        CoreExpr::Call {
+            callee,
+            type_args,
+            args,
         } if callee == byte_slice::OPERATION => {
             byte_slice::type_coordinate(core, pure_functions, type_args, args, available).is_some()
         }
@@ -1237,6 +1245,19 @@ fn expression_has_closed_authority(
 
 fn is_unsigned_arithmetic(callee: &str) -> bool {
     callee == unsigned_subtraction::OPERATION || callee == unsigned_addition::OPERATION
+}
+
+/// Prelude operations whose result coordinate Target derives itself.
+fn is_typed_prelude_operation(callee: &str) -> bool {
+    [
+        byte_concat::OPERATION,
+        byte_length::OPERATION,
+        byte_utf8::OPERATION,
+        byte_count::OPERATION,
+        byte_slice::OPERATION,
+    ]
+    .contains(&callee)
+        || is_unsigned_arithmetic(callee)
 }
 
 fn expression_fits_declared_type(
@@ -1283,13 +1304,7 @@ fn expression_fits_declared_type(
                 0,
             )
         }
-        CoreExpr::Call { callee, .. }
-            if callee == byte_concat::OPERATION
-                || callee == byte_length::OPERATION
-                || callee == byte_utf8::OPERATION
-                || callee == byte_slice::OPERATION
-                || is_unsigned_arithmetic(callee) =>
-        {
+        CoreExpr::Call { callee, .. } if is_typed_prelude_operation(callee) => {
             expression_type_coordinate(core, pure_functions, expression, available)
                 .is_some_and(|actual| core_type_fits(core, &actual, expected))
         }
@@ -1622,6 +1637,13 @@ fn expression_type_coordinate(
             args,
         } if callee == byte_utf8::OPERATION => {
             byte_utf8::type_coordinate(core, pure_functions, type_args, args, available)
+        }
+        CoreExpr::Call {
+            callee,
+            type_args,
+            args,
+        } if callee == byte_count::OPERATION => {
+            byte_count::type_coordinate(core, pure_functions, type_args, args, available)
         }
         CoreExpr::Call {
             callee,
