@@ -210,6 +210,16 @@ result by the operand maximum. The cost bound charges one complete scan of the
 bounded operand storage, once, whether the call is direct or inside a helper.
 This compiler evidence does not execute the count. [CSPINE-REQ-056]
 
+A list literal `[a, b]` is checked against its expected `List<T, max=N>`, from a
+binding annotation, a parameter, a record field or a return type. It has at
+most `N` elements, each checked against `T`, and lowers in source order to Core
+`{ kind: "list", values: [...] }`; order and duplicates are hash-significant.
+Excess elements reject with `InvalidBound`, a wrong element or non-list expected
+type with `TypeMismatch`, and a literal with no expected list type with
+`UnsupportedSourceShape`. Under an enclosing call that already failed, the
+literal reports only its elements' own errors. Effect calls inside a literal
+reject as in record literals. [CSPINE-REQ-057]
+
 `slice(bytes, start, end)` lowers bounded raw bytes and U64 endpoints to
 `core.bytes.slice<OperandType>(bytes,start,end)`. Its result keeps the operand
 maximum and drops positive minimum/exact length, since empty slices are valid.

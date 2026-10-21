@@ -8,6 +8,10 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Add bounded list literals `[a, b]`, typed against an expected
+  `List<T, max=N>` and lowered to Core `list` expressions. Order and duplicates
+  are preserved; excess cardinality, wrong items and missing context reject, and
+  Target independently validates the count and every element.
 - **Breaking:** `count` is now a reserved prelude name. Source that binds
   `count` (a `let`, a parameter, a `for` binder or an obstruction binder) now
   fails surface validation with `ShadowedName`; rename the binding, for example

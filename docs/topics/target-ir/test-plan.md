@@ -297,3 +297,13 @@ it does not treat compiler Target IR as proof of runtime support.
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TIR-TP-087 | implemented | Byte count boundary | TIR-REQ-057 | Forged signatures, needles, operands and results refuse InvalidCoreIdentity without artifact; a forged overflowing addend refuses independently of source. | count_target_refuses_forged_signature_needle_or_operand_authority, target_independently_refuses_a_forged_overflowing_count_sum, the_count_bound_proves_jims_line_count_addition, target_refuses_a_forged_binding_bound, jims_line_metrics_compile_through_a_helper_fact_and_field_access | crates/edict-syntax/tests/byte_count.rs | Runtime counting is separate evidence. |
+
+## Bounded list literals
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| TIR-REQ-058 | implemented | Target independently checks a Core list expression's element count against the declared maximum and each element's type and authority. | EDICT-LANG-LIST-LIT-001 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-088 | implemented | List literal boundary | TIR-REQ-058 | Excess elements, wrong element types, foreign locals and non-list binding types refuse InvalidCoreIdentity without artifact. | target_refuses_forged_list_literals, list_literal_preserves_order_and_lowers_to_core_list | crates/edict-syntax/tests/list_literal.rs | Runtime list evaluation is separate evidence. |

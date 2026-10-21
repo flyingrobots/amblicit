@@ -513,3 +513,13 @@ CSPINE-REQ-054 remains planned. The implemented rows establish their named fixtu
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | CSPINE-TP-178 | implemented | Byte count typing and bounds | CSPINE-REQ-056 | Max/exact/empty operands lower with U64 results and hash-significant needles; wrong operands, needles, signatures and results refuse; the bound proves `count + 1` and refuses a sum that overflows at the operand maximum; direct scans add and helper scans are charged once. | count_retains_operand_identity_needle_byte_and_u64_result, count_rejects_wrong_operands_needles_signatures_and_result_type, count_prelude_name_cannot_be_shadowed, direct_count_scans_charge_the_operand_maximum, count_helper_scan_is_charged_once, the_count_bound_proves_jims_line_count_addition, the_count_bound_is_the_operand_maximum_not_zero, linker_preserves_count_prelude_with_an_imported_byte_alias, jims_line_metrics_compile_through_a_helper_fact_and_field_access, a_let_bound_count_keeps_its_bound_in_intent_bodies, a_count_read_back_through_a_record_field_has_no_bound | crates/edict-syntax/tests/byte_count.rs, crates/edict-syntax/tests/source_module_compilation.rs | Runtime counting is separate evidence. |
+
+## Bounded list literals
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| CSPINE-REQ-057 | implemented | A list literal is checked against its expected `List<T, max=N>`: at most `N` elements, each fitting `T`, in source order, lowering to Core `list`. | EDICT-LANG-LIST-LIT-001 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-179 | implemented | List literal typing | CSPINE-REQ-057 | Empty, partial and full literals lower in order with duplicates kept; excess cardinality, wrong items, non-list and missing expected types reject; literals flow into records, returns, loop sources and helper results; effect calls inside literals reject. | list_literal_preserves_order_and_lowers_to_core_list, list_literal_accepts_empty_partial_and_full_cardinality, list_literal_elements_are_checked_against_the_item_type, list_literal_rejects_excess_cardinality_wrong_items_and_missing_context, list_literals_flow_into_records_returns_and_loops, source_functions_build_list_literals, authenticated_effects_are_rejected_inside_list_literals, a_list_literal_under_a_failed_call_reports_only_independent_errors | crates/edict-syntax/tests/list_literal.rs | Target lowering of loops remains separate work. |

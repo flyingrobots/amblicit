@@ -25,6 +25,7 @@ mod byte_count;
 mod byte_length;
 mod byte_slice;
 mod byte_utf8;
+mod list_literal;
 mod return_budget;
 mod signature_diagnostic;
 mod source_functions;
@@ -1579,6 +1580,7 @@ impl<'a> TypeChecker<'a> {
                 let right = self.helper_cost_for_expr(rhs)?;
                 self.checked_helper_cost_add(left, right, *span)
             }
+            Expr::List { items, span } => self.helper_cost_for_exprs_at(items.iter(), *span),
             Expr::Record { entries, span } => {
                 let mut cost = HelperCost::default();
                 for entry in entries {
@@ -3684,6 +3686,11 @@ impl<'a> TypeChecker<'a> {
                     accepted &= self.check_known_effect_profiles_in_record_entry(intent, entry);
                 }
             }
+            Expr::List { items, .. } => {
+                for item in items {
+                    accepted &= self.check_known_effect_profiles(intent, item);
+                }
+            }
             Expr::If {
                 cond, then, els, ..
             } => {
@@ -4109,6 +4116,7 @@ impl<'a> TypeChecker<'a> {
                 span,
             } => self.check_unsigned_subtraction(lhs, rhs, env, expected, *span),
             Expr::Record { entries, span } => self.check_record(entries, env, expected, *span),
+            Expr::List { items, span } => self.check_list_literal(items, env, expected, *span),
             Expr::Call {
                 callee,
                 type_args,
@@ -5344,6 +5352,7 @@ fn contains_contextual_bare_integer(expr: &Expr) -> bool {
         return true;
     }
     match expr {
+        Expr::List { items, .. } => items.iter().any(contains_contextual_bare_integer),
         Expr::Record { entries, .. } => entries.iter().any(|entry| match entry {
             RecordEntry::Field { value, .. } | RecordEntry::Spread(value) => {
                 contains_contextual_bare_integer(value)
@@ -5869,6 +5878,7 @@ fn plain_callee_coordinate(expr: &Expr) -> Option<String> {
         | Expr::Bool { .. }
         | Expr::Digest { .. }
         | Expr::Unary { .. }
+        | Expr::List { .. }
         | Expr::Binary { .. }
         | Expr::Record { .. }
         | Expr::If { .. }
@@ -5893,6 +5903,7 @@ fn plain_path_root(expr: &Expr) -> Option<&str> {
         | Expr::Bool { .. }
         | Expr::Digest { .. }
         | Expr::Unary { .. }
+        | Expr::List { .. }
         | Expr::Binary { .. }
         | Expr::Record { .. }
         | Expr::If { .. }
@@ -5924,6 +5935,7 @@ fn expr_span(expr: &Expr) -> Span {
         | Expr::Call { span, .. }
         | Expr::Unary { span, .. }
         | Expr::Binary { span, .. }
+        | Expr::List { span, .. }
         | Expr::Record { span, .. }
         | Expr::If { span, .. }
         | Expr::IfYield { span, .. }
