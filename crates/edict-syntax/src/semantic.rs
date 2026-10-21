@@ -547,6 +547,11 @@ fn validate_expr(expr: &Expr, names: &mut NameEnv, errors: &mut Vec<SemanticErro
         Expr::Record { entries, .. } => {
             validate_record_entries(entries, names, errors);
         }
+        Expr::List { items, .. } => {
+            for item in items {
+                validate_expr(item, names, errors);
+            }
+        }
         Expr::If {
             cond, then, els, ..
         } => {

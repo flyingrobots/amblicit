@@ -1716,6 +1716,10 @@ fn core_expr_review(expr: &CoreExpr) -> Value {
                 .map(|(name, value)| (name.clone(), core_expr_review(value)))
                 .collect::<BTreeMap<_, _>>(),
         }),
+        CoreExpr::List { values } => json!({
+            "kind": "list",
+            "values": values.iter().map(core_expr_review).collect::<Vec<_>>(),
+        }),
         CoreExpr::Field { base, field } => json!({
             "kind": "field",
             "base": core_expr_review(base),

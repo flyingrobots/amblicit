@@ -1885,6 +1885,16 @@ transition; changing a manifest alone is not that transition.
   References);
 - imported shape/lawpack/target types.
 
+A list literal `[a, b, c]` is checked against an expected `List<T, max=N>`
+(`EDICT-LANG-LIST-LIT-001`): a binding annotation, a parameter, a record field
+or a return type. It has at most `N` elements, each checked against `T` (so bare
+integer literals take `T`'s width), in source order; order and duplicates are
+preserved and hash-significant. `[]` is the empty list. A list literal with no
+expected list type, a non-list expected type, or more than `N` elements
+rejects. It lowers to Core `{ kind: "list", values: [...] }`, and Target
+independently checks the element count against the declared maximum and every
+element against the item type.
+
 Maps must use canonical key ordering. Lists and maps must declare finite
 maximum cardinality. Map key types in v1 are limited to scalar, enum, digest,
 bytes, string with declared canonicalization policy, or imported types that

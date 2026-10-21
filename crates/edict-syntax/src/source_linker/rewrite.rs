@@ -498,6 +498,11 @@ impl<'a> Rewrite<'a> {
                 self.expr(rhs, env)?;
             }
             Expr::Record { entries, .. } => self.entries(entries, env)?,
+            Expr::List { items, .. } => {
+                for item in items {
+                    self.expr(item, env)?;
+                }
+            }
             Expr::If {
                 cond, then, els, ..
             } => {
@@ -666,6 +671,7 @@ fn expr_span(expr: &mut Expr) -> &mut Span {
         | Expr::Call { span, .. }
         | Expr::Unary { span, .. }
         | Expr::Binary { span, .. }
+        | Expr::List { span, .. }
         | Expr::Record { span, .. }
         | Expr::If { span, .. }
         | Expr::IfYield { span, .. }

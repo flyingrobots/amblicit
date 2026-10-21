@@ -503,3 +503,13 @@ CSPINE-REQ-054 remains planned. The implemented rows establish their named fixtu
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | CSPINE-TP-175 | implemented | Nested peer work | CSPINE-REQ-047 | A linear chain of 20 invalid effect conditionals finishes within a generous 10-second regression deadline and retains mapping guidance. | nested_effect_conditional_diagnostics_finish_within_deadline | crates/edict-syntax/tests/effect_diagnostics.rs | A denial-of-service regression bound, not a performance benchmark. |
 | CSPINE-TP-176 | implemented | Nested contextual literals | CSPINE-REQ-047 | Authenticated numeric receipt fields and records preserve contextual integer literals inside nested conditional peers; compatible bare effects need mapping. | conditional_effect_peers_preserve_nested_literal_context | crates/edict-syntax/tests/effect_signature_diagnostics.rs | Both branch orders and mapped controls. |
+
+## Bounded list literals
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| CSPINE-REQ-057 | implemented | A list literal is checked against its expected `List<T, max=N>`: at most `N` elements, each fitting `T`, in source order, lowering to Core `list`. | EDICT-LANG-LIST-LIT-001 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-179 | implemented | List literal typing | CSPINE-REQ-057 | Empty, partial and full literals lower in order with duplicates kept; excess cardinality, wrong items, non-list and missing expected types reject; literals flow into records, returns, loop sources and helper results; effect calls inside literals reject. | list_literal_preserves_order_and_lowers_to_core_list, list_literal_accepts_empty_partial_and_full_cardinality, list_literal_elements_are_checked_against_the_item_type, list_literal_rejects_excess_cardinality_wrong_items_and_missing_context, list_literals_flow_into_records_returns_and_loops, source_functions_build_list_literals, effect_calls_are_rejected_inside_list_literals | crates/edict-syntax/tests/list_literal.rs | Target lowering of loops remains separate work. |

@@ -1649,8 +1649,26 @@ impl Parser {
                 Ok(e)
             }
             TokenKind::LBrace => self.record_literal(),
+            TokenKind::LBracket => self.list_literal(),
             other => self.err(format!("expected expression, found {other:?}")),
         }
+    }
+
+    fn list_literal(&mut self) -> Result<Expr, ParseError> {
+        let start = self.peek_span().start;
+        self.expect(&TokenKind::LBracket)?;
+        let mut items = Vec::new();
+        while *self.peek() != TokenKind::RBracket {
+            items.push(self.expr()?);
+            if !self.eat(&TokenKind::Comma) {
+                break;
+            }
+        }
+        self.expect(&TokenKind::RBracket)?;
+        Ok(Expr::List {
+            items,
+            span: Span::new(start, self.prev_end()),
+        })
     }
 
     fn record_literal(&mut self) -> Result<Expr, ParseError> {
@@ -1704,6 +1722,7 @@ fn expr_span(expr: &Expr) -> Span {
         | Expr::Unary { span, .. }
         | Expr::Binary { span, .. }
         | Expr::Record { span, .. }
+        | Expr::List { span, .. }
         | Expr::If { span, .. }
         | Expr::IfYield { span, .. }
         | Expr::VariantLit { span, .. }

@@ -287,3 +287,13 @@ it does not treat compiler Target IR as proof of runtime support.
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TIR-TP-085 | implemented | UTF-8 primitive typing | TIR-REQ-055 | Bytes/exact/empty operands lower with Boolean projections; wrong signatures, foreign operands and unproven slices refuse. | byte_utf8_call_retains_operand_identity_and_boolean_projection, byte_utf8_rejects_wrong_operands_signatures_and_result_type, byte_utf8_target_refuses_forged_signature_or_operand_authority, byte_utf8_predicate_accepts_proven_prefix_and_rejects_unproven_slice, byte_utf8_prelude_name_cannot_be_shadowed, byte_utf8_source_function_budget_includes_bounded_scan, linker_preserves_utf8_prelude_with_an_imported_byte_alias | crates/edict-syntax/tests/byte_utf8.rs, crates/edict-syntax/tests/source_module_compilation.rs | Runtime byte validation is separate evidence. |
+
+## Bounded list literals
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| TIR-REQ-058 | implemented | Target independently checks a Core list expression's element count against the declared maximum and each element's type and authority. | EDICT-LANG-LIST-LIT-001 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-088 | implemented | List literal boundary | TIR-REQ-058 | Excess elements, wrong element types, foreign locals and non-list binding types refuse InvalidCoreIdentity without artifact. | target_refuses_forged_list_literals, list_literal_preserves_order_and_lowers_to_core_list | crates/edict-syntax/tests/list_literal.rs | Runtime list evaluation is separate evidence. |

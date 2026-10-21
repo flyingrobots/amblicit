@@ -404,6 +404,9 @@ fn mutate_first_local_reference_type(expression: &mut CoreExpr, ty: &str) -> boo
         CoreExpr::Record { fields } => fields
             .values_mut()
             .any(|value| mutate_first_local_reference_type(value, ty)),
+        CoreExpr::List { values } => values
+            .iter_mut()
+            .any(|value| mutate_first_local_reference_type(value, ty)),
         CoreExpr::Field { base, .. } => mutate_first_local_reference_type(base, ty),
         CoreExpr::Call { args, .. } => args
             .iter_mut()

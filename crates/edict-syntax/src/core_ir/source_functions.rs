@@ -132,6 +132,12 @@ fn walk(
             }
             Ok(())
         }
+        CoreExpr::List { values } => {
+            for value in values {
+                walk(value, depth + 1, check)?;
+            }
+            Ok(())
+        }
         CoreExpr::Call { args, .. } => {
             for value in args {
                 walk(value, depth + 1, check)?;

@@ -144,6 +144,9 @@ impl<'a> LocalAvailability<'a> {
             CoreExpr::Record { fields } => fields
                 .values()
                 .all(|value| self.expression(value, depth + 1)),
+            CoreExpr::List { values } => {
+                values.iter().all(|value| self.expression(value, depth + 1))
+            }
             CoreExpr::Field { base, .. } => self.expression(base, depth + 1),
             CoreExpr::Call { args, .. } => args.iter().all(|arg| self.expression(arg, depth + 1)),
             CoreExpr::If {

@@ -1366,6 +1366,10 @@ fn core_expr_value(expr: &CoreExpr) -> Result<CanonicalValue, CanonicalError> {
                 )?,
             ),
         ]),
+        CoreExpr::List { values } => map([
+            ("kind", text("list")),
+            ("values", array_results(values.iter().map(core_expr_value))?),
+        ]),
         CoreExpr::Field { base, field } => map([
             ("kind", text("field")),
             ("base", core_expr_value(base)?),

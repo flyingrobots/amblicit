@@ -1560,6 +1560,18 @@ fn validate_core_expression_types(
             }
             Ok(())
         }
+        CoreExpr::List { values } => {
+            for (index, value) in values.iter().enumerate() {
+                validate_core_expression_types(
+                    module,
+                    state,
+                    value,
+                    &format!("{path}.list[{index}]"),
+                    depth + 1,
+                )?;
+            }
+            Ok(())
+        }
         CoreExpr::Field { base, .. } => validate_core_expression_types(
             module,
             state,
@@ -1736,6 +1748,10 @@ pub enum CoreExpr {
     Const(CoreValue),
     Record {
         fields: BTreeMap<String, CoreExpr>,
+    },
+    /// Ordered bounded list; its type comes from the declared binding context.
+    List {
+        values: Vec<CoreExpr>,
     },
     Field {
         base: Box<CoreExpr>,

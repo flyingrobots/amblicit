@@ -430,6 +430,11 @@ pub enum Expr {
         entries: Vec<RecordEntry>,
         span: Span,
     },
+    /// `[a, b]` bounded list literal, typed against an expected `List<T, max=N>`.
+    List {
+        items: Vec<Expr>,
+        span: Span,
+    },
     /// Pure ternary: `if cond then a else b`.
     If {
         cond: Box<Expr>,

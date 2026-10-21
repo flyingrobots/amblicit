@@ -1173,6 +1173,9 @@ fn expression_has_closed_authority(
         CoreExpr::Record { fields } => fields
             .values()
             .all(|value| expression_has_closed_authority(core, pure_functions, value, available)),
+        CoreExpr::List { values } => values
+            .iter()
+            .all(|value| expression_has_closed_authority(core, pure_functions, value, available)),
         CoreExpr::Field { .. } => {
             expression_type_coordinate(core, pure_functions, expression, available).is_some()
         }
@@ -1239,6 +1242,50 @@ fn is_unsigned_arithmetic(callee: &str) -> bool {
     callee == unsigned_subtraction::OPERATION || callee == unsigned_addition::OPERATION
 }
 
+/// A record fits when it has exactly the declared fields and each fits its type.
+fn record_fits_declared_type(
+    core: &CoreModule,
+    pure_functions: &[TargetPureFunctionFact],
+    fields: &BTreeMap<String, CoreExpr>,
+    expected: &str,
+    available: &BTreeMap<&str, &LocalRef>,
+) -> bool {
+    let Some(CoreType::Record {
+        fields: expected_fields,
+    }) = resolved_core_type(core, expected)
+    else {
+        return false;
+    };
+    fields.keys().eq(expected_fields.keys())
+        && fields.iter().all(|(field, value)| {
+            expression_fits_declared_type(
+                core,
+                pure_functions,
+                value,
+                expected_fields.get(field).expect("equal record field keys"),
+                available,
+            )
+        })
+}
+
+/// A list fits when it has at most the declared maximum of elements and every
+/// element fits the declared item type.
+fn list_fits_declared_type(
+    core: &CoreModule,
+    pure_functions: &[TargetPureFunctionFact],
+    values: &[CoreExpr],
+    expected: &str,
+    available: &BTreeMap<&str, &LocalRef>,
+) -> bool {
+    let Some(CoreType::List { item, max }) = resolved_core_type(core, expected) else {
+        return false;
+    };
+    u64::try_from(values.len()).is_ok_and(|count| count <= max)
+        && values.iter().all(|value| {
+            expression_fits_declared_type(core, pure_functions, value, &item, available)
+        })
+}
+
 fn expression_fits_declared_type(
     core: &CoreModule,
     pure_functions: &[TargetPureFunctionFact],
@@ -1251,24 +1298,12 @@ fn expression_fits_declared_type(
             available.get(reference.id.as_str()).copied() == Some(reference)
                 && core_type_fits(core, &reference.ty, expected)
         }
+        CoreExpr::List { values } => {
+            list_fits_declared_type(core, pure_functions, values, expected, available)
+        }
         CoreExpr::Const(value) => core_value_fits_declared_type(core, value, expected),
         CoreExpr::Record { fields } => {
-            let Some(CoreType::Record {
-                fields: expected_fields,
-            }) = resolved_core_type(core, expected)
-            else {
-                return false;
-            };
-            fields.keys().eq(expected_fields.keys())
-                && fields.iter().all(|(field, value)| {
-                    expression_fits_declared_type(
-                        core,
-                        pure_functions,
-                        value,
-                        expected_fields.get(field).expect("equal record field keys"),
-                        available,
-                    )
-                })
+            record_fits_declared_type(core, pure_functions, fields, expected, available)
         }
         CoreExpr::Field { base, field } => {
             let Some(field_shape) =
@@ -1564,7 +1599,8 @@ fn expression_string_shape(
         CoreExpr::Const(
             CoreValue::Null | CoreValue::Bool(_) | CoreValue::Int { .. } | CoreValue::Bytes(_),
         )
-        | CoreExpr::Record { .. } => None,
+        | CoreExpr::Record { .. }
+        | CoreExpr::List { .. } => None,
     }
 }
 
@@ -1664,6 +1700,7 @@ fn expression_type_coordinate(
         CoreExpr::Local { .. }
         | CoreExpr::Const(CoreValue::Null)
         | CoreExpr::Record { .. }
+        | CoreExpr::List { .. }
         | CoreExpr::Call { .. } => None,
     }
 }
@@ -1772,6 +1809,9 @@ fn expression_references_are_available(
         CoreExpr::Record { fields } => fields
             .values()
             .all(|value| expression_references_are_available(value, available)),
+        CoreExpr::List { values } => values
+            .iter()
+            .all(|value| expression_references_are_available(value, available)),
         CoreExpr::Field { base, .. } => expression_references_are_available(base, available),
         CoreExpr::Call { args, .. } => args
             .iter()
@@ -1866,6 +1906,8 @@ fn comparison_operand_shape(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<ComparisonOperandShape> {
     match expression {
+        // Lists are not comparison operands in v1.
+        CoreExpr::List { .. } => None,
         CoreExpr::Record { fields } => fields
             .iter()
             .map(|(field, value)| {
@@ -2336,6 +2378,9 @@ fn expr_references_step_output(expr: &CoreExpr, step_outputs: &BTreeSet<String>)
         CoreExpr::Record { fields } => fields
             .values()
             .any(|field| expr_references_step_output(field, step_outputs)),
+        CoreExpr::List { values } => values
+            .iter()
+            .any(|value| expr_references_step_output(value, step_outputs)),
         CoreExpr::Field { base, .. } => expr_references_step_output(base, step_outputs),
         CoreExpr::Call { args, .. } => args
             .iter()
