@@ -105,6 +105,7 @@ impl TypeChecker<'_> {
     fn check_source_function(&mut self, definition: &FunctionDecl) -> Option<CoreFunction> {
         let signature = self.function_signatures.get(&definition.name)?.clone();
         self.input_proof_constraints.clear();
+        self.local_bounds.clear();
         let mut env = LocalEnvironment::default();
         let params = definition
             .params
@@ -152,6 +153,7 @@ impl TypeChecker<'_> {
                         continue;
                     };
                     let local = next_local(&mut local_index, shape.coord.clone());
+                    self.record_binding_bound(&local, &value_checked.expr);
                     bindings.push(CorePureBinding {
                         binding: local.clone(),
                         value: value_checked.expr,
@@ -355,6 +357,21 @@ impl TypeChecker<'_> {
         None
     }
 
+    /// Full bounded operand storage conservatively bounds the UTF-8 and count
+    /// scans, as it already does for byte comparison work.
+    fn byte_scan_steps(&self, expr: &Expr) -> u64 {
+        match expr {
+            Expr::Call { callee, args, .. } if is_prelude_call(callee, &["isUtf8", "count"]) => {
+                args.first()
+                    .and_then(|argument| {
+                        self.source_value_bounds.get(&expression_identity(argument))
+                    })
+                    .map_or(0, |bound| bound.1)
+            }
+            _ => 0,
+        }
+    }
+
     pub(super) fn record_source_expression_cost(
         &mut self,
         expr: &Expr,
@@ -378,7 +395,9 @@ impl TypeChecker<'_> {
                 rhs,
                 ..
             } => vec![lhs, rhs],
-            Expr::Call { callee, args, .. } if matches!(callee.as_ref(), Expr::Ident { name, .. } if name == "len" || name == "slice" || name == "isUtf8") => {
+            Expr::Call { callee, args, .. }
+                if is_prelude_call(callee, &["len", "slice", "isUtf8", "count"]) =>
+            {
                 args.iter().collect()
             }
             _ => Vec::new(),
@@ -398,28 +417,16 @@ impl TypeChecker<'_> {
                 span,
             )?;
         }
-        if let Expr::Call { callee, args, .. } = expr {
-            if matches!(callee.as_ref(), Expr::Ident { name, .. } if name == "isUtf8") {
-                // Full bounded operand storage conservatively bounds the UTF-8 scan,
-                // as it already does for byte comparison work below.
-                let steps = args
-                    .first()
-                    .and_then(|argument| {
-                        self.source_value_bounds.get(&expression_identity(argument))
-                    })
-                    .map_or(0, |bound| bound.1);
-                own = self.checked_helper_cost_add(
-                    own,
-                    HelperCost {
-                        steps,
-                        ..HelperCost::default()
-                    },
-                    span,
-                )?;
-            }
-        }
+        own = self.checked_helper_cost_add(
+            own,
+            HelperCost {
+                steps: self.byte_scan_steps(expr),
+                ..HelperCost::default()
+            },
+            span,
+        )?;
         if matches!(expr, Expr::Binary { op: BinOp::Add, .. })
-            || matches!(expr, Expr::Call { callee, .. } if matches!(callee.as_ref(), Expr::Ident { name, .. } if name == "slice"))
+            || matches!(expr, Expr::Call { callee, .. } if is_prelude_call(callee, &["slice"]))
         {
             let steps = match &shape.kind {
                 TypeKind::Bytes { max, .. } => *max,
@@ -612,4 +619,8 @@ fn encoded_bound(shape: &TypeShape) -> Option<u64> {
         }),
         TypeKind::ExternalActionRequest { .. } => None,
     }
+}
+
+fn is_prelude_call(callee: &Expr, names: &[&str]) -> bool {
+    matches!(callee, Expr::Ident { name, .. } if names.contains(&name.as_str()))
 }

@@ -2125,6 +2125,22 @@ The Edict Core prelude is intentionally small:
   use the maximum branch cost. Source-helper summaries already include their
   scans and are not charged twice at the call site. Runtime metering also
   charges the selected profile's expression, value and validation work.
+- `count(bytes: Bytes<max=N>, b"x") -> U64` counts the occurrences of one byte
+  in a complete bounded byte sequence (`EDICT-LANG-BYTE-COUNT-001`). The needle
+  is a byte literal that decodes to exactly one byte, so what the scan looks for
+  never depends on runtime data; empty, multi-byte, string, integer and
+  non-literal needles reject. It counts raw bytes and does not decode UTF-8. The
+  source prelude takes one bounded structural byte operand and no authored type
+  arguments; it lowers to `core.bytes.count<OperandType>(bytes, b"x")` with a
+  U64 result, retaining the exact operand coordinate and the counted byte, both
+  hash-significant. The result is at most `N`, and unsigned addition proofs use
+  that bound, so `count(bytes, b"\n") + 1u64` is total for any `N` below the
+  U64 maximum. A proven unsigned bound travels with a `let` binding to later
+  statements of the same intent or function body, in both the compiler and
+  Target; it does not travel through helper results or record fields, so a
+  caller computes derived metrics such as `lineCount` beside the count. A direct scan adds `N` steps to the static bound, and a helper
+  scan is charged once, exactly as for `isUtf8`. Compiler and Target support
+  establish typing, authority and bounds, not runtime execution evidence.
 - `slice(bytes: Bytes<max=N>, start: U64, end: U64) -> Bytes<max=N>`
   selects the half-open byte range `[start,end)` only when the compiler proves
   `start <= end <= len(bytes)` (`EDICT-LANG-BYTE-SLICE-001`). The bytes remain

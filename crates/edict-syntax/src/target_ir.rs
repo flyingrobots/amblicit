@@ -5,6 +5,7 @@
 //! execute a runtime, run a verifier, assemble bundles, or perform admission.
 
 mod byte_concat;
+mod byte_count;
 mod byte_length;
 mod byte_slice;
 mod byte_utf8;
@@ -746,7 +747,7 @@ fn validate_pure_binding_graphs(
                     "Core local table or producer contains an empty or duplicate identity",
                 ));
             }
-            if !totality::intent_is_total(intent) {
+            if !totality::intent_is_total(core, intent) {
                 return Some(invalid_pure_binding(
                     intent_name,
                     None,
@@ -1201,6 +1202,13 @@ fn expression_has_closed_authority(
             callee,
             type_args,
             args,
+        } if callee == byte_count::OPERATION => {
+            byte_count::type_coordinate(core, pure_functions, type_args, args, available).is_some()
+        }
+        CoreExpr::Call {
+            callee,
+            type_args,
+            args,
         } if callee == byte_slice::OPERATION => {
             byte_slice::type_coordinate(core, pure_functions, type_args, args, available).is_some()
         }
@@ -1237,6 +1245,19 @@ fn expression_has_closed_authority(
 
 fn is_unsigned_arithmetic(callee: &str) -> bool {
     callee == unsigned_subtraction::OPERATION || callee == unsigned_addition::OPERATION
+}
+
+/// Prelude operations whose result coordinate Target derives itself.
+fn is_typed_prelude_operation(callee: &str) -> bool {
+    [
+        byte_concat::OPERATION,
+        byte_length::OPERATION,
+        byte_utf8::OPERATION,
+        byte_count::OPERATION,
+        byte_slice::OPERATION,
+    ]
+    .contains(&callee)
+        || is_unsigned_arithmetic(callee)
 }
 
 fn expression_fits_declared_type(
@@ -1283,13 +1304,7 @@ fn expression_fits_declared_type(
                 0,
             )
         }
-        CoreExpr::Call { callee, .. }
-            if callee == byte_concat::OPERATION
-                || callee == byte_length::OPERATION
-                || callee == byte_utf8::OPERATION
-                || callee == byte_slice::OPERATION
-                || is_unsigned_arithmetic(callee) =>
-        {
+        CoreExpr::Call { callee, .. } if is_typed_prelude_operation(callee) => {
             expression_type_coordinate(core, pure_functions, expression, available)
                 .is_some_and(|actual| core_type_fits(core, &actual, expected))
         }
@@ -1406,6 +1421,19 @@ fn validate_source_function_bodies(
             .iter()
             .map(|local| (local.id.as_str(), local))
             .collect::<BTreeMap<_, _>>();
+        if !totality::bindings_are_total(
+            core,
+            function
+                .body
+                .bindings
+                .iter()
+                .map(|binding| (&binding.binding, &binding.value)),
+            &function.body.result,
+        ) {
+            return Some(invalid(
+                "a binding or the result failed totality validation",
+            ));
+        }
         for binding in &function.body.bindings {
             if !expression_fits_declared_type(
                 core,
@@ -1413,9 +1441,10 @@ fn validate_source_function_bodies(
                 &binding.value,
                 &binding.binding.ty,
                 &available,
-            ) || !totality::expression_is_total(&binding.value, &[])
-            {
-                return Some(invalid("binding has invalid type, authority, or totality"));
+            ) {
+                return Some(invalid(
+                    "binding does not fit its declared type or available scope",
+                ));
             }
             available.insert(binding.binding.id.as_str(), &binding.binding);
         }
@@ -1425,8 +1454,7 @@ fn validate_source_function_bodies(
             &function.body.result,
             &function.return_type,
             &available,
-        ) || !totality::expression_is_total(&function.body.result, &[])
-        {
+        ) {
             return Some(invalid("result has invalid type, authority, or totality"));
         }
     }
@@ -1622,6 +1650,13 @@ fn expression_type_coordinate(
             args,
         } if callee == byte_utf8::OPERATION => {
             byte_utf8::type_coordinate(core, pure_functions, type_args, args, available)
+        }
+        CoreExpr::Call {
+            callee,
+            type_args,
+            args,
+        } if callee == byte_count::OPERATION => {
+            byte_count::type_coordinate(core, pure_functions, type_args, args, available)
         }
         CoreExpr::Call {
             callee,

@@ -287,3 +287,13 @@ it does not treat compiler Target IR as proof of runtime support.
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TIR-TP-085 | implemented | UTF-8 primitive typing | TIR-REQ-055 | Bytes/exact/empty operands lower with Boolean projections; wrong signatures, foreign operands and unproven slices refuse. | byte_utf8_call_retains_operand_identity_and_boolean_projection, byte_utf8_rejects_wrong_operands_signatures_and_result_type, byte_utf8_target_refuses_forged_signature_or_operand_authority, byte_utf8_predicate_accepts_proven_prefix_and_rejects_unproven_slice, byte_utf8_prelude_name_cannot_be_shadowed, byte_utf8_source_function_budget_includes_bounded_scan, linker_preserves_utf8_prelude_with_an_imported_byte_alias | crates/edict-syntax/tests/byte_utf8.rs, crates/edict-syntax/tests/source_module_compilation.rs | Runtime byte validation is separate evidence. |
+
+## Bounded byte count
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| TIR-REQ-057 | implemented | Target independently validates count's operand, needle and U64 result, and bounds the count by the structural operand maximum in its own addition proof. | EDICT-LANG-BYTE-COUNT-001 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-087 | implemented | Byte count boundary | TIR-REQ-057 | Forged signatures, needles, operands and results refuse InvalidCoreIdentity without artifact; a forged overflowing addend refuses independently of source. | count_target_refuses_forged_signature_needle_or_operand_authority, target_independently_refuses_a_forged_overflowing_count_sum, the_count_bound_proves_jims_line_count_addition, target_refuses_a_forged_binding_bound, jims_line_metrics_compile_through_a_helper_fact_and_field_access | crates/edict-syntax/tests/byte_count.rs | Runtime counting is separate evidence. |
