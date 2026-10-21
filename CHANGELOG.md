@@ -12,6 +12,20 @@ versions still track specification maturity rather than a released product.
   `List<T, max=N>` and lowered to Core `list` expressions. Order and duplicates
   are preserved; excess cardinality, wrong items and missing context reject, and
   Target independently validates the count and every element.
+- **Breaking:** `count` is now a reserved prelude name. Source that binds
+  `count` (a `let`, a parameter, a `for` binder or an obstruction binder) now
+  fails surface validation with `ShadowedName`; rename the binding, for example
+  to `total`.
+- Add the `count(bytes, b"x")` prelude: a bounded single-byte occurrence count
+  over `Bytes<max=N>` with an exactly-one-byte literal needle, lowering to
+  `core.bytes.count` with a U64 result bounded by `N`. Source and Target
+  addition proofs use that bound, resolving the operand coordinate through the
+  type table. Scans are charged once, the needle literal is charged like any
+  operand, and Target refuses forged operands, needles and results. Runtime
+  support remains separate.
+- Proven unsigned bounds now travel with `let` bindings in intent and function
+  bodies, in both the compiler and Target.
+- Pin wasmtime 48.0.7, fixing RUSTSEC-2026-0378 and RUSTSEC-2026-0379.
 
 - Lower proven same-width U32/U64 sums to `core.integer.add` and independently
   validate no-overflow bounds at the Target IR boundary. Unproved sums refuse

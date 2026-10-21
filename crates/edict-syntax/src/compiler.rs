@@ -21,6 +21,7 @@ use crate::core_ir::{
     CORE_API_VERSION, CORE_APPLICATION_INPUT_LOCAL_ID, MAX_CORE_TYPE_DEPTH,
 };
 mod byte_concat;
+mod byte_count;
 mod byte_length;
 mod byte_slice;
 mod byte_utf8;
@@ -952,6 +953,12 @@ struct TypeChecker<'a> {
     source_expression_costs: BTreeMap<usize, HelperCost>,
     source_predicate_costs: BTreeMap<usize, HelperCost>,
     source_value_bounds: BTreeMap<usize, (u64, u64)>,
+    /// Byte maximum of every operand coordinate a `count` call resolved, so the
+    /// addition proof can bound named coordinates without a type table.
+    count_operand_maxima: BTreeMap<String, u64>,
+    /// Proven upper bounds of earlier unsigned `let` bindings in the body being
+    /// checked, by local id. Ids are unique and bindings immutable within a body.
+    local_bounds: BTreeMap<String, (LocalRef, u64)>,
     input_proof_constraints: Vec<CorePredicate>,
     effect_binding_profile: Option<EffectBindingProfile>,
     errors: Vec<CompilerError>,
@@ -972,6 +979,8 @@ impl<'a> TypeChecker<'a> {
             source_expression_costs: BTreeMap::new(),
             source_predicate_costs: BTreeMap::new(),
             source_value_bounds: BTreeMap::new(),
+            count_operand_maxima: BTreeMap::new(),
+            local_bounds: BTreeMap::new(),
             input_proof_constraints: Vec::new(),
             effect_binding_profile: None,
             errors: Vec::new(),
@@ -1264,6 +1273,7 @@ impl<'a> TypeChecker<'a> {
 
     fn check_intent(&mut self, intent: &ResolvedIntent) -> Option<TypedIntent> {
         self.input_proof_constraints.clear();
+        self.local_bounds.clear();
         let recorded_costs = self.source_expression_costs.len();
         let source = &intent.source;
         if source.params.len() != 1 {
@@ -1328,6 +1338,7 @@ impl<'a> TypeChecker<'a> {
         let body = self.check_body(intent, &output_shape, &mut env, &mut locals);
         self.effect_binding_profile = None;
         self.input_proof_constraints.clear();
+        self.local_bounds.clear();
         let body = body?;
         if self.errors.len() != body_error_count {
             return None;
@@ -2760,6 +2771,7 @@ impl<'a> TypeChecker<'a> {
             return;
         };
         let local = next_local(&mut state.local_index, binding_shape.coord.clone());
+        self.record_binding_bound(&local, &value.expr);
         state.nodes.push(CoreNode::Let {
             binding: local.clone(),
             value: value.expr,
@@ -4116,6 +4128,9 @@ impl<'a> TypeChecker<'a> {
                 }
                 Expr::Ident { name, .. } if name == "isUtf8" => {
                     self.check_byte_utf8(type_args, args, env, *span, expr)
+                }
+                Expr::Ident { name, .. } if name == "count" => {
+                    self.check_byte_count(type_args, args, env, *span, expr)
                 }
                 Expr::Ident { name, .. } if name == "slice" => {
                     self.check_byte_slice(type_args, args, env, *span)

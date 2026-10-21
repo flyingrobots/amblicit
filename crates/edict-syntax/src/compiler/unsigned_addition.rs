@@ -1,8 +1,10 @@
 //! Conservative totality proof for unsigned sums in intent bodies.
+use std::collections::BTreeMap;
+
 use super::{
     compatible, error, expr_span, is_bare_integer_literal, CompareOp, CompilerErrorKind,
     CompilerStage, CoreExpr, CorePredicate, CoreValue, EffectOutputExpectation, Expr,
-    LocalEnvironment, Span, TypeChecker, TypeKind, TypeShape, TypedValue,
+    LocalEnvironment, LocalRef, Span, TypeChecker, TypeKind, TypeShape, TypedValue,
 };
 
 pub(super) fn diagnostic_shape(left: &TypeShape, right: &TypeShape) -> Option<TypeShape> {
@@ -146,7 +148,11 @@ impl TypeChecker<'_> {
             || !proven_sum(
                 &left.expr,
                 &right.expr,
-                &self.input_proof_constraints,
+                &BoundFacts {
+                    constraints: &self.input_proof_constraints,
+                    local_bounds: &self.local_bounds,
+                    count_maxima: &self.count_operand_maxima,
+                },
                 if matches!(&left.ty.kind, TypeKind::Int { width } if width == "U32") {
                     u64::from(u32::MAX)
                 } else {
@@ -199,17 +205,34 @@ fn constant(expr: &CoreExpr) -> Option<u64> {
     }
 }
 
-fn proven_sum(left: &CoreExpr, right: &CoreExpr, constraints: &[CorePredicate], max: u64) -> bool {
-    let left = upper_bound(left, constraints, max, 0);
-    let right = upper_bound(right, constraints, max, 0);
+fn proven_sum(left: &CoreExpr, right: &CoreExpr, facts: &BoundFacts<'_>, max: u64) -> bool {
+    let left = upper_bound(left, facts, max, 0);
+    let right = upper_bound(right, facts, max, 0);
     left.checked_add(right).is_some_and(|sum| sum <= max)
 }
 
-fn upper_bound(expr: &CoreExpr, constraints: &[CorePredicate], max: u64, depth: usize) -> u64 {
+/// What an upper-bound proof may use: dominating predicates, the proven bounds
+/// of earlier `let` bindings by local id, and the byte maximum of every operand
+/// coordinate a `count` call resolved.
+struct BoundFacts<'a> {
+    constraints: &'a [CorePredicate],
+    local_bounds: &'a BTreeMap<String, (LocalRef, u64)>,
+    count_maxima: &'a BTreeMap<String, u64>,
+}
+
+fn upper_bound(expr: &CoreExpr, facts: &BoundFacts<'_>, max: u64, depth: usize) -> u64 {
     if depth > crate::core_ir::MAX_CORE_GRAPH_DEPTH {
         return max;
     }
     let mut bound = constant(expr).unwrap_or_else(|| {
+        if let CoreExpr::Local { reference } = expr {
+            // Only the exact bound reference: same id, name and type.
+            if let Some((bound_reference, bound)) = facts.local_bounds.get(&reference.id) {
+                if bound_reference == reference {
+                    return (*bound).min(max);
+                }
+            }
+        }
         if let CoreExpr::Call {
             callee,
             type_args,
@@ -218,16 +241,26 @@ fn upper_bound(expr: &CoreExpr, constraints: &[CorePredicate], max: u64, depth: 
         {
             if callee == "core.integer.add" && type_args.len() == 1 {
                 if let [left, right] = args.as_slice() {
-                    return upper_bound(left, constraints, max, depth + 1)
-                        .checked_add(upper_bound(right, constraints, max, depth + 1))
+                    return upper_bound(left, facts, max, depth + 1)
+                        .checked_add(upper_bound(right, facts, max, depth + 1))
                         .unwrap_or(max)
                         .min(max);
                 }
             }
+            if callee == "core.bytes.count" {
+                // A count never exceeds the operand's byte maximum.
+                let [coordinate] = type_args.as_slice() else {
+                    return max;
+                };
+                return facts
+                    .count_maxima
+                    .get(coordinate)
+                    .map_or(max, |bound| (*bound).min(max));
+            }
         }
         max
     });
-    for predicate in constraints {
+    for predicate in facts.constraints {
         refine_bound(predicate, expr, &mut bound);
     }
     bound
@@ -254,5 +287,28 @@ fn refine_bound(predicate: &CorePredicate, expr: &CoreExpr, bound: &mut u64) {
             }
         }
         _ => {}
+    }
+}
+
+impl TypeChecker<'_> {
+    /// A pure unsigned binding carries its proven upper bound into later
+    /// statements of the same body. Local identities are unique and
+    /// immutable, so the derived limit names exactly the bound value.
+    pub(super) fn record_binding_bound(&mut self, binding: &LocalRef, value: &CoreExpr) {
+        let max = match binding.ty.as_str() {
+            "U32" => u64::from(u32::MAX),
+            "U64" => u64::MAX,
+            _ => return,
+        };
+        let facts = BoundFacts {
+            constraints: &self.input_proof_constraints,
+            local_bounds: &self.local_bounds,
+            count_maxima: &self.count_operand_maxima,
+        };
+        let upper = upper_bound(value, &facts, max, 0);
+        if upper < max {
+            self.local_bounds
+                .insert(binding.id.clone(), (binding.clone(), upper));
+        }
     }
 }

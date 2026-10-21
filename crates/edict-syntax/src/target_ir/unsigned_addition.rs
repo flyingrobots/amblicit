@@ -1,10 +1,12 @@
 //! Target-owned upper-bound proof over untrusted Core, independent of source checking.
+use super::totality::Scope;
 use super::{CoreExpr, CorePredicate, CoreValue};
 use crate::core_ir::{CompareOp, MAX_CORE_GRAPH_DEPTH};
 
 pub(super) const OPERATION: &str = "core.integer.add";
 
 pub(super) fn is_total(
+    core: &Scope<'_>,
     type_args: &[String],
     args: &[CoreExpr],
     constraints: &[&CorePredicate],
@@ -20,8 +22,8 @@ pub(super) fn is_total(
     for constraint in constraints {
         collect_limits(constraint, &mut limits);
     }
-    bound(left, max, &limits, 0)
-        .zip(bound(right, max, &limits, 0))
+    bound(core, left, max, &limits, 0)
+        .zip(bound(core, right, max, &limits, 0))
         .and_then(|(left, right)| left.checked_add(right))
         .is_some_and(|sum| sum <= max)
 }
@@ -75,7 +77,13 @@ fn collect_limits<'a>(predicate: &'a CorePredicate, limits: &mut Vec<(&'a CoreEx
     }
 }
 
-fn bound(expr: &CoreExpr, max: u64, limits: &[(&CoreExpr, u64)], depth: usize) -> Option<u64> {
+fn bound(
+    core: &Scope<'_>,
+    expr: &CoreExpr,
+    max: u64,
+    limits: &[(&CoreExpr, u64)],
+    depth: usize,
+) -> Option<u64> {
     // Target refuses when traversal cannot establish a bound. Source uses
     // the width maximum at its cutoff, so a source-accepted sum with zero
     // can still be refused here. Target remains the final authority.
@@ -84,17 +92,27 @@ fn bound(expr: &CoreExpr, max: u64, limits: &[(&CoreExpr, u64)], depth: usize) -
     }
     let structural = if let Some(value) = constant(expr) {
         value
+    } else if let CoreExpr::Local { reference } = expr {
+        core.local_bound(reference)
+            .map_or(max, |upper| upper.min(max))
     } else if let CoreExpr::Call { callee, args, .. } = expr {
         if callee == OPERATION {
             let [left, right] = args.as_slice() else {
                 return None;
             };
-            bound(left, max, limits, depth + 1)?.checked_add(bound(
+            bound(core, left, max, limits, depth + 1)?.checked_add(bound(
+                core,
                 right,
                 max,
                 limits,
                 depth + 1,
             )?)?
+        } else if callee == super::byte_count::OPERATION {
+            let CoreExpr::Call { type_args, .. } = expr else {
+                return None;
+            };
+            super::byte_count::result_bound(core.module(), type_args)
+                .map_or(max, |bound| bound.min(max))
         } else {
             max
         }
@@ -108,4 +126,24 @@ fn bound(expr: &CoreExpr, max: u64, limits: &[(&CoreExpr, u64)], depth: usize) -
             .map(|(_, upper)| *upper)
             .fold(structural, u64::min),
     )
+}
+
+/// The proven upper bound a pure binding of unsigned width carries to later
+/// evaluation in the same scope, when it is below the width maximum.
+pub(super) fn binding_bound(
+    core: &Scope<'_>,
+    binding: &crate::core_ir::LocalRef,
+    value: &CoreExpr,
+    constraints: &[&CorePredicate],
+) -> Option<u64> {
+    let max = match binding.ty.as_str() {
+        "U32" => u64::from(u32::MAX),
+        "U64" => u64::MAX,
+        _ => return None,
+    };
+    let mut limits = Vec::new();
+    for constraint in constraints {
+        collect_limits(constraint, &mut limits);
+    }
+    bound(core, value, max, &limits, 0).filter(|upper| *upper < max)
 }

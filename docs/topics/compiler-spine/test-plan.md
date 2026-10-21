@@ -504,6 +504,16 @@ CSPINE-REQ-054 remains planned. The implemented rows establish their named fixtu
 | CSPINE-TP-175 | implemented | Nested peer work | CSPINE-REQ-047 | A linear chain of 20 invalid effect conditionals finishes within a generous 10-second regression deadline and retains mapping guidance. | nested_effect_conditional_diagnostics_finish_within_deadline | crates/edict-syntax/tests/effect_diagnostics.rs | A denial-of-service regression bound, not a performance benchmark. |
 | CSPINE-TP-176 | implemented | Nested contextual literals | CSPINE-REQ-047 | Authenticated numeric receipt fields and records preserve contextual integer literals inside nested conditional peers; compatible bare effects need mapping. | conditional_effect_peers_preserve_nested_literal_context | crates/edict-syntax/tests/effect_signature_diagnostics.rs | Both branch orders and mapped controls. |
 
+## Bounded byte count
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| CSPINE-REQ-056 | implemented | count takes an exactly-one-byte literal needle, preserves bounded byte operand identity and the counted byte, produces U64 bounded by the operand maximum, and charges one complete scan. | EDICT-LANG-BYTE-COUNT-001 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-178 | implemented | Byte count typing and bounds | CSPINE-REQ-056 | Max/exact/empty operands lower with U64 results and hash-significant needles; wrong operands, needles, signatures and results refuse; the bound proves `count + 1` and refuses a sum that overflows at the operand maximum; direct scans add and helper scans are charged once. | count_retains_operand_identity_needle_byte_and_u64_result, count_rejects_wrong_operands_needles_signatures_and_result_type, count_prelude_name_cannot_be_shadowed, direct_count_scans_charge_the_operand_maximum, count_helper_scan_is_charged_once, the_count_bound_proves_jims_line_count_addition, the_count_bound_is_the_operand_maximum_not_zero, linker_preserves_count_prelude_with_an_imported_byte_alias, jims_line_metrics_compile_through_a_helper_fact_and_field_access, a_let_bound_count_keeps_its_bound_in_intent_bodies, a_count_read_back_through_a_record_field_has_no_bound | crates/edict-syntax/tests/byte_count.rs, crates/edict-syntax/tests/source_module_compilation.rs | Runtime counting is separate evidence. |
+
 ## Bounded list literals
 
 | ID | Status | Requirement | Source |
