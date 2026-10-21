@@ -218,11 +218,8 @@ pub fn admit_target_pure_intrinsics(
 ) -> Result<Vec<TargetPureIntrinsicFact>, Vec<TargetPureIntrinsicFailure>> {
     use TargetPureIntrinsicFailureKind as K;
     for reference in [target, catalog] {
-        if !reference
-            .digest
-            .as_deref()
-            .is_some_and(|digest| digest.starts_with("sha256:"))
-        {
+        // The full pin form Target itself requires, not merely its prefix.
+        if !reference.is_digest_locked() {
             return Err(vec![failure(K::UnpinnedResource, &reference.coordinate)]);
         }
     }

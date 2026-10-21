@@ -291,6 +291,31 @@ fn admission_returns_exactly_the_required_pinned_contracts() {
 }
 
 #[test]
+fn admission_refuses_malformed_target_pins() {
+    // Target only lowers against a digest-locked profile, so admission must
+    // not hand back facts pinned to a malformed one.
+    let bytes = encode_canonical_cbor(&catalog_value()).unwrap();
+    for digest in [
+        "sha256:".to_owned(),
+        format!("sha256:{}", "1".repeat(63)),
+        format!("sha512:{}", "1".repeat(64)),
+    ] {
+        let malformed = ResourceRef {
+            coordinate: "echo.dpo@1".into(),
+            digest: Some(digest.clone()),
+        };
+        let failures =
+            admit_target_pure_intrinsics(&malformed, &pinned(&bytes), &bytes, &required())
+                .unwrap_err();
+        assert_eq!(
+            failures.iter().map(|f| f.kind).collect::<Vec<_>>(),
+            [TargetPureIntrinsicFailureKind::UnpinnedResource],
+            "{digest}"
+        );
+    }
+}
+
+#[test]
 fn admission_fails_closed_on_pins() {
     let bytes = encode_canonical_cbor(&catalog_value()).unwrap();
     let wrong = ResourceRef {
@@ -784,4 +809,36 @@ fn minimal_budget(text: &str) -> u64 {
         }
     }
     low
+}
+
+#[test]
+fn helper_cost_metering_keeps_expression_depth_per_function() {
+    // Each helper nests its callee in a conditional, so expression depth
+    // would accumulate past Core's limit if it carried across calls. Core
+    // bounds call height separately, so this valid chain must lower.
+    let import = target_import();
+    let links = (0..80).map(|index| {
+        let next = index + 1;
+        format!(
+            "fn link{index}(warp: Bytes<exact=32>, from: Bytes<exact=32>, ty: Bytes<exact=32>) -> Bytes<exact=32> {{ return if true then link{next}(warp, from, ty) else from; }}\n"
+        )
+    });
+    let helpers = std::iter::once("fn link80(warp: Bytes<exact=32>, from: Bytes<exact=32>, ty: Bytes<exact=32>) -> Bytes<exact=32> { return echo.slotEdgeId(warp, from, ty); }\n".to_owned())
+        .chain(links)
+        .collect::<String>();
+    let text = format!(
+        "package app.chain@1;
+        {import}
+        {helpers}
+        type Input = {{ warp: Bytes<exact=32>, from: Bytes<exact=32>, ty: Bytes<exact=32>, }};
+        type Output = {{ edge: Bytes<exact=32>, }};
+        intent ids(input: Input) returns Output
+          profile p.read basis none budget <= p.small {{
+          let edge = link0(input.warp, input.from, input.ty);
+          return {{ edge }};
+        }}"
+    );
+    let core = compile_to_core(&parse_module(&text).unwrap(), &context(1_000_000)).unwrap();
+    let report = lower_to_target_ir(&core, &facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
 }

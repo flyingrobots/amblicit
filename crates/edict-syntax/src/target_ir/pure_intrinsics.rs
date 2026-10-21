@@ -216,7 +216,7 @@ impl<'a> Meter<'a> {
         let CoreExpr::Call { callee, args, .. } = expression else {
             return Some(children);
         };
-        children.checked_add(self.call(callee, args, available, depth)?)
+        children.checked_add(self.call(callee, args, available)?)
     }
 
     fn call(
@@ -224,7 +224,6 @@ impl<'a> Meter<'a> {
         callee: &'a str,
         args: &'a [CoreExpr],
         available: &BTreeMap<&str, &LocalRef>,
-        depth: usize,
     ) -> Option<u64> {
         let mut intrinsics = self
             .pure_functions
@@ -263,7 +262,10 @@ impl<'a> Meter<'a> {
         if let Some(steps) = self.functions.get(name.as_str()) {
             return Some(*steps);
         }
-        if self.visiting.contains(&name.as_str()) || depth > MAX_CORE_GRAPH_DEPTH {
+        // Core bounds call height and expression depth separately: a helper's
+        // body starts a fresh expression depth, and the call stack has its own
+        // limit.
+        if self.visiting.contains(&name.as_str()) || self.visiting.len() >= MAX_CORE_GRAPH_DEPTH {
             return None;
         }
         self.visiting.push(name);
@@ -273,10 +275,10 @@ impl<'a> Meter<'a> {
             .bindings
             .iter()
             .try_fold(0_u64, |steps, binding| {
-                steps.checked_add(self.expression(&binding.value, &scope, depth + 1)?)
+                steps.checked_add(self.expression(&binding.value, &scope, 0)?)
             })
             .and_then(|steps| {
-                steps.checked_add(self.expression(&function.body.result, &scope, depth + 1)?)
+                steps.checked_add(self.expression(&function.body.result, &scope, 0)?)
             });
         self.visiting.pop();
         let steps = steps?;
