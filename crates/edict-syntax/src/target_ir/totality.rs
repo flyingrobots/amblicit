@@ -36,7 +36,26 @@ fn block_is_total_at_depth(
     if depth > MAX_CORE_GRAPH_DEPTH {
         return false;
     }
-    block.nodes.iter().all(|node| match node {
+    // Proven bounds of earlier unsigned bindings extend the evaluation scope.
+    let mut derived: Vec<CorePredicate> = Vec::new();
+    block.nodes.iter().all(|node| {
+        let (total, limit) = {
+            let constraints = scope(constraints, &derived);
+            let limit = match node {
+                CoreNode::Let { binding, value } => {
+                    unsigned_addition::binding_limit(binding, value, &constraints)
+                }
+                _ => None,
+            };
+            (node_is_total(node, &constraints, depth), limit)
+        };
+        derived.extend(limit);
+        total
+    }) && expression_is_total_at_depth(&block.result, &scope(constraints, &derived), depth)
+}
+
+fn node_is_total(node: &CoreNode, constraints: &[&CorePredicate], depth: usize) -> bool {
+    match node {
         CoreNode::Let { value, .. } => expression_is_total_at_depth(value, constraints, depth),
         CoreNode::Require { predicate, arm } => {
             let (CoreRequireFailureArm::Terminal { reason }
@@ -86,7 +105,7 @@ fn block_is_total_at_depth(
                 && block_is_total_at_depth(then_block, constraints, depth + 1)
                 && block_is_total_at_depth(else_block, constraints, depth + 1)
         }
-    }) && expression_is_total_at_depth(&block.result, constraints, depth)
+    }
 }
 
 fn predicate_is_total(predicate: &CorePredicate, constraints: &[InputConstraint]) -> bool {
@@ -191,6 +210,31 @@ fn expression_is_total_at_depth(
             }
         }
     }
+}
+
+/// Pure function bindings evaluate in order; each sees the proven bounds of
+/// the unsigned bindings before it.
+pub(super) fn bindings_are_total<'a>(
+    bindings: impl IntoIterator<Item = (&'a crate::core_ir::LocalRef, &'a CoreExpr)>,
+    result: &CoreExpr,
+) -> bool {
+    let mut derived: Vec<CorePredicate> = Vec::new();
+    for (binding, value) in bindings {
+        let constraints = derived.iter().collect::<Vec<_>>();
+        if !expression_is_total_at_depth(value, &constraints, 0) {
+            return false;
+        }
+        let limit = unsigned_addition::binding_limit(binding, value, &constraints);
+        derived.extend(limit);
+    }
+    expression_is_total_at_depth(result, &derived.iter().collect::<Vec<_>>(), 0)
+}
+
+fn scope<'a>(
+    constraints: &[&'a CorePredicate],
+    derived: &'a [CorePredicate],
+) -> Vec<&'a CorePredicate> {
+    constraints.iter().copied().chain(derived).collect()
 }
 
 #[cfg(test)]

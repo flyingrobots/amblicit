@@ -2135,7 +2135,10 @@ The Edict Core prelude is intentionally small:
   U64 result, retaining the exact operand coordinate and the counted byte, both
   hash-significant. The result is at most `N`, and unsigned addition proofs use
   that bound, so `count(bytes, b"\n") + 1u64` is total for any `N` below the
-  U64 maximum. A direct scan adds `N` steps to the static bound, and a helper
+  U64 maximum. A proven unsigned bound travels with a `let` binding to later
+  statements of the same intent or function body, in both the compiler and
+  Target; it does not travel through helper results or record fields, so a
+  caller computes derived metrics such as `lineCount` beside the count. A direct scan adds `N` steps to the static bound, and a helper
   scan is charged once, exactly as for `isUtf8`. Compiler and Target support
   establish typing, authority and bounds, not runtime execution evidence.
 - `slice(bytes: Bytes<max=N>, start: U64, end: U64) -> Bytes<max=N>`

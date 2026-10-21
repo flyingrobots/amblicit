@@ -2759,6 +2759,7 @@ impl<'a> TypeChecker<'a> {
             return;
         };
         let local = next_local(&mut state.local_index, binding_shape.coord.clone());
+        self.record_binding_bound(&local, &value.expr);
         state.nodes.push(CoreNode::Let {
             binding: local.clone(),
             value: value.expr,

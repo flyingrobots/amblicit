@@ -2,7 +2,7 @@
 use super::{
     compatible, error, expr_span, is_bare_integer_literal, CompareOp, CompilerErrorKind,
     CompilerStage, CoreExpr, CorePredicate, CoreValue, EffectOutputExpectation, Expr,
-    LocalEnvironment, Span, TypeChecker, TypeKind, TypeShape, TypedValue,
+    LocalEnvironment, LocalRef, Span, TypeChecker, TypeKind, TypeShape, TypedValue,
 };
 
 pub(super) fn diagnostic_shape(left: &TypeShape, right: &TypeShape) -> Option<TypeShape> {
@@ -269,5 +269,31 @@ fn count_bound(type_args: &[String]) -> Option<u64> {
             ..
         }) => Some(max),
         _ => None,
+    }
+}
+
+impl TypeChecker<'_> {
+    /// A pure unsigned binding carries its proven upper bound into later
+    /// statements of the same body. Local identities are unique and
+    /// immutable, so the derived limit names exactly the bound value.
+    pub(super) fn record_binding_bound(&mut self, binding: &LocalRef, value: &CoreExpr) {
+        let max = match binding.ty.as_str() {
+            "U32" => u64::from(u32::MAX),
+            "U64" => u64::MAX,
+            _ => return,
+        };
+        let upper = upper_bound(value, &self.input_proof_constraints, max, 0);
+        if upper < max {
+            self.input_proof_constraints.push(CorePredicate::Compare {
+                op: CompareOp::Le,
+                left: CoreExpr::Local {
+                    reference: binding.clone(),
+                },
+                right: CoreExpr::Const(CoreValue::Int {
+                    width: binding.ty.clone(),
+                    value: upper.to_string(),
+                }),
+            });
+        }
     }
 }

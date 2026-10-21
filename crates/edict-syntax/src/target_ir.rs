@@ -1421,6 +1421,16 @@ fn validate_source_function_bodies(
             .iter()
             .map(|local| (local.id.as_str(), local))
             .collect::<BTreeMap<_, _>>();
+        if !totality::bindings_are_total(
+            function
+                .body
+                .bindings
+                .iter()
+                .map(|binding| (&binding.binding, &binding.value)),
+            &function.body.result,
+        ) {
+            return Some(invalid("binding has invalid type, authority, or totality"));
+        }
         for binding in &function.body.bindings {
             if !expression_fits_declared_type(
                 core,
@@ -1428,8 +1438,7 @@ fn validate_source_function_bodies(
                 &binding.value,
                 &binding.binding.ty,
                 &available,
-            ) || !totality::expression_is_total(&binding.value, &[])
-            {
+            ) {
                 return Some(invalid("binding has invalid type, authority, or totality"));
             }
             available.insert(binding.binding.id.as_str(), &binding.binding);
@@ -1440,8 +1449,7 @@ fn validate_source_function_bodies(
             &function.body.result,
             &function.return_type,
             &available,
-        ) || !totality::expression_is_total(&function.body.result, &[])
-        {
+        ) {
             return Some(invalid("result has invalid type, authority, or totality"));
         }
     }

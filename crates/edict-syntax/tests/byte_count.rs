@@ -362,3 +362,91 @@ fn target_independently_refuses_a_forged_overflowing_count_sum() {
     );
     assert!(report.artifact.is_none());
 }
+
+#[test]
+fn jims_line_metrics_compile_through_a_helper_fact_and_field_access() {
+    // Jim's path: bounded bytes -> helper -> fact construction -> field access
+    // -> Head.lineCount. The helper proves lineCount beside the count, where the
+    // count's local binding still carries its bound.
+    let text = "package count.path@1;
+        type Metrics = { lineBreaks: U64, lineCount: U64, };
+        fn measure(value: Bytes<max=1048576>) -> Metrics {
+          let lineBreaks = count(value, b\"\\n\");
+          let lineCount = lineBreaks + 1u64;
+          return { lineBreaks, lineCount };
+        }
+        type Input = { text: Bytes<max=1048576>, };
+        type Head = { lineCount: U64, };
+        intent head(input: Input) returns Head
+          profile p.read basis none budget <= p.small {
+          let fact = measure(input.text);
+          return { lineCount: fact.lineCount };
+        }";
+    let core = compile_to_core(&parse_module(text).unwrap(), &context()).expect("source proof");
+    let report = lower_to_target_ir(&core, &facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+}
+
+#[test]
+fn a_let_bound_count_keeps_its_bound_in_intent_bodies() {
+    let text = source("Bytes<max=1048576>", "count(input.bytes, b\"\\n\")", "U64").replace(
+        "return { lines };",
+        "let total: U64 = lines + 1u64; return { lines: total };",
+    );
+    let core = compile_to_core(&parse_module(&text).unwrap(), &context()).expect("source proof");
+    let report = lower_to_target_ir(&core, &facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+}
+
+#[test]
+fn target_refuses_a_forged_binding_bound() {
+    // Raise the addend by one past what the bound local proves.
+    let text = source("Bytes<max=1048576>", "count(input.bytes, b\"\\n\")", "U64").replace(
+        "return { lines };",
+        "let total: U64 = lines + 18446744073708503039u64; return { lines: total };",
+    );
+    let mut core = compile_to_core(&parse_module(&text).unwrap(), &context()).unwrap();
+    let CoreNode::Let {
+        value: CoreExpr::Call { args, .. },
+        ..
+    } = &mut core.intents.get_mut("measure").unwrap().body.nodes[1]
+    else {
+        panic!("sum")
+    };
+    args[1] = CoreExpr::Const(CoreValue::Int {
+        width: "U64".into(),
+        value: "18446744073708503040".into(),
+    });
+    let report = lower_to_target_ir(&core, &facts());
+    assert_eq!(
+        report.status,
+        TargetLoweringStatus::Unsupported,
+        "{report:?}"
+    );
+}
+
+#[test]
+fn a_count_read_back_through_a_record_field_has_no_bound() {
+    // Bounds travel with local bindings only, not through helper results or
+    // record fields; callers compute derived metrics beside the count.
+    let text = "package count.field@1;
+        type Metrics = { lineBreaks: U64, };
+        fn measure(value: Bytes<max=1048576>) -> Metrics {
+          return { lineBreaks: count(value, b\"\\n\") };
+        }
+        type Input = { text: Bytes<max=1048576>, };
+        type Head = { lineCount: U64, };
+        intent head(input: Input) returns Head
+          profile p.read basis none budget <= p.small {
+          let fact = measure(input.text);
+          let lineCount: U64 = fact.lineBreaks + 1u64;
+          return { lineCount };
+        }";
+    let errors = compile_to_core(&parse_module(text).unwrap(), &context()).unwrap_err();
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.kind == CompilerErrorKind::UnsupportedSourceShape),
+        "{errors:?}"
+    );
+}

@@ -114,3 +114,33 @@ fn bound(expr: &CoreExpr, max: u64, limits: &[(&CoreExpr, u64)], depth: usize) -
             .fold(structural, u64::min),
     )
 }
+
+/// A pure binding of unsigned width carries its proven upper bound to later
+/// evaluation in the same scope. Local identities are unique and immutable,
+/// so the derived limit names exactly the bound value.
+pub(super) fn binding_limit(
+    binding: &crate::core_ir::LocalRef,
+    value: &CoreExpr,
+    constraints: &[&CorePredicate],
+) -> Option<CorePredicate> {
+    let max = match binding.ty.as_str() {
+        "U32" => u64::from(u32::MAX),
+        "U64" => u64::MAX,
+        _ => return None,
+    };
+    let mut limits = Vec::new();
+    for constraint in constraints {
+        collect_limits(constraint, &mut limits);
+    }
+    let upper = bound(value, max, &limits, 0).filter(|upper| *upper < max)?;
+    Some(CorePredicate::Compare {
+        op: CompareOp::Le,
+        left: CoreExpr::Local {
+            reference: binding.clone(),
+        },
+        right: CoreExpr::Const(CoreValue::Int {
+            width: binding.ty.clone(),
+            value: upper.to_string(),
+        }),
+    })
+}

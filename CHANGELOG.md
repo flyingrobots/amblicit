@@ -12,6 +12,8 @@ versions still track specification maturity rather than a released product.
   over `Bytes<max=N>` with an exactly-one-byte literal needle, lowering to
   `core.bytes.count` with a U64 result bounded by `N`. Source and Target
   addition proofs use that bound, scans are charged once, and Target refuses
+  forged operands, needles and results. Proven unsigned bounds now travel with
+  `let` bindings in intent and function bodies, in both the compiler and Target.
   forged operands, needles and results. Runtime support remains separate.
 
 - Lower proven same-width U32/U64 sums to `core.integer.add` and independently

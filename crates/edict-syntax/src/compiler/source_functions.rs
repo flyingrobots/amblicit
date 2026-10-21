@@ -152,6 +152,7 @@ impl TypeChecker<'_> {
                         continue;
                     };
                     let local = next_local(&mut local_index, shape.coord.clone());
+                    self.record_binding_bound(&local, &value_checked.expr);
                     bindings.push(CorePureBinding {
                         binding: local.clone(),
                         value: value_checked.expr,
