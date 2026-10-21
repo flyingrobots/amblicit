@@ -10,6 +10,7 @@ mod byte_length;
 mod byte_slice;
 mod byte_utf8;
 pub(crate) mod execution_order;
+mod pure_intrinsics;
 mod totality;
 mod unsigned_addition;
 mod unsigned_subtraction;
@@ -30,6 +31,7 @@ use crate::core_ir::{
 use crate::digest_core_module;
 use crate::lowerability::{LowerabilityEffectStatus, LowerabilityReport, LowerabilityStatus};
 use crate::result_projection::emit_result_projection_with_closure;
+use crate::target_intrinsics::TargetPureIntrinsicFact;
 use crate::{ResultProjectionArtifact, ResultProjectionFailure};
 
 pub const ECHO_DPO_TARGET_PROFILE: &str = "echo.dpo@1";
@@ -110,6 +112,16 @@ pub struct TargetPureFunctionFact {
     parameter_types: Vec<String>,
     return_type: String,
     type_closure: BTreeMap<String, CoreType>,
+    /// Present for a pinned target-catalog intrinsic, whose `lawpack` is then
+    /// the target profile import rather than a lawpack.
+    intrinsic_cost: Option<IntrinsicCost>,
+}
+
+/// Linear cost rule of a pinned target pure intrinsic.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct IntrinsicCost {
+    pub(crate) base: u64,
+    pub(crate) per_argument_max: Vec<u64>,
 }
 
 impl TargetPureFunctionFact {
@@ -128,7 +140,30 @@ impl TargetPureFunctionFact {
             parameter_types,
             return_type,
             type_closure,
+            intrinsic_cost: None,
         }
+    }
+
+    pub(crate) fn from_target_pure_intrinsic(fact: &TargetPureIntrinsicFact) -> Self {
+        Self {
+            lawpack: fact.target().clone(),
+            coordinate: fact.coordinate().to_owned(),
+            type_parameters: Vec::new(),
+            parameter_types: fact.parameter_types().to_vec(),
+            return_type: fact.return_type().to_owned(),
+            type_closure: fact.provider_types().clone(),
+            intrinsic_cost: Some(IntrinsicCost {
+                base: fact.cost_base(),
+                per_argument_max: fact.cost_per_argument_max().to_vec(),
+            }),
+        }
+    }
+
+    /// Whether this is a pinned target-catalog intrinsic rather than a lawpack
+    /// helper.
+    #[must_use]
+    pub fn is_target_intrinsic(&self) -> bool {
+        self.intrinsic_cost.is_some()
     }
 
     /// Exact digest-locked lawpack that exported this helper.
@@ -220,6 +255,18 @@ pub struct TargetIrLoweringFacts {
 }
 
 impl TargetIrLoweringFacts {
+    /// Add admitted target-catalog pure intrinsics. Lowering refuses any whose
+    /// target is not exactly [`Self::target_profile`].
+    #[must_use]
+    pub fn with_target_pure_intrinsics(mut self, intrinsics: &[TargetPureIntrinsicFact]) -> Self {
+        self.pure_functions.extend(
+            intrinsics
+                .iter()
+                .map(TargetPureFunctionFact::from_target_pure_intrinsic),
+        );
+        self
+    }
+
     /// Build Target IR lowering facts from an accepted native lowerability report.
     ///
     /// # Errors
@@ -454,6 +501,9 @@ pub fn lower_to_target_ir(
         }
     };
     let core = validated_core.module();
+    if let Some(failure) = pure_intrinsics::foreign_target(facts) {
+        return unsupported(vec![failure]);
+    }
     let core_failures = validate_core_module(core, &facts.pure_functions, &facts.effect_signatures);
     if !core_failures.is_empty() {
         return unsupported(core_failures);
@@ -752,6 +802,13 @@ fn validate_pure_binding_graphs(
                     intent_name,
                     None,
                     "Core operation is not proven total in its evaluation scope",
+                ));
+            }
+            if !pure_intrinsics::intent_cost_fits(core, pure_functions, intent) {
+                return Some(invalid_pure_binding(
+                    intent_name,
+                    None,
+                    "target pure-intrinsic cost is unestablished or exceeds the step budget",
                 ));
             }
             if intent
@@ -1514,10 +1571,14 @@ fn validated_pure_function_fact<'a>(
         || !fact.type_parameters.is_empty()
         || !type_args.is_empty()
         || args.len() != fact.parameter_types.len()
-        || !core
-            .imports
-            .iter()
-            .any(|import| import.kind == CoreImportKind::Lawpack && import.resource == fact.lawpack)
+        || !core.imports.iter().any(|import| {
+            let kind = if fact.intrinsic_cost.is_some() {
+                CoreImportKind::Target
+            } else {
+                CoreImportKind::Lawpack
+            };
+            import.kind == kind && import.resource == fact.lawpack
+        })
         || !authenticated_named_type_closure_matches(
             core,
             &fact.lawpack,

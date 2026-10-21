@@ -307,3 +307,13 @@ it does not treat compiler Target IR as proof of runtime support.
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TIR-TP-088 | implemented | List literal boundary | TIR-REQ-058 | Excess elements, wrong element types, foreign locals and non-list binding types refuse InvalidCoreIdentity without artifact. | target_refuses_forged_list_literals, list_literal_preserves_order_and_lowers_to_core_list | crates/edict-syntax/tests/list_literal.rs | Runtime list evaluation is separate evidence. |
+
+## Target pure intrinsics
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| TIR-REQ-059 | implemented | Target resolves pure-intrinsic calls only against pinned facts for exactly the lowering target profile and a matching Core target import, rechecks arguments and results, and recomputes cost from bounds it establishes against the intent step budget. | EDICT-TARGET-PURE-INTRINSIC-001 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-089 | implemented | Pure intrinsic boundary | TIR-REQ-059 | Unknown coordinates, type arguments, wrong arity, unaccepted arguments, removed target imports, wrong result types, missing facts, facts for another profile, and budgets below the recomputed cost (including helper calls, and a conditional list argument charged by its larger branch), and intrinsic calls inside loop bodies, direct or through a helper, refuse InvalidCoreIdentity without artifact; a call on a branch-local operand is metered from that block's own bindings. | target_refuses_forged_intrinsic_calls, target_refuses_calls_without_matching_pinned_facts, target_recomputes_cost_and_refuses_a_forged_budget, target_bounds_a_conditional_list_by_its_larger_branch, source_functions_charge_intrinsic_calls, helper_cost_metering_keeps_expression_depth_per_function, source_functions_cannot_collide_with_admitted_intrinsics, target_refuses_intrinsic_calls_inside_loop_bodies, target_meters_intrinsic_calls_on_branch_local_operands | crates/edict-syntax/tests/target_pure_intrinsic.rs | Target lowers no branch or loop nodes yet; the loop refusal and branch-local metering are checked at the cost boundary. |

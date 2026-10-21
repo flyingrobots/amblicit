@@ -30,6 +30,7 @@ mod return_budget;
 mod signature_diagnostic;
 mod source_functions;
 mod source_types;
+mod target_pure_intrinsic;
 pub use signature_diagnostic::{
     EffectSignatureMismatch, SignatureMismatchPosition, SignaturePathSegment,
 };
@@ -38,6 +39,7 @@ mod unsigned_subtraction;
 
 use crate::lowerability::WriteClass;
 use crate::semantic::validate_surface;
+use crate::target_intrinsics::TargetPureIntrinsicFact;
 use crate::token::{IntSuffix, Span};
 
 /// Compiler stage that reported an error.
@@ -156,6 +158,7 @@ pub struct CompilerContext {
     source_type_origins: BTreeMap<String, SourceTypeOrigin>,
     bounds: BTreeMap<String, BoundFact>,
     budgets: BTreeMap<String, CoreBudget>,
+    target_pure_intrinsics: Vec<TargetPureIntrinsicFact>,
 }
 
 impl CompilerContext {
@@ -179,6 +182,10 @@ impl CompilerContext {
                 .effect_signatures
                 .values()
                 .any(|fact| fact.coordinate == coordinate)
+            || self
+                .target_pure_intrinsics
+                .iter()
+                .any(|fact| fact.coordinate() == coordinate)
     }
 
     #[must_use]
@@ -296,6 +303,14 @@ impl CompilerContext {
         self.budgets.insert(source_coordinate.into(), budget);
         self
     }
+
+    /// Make an admitted target pure intrinsic callable through any source
+    /// `use target` import that names exactly its pinned target profile.
+    #[must_use]
+    pub fn with_target_pure_intrinsic(mut self, fact: TargetPureIntrinsicFact) -> Self {
+        self.target_pure_intrinsics.push(fact);
+        self
+    }
 }
 
 /// Module after resolution of names and explicit context facts.
@@ -312,6 +327,10 @@ pub struct ResolvedModule {
     pub(crate) source_type_origins: BTreeMap<String, SourceTypeOrigin>,
     pub bounds: BTreeMap<String, BoundFact>,
     pub budgets: BTreeMap<String, CoreBudget>,
+    pub(crate) target_pure_intrinsics: BTreeMap<String, TargetPureIntrinsicFact>,
+    /// Coordinates of every admitted target pure intrinsic, imported or not,
+    /// which no source function may claim.
+    pub(crate) target_intrinsic_coordinates: BTreeSet<String>,
     pub types: Vec<ResolvedTypeDecl>,
     pub source_functions: Vec<FunctionDecl>,
     pub intents: Vec<ResolvedIntent>,
@@ -411,6 +430,7 @@ pub fn resolve_module(
     }
     let coordinate = package_coordinate(&module.package.path, &module.package.version);
     let imports = resolve_imports(&module.imports);
+    let target_pure_intrinsics = target_pure_intrinsics_by_source(&imports, context);
     let mut types = Vec::new();
     let mut intents = Vec::new();
     let mut source_functions = Vec::new();
@@ -450,6 +470,12 @@ pub fn resolve_module(
             source_type_origins: context.source_type_origins.clone(),
             bounds: context.bounds.clone(),
             budgets: context.budgets.clone(),
+            target_intrinsic_coordinates: context
+                .target_pure_intrinsics
+                .iter()
+                .map(|fact| fact.coordinate().to_owned())
+                .collect(),
+            target_pure_intrinsics,
             types,
             source_functions,
             intents,
@@ -529,6 +555,36 @@ fn resolve_imports(imports: &[Import]) -> Vec<CoreImport> {
             },
             alias: Some(import.alias.clone()),
         });
+    }
+    out
+}
+
+/// Source coordinates (`alias.name`) of target pure intrinsics reachable through
+/// a target import whose resource is exactly the intrinsic's pinned target.
+fn target_pure_intrinsics_by_source(
+    imports: &[CoreImport],
+    context: &CompilerContext,
+) -> BTreeMap<String, TargetPureIntrinsicFact> {
+    let mut out = BTreeMap::new();
+    for import in imports {
+        let Some(alias) = import.alias.as_deref() else {
+            continue;
+        };
+        if import.kind != CoreImportKind::Target {
+            continue;
+        }
+        for fact in &context.target_pure_intrinsics {
+            if fact.target() != &import.resource {
+                continue;
+            }
+            if let Some(name) = fact
+                .coordinate()
+                .strip_prefix(&import.resource.coordinate)
+                .and_then(|suffix| suffix.strip_prefix('.'))
+            {
+                out.insert(format!("{alias}.{name}"), fact.clone());
+            }
+        }
     }
     out
 }
@@ -951,6 +1007,7 @@ struct TypeChecker<'a> {
     function_signatures: BTreeMap<String, source_functions::Signature>,
     function_costs: BTreeMap<String, HelperCost>,
     source_expression_costs: BTreeMap<usize, HelperCost>,
+    target_pure_intrinsic_costs: BTreeMap<usize, HelperCost>,
     source_predicate_costs: BTreeMap<usize, HelperCost>,
     source_value_bounds: BTreeMap<usize, (u64, u64)>,
     /// Byte maximum of every operand coordinate a `count` call resolved, so the
@@ -977,6 +1034,7 @@ impl<'a> TypeChecker<'a> {
             function_signatures: BTreeMap::new(),
             function_costs: BTreeMap::new(),
             source_expression_costs: BTreeMap::new(),
+            target_pure_intrinsic_costs: BTreeMap::new(),
             source_predicate_costs: BTreeMap::new(),
             source_value_bounds: BTreeMap::new(),
             count_operand_maxima: BTreeMap::new(),
@@ -1275,6 +1333,7 @@ impl<'a> TypeChecker<'a> {
         self.input_proof_constraints.clear();
         self.local_bounds.clear();
         let recorded_costs = self.source_expression_costs.len();
+        let recorded_intrinsics = self.target_pure_intrinsic_costs.len();
         let source = &intent.source;
         if source.params.len() != 1 {
             self.errors.push(error(
@@ -1346,6 +1405,7 @@ impl<'a> TypeChecker<'a> {
         self.check_return_budget(intent, &output_shape)?;
         if !self.resolved.source_functions.is_empty()
             || self.source_expression_costs.len() > recorded_costs
+            || self.target_pure_intrinsic_costs.len() > recorded_intrinsics
         {
             self.check_helper_cost_budget(intent)?;
         }
@@ -1639,18 +1699,22 @@ impl<'a> TypeChecker<'a> {
             }
         }?;
         let span = expr_span(expr);
-        let own = self
-            .source_expression_costs
-            .get(&expression_identity(expr))
-            .copied()
-            .unwrap_or_default();
-        let predicate = self
-            .source_predicate_costs
-            .get(&expression_identity(expr))
-            .copied()
-            .unwrap_or_default();
-        let own = self.checked_helper_cost_add(own, predicate, span)?;
+        let own = self.recorded_own_cost(expr, span)?;
         self.checked_helper_cost_add(children, own, span)
+    }
+
+    /// Work recorded for this expression itself: its value, predicate and any
+    /// target pure-intrinsic call.
+    fn recorded_own_cost(&mut self, expr: &Expr, span: Span) -> Option<HelperCost> {
+        let key = expression_identity(expr);
+        let [own, predicate, intrinsic] = [
+            &self.source_expression_costs,
+            &self.source_predicate_costs,
+            &self.target_pure_intrinsic_costs,
+        ]
+        .map(|costs| costs.get(&key).copied().unwrap_or_default());
+        let own = self.checked_helper_cost_add(own, intrinsic, span)?;
+        self.checked_helper_cost_add(own, predicate, span)
     }
 
     fn helper_cost_for_exprs_at<'b, I>(&mut self, exprs: I, span: Span) -> Option<HelperCost>
@@ -4134,6 +4198,9 @@ impl<'a> TypeChecker<'a> {
                 }
                 Expr::Ident { name, .. } if name == "slice" => {
                     self.check_byte_slice(type_args, args, env, *span)
+                }
+                _ if self.target_pure_intrinsic(callee).is_some() => {
+                    self.check_target_pure_intrinsic(expr, env, expectation)
                 }
                 _ => self.check_pure_call(callee, type_args, args, env, expectation, *span),
             },

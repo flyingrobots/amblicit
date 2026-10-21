@@ -1,0 +1,42 @@
+; edict-target-pure-intrinsics.cddl
+; Intrinsic catalog v2: the v1 catalog plus complete contracts for pure
+; intrinsics that source programs call (EDICT-TARGET-PURE-INTRINSIC-001).
+; Assembled with edict-target-profile.cddl and edict-common.cddl; v1 catalogs
+; and the provider contract packs that embed them are unchanged.
+
+intrinsics-document-v2 = {
+  apiVersion: "edict.target-profile.intrinsics/v2",
+  intrinsics: { * tstr => intrinsic-v2 },
+  ; Provider-owned named types that pure-intrinsic signatures reference, keyed
+  ; by a coordinate below the profile id. Each value is a structural
+  ; `Record<...>` core-type-ref whose fields are structural types.
+  ? types: { * tstr => tstr },
+}
+
+intrinsic-v2 = pure-intrinsic-v2 / effect-intrinsic
+
+pure-intrinsic-v2 = {
+  intrinsicClass: "pure",
+  ; v2 pure contracts are monomorphic.
+  typeParameters: [],
+  ; Ceiling types: an operand of the same family with a narrower bound fits.
+  argumentTypes: [* core-type-ref],
+  returnType: core-type-ref,
+  guardSupport: false,
+  footprintTemplate: tstr,
+  costTemplate: tstr,
+  writeClass: "none",
+  ; Semantic version of the constructor's contract; consumers require an
+  ; exact version.
+  contractVersion: tstr,
+  costRule: pure-cost-rule,
+}
+
+; Steps for one call: base plus, for each argument, its coefficient times the
+; size bound the verified program establishes for that operand (a Bytes
+; maximum or a List element maximum). Only Bytes and List arguments may carry
+; a nonzero coefficient.
+pure-cost-rule = {
+  base: uint,
+  perArgumentMax: [* uint],
+}

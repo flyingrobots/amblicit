@@ -416,6 +416,29 @@ witnesses establish compiler behavior: the current Target lowerer still rejects
 a Core `for` node with `UnsupportedCoreNode` and emits no Target artifact.
 [CSPINE-REQ-023] [CSPINE-REQ-024] [CSPINE-REQ-025]
 
+## Target pure intrinsics
+
+A consumer admits target pure intrinsics with `admit_target_pure_intrinsics`:
+exactly the contracts it requires, at exact contract versions, from catalog
+bytes whose digest equals a pin the consumer supplies. Both the target and the
+catalog reference must be fully digest-locked. Unknown, effectful, generic or
+incomplete contracts, unresolved or foreign types at any depth, and provider
+records that are not structurally closed are refused. Admitted facts enter the
+compiler with `with_target_pure_intrinsic`.
+
+Source calls an admitted intrinsic as `alias.name(...)` only through an exact
+digest-locked `use target` import of the intrinsic's own profile; a missing,
+unpinned or different import leaves the call unresolved. The call lowers to a
+Core call on the canonical intrinsic coordinate with no type arguments. Argument
+types are ceilings: narrower operands of the same family are accepted and wider
+ones refused. Each call is charged `base + sum(coefficient * operandMax)` from
+the operand bounds the compiler established, a literal's own size or the larger
+branch of a conditional of literals, including inside source functions. A
+source function may not take an admitted intrinsic's coordinate. The compiler
+charges intrinsic calls inside loop bodies per iteration; Target lowering
+refuses them in v1. Admission refuses a required coordinate named twice.
+[CSPINE-REQ-058]
+
 ## Deferred
 
 The following are not implemented by this compiler-spine slice:
