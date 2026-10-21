@@ -434,8 +434,10 @@ types are ceilings: narrower operands of the same family are accepted and wider
 ones refused. Each call is charged `base + sum(coefficient * operandMax)` from
 the operand bounds the compiler established, a literal's own size or the larger
 branch of a conditional of literals, including inside source functions. A
-source function may not take an admitted intrinsic's coordinate, and intrinsic
-calls inside loop bodies refuse in v1. [CSPINE-REQ-058]
+source function may not take an admitted intrinsic's coordinate. The compiler
+charges intrinsic calls inside loop bodies per iteration; Target lowering
+refuses them in v1. Admission refuses a required coordinate named twice.
+[CSPINE-REQ-058]
 
 ## Deferred
 

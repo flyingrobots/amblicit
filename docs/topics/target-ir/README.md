@@ -383,7 +383,9 @@ Target accepts a call to a target pure intrinsic only against facts pinned to
 exactly the lowering target profile and a matching digest-locked target import,
 with the contract's arity, argument fit and result type. It recomputes each
 call's cost itself from operand bounds it establishes: a literal's size, the
-larger branch of a conditional, or the resolved type maximum. Helper calls are
+larger branch of a conditional, or the resolved type maximum. A nested block's own bindings are in scope for its calls, and an intrinsic
+call inside a loop body, direct or through a helper, is refused rather than
+charged once. Helper calls are
 charged to the calling intent, with each helper body metered from a fresh
 expression depth and call height bounded separately. Unknown coordinates, type
 arguments, wrong arity, unaccepted arguments, missing or foreign facts, a
