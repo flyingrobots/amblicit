@@ -368,6 +368,15 @@ The following are not implemented by this slice:
 
 The verification matrix is tracked in [test-plan.md](./test-plan.md).
 
+## List literal boundary
+
+A Core `list` expression fits its declared `List<T, max=N>` only when it has at
+most `N` elements and each element independently fits `T` with available
+authority. Target checks this without trusting the source compiler: excess
+elements, wrong element types, foreign locals and non-list binding types refuse
+with `InvalidCoreIdentity` and no artifact. These checks do not claim runtime
+list evaluation. [TIR-REQ-058]
+
 ## Byte-length boundary
 
 `core.bytes.length` accepts exactly one operand and one exact operand type
