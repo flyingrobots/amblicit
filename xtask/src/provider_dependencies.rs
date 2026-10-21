@@ -5,7 +5,7 @@ use std::process::Command;
 
 use serde_json::Value;
 
-const WASMTIME_VERSION: &str = "48.0.6";
+const WASMTIME_VERSION: &str = "48.0.7";
 
 pub(crate) fn provider_runtime_dependencies(root: &Path) -> Result<(), String> {
     let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());

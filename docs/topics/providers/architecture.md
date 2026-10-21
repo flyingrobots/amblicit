@@ -36,7 +36,7 @@ present.
 
 ## Engine And Store
 
-`ProviderComponentHost` owns one Wasmtime 48.0.6 engine. The configuration
+`ProviderComponentHost` owns one Wasmtime 48.0.7 engine. The configuration
 enables the component model and fuel, disables epochs, SIMD, relaxed SIMD, tail
 calls, memory64, multi-memory, and copy-on-write initialization, canonicalizes
 NaNs, and fixes the maximum Wasm stack. Epoch interruption is absent, so this

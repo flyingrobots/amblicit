@@ -2,7 +2,7 @@
 use edict_syntax::{
     compile_to_core, digest_core_module, lower_to_target_ir, parse_module, CompilerContext,
     CompilerErrorKind, CoreBudget, CoreExpr, CoreModule, CoreNode, CoreValue, ResourceRef,
-    TargetIrLoweringFacts, TargetLoweringFailureKind, TargetLoweringStatus,
+    TargetIrLoweringFacts, TargetLoweringFailureKind, TargetLoweringStatus, WriteClass,
 };
 
 const EDGE: &str = "type Edge = { edgeType: Bytes<exact=32>, target: Bytes<exact=32>, };";
@@ -237,10 +237,61 @@ fn source_functions_build_list_literals() {
 }
 
 #[test]
-fn effect_calls_are_rejected_inside_list_literals() {
-    let text = source("List<Edge, max=1>", "[target.read(input.a)]");
-    let errors = compile_to_core(&parse_module(&text).unwrap(), &context()).unwrap_err();
-    assert!(!errors.is_empty());
+fn authenticated_effects_are_rejected_inside_list_literals() {
+    // `target.replace` is a registered write effect under a profile that
+    // allows it, and compiles in A-normal position. Inside a list literal it is
+    // refused exactly as inside a record literal: as an unresolved pure call.
+    let context = CompilerContext::new()
+        .with_operation_profile("p.effectful", "continuum.profile.write/v1")
+        .with_operation_profile_write_classes("p.effectful", [WriteClass::Replace])
+        .with_effect_write_class("target.replace", WriteClass::Replace)
+        .with_budget(
+            "p.tiny",
+            CoreBudget {
+                max_steps: 1_000_000,
+                max_allocated_bytes: 1_000_000,
+                max_output_bytes: 1_000_000,
+            },
+        );
+    let effectful = |ty: &str, expression: &str| {
+        format!(
+            "package a.b@1; type Input = {{ id: String<max=16>, }};
+            type Receipt = {{ id: String<max=16>, }};
+            type Holder = {{ receipt: Receipt, }};
+            type Output = {{ id: String<max=16>, }};
+            intent t(input: Input) returns Output profile p.effectful basis none budget <= p.tiny {{
+              let value: {ty} = {expression};
+              return {{ id: input.id }};
+            }}"
+        )
+    };
+    let kinds = |text: String| {
+        compile_to_core(&parse_module(&text).unwrap(), &context)
+            .err()
+            .map(|errors| errors.iter().map(|error| error.kind).collect::<Vec<_>>())
+    };
+    assert_eq!(
+        kinds(effectful(
+            "Receipt",
+            "target.replace(input.id) else { rejected(reason) => domain.WriteRejected }",
+        )),
+        None,
+        "the effect itself is authenticated"
+    );
+    let nested = kinds(effectful(
+        "List<Receipt, max=1>",
+        "[target.replace(input.id)]",
+    ));
+    assert_eq!(
+        nested,
+        Some(vec![CompilerErrorKind::UnresolvedFunction]),
+        "an effect inside a list literal is refused"
+    );
+    assert_eq!(
+        nested,
+        kinds(effectful("Holder", "{ receipt: target.replace(input.id) }")),
+        "list literals refuse effects exactly as record literals do"
+    );
 }
 
 #[test]
@@ -295,4 +346,28 @@ fn target_refuses_forged_list_literals() {
             report.failures
         );
     }
+}
+
+#[test]
+fn a_list_literal_under_a_failed_call_reports_only_independent_errors() {
+    // The unknown helper already fails, so the literal's missing expected type
+    // is a consequence, not a second error. Its elements are still checked.
+    let text = source("List<Edge, max=2>", "[input.a]").replace(
+        "let edges: List<Edge, max=2> = [input.a];",
+        "let edges: List<Edge, max=2> = missing.helper([input.a]);",
+    );
+    let kinds = |text: &str| {
+        compile_to_core(&parse_module(text).unwrap(), &context())
+            .unwrap_err()
+            .iter()
+            .map(|error| error.kind)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(kinds(&text), [CompilerErrorKind::UnresolvedFunction]);
+    let element_error = text.replace("[input.a]", "[input.nope]");
+    let element_kinds = kinds(&element_error);
+    assert!(
+        element_kinds.contains(&CompilerErrorKind::UnresolvedFunction) && element_kinds.len() == 2,
+        "the unknown element field is still diagnosed: {element_kinds:?}"
+    );
 }

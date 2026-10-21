@@ -13,12 +13,20 @@ impl TypeChecker<'_> {
         span: Span,
     ) -> Option<TypedValue> {
         let Some(expected) = expected else {
-            self.errors.push(error(
-                CompilerStage::TypeCheck,
-                CompilerErrorKind::UnsupportedSourceShape,
-                "a list literal requires an expected List<T, max=N> type",
-                span,
-            ));
+            if self.expected_type_unavailable {
+                // An enclosing failure already explains the missing type; only
+                // the elements can still carry independent errors.
+                for element in items {
+                    self.check_expr(element, env);
+                }
+            } else {
+                self.errors.push(error(
+                    CompilerStage::TypeCheck,
+                    CompilerErrorKind::UnsupportedSourceShape,
+                    "a list literal requires an expected List<T, max=N> type",
+                    span,
+                ));
+            }
             return None;
         };
         let TypeKind::List { item, max } = &expected.kind else {

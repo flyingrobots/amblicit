@@ -180,3 +180,8 @@ component-model advisories. The 48.0.6 patch must clear `cargo deny check
 advisories` and preserve the existing provider invocation, isolation, budget,
 fixture, and dependency-closure tests. This is a dependency patch; no version-only
 unit test substitutes for the advisory scan and runtime witnesses.
+
+The October 21 advisories (RUSTSEC-2026-0378, a host-created stream lowered into
+a guest expecting another payload type, and RUSTSEC-2026-0379, an aarch64
+`br_table` jump) fail the same gate on 48.0.6. The 48.0.7 patch must clear it
+under the same conditions.
