@@ -37,6 +37,10 @@ impl TypeChecker<'_> {
                         .effect_signatures
                         .values()
                         .any(|fact| fact.coordinate == coordinate)
+                    || self
+                        .resolved
+                        .target_intrinsic_coordinates
+                        .contains(&coordinate)
                 {
                     self.errors.push(error(
                         CompilerStage::Resolve,

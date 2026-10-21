@@ -842,3 +842,57 @@ fn helper_cost_metering_keeps_expression_depth_per_function() {
     let report = lower_to_target_ir(&core, &facts());
     assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
 }
+
+/// A module in the target's own namespace declaring a helper whose coordinate
+/// is an admitted intrinsic's.
+fn colliding_module() -> String {
+    let import = target_import();
+    format!(
+        "package echo.dpo@1;
+        {import}
+        fn slotEdgeId(warp: Bytes<exact=32>, from: Bytes<exact=32>, ty: Bytes<exact=32>) -> Bytes<exact=32> {{
+          return from;
+        }}
+        type Input = {{ warp: Bytes<exact=32>, from: Bytes<exact=32>, ty: Bytes<exact=32>, }};
+        type Output = {{ edge: Bytes<exact=32>, }};
+        intent ids(input: Input) returns Output
+          profile p.read basis none budget <= p.small {{
+          let edge = echo.slotEdgeId(input.warp, input.from, input.ty);
+          return {{ edge }};
+        }}"
+    )
+}
+
+#[test]
+fn source_functions_cannot_collide_with_admitted_intrinsics() {
+    let errors = compile_to_core(
+        &parse_module(&colliding_module()).unwrap(),
+        &context(1_000_000),
+    )
+    .unwrap_err();
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.kind == CompilerErrorKind::UnresolvedFunction),
+        "{errors:?}"
+    );
+}
+
+#[test]
+fn linked_source_functions_cannot_collide_with_admitted_intrinsics() {
+    let source = colliding_module();
+    let closure = edict_syntax::source_closure::resolve_source_closure(
+        &source,
+        &[],
+        edict_syntax::source_closure::SourceClosureLimits::default(),
+    )
+    .unwrap();
+    let linked = edict_syntax::source_linker::link_source_closure(&closure).unwrap();
+    let failures = linked.compile(&context(1_000_000)).unwrap_err();
+    assert!(
+        failures
+            .iter()
+            .any(|failure| failure.error.kind == CompilerErrorKind::UnresolvedFunction),
+        "{failures:?}"
+    );
+}

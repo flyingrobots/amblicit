@@ -181,6 +181,10 @@ impl CompilerContext {
                 .effect_signatures
                 .values()
                 .any(|fact| fact.coordinate == coordinate)
+            || self
+                .target_pure_intrinsics
+                .iter()
+                .any(|fact| fact.coordinate() == coordinate)
     }
 
     #[must_use]
@@ -323,6 +327,9 @@ pub struct ResolvedModule {
     pub bounds: BTreeMap<String, BoundFact>,
     pub budgets: BTreeMap<String, CoreBudget>,
     pub(crate) target_pure_intrinsics: BTreeMap<String, TargetPureIntrinsicFact>,
+    /// Coordinates of every admitted target pure intrinsic, imported or not,
+    /// which no source function may claim.
+    pub(crate) target_intrinsic_coordinates: BTreeSet<String>,
     pub types: Vec<ResolvedTypeDecl>,
     pub source_functions: Vec<FunctionDecl>,
     pub intents: Vec<ResolvedIntent>,
@@ -462,6 +469,11 @@ pub fn resolve_module(
             source_type_origins: context.source_type_origins.clone(),
             bounds: context.bounds.clone(),
             budgets: context.budgets.clone(),
+            target_intrinsic_coordinates: context
+                .target_pure_intrinsics
+                .iter()
+                .map(|fact| fact.coordinate().to_owned())
+                .collect(),
             target_pure_intrinsics,
             types,
             source_functions,
