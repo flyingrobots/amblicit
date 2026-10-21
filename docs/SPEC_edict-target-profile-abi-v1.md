@@ -249,6 +249,8 @@ plan constructors) are `pure`: they produce inert, canonical, hashable plan
 terms and carry no effect kind. Only an `effect` intrinsic carries an effect
 kind and failure classes (`EDICT-TARGET-INTRINSIC-CLASS-001`).
 
+A `pure` intrinsic that source programs call is published in an `edict.target-profile.intrinsics/v2` catalog (`docs/abi/edict-target-pure-intrinsics.cddl`), where it additionally declares a `contractVersion` and a linear `costRule`, and the catalog publishes every provider-owned named type its signature reaches in an optional `types` map of structural `Record<...>` definitions below the profile id (`EDICT-TARGET-PURE-INTRINSIC-001`). v1 catalogs, and the provider contract packs that embed the v1 schema, are unchanged. Argument types are ceilings: an operand of the same family with a narrower bound is accepted, so a byte string shorter than the ceiling or a list with fewer elements fits. A call costs `base` plus, for each argument, its `perArgumentMax` coefficient times the size bound the verified program establishes for that operand: a literal's actual size, otherwise the operand type's byte or element maximum. Only `Bytes` and `List` arguments may carry a nonzero coefficient, and cost arithmetic refuses overflow. A consumer admits exactly the pure contracts it requires, at exact contract versions, from catalog bytes whose digest equals a pin the consumer already trusts; a catalog never authenticates itself. Unknown, unpinned, effectful, mismatched or incomplete contracts are refused, and generic pure contracts are outside v1.
+
 Each target intrinsic must declare:
 
 - canonical coordinate;

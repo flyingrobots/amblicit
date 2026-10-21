@@ -513,3 +513,13 @@ CSPINE-REQ-054 remains planned. The implemented rows establish their named fixtu
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | CSPINE-TP-179 | implemented | List literal typing | CSPINE-REQ-057 | Empty, partial and full literals lower in order with duplicates kept; excess cardinality, wrong items, non-list and missing expected types reject; literals flow into records, returns, loop sources and helper results; effect calls inside literals reject. | list_literal_preserves_order_and_lowers_to_core_list, list_literal_accepts_empty_partial_and_full_cardinality, list_literal_elements_are_checked_against_the_item_type, list_literal_rejects_excess_cardinality_wrong_items_and_missing_context, list_literals_flow_into_records_returns_and_loops, source_functions_build_list_literals, effect_calls_are_rejected_inside_list_literals | crates/edict-syntax/tests/list_literal.rs | Target lowering of loops remains separate work. |
+
+## Target pure intrinsics
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| CSPINE-REQ-058 | implemented | Source calls admitted target pure intrinsics through an exact digest-locked target import, accepts narrower operands than the ceiling types, and charges each call from the operand bounds it established, including inside source functions. | EDICT-TARGET-PURE-INTRINSIC-001 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-180 | implemented | Pinned pure intrinsics | CSPINE-REQ-058 | Contracts admit only at exact versions from bytes matching a trusted pin; calls lower to the canonical coordinate; narrower operands fit and wider ones, excess edges, generics, unknown names and unmatched imports reject; cost follows the established operand bounds directly and inside helpers. | admission_returns_exactly_the_required_pinned_contracts, admission_fails_closed_on_pins, admission_fails_closed_on_unknown_or_mismatched_contracts, an_effect_intrinsic_cannot_be_admitted_as_pure, source_calls_lower_to_the_pinned_coordinate_and_target_accepts_them, narrower_operands_are_accepted_and_wider_ones_rejected, calls_require_an_explicit_matching_target_import, source_charges_the_established_operand_bounds, source_functions_charge_intrinsic_calls | crates/edict-syntax/tests/target_pure_intrinsic.rs | The fixture contract mirrors Echo's identity constructors; runtime evaluation is separate evidence. |

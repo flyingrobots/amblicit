@@ -100,7 +100,8 @@ The current specification set is:
   intrinsic signatures, effect signatures, target lowering, application model,
   verifier ABI, footprint algebra, and cost algebra. Canonical schemas live in
   [`abi/`](./abi/) (`edict-target-profile.cddl`,
-  `edict-authority-facts.cddl`, `edict-target-provider.wit`).
+  `edict-target-pure-intrinsics.cddl`, `edict-authority-facts.cddl`,
+  `edict-target-provider.wit`).
 - [SPEC - Continuum Contract Bundle v1](./SPEC_continuum-contract-bundle-v1.md):
   participant-neutral contract bundle identity, artifact graph, provenance
   references, canonical CBOR/hash framing, and attestation roles.

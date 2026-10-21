@@ -90,6 +90,7 @@ pub mod result_projection;
 pub mod semantic;
 pub mod source_closure;
 pub mod source_linker;
+pub mod target_intrinsics;
 pub mod target_ir;
 pub mod target_profile;
 pub mod target_profile_contract_resources;
@@ -231,6 +232,11 @@ pub use result_projection::{
     RESULT_PROJECTION_DIGEST_DOMAIN,
 };
 pub use semantic::{validate_module, validate_surface, SemanticError, SemanticErrorKind};
+pub use target_intrinsics::{
+    admit_target_pure_intrinsics, digest_target_intrinsics_catalog, RequiredPureIntrinsic,
+    TargetPureIntrinsicFact, TargetPureIntrinsicFailure, TargetPureIntrinsicFailureKind,
+    TARGET_INTRINSICS_API_VERSION,
+};
 pub use target_ir::{
     lower_to_target_ir, TargetEffectLowering, TargetEffectSignatureFact, TargetIrArtifact,
     TargetIrExternalActionRequest, TargetIrIntent, TargetIrLoweringFacts, TargetIrPureBinding,

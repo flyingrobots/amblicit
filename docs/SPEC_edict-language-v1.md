@@ -1934,6 +1934,8 @@ hashable plan constructors whose `intrinsicClass` is `pure` and `writeClass` is
 pure constructor allocates no runtime handle and observes no state; it only
 produces a canonical plan term.
 
+Source calls an admitted pure intrinsic as `alias.name(args)` through an explicit, digest-locked target import, `use target echo.dpo@1 digest "sha256:..." as echo;`, whose resource equals the intrinsic's pinned target profile; the call lowers to a Core call whose callee is the intrinsic's canonical coordinate, with no type arguments (`EDICT-TARGET-PURE-INTRINSIC-001`). Each argument is checked against the contract's ceiling type and may be narrower. The compiler charges the call from the operand bounds it established, and Target independently resolves the call against the same pinned facts, rechecks every argument and the return type, recomputes the cost from bounds it establishes itself, and refuses an intent whose intrinsic work exceeds its step budget. An intrinsic call inside a loop body is refused by Target in v1. Computing a value with a pure intrinsic grants no authority to publish or mutate anything.
+
 Pure expressions may not:
 
 - call target/lawpack **effect** intrinsics (any `intrinsicClass: effect`) or

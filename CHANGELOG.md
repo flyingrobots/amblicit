@@ -8,6 +8,17 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Admit target-catalog pure intrinsics: `admit_target_pure_intrinsics` accepts
+  exactly the required contracts, at exact versions, from catalog bytes that
+  match a trusted pin, and refuses unknown, effectful, incomplete or mismatched
+  contracts. Source calls them as `alias.name(...)` through an exact
+  digest-locked `use target` import; arguments are ceilings that accept narrower
+  operands, and the compiler and Target each charge calls from operand bounds
+  they establish. A new `edict.target-profile.intrinsics/v2` catalog
+  (`docs/abi/edict-target-pure-intrinsics.cddl`) adds `contractVersion`,
+  `costRule` and provider `types`; v1 catalogs and published provider contract
+  packs are unchanged.
+
 - Add bounded list literals `[a, b]`, typed against an expected
   `List<T, max=N>` and lowered to Core `list` expressions. Order and duplicates
   are preserved; excess cardinality, wrong items and missing context reject, and
