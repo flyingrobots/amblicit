@@ -347,3 +347,27 @@ fn target_refuses_forged_list_literals() {
         );
     }
 }
+
+#[test]
+fn a_list_literal_under_a_failed_call_reports_only_independent_errors() {
+    // The unknown helper already fails, so the literal's missing expected type
+    // is a consequence, not a second error. Its elements are still checked.
+    let text = source("List<Edge, max=2>", "[input.a]").replace(
+        "let edges: List<Edge, max=2> = [input.a];",
+        "let edges: List<Edge, max=2> = missing.helper([input.a]);",
+    );
+    let kinds = |text: &str| {
+        compile_to_core(&parse_module(text).unwrap(), &context())
+            .unwrap_err()
+            .iter()
+            .map(|error| error.kind)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(kinds(&text), [CompilerErrorKind::UnresolvedFunction]);
+    let element_error = text.replace("[input.a]", "[input.nope]");
+    let element_kinds = kinds(&element_error);
+    assert!(
+        element_kinds.contains(&CompilerErrorKind::UnresolvedFunction) && element_kinds.len() == 2,
+        "the unknown element field is still diagnosed: {element_kinds:?}"
+    );
+}
