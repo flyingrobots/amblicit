@@ -20,11 +20,14 @@ The current target IR implementation is deliberately narrow:
 
 - selected target profile: `echo.dpo@1` or `gitwarp.ref_crdt@1`;
 - selected Target IR artifact domain: `echo.span-ir/v1`, explicitly ordered
-  `echo.span-ir/v2`, or
+  `echo.span-ir/v2`, explicitly structured `echo.span-ir/v3`, or
   `gitwarp.commit-reducer-ir/v1`;
 - selected source/Core shape: source-ordered pure `let` bindings, the first
   supported effectful Core effect node, Echo `require` guard requirements, and
-  typed external-action request data;
+  typed external-action request data; under the explicitly selected
+  `echo.span-ir/v3` domain only, also bounded `for` loops over a Core `List`
+  and statement-only branches (external-action requests refuse under
+  `echo.span-ir/v2` and `echo.span-ir/v3`);
 - selected outcome: a deterministic target-owned review artifact with canonical
   `edict.canonical-cbor/v1` bytes and a reviewed
   `edict.target-ir.artifact/v1` digest;
@@ -179,6 +182,125 @@ refuses at Target lowering; an experimental v2 selection reaches the pinned
 old Echo provider's schema gate and refuses before provider execution or
 package publication. It does not repin Jim or claim a released Echo v2 target
 contract. [TIR-REQ-050]
+
+## Structured control flow
+
+`echo.span-ir/v3` under `echo.dpo@1` extends the v2 execution order with
+bounded `for` loops over a Core `List` and statement-only branches. It uses
+`kind: "structuredTargetIrArtifact"` and requires `executionOrder` on every
+intent. The order is a tree: an instruction entry is the text id of a pure
+binding, step or requirement in the existing tables; a control entry is a map.
+[TIR-REQ-060]
+
+This section owns the implemented v3 canonical-format decisions. They refine
+the v2 execution order and the language's bounded-loop and structured-control
+rules without replacing either.
+
+| Relationship | Targets |
+| --- | --- |
+| `refines` | [TIR-REQ-050](#explicit-ordered-execution), [EDICT-LANG-LOOP-001](../../SPEC_edict-language-v1.md#loops), [I-016](../../SPEC_edict-language-v1.md#i-016-structured-control-flow-and-bounds) |
+| `supersedes` | none |
+| `depends_on` | [Core IR contract](../core-ir/README.md#current-contract), [Target IR schema](../../abi/edict-target-ir.cddl) |
+| `related` | [TIR-REQ-060](./test-plan.md#structured-control-flow-267), [Provider contract publication](../providers/README.md#current-contract), [Result projections](../result-projections/README.md#current-contract) |
+
+The example below is abridged and is not valid JSON. The `{...}` placeholders
+replace two Core values: `binder` is a Core `local-ref` and `iterable` is a Core
+`core-expr`, encoded as `docs/abi/edict-target-ir.cddl` defines them.
+
+```text
+{"executionOrder": [
+  {"kind": "for", "id": "t.for.0", "binder": {...}, "iterable": {...},
+   "bound": {"kind": "literal", "value": 4}, "body": ["t.step.0"]}
+]}
+```
+
+A `for` entry carries the Core binder, iterable and bound exactly; a `branch`
+entry carries the Core predicate and `then`/`else` entry arrays. Control ids are
+`<intent>.for.<n>` and `<intent>.branch.<n>`, numbered per kind in source
+pre-order; instruction ids continue the intent tables, so a loop body's effect
+appears once in `steps` however many elements the loop visits. The Core
+evaluation budget is copied unchanged and no effective cardinality is derived,
+following spec invariant I-016. [TIR-REQ-060]
+
+The iterable is evaluated once at loop entry in the enclosing scope. The binder
+is in scope only in the body. Locals a body introduces are available to later
+entries of the same body, are fresh per iteration, and are not visible after
+the loop. A branch predicate is evaluated in the enclosing scope and each arm
+has its own scope. Obstruction-arm binders stay scoped to their arm, as in v2.
+[TIR-REQ-060]
+
+Core-to-Target validation covers nested blocks under v3: types, closed
+authority, block local tables, unique identities across the intent, binder
+identity, obstruction-binder freshness (an arm binder may not reuse the input,
+a visible local, a loop binder or any identity already introduced in the
+intent, and is itself recorded intent-wide so no sibling arm, later loop binder
+or producer reuses it, while references to it stay scoped to its arm), iterable
+shape (a list whose items fit the binder, with a literal bound no smaller than
+its maximum), totality and intrinsic cost; a reused obstruction binder has the
+stable detail `obstruction_binder_not_fresh`. Failures are
+`InvalidCoreIdentity` with no artifact. The canonical encoder independently
+requires every table instruction exactly once in the whole tree, nonempty
+unique control ids disjoint from instruction ids, loop binders, obstruction
+binders and producer bindings that are each introduced once across the whole v3
+intent, and scoped producer-before-consumer references; it refuses with
+`CanonicalErrorKind::UnsupportedValue`. [TIR-REQ-060]
+
+Lowering encodes a v3 artifact before returning it and never reports
+`Lowered` for one its own encoder refuses. Each control level adds a map and an
+array of canonical nesting, so the wire limit `MAX_CANONICAL_NESTING_DEPTH`
+(128) is reached long before the Core graph depth; that refusal is
+`UnsupportedCoreNode` detail `canonical_nesting_depth`. Any other encoder
+refusal would be a validation gap and refuses as `InvalidCoreIdentity` detail
+`structured_artifact_unencodable`. Both name the first such intent and return
+no artifact. For
+a closure-free intent whose innermost block is empty, 62 nested statement
+branches with a `true` predicate or 61 nested loops over a field of the input
+are the deepest that lower. When a semantic closure requires the Core module
+digest, a Core module too deep to encode refuses earlier, with
+`InvalidCoreIdentity`. An `all` or `any`
+with no values anywhere in a v3 intent (a branch or requirement predicate, a
+loop iterable, or any other expression that carries a predicate, such as an
+`if`) violates the Core schema: v3 lowering refuses it with
+`InvalidCoreIdentity` detail `empty_predicate_aggregate`, and the v3 encoder
+refuses it with `UnsupportedValue`. v1 and v2 encoding is unchanged. Under v3,
+an ordered comparison (`<`, `<=`, `>`, `>=`) anywhere in an intent must compare
+integers, per the closed operator set: lowering resolves both operand types and
+refuses any other pairing with `InvalidCoreIdentity` detail
+`inadmissible_comparison_operator`. Under v3 the same rule applies to every
+source function in the module, each judged in its own scope, so a helper
+reached directly or through another helper cannot carry one. The v3 encoder has
+no type table, so it refuses an ordered comparison only when an operand is
+provably non-integer from the artifact itself (a non-integer constant, a record
+or list, or a local of a builtin non-integer type), with `UnsupportedValue`.
+Both walks bound operand classification by the canonical nesting depth and run
+their depth-guarded traversal first. [TIR-REQ-060]
+
+Value-yielding branches refuse with `UnsupportedCoreNode` detail
+`branch_binding`; a loop body or arm whose Core block result is not null refuses
+with `control_block_result`; external-action requests refuse with
+`ordered_external_action_request`, as under v2. A loop whose bound is a
+coordinate refuses with `coordinate_loop_bound` at any nesting depth: Target
+has no authenticated constant values, so it cannot prove that the coordinate's
+value covers the iterable maximum and fails closed until such evidence exists.
+The v3 encoder independently refuses a `for` entry with a coordinate bound
+(`UnsupportedValue`), and the current provider contract publication admits only
+a literal `bound`. Literal bounds are unaffected. v1 and v2 still refuse `For` and `Branch` with
+details `for` and `branch`, keep their exact bytes, and the v2 encoder refuses
+control entries. [TIR-REQ-060]
+
+Selection is explicit through the same paths as v2. The current provider
+contract publication adds the v3 schema root, and its phased
+`targetIrArtifact` shapes refuse the `echo.span-ir/v2` and `echo.span-ir/v3`
+domains, so an ordered or structured document cannot drop its required
+`executionOrder` by claiming the phased kind. Prior publications are
+unchanged, including their unrestricted phased domain.
+Result projections still refuse intents with structured control
+(`CoreTargetMismatch`), so the public application-build route cannot yet admit
+a v3 intent. Echo's provider checks the Target IR domain exactly and refuses
+v3; this is compiler evidence only, with no runtime loop or branch execution.
+Issue #267 asks that the loop bound be charged against an effect budget; Edict
+declares no effect budget today (`targetBudget` is unimplemented), so the bound
+is preserved as Core data and the Core step budget is unchanged. [TIR-REQ-060]
 
 ## Shared expression and identity validation
 
@@ -340,14 +462,19 @@ Supplying unsupported Core capability flags rejects with
 outside the supported pure binding, effect, external-request, and Echo
 requirement shapes
 rejects with
-`TargetLoweringFailureKind::UnsupportedCoreNode`. Supplying a target-specific
+`TargetLoweringFailureKind::UnsupportedCoreNode`. Under `echo.span-ir/v3`, bounded
+`for` loops and statement-only branches are also supported shapes, and
+external-request nodes reject as they do under `echo.span-ir/v2`. Supplying a target-specific
 Core feature that the selected target does not support rejects with
 `TargetLoweringFailureKind::UnsupportedTargetFeature`. Missing or ambiguous
 effect lowering facts, non-Echo target intrinsics, missing operation-profile
 support, and obstruction keys absent from the selected target facts also reject
 before any artifact is emitted. A Core intent with no target-owned pure bindings,
 requirements, steps, or external requests, or a Core module with no intents, rejects with
-`TargetLoweringFailureKind::NoTargetSteps`. Duplicate target-lowering facts are
+`TargetLoweringFailureKind::NoTargetSteps`. Under `echo.span-ir/v3` this holds
+for the whole order tree: an intent whose loops and branches contain no
+instruction (for example only an empty branch or an empty loop) refuses with
+`NoTargetSteps`, and the v3 encoder refuses an intent with no instruction. Duplicate target-lowering facts are
 ambiguous only when they match an effect used by the Core module being lowered;
 unrelated duplicate facts do not block the supported artifact.
 
@@ -364,7 +491,10 @@ The following are not implemented by this slice:
 - Echo runtime receipts for first-class resumable obstruction strands;
 - Echo request admission, adapter execution, and settlement resumption;
 - additional target profiles beyond Echo and git-warp;
-- v2 chained or composite adapter resolution.
+- v2 chained or composite adapter resolution;
+- result projections and application builds for structured v3 intents;
+- value-yielding branches, `Map` iteration, and an effect budget charged by
+  loop bounds.
 
 The verification matrix is tracked in [test-plan.md](./test-plan.md).
 
@@ -385,7 +515,8 @@ with the contract's arity, argument fit and result type. It recomputes each
 call's cost itself from operand bounds it establishes: a literal's size, the
 larger branch of a conditional, or the resolved type maximum. A nested block's own bindings are in scope for its calls, and an intrinsic
 call inside a loop body, direct or through a helper, is refused rather than
-charged once. Helper calls are
+charged once. The refusal is judged by the call's presence, not its cost, so an
+admitted intrinsic whose cost rule is zero is refused there too. Helper calls are
 charged to the calling intent, with each helper body metered from a fresh
 expression depth and call height bounded separately. Unknown coordinates, type
 arguments, wrong arity, unaccepted arguments, missing or foreign facts, a

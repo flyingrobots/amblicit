@@ -12,7 +12,8 @@ use edict_syntax::{
     ContractBundleAssemblyInput, ContractBundleSourceArtifact, CoreBudget, DigestLockedResource,
     ResourceRef, SuppliedTargetIrResource, TargetEffectLowering, TargetIrArtifact,
     TargetIrLoweringFacts, WriteClass, ECHO_DPO_TARGET_PROFILE, ECHO_SPAN_IR_DOMAIN,
-    GITWARP_COMMIT_REDUCER_IR_DOMAIN, GITWARP_REF_CRDT_TARGET_PROFILE,
+    ECHO_STRUCTURED_SPAN_IR_DOMAIN, GITWARP_COMMIT_REDUCER_IR_DOMAIN,
+    GITWARP_REF_CRDT_TARGET_PROFILE,
 };
 
 use crate::util::{dirs, read_to_string, run_cmd};
@@ -218,6 +219,7 @@ enum TargetIrGoldenKind {
     Echo,
     Gitwarp,
     ExternalRequest,
+    EchoStructuredLoop,
 }
 
 #[derive(Debug)]
@@ -242,6 +244,11 @@ const TARGET_IR_GOLDEN_CASES: &[TargetIrGoldenCase] = &[
         kind: TargetIrGoldenKind::ExternalRequest,
         bytes: "fixtures/target-ir/canonical/workspace-snapshot.target-ir.cbor",
         digest: "fixtures/target-ir/canonical/workspace-snapshot.target-ir.sha256",
+    },
+    TargetIrGoldenCase {
+        kind: TargetIrGoldenKind::EchoStructuredLoop,
+        bytes: "fixtures/target-ir/canonical/echo-structured-loop.target-ir.cbor",
+        digest: "fixtures/target-ir/canonical/echo-structured-loop.target-ir.sha256",
     },
 ];
 
@@ -270,6 +277,23 @@ const TARGET_IR_GITWARP_SOURCE: &str = "package a.git@1;\n\
       let receipt: Receipt = gitwarp.appendEvent(input.id)\n\
         else { conflict(reason) => domain.MergeConflict };\n\
       return { id: receipt.id };\n\
+    }";
+
+/// One effect per element of a bounded list, as in Jim's `ReplaceRange`.
+const TARGET_IR_ECHO_STRUCTURED_LOOP_SOURCE: &str = "package a.b@1;\n\
+    type Leaf = { id: String<max=16>, };\n\
+    type Input = { id: String<max=16>, leaves: List<Leaf, max=4>, };\n\
+    type Receipt = { id: String<max=16>, };\n\
+    type Output = { id: String<max=16>, };\n\
+    intent t(input: Input) returns Output\n\
+      profile p.effectful\n\
+      basis none\n\
+      budget <= p.loop {\n\
+      for leaf in input.leaves bounded 4 {\n\
+        let receipt: Receipt = target.replace(leaf.id)\n\
+          else { rejected(reason) => domain.WriteRejected };\n\
+      }\n\
+      return { id: input.id };\n\
     }";
 
 const TARGET_IR_EXTERNAL_REQUEST_SOURCE: &str =
@@ -331,6 +355,21 @@ fn target_ir_golden_artifact(case: &TargetIrGoldenCase) -> Result<TargetIrArtifa
             TARGET_IR_EXTERNAL_REQUEST_SOURCE,
             target_ir_external_request_context(),
             target_ir_external_request_facts(),
+        ),
+        TargetIrGoldenKind::EchoStructuredLoop => (
+            TARGET_IR_ECHO_STRUCTURED_LOOP_SOURCE,
+            target_ir_echo_context().with_budget(
+                "p.loop",
+                CoreBudget {
+                    max_steps: 64,
+                    max_allocated_bytes: 4096,
+                    max_output_bytes: 256,
+                },
+            ),
+            TargetIrLoweringFacts {
+                target_ir_domain: ECHO_STRUCTURED_SPAN_IR_DOMAIN.to_owned(),
+                ..target_ir_echo_facts()
+            },
         ),
     };
     let module = parse_module(source)

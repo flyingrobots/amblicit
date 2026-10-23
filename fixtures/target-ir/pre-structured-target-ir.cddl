@@ -1,0 +1,142 @@
+; SPDX-License-Identifier: Apache-2.0
+; edict-target-ir.cddl
+; Canonical schema for the Edict-owned Target IR artifact envelope.
+; Authoritative byte encoding: edict.canonical-cbor/v1.
+;
+; This schema is assembled with edict-common.cddl and edict-core.cddl. It
+; deliberately reuses Core expressions, predicates, budgets, local references,
+; obstruction reasons, and obstruction arms so the schema matches the value
+; emitted by the canonical Target IR encoder rather than restating those types.
+; It describes the structural shape of valid lowering-produced artifacts. The
+; lowering and encoder contracts separately enforce semantic identifier rules
+; and canonical ordering/deduplication for set-like values.
+
+; Target IR encoding rejects an empty target-profile coordinate before bytes
+; exist, so this root tightens the shared structural resource-ref accordingly.
+target-ir-resource-ref = {
+  id: tstr .regexp "(?s).+",
+  digest: sha256-digest,
+}
+
+target-ir-artifact = target-ir-phased-artifact / target-ir-ordered-artifact
+
+target-ir-phased-artifact = target-ir-closed-artifact / target-ir-legacy-artifact
+
+target-ir-artifact-common = (
+  domain: tstr,
+  targetProfile: target-ir-resource-ref,
+  sourceCoreCoordinate: tstr .regexp "(?s).+",
+)
+
+; v2 binds one execution order over the instruction tables. The encoder also
+; validates the exact permutation and producer-before-consumer dependencies.
+target-ir-ordered-artifact = target-ir-ordered-closed / target-ir-ordered-legacy
+
+target-ir-ordered-common = (
+  domain: "echo.span-ir/v2",
+  targetProfile: target-ir-resource-ref,
+  sourceCoreCoordinate: tstr .regexp "(?s).+",
+)
+
+target-ir-ordered-closed = {
+  kind: "orderedTargetIrArtifact",
+  target-ir-ordered-common,
+  semanticClosure: target-ir-semantic-closure,
+  intents: { * tstr => target-ir-ordered-intent },
+}
+
+target-ir-ordered-legacy = {
+  kind: "orderedTargetIrArtifact",
+  target-ir-ordered-common,
+  intents: { * tstr => target-ir-ordered-legacy-intent },
+}
+
+target-ir-ordered-intent = {
+  target-ir-intent-common,
+  ? basis: core-expr,
+  ? pureBindings: [1* target-ir-pure-binding],
+  executionOrder: [* tstr .regexp "(?s).+"],
+}
+
+target-ir-ordered-legacy-intent = {
+  target-ir-intent-common,
+  executionOrder: [* tstr .regexp "(?s).+"],
+}
+
+target-ir-closed-artifact = {
+  kind: "targetIrArtifact",
+  target-ir-artifact-common,
+  semanticClosure: target-ir-semantic-closure,
+  intents: { * tstr => target-ir-intent },
+}
+
+target-ir-legacy-artifact = {
+  kind: "targetIrArtifact",
+  target-ir-artifact-common,
+  intents: { * tstr => target-ir-legacy-intent },
+}
+
+target-ir-semantic-closure = {
+  sourceCore: target-ir-resource-ref,
+  lawpacks: [* target-ir-resource-ref],
+  ? capabilities: [* target-ir-resource-ref],
+}
+
+target-ir-intent = {
+  target-ir-intent-common,
+  ? basis: core-expr,
+  ? pureBindings: [1* target-ir-pure-binding],
+  ? externalActionRequests: [* target-ir-external-action-request],
+}
+
+target-ir-legacy-intent = {
+  target-ir-intent-common,
+}
+
+target-ir-intent-common = (
+  operationProfile: tstr,
+  inputConstraints: [* input-constraint],
+  coreEvaluationBudget: core-budget,
+  requirements: [* target-ir-requirement],
+  steps: [* target-ir-step],
+  result: core-expr,
+)
+
+target-ir-requirement = {
+  id: tstr,
+  predicate: core-predicate,
+  onFailure: require-failure-arm,
+}
+
+target-ir-pure-binding = {
+  id: tstr .regexp "(?s).+",
+  binding: local-ref,
+  value: core-expr,
+}
+
+target-ir-step = {
+  id: tstr,
+  binding: local-ref,
+  effect: tstr,
+  targetIntrinsic: tstr,
+  input: core-expr,
+  obstructionFailures: [* failure-ident],
+  obstructionArms: { * failure-ident => obstruction-arm },
+}
+
+target-ir-external-action-request = {
+  id: tstr,
+  binding: local-ref,
+  operation: target-ir-resource-ref,
+  inputType: core-type-ref,
+  settlementType: core-type-ref,
+  inputSchema: target-ir-resource-ref,
+  settlementSchema: target-ir-resource-ref,
+  input: core-expr,
+  authorityScope: core-expr,
+  basis: core-expr,
+  budget: external-action-budget,
+  reconciliationLaw: target-ir-resource-ref,
+  state: "awaitingSettlement",
+  settlementAdmission: "schemaRequired",
+}

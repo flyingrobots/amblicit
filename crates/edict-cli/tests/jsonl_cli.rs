@@ -459,6 +459,43 @@ fn project_exposes_ordered_effect_binding_and_guard_without_hoisting() {
 }
 
 #[test]
+fn project_exposes_structured_loop_order() {
+    let source = ECHO_SOURCE
+        .replace(
+            "type Input = { id: String<max=16>, basis: String<max=128>, };",
+            "type Input = { id: String<max=16>, basis: String<max=128>, leaves: List<Receipt, max=2>, };",
+        )
+        .replace(
+            "  let receipt: Receipt = target.replace(input.id)\n    else { rejected(reason) => domain.WriteRejected };",
+            "  for leaf in input.leaves bounded 2 {\n    let receipt: Receipt = target.replace(leaf.id)\n      else { rejected(reason) => domain.WriteRejected };\n  }",
+        );
+    let mut settings = projection_settings(["core", "targetIr", "digests"]);
+    settings["target"]["irDomain"] = json!("echo.span-ir/v3");
+    let output = run_edict(&jsonl([
+        settings,
+        json!({
+            "schema": "edict.compiler.input/v1", "type": "compilerInput",
+            "kind": "source", "name": "structured.edict", "source": source,
+        }),
+    ]));
+    let stdout = assert_successful_projection_output(&output);
+    let target = record_of_type(&stdout, "targetIr");
+    assert_eq!(target["state"], "available");
+    assert_eq!(target["domain"], "echo.span-ir/v3");
+    let intent = &target["review"]["intents"]["replaceThing"];
+    let order = &intent["executionOrder"];
+    assert_eq!(order[0]["kind"], "for");
+    assert_eq!(order[0]["id"], "replaceThing.for.0");
+    assert_eq!(order[0]["bound"], json!({ "kind": "literal", "value": 2 }));
+    assert_eq!(order[0]["body"], json!(["replaceThing.step.0"]));
+    assert_eq!(
+        order[0]["binder"]["id"],
+        intent["steps"][0]["input"]["base"]["reference"]["id"]
+    );
+    assert_eq!(intent["steps"][0]["id"], "replaceThing.step.0");
+}
+
+#[test]
 fn project_exposes_external_requests_as_non_callable_review_data() {
     let output = run_edict(&jsonl([
         projection_settings(["diagnostics", "core", "targetIr"]),

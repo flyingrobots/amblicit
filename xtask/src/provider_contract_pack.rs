@@ -16,9 +16,9 @@ const RESULT_PROJECTION_CDDL: &str = "docs/abi/edict-result-projection.cddl";
 const TARGET_IR_CDDL: &str = "docs/abi/edict-target-ir.cddl";
 
 pub(crate) const CONTRACT_PACK_CDDL: &str =
-    "fixtures/provider-contracts/source-modules-v1/edict-provider-contracts.cddl";
+    "fixtures/provider-contracts/structured-control-v1/edict-provider-contracts.cddl";
 pub(crate) const CONTRACT_PACK_MANIFEST: &str =
-    "fixtures/provider-contracts/source-modules-v1/manifest.json";
+    "fixtures/provider-contracts/structured-control-v1/manifest.json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ProviderContractPackMode {

@@ -23,8 +23,9 @@ use edict_syntax::{
     CoreObstructionReason, CorePredicate, CoreRequireFailureArm, CoreType, CoreValue,
     HighlightRole, InputConstraint, InputConstraintSource, ParseError, ResourceRef, SemanticError,
     Span, TargetEffectLowering, TargetIrArtifact, TargetIrExternalActionRequest, TargetIrIntent,
-    TargetIrLoweringFacts, TargetIrRequireFailure, TargetIrRequirement, TargetIrSemanticClosure,
-    TargetIrStep, TargetLoweringFailure, TargetLoweringFailureKind, WriteClass,
+    TargetIrLoweringFacts, TargetIrOrderEntry, TargetIrRequireFailure, TargetIrRequirement,
+    TargetIrSemanticClosure, TargetIrStep, TargetLoweringFailure, TargetLoweringFailureKind,
+    WriteClass,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -1406,7 +1407,10 @@ fn target_ir_intent_review(intent: &TargetIrIntent) -> Value {
     insert_optional_review_field(
         &mut review,
         "executionOrder",
-        intent.execution_order.as_ref().map(|order| json!(order)),
+        intent
+            .execution_order
+            .as_deref()
+            .map(target_ir_order_review),
     );
     if !intent.pure_bindings.is_empty() {
         insert_optional_review_field(
@@ -1424,6 +1428,43 @@ fn target_ir_intent_review(intent: &TargetIrIntent) -> Value {
         );
     }
     review
+}
+
+fn core_bound_review(bound: &edict_syntax::CoreBound) -> Value {
+    match bound {
+        edict_syntax::CoreBound::Literal(value) => json!({ "kind": "literal", "value": value }),
+        edict_syntax::CoreBound::Coordinate(reference) => {
+            json!({ "kind": "coordinate", "ref": reference })
+        }
+    }
+}
+
+/// Mirror the canonical order: instruction ids as strings, loops and
+/// statement branches as objects with nested order arrays.
+fn target_ir_order_review(order: &[TargetIrOrderEntry]) -> Value {
+    Value::Array(
+        order
+            .iter()
+            .map(|entry| match entry {
+                TargetIrOrderEntry::Instruction(id) => json!(id),
+                TargetIrOrderEntry::For(entry) => json!({
+                    "kind": "for",
+                    "id": entry.id,
+                    "binder": local_ref_review(&entry.binder),
+                    "iterable": core_expr_review(&entry.iterable),
+                    "bound": core_bound_review(&entry.bound),
+                    "body": target_ir_order_review(&entry.body),
+                }),
+                TargetIrOrderEntry::Branch(entry) => json!({
+                    "kind": "branch",
+                    "id": entry.id,
+                    "predicate": core_predicate_review(&entry.predicate),
+                    "then": target_ir_order_review(&entry.then_entries),
+                    "else": target_ir_order_review(&entry.else_entries),
+                }),
+            })
+            .collect(),
+    )
 }
 
 fn insert_optional_review_field(review: &mut Value, key: &str, value: Option<Value>) {
@@ -1634,10 +1675,7 @@ fn core_node_review(node: &CoreNode) -> Value {
             "kind": "for",
             "binder": local_ref_review(binder),
             "iter": core_expr_review(iter),
-            "bound": match bound {
-                edict_syntax::CoreBound::Literal(value) => json!({ "kind": "literal", "value": value }),
-                edict_syntax::CoreBound::Coordinate(reference) => json!({ "kind": "coordinate", "ref": reference }),
-            },
+            "bound": core_bound_review(bound),
             "body": core_block_review(body),
         }),
         CoreNode::Branch {
