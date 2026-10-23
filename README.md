@@ -53,7 +53,7 @@ These invariants come from the [language specification](./docs/SPEC_edict-langua
 
 ## A first intent
 
-This intent is [`fixtures/lang/bounds/bounded-hello.edict`](./fixtures/lang/bounds/bounded-hello.edict):
+This intent is [`fixtures/lang/bounds/bounded-hello.amblicit`](./fixtures/lang/bounds/bounded-hello.amblicit):
 
 ```graphql
 package examples.hello@1;
@@ -166,14 +166,14 @@ The CLI reads JSONL requests on stdin and writes only JSONL. To check a source f
 ```sh
 printf '%s\n%s\n' \
   '{"schema":"edict.compiler.settings/v1","type":"compilerSettings","operation":"check"}' \
-  '{"schema":"edict.compiler.input/v1","type":"compilerInput","kind":"path","path":"fixtures/lang/bounds/bounded-hello.edict"}' \
+  '{"schema":"edict.compiler.input/v1","type":"compilerInput","kind":"path","path":"fixtures/lang/bounds/bounded-hello.amblicit"}' \
   | target/debug/amblicit
 ```
 
 A clean check exits with `0` and writes this output:
 
 ```text
-{"command":"check","input":{"kind":"path","path":"fixtures/lang/bounds/bounded-hello.edict"},"schema":"edict.cli.check-result/v1","status":"ok","type":"checkResult"}
+{"command":"check","input":{"kind":"path","path":"fixtures/lang/bounds/bounded-hello.amblicit"},"schema":"edict.cli.check-result/v1","status":"ok","type":"checkResult"}
 {"checked":1,"command":"check","errors":0,"exitCode":0,"schema":"edict.cli.event/v1","status":"ok","type":"status"}
 ```
 

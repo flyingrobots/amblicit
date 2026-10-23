@@ -13,7 +13,7 @@ use common::{body, intent_of};
 
 const ZERO_DIGEST: &str = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
 const STALE_BASIS_OBSTRUCTION_STRAND: &str =
-    include_str!("../../../fixtures/obstruction-strands/v0/stale-basis/source.edict");
+    include_str!("../../../fixtures/obstruction-strands/v0/stale-basis/source.amblicit");
 
 fn reject_kind(src: &str, kind: ParseErrorKind) {
     let err = parse_module(src).expect_err("source must reject");

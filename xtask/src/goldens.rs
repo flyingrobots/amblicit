@@ -132,12 +132,12 @@ struct CoreGoldenCase {
 
 const CORE_GOLDEN_CASES: &[CoreGoldenCase] = &[
     CoreGoldenCase {
-        source: "fixtures/lang/bounds/bounded-hello.edict",
+        source: "fixtures/lang/bounds/bounded-hello.amblicit",
         bytes: "fixtures/core/canonical/bounded-hello.core.cbor",
         digest: "fixtures/core/canonical/bounded-hello.core.sha256",
     },
     CoreGoldenCase {
-        source: "fixtures/lang/external-actions/workspace-snapshot.edict",
+        source: "fixtures/lang/external-actions/workspace-snapshot.amblicit",
         bytes: "fixtures/core/canonical/workspace-snapshot.core.cbor",
         digest: "fixtures/core/canonical/workspace-snapshot.core.sha256",
     },
@@ -297,7 +297,7 @@ const TARGET_IR_ECHO_STRUCTURED_LOOP_SOURCE: &str = "package a.b@1;\n\
     }";
 
 const TARGET_IR_EXTERNAL_REQUEST_SOURCE: &str =
-    include_str!("../../fixtures/lang/external-actions/workspace-snapshot.edict");
+    include_str!("../../fixtures/lang/external-actions/workspace-snapshot.amblicit");
 
 pub(crate) fn target_ir_goldens(root: &Path, mode: TargetIrGoldenMode) -> Result<(), String> {
     for case in TARGET_IR_GOLDEN_CASES {
@@ -494,7 +494,7 @@ struct BundleGoldenCase {
 }
 
 const BUNDLE_GOLDEN_CASES: &[BundleGoldenCase] = &[BundleGoldenCase {
-    source: "fixtures/lang/bounds/bounded-hello.edict",
+    source: "fixtures/lang/bounds/bounded-hello.amblicit",
     output: "fixtures/bundle/assembly/bounded-hello.bundle-digests.txt",
 }];
 

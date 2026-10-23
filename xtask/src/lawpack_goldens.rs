@@ -26,7 +26,7 @@ const TARGET_CONFIGURATION_CBOR: &str =
     "fixtures/lawpack/hello-echo/echo-operation-configuration.cbor";
 const TARGET_CONFIGURATION_DIGEST: &str =
     "fixtures/lawpack/hello-echo/echo-operation-configuration.sha256";
-const CREATE_GREETING_SOURCE: &str = "fixtures/lawpack/hello-echo/create-greeting.edict";
+const CREATE_GREETING_SOURCE: &str = "fixtures/lawpack/hello-echo/create-greeting.amblicit";
 const CREATE_GREETING_CORE_CBOR: &str = "fixtures/lawpack/hello-echo/create-greeting.core.cbor";
 const CREATE_GREETING_CORE_DIGEST: &str = "fixtures/lawpack/hello-echo/create-greeting.core.sha256";
 const CREATE_GREETING_TARGET_IR_CBOR: &str =
@@ -89,7 +89,7 @@ const WORKSPACE_SNAPSHOT_RECONCILIATION_LAW_CBOR: &str =
 const WORKSPACE_SNAPSHOT_RECONCILIATION_LAW_DIGEST: &str =
     "fixtures/lawpack/workspace-snapshot/reconciliation-law.sha256";
 const WORKSPACE_SNAPSHOT_SOURCE: &str =
-    "fixtures/lawpack/workspace-snapshot/observe-workspace.edict";
+    "fixtures/lawpack/workspace-snapshot/observe-workspace.amblicit";
 const WORKSPACE_SNAPSHOT_CORE_CBOR: &str =
     "fixtures/lawpack/workspace-snapshot/observe-workspace.core.cbor";
 const WORKSPACE_SNAPSHOT_CORE_DIGEST: &str =
@@ -124,7 +124,8 @@ const WORKSPACE_PATCH_RECONCILIATION_LAW_CBOR: &str =
     "fixtures/lawpack/workspace-patch/reconciliation-law.cbor";
 const WORKSPACE_PATCH_RECONCILIATION_LAW_DIGEST: &str =
     "fixtures/lawpack/workspace-patch/reconciliation-law.sha256";
-const WORKSPACE_PATCH_SOURCE: &str = "fixtures/lawpack/workspace-patch/apply-validated-patch.edict";
+const WORKSPACE_PATCH_SOURCE: &str =
+    "fixtures/lawpack/workspace-patch/apply-validated-patch.amblicit";
 const WORKSPACE_PATCH_CORE_CBOR: &str =
     "fixtures/lawpack/workspace-patch/apply-validated-patch.core.cbor";
 const WORKSPACE_PATCH_CORE_DIGEST: &str =

@@ -332,7 +332,7 @@ Precedence is resolved from the loosest binding level to the tightest:
 
 To understand how data flows through the compiler, we examine the AST representations.
 
-### The Source Payload (`bounded-hello.edict`)
+### The Source Payload (`bounded-hello.amblicit`)
 
 ```graphql
 package examples.hello@1;

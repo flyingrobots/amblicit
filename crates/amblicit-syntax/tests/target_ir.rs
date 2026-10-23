@@ -128,7 +128,8 @@ const GITWARP_CONTINUE_OBSTRUCTED_REQUIRE: &str = "package a.git@1;\n\
       return { id: input.id };\n\
     }";
 
-const PURE_LOCAL_RECORD: &str = include_str!("../../../fixtures/lang/bounds/bounded-hello.edict");
+const PURE_LOCAL_RECORD: &str =
+    include_str!("../../../fixtures/lang/bounds/bounded-hello.amblicit");
 const ECHO_PROFILE_DIGEST: &str =
     "sha256:1111111111111111111111111111111111111111111111111111111111111111";
 const GITWARP_PROFILE_DIGEST: &str =
@@ -1976,7 +1977,7 @@ fn lawpack_effect_signatures_reject_mismatched_core_values() {
     let manifest = include_bytes!("../../../fixtures/lawpack/hello-echo/manifest.cbor").as_slice();
     let exports = include_bytes!("../../../fixtures/lawpack/hello-echo/exports.cbor").as_slice();
     let adapter = include_bytes!("../../../fixtures/lawpack/hello-echo/adapter.cbor").as_slice();
-    let source = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.edict");
+    let source = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.amblicit");
     let bundle =
         amblicit_syntax::decode_lawpack_bundle(manifest, exports).expect("load Hello Echo lawpack");
     let adapter = amblicit_syntax::decode_lawpack_adapter(&bundle, "echo.dpo@1", adapter)
@@ -2707,7 +2708,8 @@ fn empty_aggregate_predicates_reject_on_every_target_surface() {
 }
 
 fn workspace_request_core() -> CoreModule {
-    let source = include_str!("../../../fixtures/lang/external-actions/workspace-snapshot.edict");
+    let source =
+        include_str!("../../../fixtures/lang/external-actions/workspace-snapshot.amblicit");
     let module = amblicit_syntax::parse_module(source).expect("workspace request source parses");
     let context = pure_context()
         .with_operation_profile("workspace.read", "continuum.profile.read-only/v1")

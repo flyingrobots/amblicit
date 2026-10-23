@@ -14,7 +14,7 @@ fn find_role(src: &str, tokens: &[HighlightToken], needle: &str) -> HighlightRol
 
 #[test]
 fn highlight_source_emits_editor_roles_for_fixture() {
-    let src = include_str!("../../../fixtures/lang/tooling/highlight-smoke.edict");
+    let src = include_str!("../../../fixtures/lang/tooling/highlight-smoke.amblicit");
 
     let tokens = highlight_source(src).expect("highlight fixture");
 

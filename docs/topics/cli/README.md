@@ -128,7 +128,7 @@ has this shape:
 {
   "schema": "edict.application/v1",
   "coordinate": "examples.hello_echo@1",
-  "sources": ["src/hello_echo.edict"],
+  "sources": ["src/hello_echo.amblicit"],
   "lawpacks": [{
     "manifest": "vendor/causal-cell/manifest.cbor",
     "exports": "vendor/causal-cell/exports.cbor",
@@ -151,7 +151,7 @@ selects the request-only route explicitly:
   "schema": "edict.application/v1",
   "buildKind": "externalAction",
   "coordinate": "examples.workspace_observer@1",
-  "sources": ["src/observe-workspace.edict"],
+  "sources": ["src/observe-workspace.amblicit"],
   "lawpacks": [{
     "manifest": "vendor/workspace-snapshot/manifest.cbor",
     "exports": "vendor/workspace-snapshot/exports.cbor",

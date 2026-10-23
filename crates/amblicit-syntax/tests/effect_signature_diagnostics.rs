@@ -4,7 +4,7 @@ use amblicit_syntax::{
     prepare_lawpack_compilation, CompilerError, CompilerErrorKind, CompilerStage, CoreModule,
 };
 
-const SOURCE: &str = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.edict");
+const SOURCE: &str = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.amblicit");
 const MANIFEST: &[u8] = include_bytes!("../../../fixtures/lawpack/hello-echo/manifest.cbor");
 const EXPORTS: &[u8] = include_bytes!("../../../fixtures/lawpack/hello-echo/exports.cbor");
 const ADAPTER: &[u8] = include_bytes!("../../../fixtures/lawpack/hello-echo/adapter.cbor");

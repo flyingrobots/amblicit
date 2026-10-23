@@ -1,6 +1,6 @@
 //! Conformance: the bounded `hello` example parses to the expected AST shape.
 //!
-//! Fixture: `fixtures/lang/bounds/bounded-hello.edict` (positive fixture for
+//! Fixture: `fixtures/lang/bounds/bounded-hello.amblicit` (positive fixture for
 //! `EDICT-LANG-BOUNDS-001`). This is the first real-world parse target.
 
 use amblicit_syntax::ast::{
@@ -9,7 +9,7 @@ use amblicit_syntax::ast::{
 };
 use amblicit_syntax::{parse_module, ParseErrorKind};
 
-const HELLO: &str = include_str!("../../../fixtures/lang/bounds/bounded-hello.edict");
+const HELLO: &str = include_str!("../../../fixtures/lang/bounds/bounded-hello.amblicit");
 
 #[test]
 fn bounded_hello_parses() {

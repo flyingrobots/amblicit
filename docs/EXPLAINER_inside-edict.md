@@ -59,7 +59,7 @@ a spec says it should produce.
 
 ### 2.1 The source
 
-The file is `fixtures/lawpack/hello-echo/create-greeting.edict`, reproduced exactly:
+The file is `fixtures/lawpack/hello-echo/create-greeting.amblicit`, reproduced exactly:
 
 ```edict
 package examples.hello_echo@1;
@@ -100,7 +100,7 @@ The CLI reads JSON Lines on standard input and emits only JSON Lines. Sending th
 under a `check` settings record produces:
 
 ```json
-{"command":"check","input":{"kind":"source","name":"create-greeting.edict"},"schema":"edict.cli.check-result/v1","status":"ok","type":"checkResult"}
+{"command":"check","input":{"kind":"source","name":"create-greeting.amblicit"},"schema":"edict.cli.check-result/v1","status":"ok","type":"checkResult"}
 {"checked":1,"command":"check","errors":0,"exitCode":0,"schema":"edict.cli.event/v1","status":"ok","type":"status"}
 ```
 
@@ -232,7 +232,7 @@ edges are calls that exist; the dashed edge is the boundary Edict does not cross
 
 ```mermaid
 flowchart TD
-    SRC["create-greeting.edict"] --> PARSE["parse_module<br/>(parser.rs)"]
+    SRC["create-greeting.amblicit"] --> PARSE["parse_module<br/>(parser.rs)"]
     PARSE --> SURF["validate_surface<br/>(semantic.rs)"]
     SURF --> CHECK{{"edict check<br/>stops here"}}
     SURF --> RESOLVE["resolve_module<br/>needs CompilerContext facts"]
@@ -514,10 +514,10 @@ All commands run from the repo root at `e4fa81dd` after `cargo build -p edict-cl
 
 ```sh
 # section 2.2: check the canonical source
-S=$(jq -Rs . < fixtures/lawpack/hello-echo/create-greeting.edict)
+S=$(jq -Rs . < fixtures/lawpack/hello-echo/create-greeting.amblicit)
 printf '%s\n%s\n' \
   '{"schema":"edict.compiler.settings/v1","type":"compilerSettings","operation":"check"}' \
-  "{\"schema\":\"edict.compiler.input/v1\",\"type\":\"compilerInput\",\"kind\":\"source\",\"name\":\"create-greeting.edict\",\"source\":$S}" \
+  "{\"schema\":\"edict.compiler.input/v1\",\"type\":\"compilerInput\",\"kind\":\"source\",\"name\":\"create-greeting.amblicit\",\"source\":$S}" \
   | ./target/debug/edict
 
 # section 2.5 and 4.2: reproduce the goldens with the real toolchain

@@ -15,7 +15,7 @@ use amblicit_syntax::{
     PureHelperCostFact, ResolvedModule, ResourceRef, TypeShapeFact, WriteClass,
 };
 
-const BOUNDED_HELLO: &str = include_str!("../../../fixtures/lang/bounds/bounded-hello.edict");
+const BOUNDED_HELLO: &str = include_str!("../../../fixtures/lang/bounds/bounded-hello.amblicit");
 static TEMP_CASE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 const EFFECTFUL_REPLACE: &str = "package a.b@1;\n\
     type Input = { id: String<max=16>, };\n\

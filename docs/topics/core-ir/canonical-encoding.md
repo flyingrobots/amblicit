@@ -180,7 +180,7 @@ The reviewed Core fixture pair is:
 - [`fixtures/core/canonical/workspace-snapshot.core.sha256`](../../../fixtures/core/canonical/workspace-snapshot.core.sha256).
 
 Both are generated from
-[`fixtures/lang/bounds/bounded-hello.edict`](../../../fixtures/lang/bounds/bounded-hello.edict)
+[`fixtures/lang/bounds/bounded-hello.amblicit`](../../../fixtures/lang/bounds/bounded-hello.amblicit)
 through the executable parser, compiler, canonical encoder, and digest function.
 
 Use:

@@ -9,7 +9,7 @@ use amblicit_syntax::ast::{ElseClause, Expr, Stmt};
 use amblicit_syntax::parse_module;
 use common::{body, intent_of};
 
-const BLOB: &str = include_str!("../../../fixtures/lang/effects/conditional-blob.edict");
+const BLOB: &str = include_str!("../../../fixtures/lang/effects/conditional-blob.amblicit");
 
 #[test]
 fn pure_ternary_parses_as_let_value() {

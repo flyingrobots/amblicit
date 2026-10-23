@@ -268,7 +268,7 @@ mod tests {
     fn unowned_compiler_errors_preserve_messages_without_debug_or_guessed_locations() {
         let source = "package application.root@1;";
         let loaded = LoadedSources {
-            root_path: "root.edict".into(),
+            root_path: "root.amblicit".into(),
             root_source: source.into(),
             root_module: parse_module(source).unwrap_or_else(|error| panic!("source: {error:?}")),
             closure: None,

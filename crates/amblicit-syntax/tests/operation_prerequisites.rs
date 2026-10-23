@@ -16,7 +16,7 @@ use amblicit_syntax::{
 };
 
 const OPERATION_SOURCE: &str =
-    include_str!("../../../fixtures/lang/operations/explicit-basis-u64.edict");
+    include_str!("../../../fixtures/lang/operations/explicit-basis-u64.amblicit");
 
 fn operation_context() -> CompilerContext {
     CompilerContext::new()

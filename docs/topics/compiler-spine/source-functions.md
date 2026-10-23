@@ -16,7 +16,7 @@ fn assembleFragments(left: Bytes<max=8>, right: Bytes<max=8>) -> Bytes<max=16> {
 ```
 
 This is the function in the compiler-built
-[Jim range-assembly fixture](../../../fixtures/lang/functions/range-assembly.edict).
+[Jim range-assembly fixture](../../../fixtures/lang/functions/range-assembly.amblicit).
 The compiler resolves all function signatures before checking bodies, so a
 function can call one declared later. Zero parameters are allowed. Calls are
 first-order and nongeneric: functions cannot be passed as values or instantiate

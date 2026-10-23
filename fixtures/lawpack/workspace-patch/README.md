@@ -16,7 +16,7 @@ validated workspace patch request
 `reconciliation-law.cbor` are canonical
 `edict.external-action-resource/v1` artifacts with generator-owned digest
 sidecars [claim:workspace-patch-resources, confidence:1.00].
-`apply-validated-patch.edict` pins those identities rather than sentinel
+`apply-validated-patch.amblicit` pins those identities rather than sentinel
 strings. A public external-action application supplies the exact three artifact
 paths through `externalActionResources`; Edict recomputes and validates the
 complete closure before publishing Core or Target IR.

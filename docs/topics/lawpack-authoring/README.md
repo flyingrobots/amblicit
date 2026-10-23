@@ -314,7 +314,7 @@ cleanup state and may be removed by the operator.
 | --- | --- | --- |
 | Lawpack authoring JSON | Application | Reviewable semantic declarations and exact external pins. |
 | Generated lawpack artifacts | Edict encoder | Canonical manifest, exports, adapters, configurations, and derived identities. |
-| Application `.edict` source | Application | Executable application law that imports the exact generated manifest digest. |
+| Application `.amblicit` source | Application | Executable application law that imports the exact generated manifest digest. |
 | Provider package | Target provider | Target profile plus bounded lowering and verification components; unused during authoring. |
 | Runtime receipt | Runtime | Evidence about one admitted execution; neither input to nor output from authoring. |
 

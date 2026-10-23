@@ -21,7 +21,7 @@ form, so this directory still intentionally has no `core.review` or
 
 | Artifact | First Eligible Layer | Authority |
 | --- | --- | --- |
-| `source.edict` | PR 1 | Edict parser |
+| `source.amblicit` | PR 1 | Edict parser |
 | `source.parse.review` | PR 1 | Edict parser |
 | `core.review` | PR 2 | Edict Core |
 | `core.canonical.bytes` | PR 2, if canonical Core bytes change | Edict Core |

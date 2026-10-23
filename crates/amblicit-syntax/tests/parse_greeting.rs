@@ -2,14 +2,14 @@
 //!
 //! Exercises calls (`echo.ref<shape.Greeting>(...)`, `.read()`), an effect-`else`
 //! obstruction clause, multiple imports (shape + lawpack + target), and explicit
-//! record fields. Fixture: `fixtures/lang/effects/read-greeting.edict`.
+//! record fields. Fixture: `fixtures/lang/effects/read-greeting.amblicit`.
 
 use amblicit_syntax::ast::{
     Decl, Expr, ImportKind, IntentClause, ObstructionHandler, RecordEntry, Stmt,
 };
 use amblicit_syntax::parse_module;
 
-const GREETING: &str = include_str!("../../../fixtures/lang/effects/read-greeting.edict");
+const GREETING: &str = include_str!("../../../fixtures/lang/effects/read-greeting.amblicit");
 
 #[test]
 fn read_greeting_parses() {

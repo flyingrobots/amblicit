@@ -4,7 +4,7 @@ use amblicit_syntax::{
     parse_module, prepare_lawpack_compilation, CompilerError, CompilerErrorKind, CoreModule,
 };
 
-const SOURCE: &str = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.edict");
+const SOURCE: &str = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.amblicit");
 
 fn compile(source: &str) -> Result<CoreModule, Vec<CompilerError>> {
     compile_with_surface(source, true)

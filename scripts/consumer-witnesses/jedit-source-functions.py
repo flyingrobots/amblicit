@@ -87,7 +87,7 @@ def build(binary, root):
     return {"exitCode": result.returncode,
             "diagnostics": [event for event in events if event.get("type") == "diagnostic"],
             "artifacts": files(output),
-            "sourceSha256": digest(root / "src/RangeAssembly.edict"),
+            "sourceSha256": digest(root / "src/RangeAssembly.amblicit"),
             "stdoutSha256": digest(streams[0]), "stderrSha256": digest(streams[1])}
 
 
@@ -123,15 +123,15 @@ def main():
                 "compilerBinarySha256": original["compiler"],
                 "providerManifestSha256": args.provider_manifest_sha256,
                 "results": {}}
-    for name, source in [("function-free", "range-assembly-baseline.edict"),
-                         ("source-function", "range-assembly.edict")]:
+    for name, source in [("function-free", "range-assembly-baseline.amblicit"),
+                         ("source-function", "range-assembly.amblicit")]:
         root = args.work_root / name
         (root / "src").mkdir(parents=True)
         shutil.copytree(vendor, root / "vendor")
         shutil.copytree(args.provider_package, root / "provider")
-        shutil.copyfile(fixture / source, root / "src/RangeAssembly.edict")
+        shutil.copyfile(fixture / source, root / "src/RangeAssembly.amblicit")
         application = json.loads((args.application_source / "edict.application.json").read_text())
-        application["sources"] = ["src/RangeAssembly.edict"]
+        application["sources"] = ["src/RangeAssembly.amblicit"]
         application["target"]["providerPackage"] = "provider"
         application["outputDirectory"] = "application-output"
         (root / "edict.application.json").write_text(json.dumps(application, indent=2) + "\n")

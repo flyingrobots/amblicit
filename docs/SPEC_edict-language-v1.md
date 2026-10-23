@@ -3058,7 +3058,7 @@ Diagnostic shape:
   "severity": "error",
   "message": "computed target footprint exceeds declared maximum",
   "sourceSpan": {
-    "file": "graft.edict",
+    "file": "graft.amblicit",
     "start": { "line": 12, "column": 3 },
     "end": { "line": 12, "column": 54 }
   },

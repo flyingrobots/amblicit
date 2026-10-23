@@ -29,7 +29,7 @@ binding belong to Echo.
 
 | Fixture | Purpose | Oracle |
 | --- | --- | --- |
-| `fixtures/lawpack/hello-echo/create-greeting.edict` | Real application source with one application-input field and one capability-result field in its result. | Compilation and Target IR lowering derive the reviewed projection without native Hello Echo code. |
+| `fixtures/lawpack/hello-echo/create-greeting.amblicit` | Real application source with one application-input field and one capability-result field in its result. | Compilation and Target IR lowering derive the reviewed projection without native Hello Echo code. |
 | `fixtures/lawpack/hello-echo/create-greeting.result-projection.cbor` | Reviewed canonical projection bytes. | `cargo xtask lawpack-goldens --check` reproduces exact bytes through the compiler-owned emitter. |
 | `fixtures/lawpack/hello-echo/create-greeting.result-projection.sha256` | Reviewed domain-framed projection identity. | The emitter and independent verifier reproduce the same identity. |
 | `docs/abi/edict-result-projection.cddl` | Edict-owned canonical schema. | The provider contract pack validates a reference projection and rejects structural mutation. |
@@ -38,7 +38,7 @@ binding belong to Echo.
 
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| RESULT-PROJ-TP-001 | implemented | Golden path | RESULT-PROJ-REQ-001, RESULT-PROJ-REQ-002 | Exact Hello Echo Core and Target IR emit the expected typed record projection. | `exact_core_and_target_ir_emit_the_typed_hello_echo_projection` | fixtures/lawpack/hello-echo/create-greeting.edict, fixtures/lawpack/hello-echo/create-greeting.result-projection.cbor | The test enters through real source and lawpack compilation. |
+| RESULT-PROJ-TP-001 | implemented | Golden path | RESULT-PROJ-REQ-001, RESULT-PROJ-REQ-002 | Exact Hello Echo Core and Target IR emit the expected typed record projection. | `exact_core_and_target_ir_emit_the_typed_hello_echo_projection` | fixtures/lawpack/hello-echo/create-greeting.amblicit, fixtures/lawpack/hello-echo/create-greeting.result-projection.cbor | The test enters through real source and lawpack compilation. |
 | RESULT-PROJ-TP-002 | implemented | Independent verification | RESULT-PROJ-REQ-005 | The verifier reconstructs the exact authored Core result from projection sources and accepts the emitted identity. | `independent_verifier_reconstructs_the_authored_core_result` | crates/amblicit-syntax/tests/result_projection.rs | Verification runs in the reverse direction from projection to Core expression. |
 | RESULT-PROJ-TP-003 | implemented | Mutation rejection | RESULT-PROJ-REQ-005, RESULT-PROJ-REQ-006 | A Target IR result that differs from its source Core result fails closed. | `mutated_target_result_fails_closed` | crates/amblicit-syntax/tests/result_projection.rs | Prevents target-owned result authorship. |
 | RESULT-PROJ-TP-004 | implemented | Authority rejection | RESULT-PROJ-REQ-002, RESULT-PROJ-REQ-006, RESULT-PROJ-REQ-007 | Undeclared locals and call expressions fail with stable error kinds. | `undeclared_locals_and_unsupported_calls_fail_closed` | crates/amblicit-syntax/tests/result_projection.rs | No callback or general expression VM enters the artifact. |

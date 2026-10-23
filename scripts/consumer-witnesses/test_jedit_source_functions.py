@@ -16,7 +16,7 @@ class ChildCleanupTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="edict-child-cleanup-") as directory:
             root = Path(directory)
             (root / "src").mkdir()
-            (root / "src/RangeAssembly.edict").write_text("test input")
+            (root / "src/RangeAssembly.amblicit").write_text("test input")
             compiler = root / "compiler.py"
             compiler.write_text("""#!/usr/bin/env python3
 import json, os, signal, sys, time
