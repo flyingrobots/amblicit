@@ -19,7 +19,9 @@ versions still track specification maturity rather than a released product.
   `Option<Vec<TargetIrOrderEntry>>`; v2 still encodes a flat array of ids with
   unchanged bytes, and v1/v2 keep their `for`/`branch` refusals. A new
   `structured-control-v1` provider contract pack adds the v3 schema root; prior
-  packs are byte-identical. Echo's provider refuses v3, result projections do
+  packs are byte-identical. Its recursive order-entry choice dispatches `for`
+  and `branch` entries on their `kind` tag, so the production provider schema
+  registry constructs that pack. Echo's provider refuses v3, result projections do
   not yet support structured intents, and no runtime execution is claimed.
 
 - Admit target-catalog pure intrinsics: `admit_target_pure_intrinsics` accepts

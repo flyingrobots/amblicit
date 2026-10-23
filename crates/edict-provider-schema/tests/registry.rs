@@ -48,6 +48,11 @@ legacy = {
 
 const PROVIDER_CONTRACT_SCHEMA: &[u8] =
     include_bytes!("../../../fixtures/provider-contracts/v1/edict-provider-contracts.cddl");
+const CURRENT_PROVIDER_CONTRACT_SCHEMA: &[u8] = include_bytes!(
+    "../../../fixtures/provider-contracts/structured-control-v1/edict-provider-contracts.cddl"
+);
+const STRUCTURED_TARGET_IR_FIXTURE: &[u8] =
+    include_bytes!("../../../fixtures/target-ir/canonical/echo-structured-loop.target-ir.cbor");
 const CORE_FIXTURE: &[u8] =
     include_bytes!("../../../fixtures/core/canonical/bounded-hello.core.cbor");
 
@@ -663,6 +668,23 @@ fn recursive_required_key_dispatch_accepts_compatible_untagged_arms() {
 fn checked_target_ir_root_constructs_through_required_key_dispatch() {
     registry_with_generated_schema_root(PROVIDER_CONTRACT_SCHEMA, "target-ir-artifact")
         .expect("the checked Target IR compatibility union must construct");
+}
+
+#[test]
+fn current_publication_target_ir_root_constructs_and_validates_v3() {
+    let registry =
+        registry_with_generated_schema_root(CURRENT_PROVIDER_CONTRACT_SCHEMA, "target-ir-artifact")
+            .unwrap_or_else(|failure| {
+                panic!(
+                    "the current Target IR publication must construct: {:?}",
+                    failure.kind()
+                )
+            });
+    let structured =
+        decode_canonical_cbor(STRUCTURED_TARGET_IR_FIXTURE).expect("canonical v3 golden");
+    registry
+        .validate_canonical_value("runtime.generated-artifact/v1", &structured)
+        .expect("the production registry validates the reviewed v3 golden");
 }
 
 #[test]

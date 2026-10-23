@@ -995,8 +995,12 @@ target-ir-structured-legacy-intent = {
   executionOrder: [* target-ir-order-entry],
 }
 
-target-ir-order-entry = tstr .regexp "(?s).+" / target-ir-for-entry /
-                        target-ir-branch-entry
+; Only the control alternative re-enters the order tree, and the control family
+; is discriminated by its required `kind` tag, so recursive validation selects
+; exactly one arm.
+target-ir-order-entry = tstr .regexp "(?s).+" / target-ir-control-entry
+
+target-ir-control-entry = target-ir-for-entry / target-ir-branch-entry
 
 target-ir-for-entry = {
   kind: "for",
