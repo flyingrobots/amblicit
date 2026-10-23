@@ -806,3 +806,169 @@ fn structure_mutations_move_the_digest() {
         );
     }
 }
+
+fn leaf_record(id: &str) -> CoreExpr {
+    CoreExpr::Record {
+        fields: BTreeMap::from([(
+            "id".to_owned(),
+            CoreExpr::Const(CoreValue::String(id.to_owned())),
+        )]),
+    }
+}
+
+fn with_loop(core: &mut CoreModule, iterable: Option<CoreExpr>, bound: CoreBound) {
+    let CoreNode::For {
+        iter, bound: old, ..
+    } = &mut core.intents.get_mut("t").expect("intent").body.nodes[0]
+    else {
+        panic!("Core for expected");
+    };
+    if let Some(iterable) = iterable {
+        *iter = iterable;
+    }
+    *old = bound;
+}
+
+#[test]
+fn target_refuses_literal_bounds_below_the_iterable_maximum() {
+    // `input.leaves` is `List<Leaf, max=4>`; a forged bound of 2 is unsound.
+    let mut below_list_max = loop_core(ENSURE_EACH_LEAF);
+    with_loop(&mut below_list_max, None, CoreBound::Literal(2));
+
+    // A literal list of three elements under a literal bound of two.
+    let three = CoreExpr::List {
+        values: vec![leaf_record("a"), leaf_record("b"), leaf_record("c")],
+    };
+    let mut literal_over_bound = loop_core(ENSURE_EACH_LEAF);
+    with_loop(&mut literal_over_bound, Some(three), CoreBound::Literal(2));
+
+    for (case, core) in [
+        ("bound below list maximum", below_list_max),
+        ("literal list above bound", literal_over_bound),
+    ] {
+        let report = lower_to_target_ir(&core, &structured_facts());
+        assert_refused(
+            &report,
+            TargetLoweringFailureKind::InvalidCoreIdentity,
+            None,
+            case,
+        );
+    }
+
+    // Controls: the same shapes at the bound lower.
+    let mut at_list_max = loop_core(ENSURE_EACH_LEAF);
+    with_loop(&mut at_list_max, None, CoreBound::Literal(4));
+    let two = CoreExpr::List {
+        values: vec![leaf_record("a"), leaf_record("b")],
+    };
+    let mut literal_at_bound = loop_core(ENSURE_EACH_LEAF);
+    with_loop(&mut literal_at_bound, Some(two), CoreBound::Literal(2));
+    for (case, core) in [
+        ("bound equals list maximum", at_list_max),
+        ("literal list at bound", literal_at_bound),
+    ] {
+        let report = lower_to_target_ir(&core, &structured_facts());
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Lowered,
+            "{case}: {report:?}"
+        );
+    }
+}
+
+const BOUNDS_IMPORT: &str = "use lawpack example.bounds@1 digest \"sha256:1111111111111111111111111111111111111111111111111111111111111111\" as bounds;\n";
+
+fn coordinate_bound_core() -> CoreModule {
+    let source = source(ENSURE_EACH_LEAF)
+        .replace("type Leaf", &format!("{BOUNDS_IMPORT}    type Leaf"))
+        .replace("bounded 4", "bounded bounds.maxItems");
+    let module = edict_syntax::parse_module(&source).expect("coordinate loop parses");
+    let context = loop_context().with_bound(
+        "bounds.maxItems",
+        edict_syntax::BoundFact {
+            lawpack: ResourceRef {
+                coordinate: "example.bounds@1".to_owned(),
+                digest: Some(
+                    "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+                        .to_owned(),
+                ),
+            },
+            coordinate: "example.bounds@1.maxItems".to_owned(),
+            value: 4,
+        },
+    );
+    compile_to_core(&module, &context).expect("coordinate loop compiles")
+}
+
+#[test]
+fn coordinate_bounds_must_be_owned_by_an_imported_lawpack() {
+    let core = coordinate_bound_core();
+    let report = lower_to_target_ir(&core, &structured_facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+    let artifact = report.artifact.expect("coordinate-bound artifact");
+    assert_eq!(
+        for_entry(&order(&artifact)[0]).bound,
+        CoreBound::Coordinate("example.bounds@1.maxItems".to_owned())
+    );
+    encode_target_ir_artifact(&artifact).expect("coordinate-bound artifact encodes");
+
+    let mut foreign = core;
+    with_loop(
+        &mut foreign,
+        None,
+        CoreBound::Coordinate("other.package@1.maxItems".to_owned()),
+    );
+    let report = lower_to_target_ir(&foreign, &structured_facts());
+    assert_refused(
+        &report,
+        TargetLoweringFailureKind::InvalidCoreIdentity,
+        None,
+        "coordinate outside every imported lawpack",
+    );
+}
+
+#[test]
+fn empty_literal_iterable_lowers_with_its_body_intact() {
+    let mut core = loop_core(ENSURE_EACH_LEAF);
+    with_loop(
+        &mut core,
+        Some(CoreExpr::List { values: Vec::new() }),
+        CoreBound::Literal(4),
+    );
+    let report = lower_to_target_ir(&core, &structured_facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+    let artifact = report.artifact.expect("empty-iterable artifact");
+    assert_eq!(shape(order(&artifact)), "t.for.0[t.step.0]");
+    assert_eq!(
+        for_entry(&order(&artifact)[0]).iterable,
+        CoreExpr::List { values: Vec::new() }
+    );
+    assert_eq!(artifact.intents["t"].steps.len(), 1);
+    let encoded = encoded_intent(&artifact);
+    let CanonicalValue::Array(entries) = field(&encoded, "executionOrder") else {
+        panic!("order array");
+    };
+    assert_eq!(
+        field(&entries[0], "body"),
+        &CanonicalValue::Array(vec![CanonicalValue::Text("t.step.0".to_owned())])
+    );
+}
+
+#[test]
+fn empty_list_bound_in_source_lowers_with_its_body_intact() {
+    // A bare `[]` needs an expected type, so source binds it first.
+    let body = "  let empty: List<Leaf, max=4> = [];\n\
+          for leaf in empty bounded 4 {\n\
+            let receipt: Receipt = target.replace(leaf.id)\n\
+              else { rejected(reason) => domain.WriteRejected };\n\
+          }\n\
+          return { id: input.id };\n\
+        }";
+    let artifact = structured_artifact(body);
+    assert_eq!(shape(order(&artifact)), "t.binding.0,t.for.0[t.step.0]");
+    assert_eq!(
+        artifact.intents["t"].pure_bindings[0].value,
+        CoreExpr::List { values: Vec::new() }
+    );
+    encode_target_ir_artifact(&artifact).expect("empty source list encodes");
+}
