@@ -43,7 +43,7 @@ Each stage is one pull request. Each stage leaves `main` in a working state.
 
 | Stage | Scope | Posture |
 | --- | --- | --- |
-| 1 | Product prose: the root `README.md`, this note, and the documentation router | Current |
+| 1 | Product prose: the root `README.md`, this note, and one entry in the documentation router that links to this note | Current |
 | 2 | Crate names `amblicit-*`, the facade crate `amblicit` and the CLI binary `amblicit` | Planned |
 | 3 | Source extension `.amblicit`, editor grammars and the scope name `source.amblicit` | Planned |
 | 4 | Wire identifiers `amblicit.*/vN` as new versions | Planned |
