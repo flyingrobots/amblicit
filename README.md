@@ -2,7 +2,7 @@
 
 ***Use only as declared.***
 
-**Amblicit is lawful computation within explicit bounds.** An Amblicit program states what it will read, what it may change, what it costs and how it can fail. The compiler checks that statement before anything runs. The result is a digest-bound artifact that a runtime can review, admit and replay.
+**Amblicit is lawful computation within explicit bounds.** An Amblicit program states what it will read, what it may change, what it costs and how it can fail. The compiler checks the supported parts of that statement before anything runs. [Current status](#current-status) lists what it does not check yet. The result is a digest-bound artifact that a runtime can review, admit and replay.
 
 > [!NOTE]
 > Amblicit was previously named **Edict**. The rename happens in stages. Crate names, the `edict` CLI, `.edict` source files and `edict.*` wire identifiers keep their current names until their stage lands. The [name decision](./docs/design/amblicit-name.md) lists every current and planned name.
@@ -23,7 +23,7 @@ async function getMessageThread(userId: string, threadId: string) {
 
 This function can read any table, call any service and write any file that its process can reach. Only code review keeps it to one thread. The project calls this gap **FIDLAR**: *Footprints Ignored; Developer Lies About Risk*.
 
-The gap is larger when an AI agent calls the function, because the agent can do anything that the process can do. Amblicit closes the gap at the definition, not at the call site. An operation must declare its reads, writes, cost and failures. The compiler refuses anything outside that declaration.
+The gap is larger when an AI agent calls the function, because the agent can do anything that the process can do. Amblicit closes the gap at the definition, not at the call site. An operation reaches effects only through imported, digest-locked law. The compiler checks each effect that a body uses against the profile that the intent declares, and it refuses an effect failure that has no mapping. It does not yet enforce an authored footprint ceiling.
 
 ## The four bounds
 
@@ -244,6 +244,7 @@ match check("package examples.hello@1;\n") {
 **Not yet:**
 
 - Lowering of all v1 language features. For example, Target IR does not yet lower loops or statement branches.
+- Enforcement of authored footprint ceilings. The compiler accepts a `footprint` clause but does not check it yet.
 - Runtime execution in this repository. Runtimes such as Echo own execution.
 - Trusted authorship of lawpacks and target profiles, and participant admission policy.
 - Full contract-bundle bytes, admission tooling, and the HOLMES, Watson and Moriarty assurance tools. These have designs but no implementation.
