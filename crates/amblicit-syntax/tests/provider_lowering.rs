@@ -198,7 +198,7 @@ fn bundle_input(
         core_module: fixture.core.clone(),
         core_ir_coordinate: format!("edict.core.provider-{}-fixture/v1", fixture.name),
         source_artifacts: vec![source_artifact(
-            &format!("contracts/provider-{}.amblicit", fixture.name),
+            &format!("contracts/provider-{}.edict", fixture.name),
             &format!("source.contracts.provider-{}", fixture.name),
             'e',
         )],

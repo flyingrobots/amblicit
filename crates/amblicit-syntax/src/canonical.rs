@@ -2147,17 +2147,17 @@ mod canonical_artifact_tests {
 
     #[test]
     fn logical_package_relative_path_contract_is_shared() {
-        for path in ["contracts/main.amblicit", "generated/review/report.cbor"] {
+        for path in ["contracts/main.edict", "generated/review/report.cbor"] {
             assert!(is_logical_package_relative_path(path), "rejected {path:?}");
         }
         for path in [
             "",
-            "/contracts/main.amblicit",
-            "contracts//main.amblicit",
-            "contracts/./main.amblicit",
-            "contracts/../main.amblicit",
-            "C:/contracts/main.amblicit",
-            r"contracts\main.amblicit",
+            "/contracts/main.edict",
+            "contracts//main.edict",
+            "contracts/./main.edict",
+            "contracts/../main.edict",
+            "C:/contracts/main.edict",
+            r"contracts\main.edict",
         ] {
             assert!(!is_logical_package_relative_path(path), "accepted {path:?}");
         }
@@ -2322,11 +2322,11 @@ mod bundle_layer_digest_tests {
         // digest even when the source artifact digest is unchanged.
         let artifact = resource("src", A);
         let first = [BundleSourceDescriptor {
-            logical_path: "a/main.amblicit",
+            logical_path: "a/main.edict",
             artifact: &artifact,
         }];
         let second = [BundleSourceDescriptor {
-            logical_path: "b/main.amblicit",
+            logical_path: "b/main.edict",
             artifact: &artifact,
         }];
         assert_ne!(
@@ -2342,11 +2342,11 @@ mod bundle_layer_digest_tests {
         let artifact = resource("src", A);
         for logical_path in [
             "",
-            "/contracts/main.amblicit",
-            "contracts/../main.amblicit",
-            "contracts/./main.amblicit",
-            "C:/contracts/main.amblicit",
-            r"contracts\main.amblicit",
+            "/contracts/main.edict",
+            "contracts/../main.edict",
+            "contracts/./main.edict",
+            "C:/contracts/main.edict",
+            r"contracts\main.edict",
         ] {
             let descriptors = [BundleSourceDescriptor {
                 logical_path,

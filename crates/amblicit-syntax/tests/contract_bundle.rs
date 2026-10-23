@@ -73,7 +73,7 @@ fn echo_bundle() -> ContractBundleManifest {
         semantic_bundle_digest: semantic_bundle_digest.clone(),
         release_bundle_digest: digest('b'),
         source_artifacts: vec![SourceArtifactRef {
-            logical_path: "contracts/hello.amblicit".to_owned(),
+            logical_path: "contracts/hello.edict".to_owned(),
             artifact: digest_locked("source.contracts.hello", 'e'),
         }],
         source_profile_semantic_facts: digest_locked("source-profile.hello/v1", 'f'),
@@ -121,7 +121,7 @@ fn echo_bundle() -> ContractBundleManifest {
 
 fn kv_bundle() -> ContractBundleManifest {
     let mut bundle = echo_bundle();
-    "contracts/kv/read.amblicit".clone_into(&mut bundle.source_artifacts[0].logical_path);
+    "contracts/kv/read.edict".clone_into(&mut bundle.source_artifacts[0].logical_path);
     bundle.source_artifacts[0].artifact = digest_locked("source.contracts.kv-read", 'f');
     bundle.target_profile = digest_locked("kv.transactional@1", '1');
     bundle.target_ir = digest_locked("kv.transactional.ir/v1", '2');
@@ -275,11 +275,11 @@ fn optional_artifact_lists_may_be_empty() {
 fn source_artifact_paths_must_be_logical_package_relative_paths() {
     for logical_path in [
         "",
-        "/Users/james/git/edict/contracts/hello.amblicit",
-        "contracts/../hello.amblicit",
-        "contracts/./hello.amblicit",
-        "C:/contracts/hello.amblicit",
-        r"contracts\hello.amblicit",
+        "/Users/james/git/edict/contracts/hello.edict",
+        "contracts/../hello.edict",
+        "contracts/./hello.edict",
+        "C:/contracts/hello.edict",
+        r"contracts\hello.edict",
     ] {
         let mut bundle = echo_bundle();
         bundle.source_artifacts = vec![SourceArtifactRef {
@@ -432,7 +432,7 @@ mod contract_bundle_assembly {
             core_module: bounded_hello_core(),
             core_ir_coordinate: "edict.core.bounded-hello/v1".to_owned(),
             source_artifacts: vec![source_artifact(
-                "contracts/hello.amblicit",
+                "contracts/hello.edict",
                 "source.contracts.hello",
                 'e',
             )],
@@ -461,7 +461,7 @@ mod contract_bundle_assembly {
             core_module,
             core_ir_coordinate: "edict.core.effectful-replace/v1".to_owned(),
             source_artifacts: vec![source_artifact(
-                "contracts/effectful-replace.amblicit",
+                "contracts/effectful-replace.edict",
                 "source.contracts.effectful-replace",
                 'e',
             )],
@@ -1052,11 +1052,11 @@ mod contract_bundle_assembly {
     fn release_only_preimage_mutations_leave_semantic_digest_unchanged() {
         assert_release_only_mutation_changes("source artifact digest", |input| {
             input.source_artifacts[0] =
-                source_artifact("contracts/hello.amblicit", "source.contracts.hello", 'f');
+                source_artifact("contracts/hello.edict", "source.contracts.hello", 'f');
         });
         assert_release_only_mutation_changes("source logical path", |input| {
             input.source_artifacts[0] =
-                source_artifact("contracts/renamed.amblicit", "source.contracts.hello", 'e');
+                source_artifact("contracts/renamed.edict", "source.contracts.hello", 'e');
         });
         assert_release_only_mutation_changes("compiler coordinate", |input| {
             input.compiler = resource("edict.compiler-alt/v1", '4');

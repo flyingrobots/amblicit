@@ -38,7 +38,7 @@ fn echo_bundle() -> ContractBundleManifest {
         semantic_bundle_digest: digest('a'),
         release_bundle_digest: digest('b'),
         source_artifacts: vec![SourceArtifactRef {
-            logical_path: "contracts/hello.amblicit".to_owned(),
+            logical_path: "contracts/hello.edict".to_owned(),
             artifact: digest_locked("source.contracts.hello", 'c'),
         }],
         source_profile_semantic_facts: digest_locked("source-profile.hello/v1", 'd'),
