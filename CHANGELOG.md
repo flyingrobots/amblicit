@@ -21,12 +21,13 @@ versions still track specification maturity rather than a released product.
   loop iterable or other expression) refuses in v3 lowering
   (`empty_predicate_aggregate`) and in the v3 encoder, an intent whose loops
   and branches hold no instruction refuses with `NoTargetSteps` in v3 lowering
-  and the v3 encoder, an ordered comparison of non-integers refuses in v3
-  lowering (`inadmissible_comparison_operator`) and, for provably non-integer
-  operands, in the v3 encoder, an obstruction binder reusing any identity
-  introduced in the intent, or reused by a later one, refuses in v3 lowering
-  and the v3 encoder, and lowering never returns a v3 artifact its encoder
-  refuses (`canonical_nesting_depth` for nesting, otherwise
+  and the v3 encoder, an ordered comparison of non-integers (including in any
+  source function of a v3 module) refuses in v3 lowering
+  (`inadmissible_comparison_operator`) and, for provably non-integer operands,
+  in the v3 encoder, an obstruction binder reusing any identity introduced in
+  the intent, or reused by a later one, refuses in v3 lowering and the v3
+  encoder, and lowering never returns a v3 artifact its encoder refuses
+  (`canonical_nesting_depth` for nesting, otherwise
   `structured_artifact_unencodable`); an intrinsic call in a loop body refuses
   even when its admitted cost is zero. **Breaking (Rust API):**
   `TargetIrIntent::execution_order` is now `Option<Vec<TargetIrOrderEntry>>`;

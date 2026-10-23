@@ -262,16 +262,18 @@ with no values anywhere in a v3 intent (a branch or requirement predicate, a
 loop iterable, or any other expression that carries a predicate, such as an
 `if`) violates the Core schema: v3 lowering refuses it with
 `InvalidCoreIdentity` detail `empty_predicate_aggregate`, and the v3 encoder
-refuses it with `UnsupportedValue`. v1 and v2 encoding is unchanged. Under
-v3, an ordered comparison (`<`, `<=`, `>`, `>=`) anywhere in an intent must
-compare integers, per the closed operator set: lowering resolves both operand
-types and refuses any other pairing with `InvalidCoreIdentity` detail
-`inadmissible_comparison_operator`. The v3 encoder has no type table, so it
-refuses an ordered comparison only when an operand is provably non-integer
-from the artifact itself (a non-integer constant, a record or list, or a local
-of a builtin non-integer type), with `UnsupportedValue`. Both walks bound
-operand classification by the canonical nesting depth and run their
-depth-guarded traversal first. [TIR-REQ-060]
+refuses it with `UnsupportedValue`. v1 and v2 encoding is unchanged. Under v3,
+an ordered comparison (`<`, `<=`, `>`, `>=`) anywhere in an intent must compare
+integers, per the closed operator set: lowering resolves both operand types and
+refuses any other pairing with `InvalidCoreIdentity` detail
+`inadmissible_comparison_operator`. Under v3 the same rule applies to every
+source function in the module, each judged in its own scope, so a helper
+reached directly or through another helper cannot carry one. The v3 encoder has
+no type table, so it refuses an ordered comparison only when an operand is
+provably non-integer from the artifact itself (a non-integer constant, a record
+or list, or a local of a builtin non-integer type), with `UnsupportedValue`.
+Both walks bound operand classification by the canonical nesting depth and run
+their depth-guarded traversal first. [TIR-REQ-060]
 
 Value-yielding branches refuse with `UnsupportedCoreNode` detail
 `branch_binding`; a loop body or arm whose Core block result is not null refuses

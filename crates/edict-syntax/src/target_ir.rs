@@ -904,6 +904,16 @@ fn validate_core_module(
     {
         return vec![failure];
     }
+    if execution_model == ExecutionModel::Structured
+        && !source_function_comparisons_admissible(core, pure_functions)
+    {
+        return vec![TargetLoweringFailure {
+            kind: TargetLoweringFailureKind::InvalidCoreIdentity,
+            intent: None,
+            node_index: None,
+            detail: INADMISSIBLE_COMPARISON.to_owned(),
+        }];
+    }
     validate_pure_binding_graphs(core, pure_functions, effect_signatures, execution_model)
 }
 
@@ -2635,6 +2645,40 @@ fn expression_comparisons_admissible(
                 && child(else_value)
         }
     }
+}
+
+/// Under v3, every source function's bindings and result must use admissible
+/// comparison operators, each judged in the function's own scope (parameters,
+/// then each binding as it is introduced). Checking every function once covers
+/// helpers called directly or through other helpers without walking calls.
+fn source_function_comparisons_admissible(
+    core: &CoreModule,
+    pure_functions: &[TargetPureFunctionFact],
+) -> bool {
+    core.functions.values().all(|function| {
+        let mut available = function
+            .params
+            .iter()
+            .map(|local| (local.id.as_str(), local))
+            .collect::<BTreeMap<_, _>>();
+        function.body.bindings.iter().all(|binding| {
+            let admissible = expression_comparisons_admissible(
+                core,
+                pure_functions,
+                &binding.value,
+                &available,
+                0,
+            );
+            available.insert(binding.binding.id.as_str(), &binding.binding);
+            admissible
+        }) && expression_comparisons_admissible(
+            core,
+            pure_functions,
+            &function.body.result,
+            &available,
+            0,
+        )
+    })
 }
 
 /// Operator admissibility for a v3 intent's basis, input constraints and

@@ -1458,6 +1458,85 @@ fn v3_intents_without_instructions_have_no_target_steps() {
     encode_target_ir_artifact(&empty_v2).expect("v2 empty intent encodes as before");
 }
 
+const COMPARISON_HELPERS: &str = "package a.b@1;\n\
+    type Input = { id: String<max=16>, tag: Bytes<max=8>, n: U64, };\n\
+    type Receipt = { id: String<max=16>, };\n\
+    type Output = { id: String<max=16>, };\n\
+    fn same(a: Bytes<max=8>, b: Bytes<max=8>) -> Bool { return a == b; }\n\
+    fn outer(a: Bytes<max=8>, b: Bytes<max=8>) -> Bool { return same(a, b); }\n\
+    fn less(x: U64, y: U64) -> Bool { return x < y; }\n\
+    intent t(input: Input) returns Output\n\
+      profile p.effectful\n\
+      basis none\n\
+      budget <= p.big {\n\
+      let receipt: Receipt = target.replace(input.id)\n\
+        else { rejected(reason) => domain.WriteRejected };\n\
+      if outer(input.tag, input.tag) {\n\
+        require input.n == input.n else domain.WriteRejected;\n\
+      }\n\
+      if less(input.n, input.n) {\n\
+        require input.n == input.n else domain.WriteRejected;\n\
+      }\n\
+      return { id: input.id };\n\
+    }";
+
+/// Replace a helper's result with `if a < b then true else false` over its
+/// first two parameters.
+fn order_helper_parameters(core: &mut CoreModule, helper: &str) {
+    let function = core.functions.get_mut(helper).expect("helper");
+    let parameter = |index: usize| CoreExpr::Local {
+        reference: function.params[index].clone(),
+    };
+    let (left, right) = (parameter(0), parameter(1));
+    function.body.result = CoreExpr::If {
+        predicate: Box::new(CorePredicate::Compare {
+            op: CompareOp::Lt,
+            left,
+            right,
+        }),
+        then_value: Box::new(CoreExpr::Const(CoreValue::Bool(true))),
+        else_value: Box::new(CoreExpr::Const(CoreValue::Bool(false))),
+    };
+}
+
+#[test]
+fn v3_helper_bodies_require_admissible_comparison_operators() {
+    let module = edict_syntax::parse_module(COMPARISON_HELPERS).expect("source parses");
+    let context = loop_context().with_budget(
+        "p.big",
+        CoreBudget {
+            max_steps: 4096,
+            max_allocated_bytes: 65_536,
+            max_output_bytes: 4096,
+        },
+    );
+    let baseline = compile_to_core(&module, &context).expect("source compiles");
+
+    // Controls: byte equality and integer ordering in helpers lower; ordering
+    // the integer helper's own parameters is still admissible.
+    let report = lower_to_target_ir(&baseline, &structured_facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+    let mut integer = baseline.clone();
+    order_helper_parameters(&mut integer, "less");
+    let report = lower_to_target_ir(&integer, &structured_facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+
+    for (case, helper) in [
+        ("helper called from a branch predicate", "outer"),
+        ("helper called through another helper", "same"),
+    ] {
+        let mut core = baseline.clone();
+        order_helper_parameters(&mut core, helper);
+        let report = lower_to_target_ir(&core, &structured_facts());
+        assert_refused(
+            &report,
+            TargetLoweringFailureKind::InvalidCoreIdentity,
+            Some("inadmissible_comparison_operator"),
+            case,
+        );
+    }
+}
+
 #[test]
 fn requirement_inside_loop_stays_in_the_loop_body() {
     let artifact = structured_artifact(REQUIREMENT_IN_LOOP);
