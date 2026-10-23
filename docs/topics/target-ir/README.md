@@ -192,6 +192,17 @@ intent. The order is a tree: an instruction entry is the text id of a pure
 binding, step or requirement in the existing tables; a control entry is a map.
 [TIR-REQ-060]
 
+This section owns the implemented v3 canonical-format decisions. They refine
+the v2 execution order and the language's bounded-loop and structured-control
+rules without replacing either.
+
+| Relationship | Targets |
+| --- | --- |
+| `refines` | [TIR-REQ-050](#explicit-ordered-execution), [EDICT-LANG-LOOP-001](../../SPEC_edict-language-v1.md#loops), [I-016](../../SPEC_edict-language-v1.md#i-016-structured-control-flow-and-bounds) |
+| `supersedes` | none |
+| `depends_on` | [Core IR contract](../core-ir/README.md#current-contract), [Target IR schema](../../abi/edict-target-ir.cddl) |
+| `related` | [TIR-REQ-060](./test-plan.md#structured-control-flow-267), [Provider contract publication](../providers/README.md#current-contract), [Result projections](../result-projections/README.md#current-contract) |
+
 The example below is abridged and is not valid JSON. The `{...}` placeholders
 replace two Core values: `binder` is a Core `local-ref` and `iterable` is a Core
 `core-expr`, encoded as `docs/abi/edict-target-ir.cddl` defines them.
