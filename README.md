@@ -136,6 +136,11 @@ flowchart LR
 
 A successful build is evidence about the compiler and provider checks. It does not prove runtime behavior, and it does not give permission to run.
 
+The compiler's checks have limits:
+
+- Cost checks include bounded loop work and declared helper costs. Source functions get additional conservative accounting. The compiler does not infer every primitive allocation or every runtime byte-copy cost. The [compiler-spine contract](./docs/topics/compiler-spine/README.md) states the exact boundary.
+- Runtime input values must also satisfy their locked types. Compilation alone does not enforce this condition at ingress.
+
 ## What Amblicit is not
 
 | Is it just...? | Why not |
@@ -177,14 +182,39 @@ Exit codes for `check`: `0` ok, `1` diagnostics, `2` invalid CLI input.
 The CLI has three operations:
 
 - **`check`** parses and validates source. Inputs can be inline source, a path, a directory, a path list or a glob.
-- **`build`** builds an application through its selected provider, or builds a lawpack. A settings record names `edict.application.json` or `edict.lawpack.json`. Lawpack builds are refused on Windows.
-- **`project`** writes syntax, diagnostic, Core IR and Target IR projections.
+- **`build`** builds an application or a lawpack. See [Build an application or lawpack](#build-an-application-or-lawpack).
+- **`project`** accepts the same input records as `check`. It writes syntax, diagnostic, Core IR and Target IR projections. Authoritative projections need their compiler context.
+
+A clean `check` parses and validates the source surface. It does not prove that an application build or a runtime execution will succeed.
 
 The [CLI topic](./docs/topics/cli/README.md) defines each record and exit code.
 
+### Build an application or lawpack
+
+A `build` request contains one settings record and no compiler-input records. These examples need the named document and all of the documents that it refers to in the application directory:
+
+```sh
+printf '%s\n' \
+  '{"schema":"edict.compiler.settings/v1","type":"compilerSettings","operation":"build","application":"edict.application.json"}' \
+  | /path/to/edict/target/debug/edict
+```
+
+```sh
+printf '%s\n' \
+  '{"schema":"edict.compiler.settings/v1","type":"compilerSettings","operation":"build","lawpack":"edict.lawpack.json"}' \
+  | /path/to/edict/target/debug/edict
+```
+
+- An application build either calls the selected provider for its supported executable package, or publishes the supported request-only Core IR and Target IR slice.
+- A lawpack build publishes canonical declarations, adapters, local resources and digest sidecars.
+- Neither build gives authority at the destination.
+- Lawpack builds write output on Apple platforms, Linux, Android and Redox. On Windows, a lawpack build refuses before it reads any document: write mode returns `LawpackOutputWriteUnsupported`, and check-only mode returns `LawpackCheckUnsupported`. The [lawpack build platform contract](./docs/topics/cli/README.md#lawpack-builds) gives the other platform limits.
+
+The [lawpack authoring guide](./docs/topics/lawpack-authoring/README.md) explains how to write a lawpack.
+
 ### Run it on Echo
 
-[Hello Echo](https://github.com/flyingrobots/hello-echo/tree/ee45716e8839efa14798b3e9e35c87538f456b25) is the end-to-end witness. Its [producer lock](https://github.com/flyingrobots/hello-echo/blob/ee45716e8839efa14798b3e9e35c87538f456b25/producers.lock.json) pins exact compiler and Echo commits. Use those commits with its `tests/build.sh` and `tests/runtime.sh`. A different pair of commits needs its own evidence.
+[Hello Echo](https://github.com/flyingrobots/hello-echo/tree/ee45716e8839efa14798b3e9e35c87538f456b25) is the end-to-end witness. Its [producer lock](https://github.com/flyingrobots/hello-echo/blob/ee45716e8839efa14798b3e9e35c87538f456b25/producers.lock.json) pins exact compiler and Echo commits. Use those commits with its `tests/build.sh` and `tests/runtime.sh`. The witness calls Echo's generic [`cargo xtask run-edict-operation`](https://github.com/flyingrobots/echo/blob/490134c0753a3df6a74da366cc71c1248764dc5a/xtask/src/run_edict_operation.rs) runner. A different pair of commits needs its own evidence. This link does not claim that the current heads of the two repositories match the locked pair.
 
 ### As a library
 
