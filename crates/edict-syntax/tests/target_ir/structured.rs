@@ -1361,6 +1361,103 @@ fn v3_encoder_refuses_ordered_comparisons_of_non_integers() {
     encode_target_ir_artifact(&ordered_v2).expect("v2 encoding is unchanged");
 }
 
+/// `ENSURE_EACH_LEAF` whose body is replaced by `nodes` built from its loop.
+fn control_only_core(build: impl FnOnce(CoreNode) -> Vec<CoreNode>) -> CoreModule {
+    let mut core = loop_core(ENSURE_EACH_LEAF);
+    let nodes = &mut core.intents.get_mut("t").expect("intent").body.nodes;
+    let CoreNode::For {
+        binder,
+        iter,
+        bound,
+        body,
+    } = nodes.remove(0)
+    else {
+        panic!("Core for expected");
+    };
+    let empty_loop = CoreNode::For {
+        body: CoreBlock {
+            locals: vec![binder.clone()],
+            nodes: Vec::new(),
+            result: body.result,
+        },
+        binder,
+        iter,
+        bound,
+    };
+    *nodes = build(empty_loop);
+    core
+}
+
+fn empty_branch() -> CoreNode {
+    let empty = || CoreBlock {
+        locals: Vec::new(),
+        nodes: Vec::new(),
+        result: CoreExpr::Const(CoreValue::Null),
+    };
+    CoreNode::Branch {
+        binding: None,
+        predicate: CorePredicate::True,
+        then_block: empty(),
+        else_block: empty(),
+    }
+}
+
+#[test]
+fn v3_intents_without_instructions_have_no_target_steps() {
+    // Control: a loop with one real instruction lowers.
+    let report = lower_to_target_ir(&loop_core(ENSURE_EACH_LEAF), &structured_facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+    let artifact = report.artifact.expect("artifact");
+
+    let nested = control_only_core(|mut empty_loop| {
+        let CoreNode::For { body, .. } = &mut empty_loop else {
+            unreachable!()
+        };
+        body.nodes.push(empty_branch());
+        vec![empty_loop]
+    });
+    for (case, core) in [
+        (
+            "empty branch only",
+            control_only_core(|_| vec![empty_branch()]),
+        ),
+        (
+            "empty loop only",
+            control_only_core(|empty_loop| vec![empty_loop]),
+        ),
+        ("loop containing only an empty branch", nested),
+    ] {
+        let report = lower_to_target_ir(&core, &structured_facts());
+        assert_refused(
+            &report,
+            TargetLoweringFailureKind::NoTargetSteps,
+            None,
+            case,
+        );
+    }
+
+    // Encoder: a v3 intent with empty tables and a control-only order.
+    let mut empty_tree = artifact;
+    let intent = empty_tree.intents.get_mut("t").expect("intent");
+    intent.steps.clear();
+    let order = intent.execution_order.as_mut().expect("order");
+    for_entry_mut(&mut order[0]).body.clear();
+    assert_unsupported_value(&empty_tree, "control-only v3 order");
+
+    // v2 encoding of an intent with empty tables and order is unchanged.
+    let report = lower_to_target_ir(
+        &loop_core(TOP_LEVEL_REQUIREMENT),
+        &facts_for(ECHO_ORDERED_SPAN_IR_DOMAIN),
+    );
+    let mut empty_v2 = report.artifact.expect("v2 artifact");
+    let intent = empty_v2.intents.get_mut("t").expect("intent");
+    intent.steps.clear();
+    intent.requirements.clear();
+    intent.execution_order = Some(Vec::new());
+    intent.result = CoreExpr::Const(CoreValue::Null);
+    encode_target_ir_artifact(&empty_v2).expect("v2 empty intent encodes as before");
+}
+
 #[test]
 fn requirement_inside_loop_stays_in_the_loop_body() {
     let artifact = structured_artifact(REQUIREMENT_IN_LOOP);

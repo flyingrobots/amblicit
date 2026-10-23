@@ -3018,11 +3018,15 @@ fn lower_intent(
             }
         }
     }
+    // Under v3 the tables are empty exactly when the whole order tree has no
+    // instruction, so control nodes alone (empty loops or branches) do not
+    // count as target steps; v1/v2 keep their original rule.
     if state.pure_bindings.is_empty()
         && state.requirements.is_empty()
         && state.steps.is_empty()
         && state.external_action_requests.is_empty()
-        && intent.body.nodes.is_empty()
+        && (intent.body.nodes.is_empty()
+            || context.target_selection.execution_model == ExecutionModel::Structured)
     {
         failures.push(TargetLoweringFailure {
             kind: TargetLoweringFailureKind::NoTargetSteps,
@@ -3550,14 +3554,19 @@ mod tests {
 
     use super::{
         authenticated_named_type_closure_matches, structured_encoding_failure, TargetIrArtifact,
-        TargetIrIntent, TargetIrOrderEntry, TargetLoweringFailureKind, ECHO_DPO_TARGET_PROFILE,
-        ECHO_STRUCTURED_SPAN_IR_DOMAIN,
+        TargetIrIntent, TargetIrOrderEntry, TargetIrRequireFailure, TargetIrRequirement,
+        TargetLoweringFailureKind, ECHO_DPO_TARGET_PROFILE, ECHO_STRUCTURED_SPAN_IR_DOMAIN,
     };
     use crate::core_ir::{
-        CoreBudget, CoreExpr, CoreModule, CoreType, CoreValue, ResourceRef, CORE_API_VERSION,
+        CoreBudget, CoreExpr, CoreModule, CoreObstructionReason, CorePredicate, CoreType,
+        CoreValue, ResourceRef, CORE_API_VERSION,
     };
 
-    fn structured_artifact(order: Vec<TargetIrOrderEntry>) -> TargetIrArtifact {
+    /// A v3 artifact whose single intent holds one requirement instruction,
+    /// `t.require.0`, ordered first and followed by `extra` order entries.
+    fn structured_artifact(extra: Vec<TargetIrOrderEntry>) -> TargetIrArtifact {
+        let mut order = vec![TargetIrOrderEntry::Instruction("t.require.0".to_owned())];
+        order.extend(extra);
         TargetIrArtifact {
             domain: ECHO_STRUCTURED_SPAN_IR_DOMAIN.to_owned(),
             target_profile: ResourceRef {
@@ -3579,7 +3588,16 @@ mod tests {
                         max_output_bytes: 256,
                     },
                     pure_bindings: Vec::new(),
-                    requirements: Vec::new(),
+                    requirements: vec![TargetIrRequirement {
+                        id: "t.require.0".to_owned(),
+                        predicate: CorePredicate::True,
+                        on_failure: TargetIrRequireFailure::Terminal {
+                            reason: CoreObstructionReason {
+                                kind: "example.Rejected".to_owned(),
+                                payload: BTreeMap::new(),
+                            },
+                        },
+                    }],
                     steps: Vec::new(),
                     external_action_requests: Vec::new(),
                     result: CoreExpr::Const(CoreValue::Null),

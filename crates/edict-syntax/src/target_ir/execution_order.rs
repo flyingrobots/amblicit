@@ -80,8 +80,11 @@ fn intent_has_valid_order(intent: &TargetIrIntent, structured: bool) -> bool {
     let count = intent.pure_bindings.len() + intent.steps.len() + intent.requirements.len();
     // Every instruction appears exactly once; a v2 order is flat, so its
     // length must also match. A v3 tree is checked by the walk below.
+    // A v3 intent must reach at least one instruction; control entries alone
+    // are not target steps. v2 keeps its original rule.
     if instructions.len() != count
         || (!structured && order.len() != count)
+        || (structured && count == 0)
         || instructions.contains_key("")
     {
         return false;

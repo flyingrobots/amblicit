@@ -467,7 +467,10 @@ effect lowering facts, non-Echo target intrinsics, missing operation-profile
 support, and obstruction keys absent from the selected target facts also reject
 before any artifact is emitted. A Core intent with no target-owned pure bindings,
 requirements, steps, or external requests, or a Core module with no intents, rejects with
-`TargetLoweringFailureKind::NoTargetSteps`. Duplicate target-lowering facts are
+`TargetLoweringFailureKind::NoTargetSteps`. Under `echo.span-ir/v3` this holds
+for the whole order tree: an intent whose loops and branches contain no
+instruction (for example only an empty branch or an empty loop) refuses with
+`NoTargetSteps`, and the v3 encoder refuses an intent with no instruction. Duplicate target-lowering facts are
 ambiguous only when they match an effect used by the Core module being lowered;
 unrelated duplicate facts do not block the supported artifact.
 
