@@ -31,7 +31,7 @@ pub fn render(arguments: &[&str]) -> Result<String, CommandError> {
         }
         ["application"] => serde_json::to_string_pretty(&json!({
             "schema": "edict.application/v1", "coordinate": "examples.configurable_cell@1",
-            "sources": ["src/create.edict"],
+            "sources": ["src/create.amblicit"],
             "lawpacks": [{"manifest": "vendor/cell/manifest.cbor", "exports": "vendor/cell/exports.cbor",
                 "adapter": "vendor/cell/adapter.cbor", "targetConfiguration": "vendor/cell/configuration.cbor"}],
             "target": {"profile": "echo.dpo@1", "providerPackage": "provider"},

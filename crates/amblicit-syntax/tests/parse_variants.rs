@@ -9,7 +9,7 @@ use amblicit_syntax::ast::{Decl, Expr, Stmt, TypeExpr};
 use amblicit_syntax::parse_module;
 use common::parse_ok;
 
-const PALETTE: &str = include_str!("../../../fixtures/lang/types/color-match.edict");
+const PALETTE: &str = include_str!("../../../fixtures/lang/types/color-match.amblicit");
 
 #[test]
 fn enum_decl_parses() {

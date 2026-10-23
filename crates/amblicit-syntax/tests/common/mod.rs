@@ -10,7 +10,7 @@ use amblicit_syntax::{compile_to_core, parse_module, CompilerContext, CoreBudget
 
 /// Shared source fixture for the initial pure local-record compiler slice.
 pub const BOUNDED_HELLO: &str =
-    include_str!("../../../../fixtures/lang/bounds/bounded-hello.edict");
+    include_str!("../../../../fixtures/lang/bounds/bounded-hello.amblicit");
 
 /// Wrap a statement sequence in a minimal, well-formed intent body.
 pub fn body(stmts: &str) -> String {

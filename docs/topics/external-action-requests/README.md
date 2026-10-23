@@ -13,7 +13,7 @@ owns request construction only.
 A requestable operation family enters source through a digest-locked
 `capability` import:
 
-```edict
+```amblicit
 use capability workspace.snapshot.observe@1
   digest "sha256:7fcb985591d116a1624716334209dd5bf3948dfd756028dc32104621f9e90f71"
   as snapshot;
@@ -21,7 +21,7 @@ use capability workspace.snapshot.observe@1
 
 The alias is callable only in a `request` statement:
 
-```edict
+```amblicit
 request pending: ExternalActionRequest<Bytes<max=65536>> =
   snapshot(input.payload)
   input schema workspace.snapshot.input@1 digest "sha256:c390651d8975c49ff148a332feba4054a53fa9867e0412c1c303e0771cda1096"

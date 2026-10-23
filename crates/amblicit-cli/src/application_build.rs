@@ -2620,7 +2620,7 @@ mod tests {
             "schema": "edict.application/v1",
             "buildKind": "externalAction",
             "coordinate": "examples.workspace_observer@1",
-            "sources": ["src/workspace_observer.edict"],
+            "sources": ["src/workspace_observer.amblicit"],
             "lawpacks": [{
                 "manifest": "vendor/workspace/manifest.cbor",
                 "exports": "vendor/workspace/exports.cbor",
@@ -2794,17 +2794,17 @@ mod tests {
         let source = format!("package application.root@1; use module library.values@1 digest \"{pin}\" as values; type Value = values.Value;");
         test_ok(fs::create_dir_all(root.join("src")), "source directory");
         test_ok(
-            fs::write(root.join("src/root.edict"), &source),
+            fs::write(root.join("src/root.amblicit"), &source),
             "root source",
         );
         test_ok(
-            fs::write(root.join("src/values.edict"), &library),
+            fs::write(root.join("src/values.amblicit"), &library),
             "dependency source",
         );
         (
             source,
             library,
-            vec!["src/root.edict".into(), "src/values.edict".into()],
+            vec!["src/root.amblicit".into(), "src/values.amblicit".into()],
         )
     }
 
@@ -2876,12 +2876,12 @@ mod tests {
                 "disconnected" => {
                     test_ok(
                         fs::write(
-                            root.join("src/unused.edict"),
+                            root.join("src/unused.amblicit"),
                             "package library.unused@1; type Value = U64;",
                         ),
                         "disconnected source",
                     );
-                    paths.push("src/unused.edict".into());
+                    paths.push("src/unused.amblicit".into());
                     "InvalidApplicationSourceClosure"
                 }
                 "duplicate-path" => {
@@ -2890,10 +2890,10 @@ mod tests {
                 }
                 "duplicate-coordinate" => {
                     test_ok(
-                        fs::write(root.join("src/alias.edict"), library),
+                        fs::write(root.join("src/alias.amblicit"), library),
                         "duplicate package",
                     );
-                    paths.push("src/alias.edict".into());
+                    paths.push("src/alias.amblicit".into());
                     "InvalidApplicationSourceClosure"
                 }
                 _ => unreachable!("declared case"),
@@ -2942,7 +2942,7 @@ mod tests {
         );
         let outside = temp_tree("source-outside");
         let (_, library, paths) = write_source_module_fixture(&root);
-        let external_path = outside.join("values.edict");
+        let external_path = outside.join("values.amblicit");
         test_ok(fs::write(&external_path, library), "outside source");
         test_ok(
             fs::remove_file(root.join(&paths[1])),
@@ -2969,9 +2969,9 @@ mod tests {
             "canonical root",
         );
         let (_, _, mut paths) = write_source_module_fixture(&root);
-        let alias = PathBuf::from("src/alias.edict");
+        let alias = PathBuf::from("src/alias.amblicit");
         test_ok(
-            std::os::unix::fs::symlink("values.edict", root.join(&alias)),
+            std::os::unix::fs::symlink("values.amblicit", root.join(&alias)),
             "in-root source alias",
         );
         assert_ne!(paths[1], alias, "raw paths differ");
@@ -2993,11 +2993,11 @@ mod tests {
             amblicit_syntax::source_closure::source_module_digest(library),
             "digest library",
         );
-        let source_path = root.join("src/observe-workspace.edict");
+        let source_path = root.join("src/observe-workspace.amblicit");
         let original = test_ok(fs::read_to_string(&source_path), "read root source");
         let source = original.replacen("package examples.workspace_observer@1;", &format!("package examples.workspace_observer@1; use module library.payloads@1 digest \"{pin}\" as payloads;"), 1);
         test_ok(fs::write(&source_path, source), "write importing source");
-        let library_path = root.join("src/payloads.edict");
+        let library_path = root.join("src/payloads.amblicit");
         test_ok(
             fs::write(&library_path, library),
             "write explicit dependency",
@@ -3007,7 +3007,7 @@ mod tests {
             "decode manifest",
         );
         manifest["sources"] =
-            serde_json::json!(["src/observe-workspace.edict", "src/payloads.edict"]);
+            serde_json::json!(["src/observe-workspace.amblicit", "src/payloads.amblicit"]);
         test_ok(
             fs::write(
                 &config,
@@ -3043,7 +3043,7 @@ mod tests {
     fn public_external_action_build_rejects_sentinel_resource_identities() {
         let root = temp_tree("public-external-action-sentinel-resources");
         let config_path = write_external_action_application(&root);
-        let source_path = root.join("src/observe-workspace.edict");
+        let source_path = root.join("src/observe-workspace.amblicit");
         let mut source = test_ok(
             fs::read_to_string(&source_path),
             "read resource-bound source",
@@ -3098,7 +3098,7 @@ mod tests {
         let root = temp_tree("public-external-action-opaque-resource");
         let config_path = write_external_action_application(&root);
         let artifact_path = root.join("vendor/workspace-snapshot/input-schema.cbor");
-        let source_path = root.join("src/observe-workspace.edict");
+        let source_path = root.join("src/observe-workspace.amblicit");
         let artifact_bytes = test_ok(fs::read(&artifact_path), "read input schema artifact");
         let CanonicalValue::Map(mut artifact) = test_ok(
             decode_canonical_cbor(&artifact_bytes),
@@ -3472,7 +3472,7 @@ mod tests {
     fn public_external_action_build_rejects_capability_substitution() {
         let root = temp_tree("public-external-action-substitution");
         let config_path = write_external_action_application(&root);
-        let source_path = root.join("src/observe-workspace.edict");
+        let source_path = root.join("src/observe-workspace.amblicit");
         let source = test_ok(fs::read_to_string(&source_path), "read application source");
         let manifest_digest =
             include_str!("../../../fixtures/lawpack/workspace-snapshot/manifest.sha256").trim();
@@ -3593,7 +3593,7 @@ mod tests {
     #[test]
     fn application_manifest_rejects_absolute_and_parent_traversal_paths() {
         let mut source_escape = application_manifest(1);
-        source_escape.sources = vec![PathBuf::from("../outside.edict")];
+        source_escape.sources = vec![PathBuf::from("../outside.amblicit")];
         let mut lawpack_escape = application_manifest(1);
         lawpack_escape.lawpacks[0].manifest = PathBuf::from("/outside/manifest.cbor");
         let mut provider_escape = application_manifest(1);
@@ -3670,7 +3670,7 @@ mod tests {
         let source_bytes = test_ok(
             encode_canonical_cbor(&CanonicalValue::Bytes(
                 include_str!(
-                    "../../../fixtures/lawpack/workspace-snapshot/observe-workspace.edict"
+                    "../../../fixtures/lawpack/workspace-snapshot/observe-workspace.amblicit"
                 )
                 .as_bytes()
                 .to_vec(),
@@ -3780,7 +3780,7 @@ mod tests {
             include_bytes!("../../../fixtures/lawpack/hello-echo/exports.cbor").as_slice();
         let adapter_bytes =
             include_bytes!("../../../fixtures/lawpack/hello-echo/adapter.cbor").as_slice();
-        let source = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.edict");
+        let source = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.amblicit");
         let bundle = test_ok(
             decode_lawpack_bundle(manifest, exports),
             "decode Hello Echo lawpack",
@@ -3843,7 +3843,7 @@ mod tests {
             include_bytes!("../../../fixtures/lawpack/hello-echo/exports.cbor").as_slice();
         let adapter_bytes =
             include_bytes!("../../../fixtures/lawpack/hello-echo/adapter.cbor").as_slice();
-        let source = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.edict");
+        let source = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.amblicit");
         let bundle = test_ok(
             decode_lawpack_bundle(manifest, exports),
             "decode Hello Echo lawpack",
@@ -4140,7 +4140,7 @@ mod tests {
             include_bytes!("../../../fixtures/lawpack/hello-echo/exports.cbor").as_slice();
         let adapter =
             include_bytes!("../../../fixtures/lawpack/hello-echo/adapter.cbor").as_slice();
-        let source = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.edict");
+        let source = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.amblicit");
         let bundle = test_ok(
             decode_lawpack_bundle(manifest, exports),
             "decode Hello Echo lawpack",
@@ -4164,7 +4164,7 @@ mod tests {
     fn external_action_target_ir() -> TargetIrArtifact {
         let loaded = external_action_loaded_lawpack();
         let source =
-            include_str!("../../../fixtures/lawpack/workspace-snapshot/observe-workspace.edict");
+            include_str!("../../../fixtures/lawpack/workspace-snapshot/observe-workspace.amblicit");
         let module = test_ok(parse_module(source), "parse workspace observation source");
         let adapter = test_ok(
             decode_lawpack_adapter(&loaded.bundle, "echo.dpo@1", &loaded.adapter_bytes),
@@ -4393,7 +4393,7 @@ mod tests {
                 .ok_or("authored lawpack has no manifest"),
             "locate authored lawpack manifest",
         );
-        let source_path = root.join("src/observe-workspace.edict");
+        let source_path = root.join("src/observe-workspace.amblicit");
         let source = test_ok(fs::read_to_string(&source_path), "read workspace source");
         let original_digest =
             include_str!("../../../fixtures/lawpack/workspace-snapshot/manifest.sha256").trim();
@@ -4433,9 +4433,9 @@ mod tests {
 
         for (path, bytes) in [
             (
-                source_directory.join("observe-workspace.edict"),
+                source_directory.join("observe-workspace.amblicit"),
                 include_bytes!(
-                    "../../../fixtures/lawpack/workspace-snapshot/observe-workspace.edict"
+                    "../../../fixtures/lawpack/workspace-snapshot/observe-workspace.amblicit"
                 )
                 .as_slice(),
             ),
@@ -4542,7 +4542,7 @@ mod tests {
             "schema": "edict.application/v1",
             "buildKind": "externalAction",
             "coordinate": "examples.workspace_observer@1",
-            "sources": ["src/observe-workspace.edict"],
+            "sources": ["src/observe-workspace.amblicit"],
             "lawpacks": [{
                 "manifest": "vendor/workspace-snapshot/manifest.cbor",
                 "exports": "vendor/workspace-snapshot/exports.cbor",
@@ -4813,20 +4813,20 @@ mod tests {
 
         let root = temp_tree("source-symlink-root");
         let outside = temp_tree("source-symlink-outside");
-        let outside_source = outside.join("operation.edict");
+        let outside_source = outside.join("operation.amblicit");
         test_ok(
             fs::write(&outside_source, "package examples.test@1;"),
             "write external source",
         );
         test_ok(
-            symlink(&outside_source, root.join("operation.edict")),
+            symlink(&outside_source, root.join("operation.amblicit")),
             "link source outside application root",
         );
         let config_path = root.join("edict.application.json");
         let config = serde_json::json!({
             "schema": "edict.application/v1",
             "coordinate": "examples.test@1.operation",
-            "sources": ["operation.edict"],
+            "sources": ["operation.amblicit"],
             "lawpacks": [{
                 "manifest": "lawpack/manifest.cbor",
                 "exports": "lawpack/exports.cbor",
@@ -4875,7 +4875,7 @@ mod tests {
             schema: "edict.application/v1".to_owned(),
             build_kind: ApplicationBuildKind::ExecutableOperation,
             coordinate: "examples.test@1.operation".to_owned(),
-            sources: vec![PathBuf::from("operation.edict")],
+            sources: vec![PathBuf::from("operation.amblicit")],
             lawpacks: (0..lawpack_count)
                 .map(|index| ApplicationLawpack {
                     manifest: PathBuf::from(format!("lawpacks/{index}/manifest.cbor")),

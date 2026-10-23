@@ -44,14 +44,14 @@ Out of scope:
 | docs/topics/syntax/test-plan.md | Syntax ledger for future parser coverage. | `SYNTAX-REQ-013` and `SYNTAX-TP-023` preserve the planned parser guard. |
 | docs/topics/target-ir/README.md | Target IR current-boundary note. | Target IR explicitly claims Echo requirement disposition support while leaving Echo receipts and runtime execution deferred. |
 | fixtures/obstruction-strands/v0/stale-basis/README.md | Golden corridor manifest. | Human review confirms future artifacts appear only after the owning layer lands. |
-| fixtures/obstruction-strands/v0/stale-basis/source.edict | Stale-basis source corridor fixture. | Parsed by `stale_basis_obstruction_strand_fixture_parses`. |
+| fixtures/obstruction-strands/v0/stale-basis/source.amblicit | Stale-basis source corridor fixture. | Parsed by `stale_basis_obstruction_strand_fixture_parses`. |
 
 ## Test Cases
 
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | OBSTRAND-TP-001 | implemented | Current parser contract | OBSTRAND-REQ-001 | Current `require ... else` parses as `Stmt::Require` with a predicate and obstruction target. | require_statement_parses_terminal_obstruction_source_shape | crates/amblicit-syntax/tests/parse_review_regressions.rs | Parser evidence only; compiler lowering for `Stmt::Require` remains outside the landed boundary. |
-| OBSTRAND-TP-002 | implemented | Syntax guard | OBSTRAND-REQ-002 | Parser introduces a distinct source AST arm for first-class preserved obstruction syntax. | continue_obstructed_source_arm_parses, stale_basis_obstruction_strand_fixture_parses | crates/amblicit-syntax/tests/parse_review_regressions.rs, fixtures/obstruction-strands/v0/stale-basis/source.edict | Parser evidence only. |
+| OBSTRAND-TP-002 | implemented | Syntax guard | OBSTRAND-REQ-002 | Parser introduces a distinct source AST arm for first-class preserved obstruction syntax. | continue_obstructed_source_arm_parses, stale_basis_obstruction_strand_fixture_parses | crates/amblicit-syntax/tests/parse_review_regressions.rs, fixtures/obstruction-strands/v0/stale-basis/source.amblicit | Parser evidence only. |
 | OBSTRAND-TP-003 | implemented | Source validation | OBSTRAND-REQ-003 | `continue obstructed { ... }` requires a `reason` field and rejects duplicate `reason` fields. | continue_obstructed_requires_reason_field, continue_obstructed_rejects_duplicate_reason_field | crates/amblicit-syntax/tests/parse_review_regressions.rs | Rejection happens before Core digesting. |
 | OBSTRAND-TP-004 | implemented | Contextual syntax guard | OBSTRAND-REQ-003 | `continue obstructed { ... }` is not a normal expression outside a require-else arm. | continue_obstructed_is_contextual_to_require_else | crates/amblicit-syntax/tests/parse_review_regressions.rs | Prevents function-like or value-like use. |
 | OBSTRAND-TP-005 | implemented | Negative guard | OBSTRAND-REQ-004 | `else continueInObstructedStrand(...)` is not interpreted as hidden control flow. | helper_shaped_continue_in_obstructed_strand_is_terminal | crates/amblicit-syntax/tests/parse_review_regressions.rs | It remains an ordinary terminal obstruction target. |

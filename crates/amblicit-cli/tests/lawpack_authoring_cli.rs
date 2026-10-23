@@ -101,7 +101,7 @@ fn public_build_requires_repinning_an_authored_helper_body_change() {
     let original_digest = publish_mutation_lawpack(&root, &document);
     let reviewed = fixture_root().join("fixtures/lawpack/workspace-snapshot");
     let reviewed_digest = fs::read_to_string(reviewed.join("manifest.sha256")).unwrap();
-    let source_path = root.join("src/observe-workspace.edict");
+    let source_path = root.join("src/observe-workspace.amblicit");
     let template = fs::read_to_string(&source_path).unwrap();
     assert_eq!(template.matches(reviewed_digest.trim()).count(), 2);
     assert_eq!(template.matches("{\n  request").count(), 1);
@@ -233,8 +233,8 @@ fn write_external_consumer(root: &Path) {
         fs::create_dir_all(directory).expect("create external consumer directory");
     }
     fs::copy(
-        reviewed.join("observe-workspace.edict"),
-        source.join("observe-workspace.edict"),
+        reviewed.join("observe-workspace.amblicit"),
+        source.join("observe-workspace.amblicit"),
     )
     .expect("copy application source");
     for file in [
@@ -306,7 +306,7 @@ fn write_external_consumer(root: &Path) {
         "schema": "edict.application/v1",
         "buildKind": "externalAction",
         "coordinate": "examples.workspace_observer@1",
-        "sources": ["src/observe-workspace.edict"],
+        "sources": ["src/observe-workspace.amblicit"],
         "lawpacks": [{
             "manifest": "vendor/generated-workspace-snapshot/manifest.cbor",
             "exports": "vendor/generated-workspace-snapshot/exports.cbor",

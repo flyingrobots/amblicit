@@ -1,2 +1,2 @@
-{"command":"check","input":{"kind":"source","name":"unbounded.edict"},"kind":"UnboundedScalar","schema":"edict.cli.diagnostic/v1","severity":"error","span":{"end":55,"start":43},"stage":"semantic","type":"diagnostic"}
+{"command":"check","input":{"kind":"source","name":"unbounded.amblicit"},"kind":"UnboundedScalar","schema":"edict.cli.diagnostic/v1","severity":"error","span":{"end":55,"start":43},"stage":"semantic","type":"diagnostic"}
 {"checked":0,"command":"check","errors":1,"exitCode":1,"schema":"edict.cli.event/v1","status":"error","type":"status"}

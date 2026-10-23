@@ -28,7 +28,7 @@ const TARGET_CONFIGURATION_DIGEST: &str =
     include_str!("../../../fixtures/lawpack/hello-echo/echo-operation-configuration.sha256");
 const MANIFEST_DIGEST: &str = include_str!("../../../fixtures/lawpack/hello-echo/manifest.sha256");
 const CREATE_GREETING_SOURCE: &str =
-    include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.edict");
+    include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.amblicit");
 const CREATE_GREETING_CORE_BYTES: &[u8] =
     include_bytes!("../../../fixtures/lawpack/hello-echo/create-greeting.core.cbor");
 const CREATE_GREETING_CORE_DIGEST: &str =

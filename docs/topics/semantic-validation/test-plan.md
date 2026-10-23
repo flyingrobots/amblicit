@@ -39,15 +39,15 @@ Out of scope for this first slice:
 
 | Fixture | Purpose | Oracle |
 | --- | --- | --- |
-| fixtures/lang/bounds/bounded-hello.edict | Positive bounded scalar and required-clause fixture. | `validate_surface` returns `Ok(())`. |
-| fixtures/lang/effects/read-greeting.edict | Positive effect body and obstruction fixture. | `validate_surface` returns `Ok(())`. |
-| fixtures/lang/effects/conditional-blob.edict | Positive branch-yield fixture. | `validate_surface` returns `Ok(())`. |
+| fixtures/lang/bounds/bounded-hello.amblicit | Positive bounded scalar and required-clause fixture. | `validate_surface` returns `Ok(())`. |
+| fixtures/lang/effects/read-greeting.amblicit | Positive effect body and obstruction fixture. | `validate_surface` returns `Ok(())`. |
+| fixtures/lang/effects/conditional-blob.amblicit | Positive branch-yield fixture. | `validate_surface` returns `Ok(())`. |
 
 ## Test Cases
 
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| SEMVAL-TP-001 | implemented | Golden path | SEMVAL-REQ-001 | Valid Phase 1 fixtures return `Ok(())`. | phase1_fixtures_validate_semantically | fixtures/lang/bounds/bounded-hello.edict, fixtures/lang/effects/read-greeting.edict, fixtures/lang/effects/conditional-blob.edict | Source-AST validator only. |
+| SEMVAL-TP-001 | implemented | Golden path | SEMVAL-REQ-001 | Valid Phase 1 fixtures return `Ok(())`. | phase1_fixtures_validate_semantically | fixtures/lang/bounds/bounded-hello.amblicit, fixtures/lang/effects/read-greeting.amblicit, fixtures/lang/effects/conditional-blob.amblicit | Source-AST validator only. |
 | SEMVAL-TP-002 | implemented | Error handling | SEMVAL-REQ-002 | Nested unbounded scalars produce `UnboundedScalar` for each occurrence. | unbounded_runtime_scalars_are_rejected_recursively, unbounded_runtime_scalars_are_rejected_in_declaration_type_surfaces, unbounded_runtime_scalars_are_rejected_in_intent_and_expression_surfaces | - | Covers `Option`, `List`, `Map`, `CapabilityRef`, variant payloads, intent params/returns, typed `let`, and expression type args. |
 | SEMVAL-TP-003 | implemented | Error handling | SEMVAL-REQ-003, SEMVAL-REQ-004, SEMVAL-REQ-005 | Missing required intent clauses produce `MissingOperationMode`, `MissingBudget`, and `MissingBasis`. | intent_required_clauses_are_validated | - | Does not require import resolution. |
 | SEMVAL-TP-004 | implemented | Golden path | SEMVAL-REQ-003 | Either `profile` or `implements` satisfies operation mode. | profile_or_implements_satisfies_operation_mode | - | Both remain legal. |
@@ -55,7 +55,7 @@ Out of scope for this first slice:
 | SEMVAL-TP-006 | implemented | Error handling | SEMVAL-REQ-007 | Module-scope declaration and import aliases cannot collide in the same namespace. | module_namespace_collisions_are_rejected | - | Source-AST environment only. |
 | SEMVAL-TP-007 | implemented | Error handling | SEMVAL-REQ-007 | Intent parameters and local binders cannot shadow module names, parameters, or earlier locals. | local_binders_cannot_shadow_visible_names | - | Source-AST environment only. |
 | SEMVAL-TP-008 | implemented | Edge/scope | SEMVAL-REQ-007 | Branch, loop, match, obstruction-map, and branch-yield binders are scoped deterministically and do not leak into sibling or outer scopes. | branch_and_loop_binders_are_scoped, branch_yield_binders_are_scoped, clause_expression_binders_see_parameters, expression_binders_cannot_shadow_visible_names, obstruction_map_binders_cannot_shadow_visible_names | - | Source-AST environment only. |
-| SEMVAL-TP-009 | implemented | Stage boundary | SEMVAL-REQ-008 | `validate_surface` accepts known-good fixtures and `validate_module` remains equivalent for compatibility. | validate_module_remains_surface_stage_compatibility_alias | fixtures/lang/bounds/bounded-hello.edict | Keeps the stage name explicit without breaking existing callers. |
+| SEMVAL-TP-009 | implemented | Stage boundary | SEMVAL-REQ-008 | `validate_surface` accepts known-good fixtures and `validate_module` remains equivalent for compatibility. | validate_module_remains_surface_stage_compatibility_alias | fixtures/lang/bounds/bounded-hello.amblicit | Keeps the stage name explicit without breaking existing callers. |
 | SEMVAL-TP-010 | implemented | Boundary guard | SEMVAL-REQ-009 | Unresolved imports, named types, callees, and field paths do not fail surface validation when no source/surface rule is violated. | surface_validation_defers_import_and_name_resolution | - | Resolution belongs to the resolver stage. |
 | SEMVAL-TP-011 | implemented | Boundary guard | SEMVAL-REQ-010 | Contextual integer mismatch and unresolved loop cardinality do not fail surface validation. | surface_validation_defers_contextual_typing_and_loop_bound_proof | - | Type checking and cardinality proof are downstream. |
 | SEMVAL-TP-012 | implemented | Boundary guard | SEMVAL-REQ-010 | A partial-looking obstruction map does not fail surface validation without target/lawpack failure facts. | surface_validation_defers_obstruction_exhaustiveness | - | Exhaustiveness belongs after target/lawpack facts exist. |

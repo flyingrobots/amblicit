@@ -12,7 +12,7 @@ It grants no callable semantic effect:
 - `targetConfiguration` binds one exact request-profile resource;
 - `effectImplementations` is empty.
 
-`observe-workspace.edict` imports both the exact lawpack manifest and the
+`observe-workspace.amblicit` imports both the exact lawpack manifest and the
 requestable `workspace.snapshot.observe@1` capability using the same manifest
 digest. The generated Core and Target IR therefore preserve the complete
 capability closure while Target IR contains one external-action request and
@@ -27,7 +27,7 @@ substituted, duplicate, disconnected, malformed, or placeholder closure before
 publication.
 
 This real-lawpack corpus is distinct from
-`fixtures/lang/external-actions/workspace-snapshot.edict`. That earlier
+`fixtures/lang/external-actions/workspace-snapshot.amblicit`. That earlier
 compiler fixture uses synthetic context facts and a placeholder capability
 digest to isolate request encoding. The files here use the generated manifest,
 profile, and budget closure, so their canonical Core and Target IR identities

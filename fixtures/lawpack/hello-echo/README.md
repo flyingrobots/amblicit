@@ -17,7 +17,7 @@ a fake transport, or a handwritten Echo executable package.
   may interpret.
 - `echo-operation-configuration.sha256` is its
   `hello.echo.echo-operation-configuration/v1` domain-framed identity.
-- `create-greeting.edict` imports the exact manifest digest and consumes those
+- `create-greeting.amblicit` imports the exact manifest digest and consumes those
   lawpack-owned input/receipt types in the bounded `createGreeting` action with
   typed `AlreadyExists` mapping.
 - `create-greeting.core.cbor` is the canonical Core module compiled from that

@@ -27,7 +27,7 @@ request names resolves to a stable relative path in the emitted records.
 - `03-source-semantic-rejection` — semantic-stage diagnostic, exit `1`.
 - `04-cli-missing-settings` — CLI-input rejection before compilation, exit `2`.
 - `05-path-input-ok` — single file path input.
-- `06-directory-expansion-ok` — recursive directory expansion, sorted, non-`.edict` files ignored.
+- `06-directory-expansion-ok` — recursive directory expansion, sorted, non-`.amblicit` files ignored.
 - `07-path-list-ok` — ordered path list, request order preserved.
 - `08-glob-expansion-ok` — glob expansion, sorted.
 - `09-shape-source-ok` — source importing a GraphQL `shape` schema; accepted because import resolution is deferred at the `check` stage.

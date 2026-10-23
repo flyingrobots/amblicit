@@ -121,7 +121,7 @@ fn assert_location(record: &Value, path: &Path, source: &str, start: usize) {
 fn application_build_emits_compiler_records_and_preserves_output_on_failure() {
     let root = temp_tree("compiler");
     let config = write_external_action_application(&root);
-    let path = root.join("src/observe-workspace.edict");
+    let path = root.join("src/observe-workspace.amblicit");
     let original = fs::read_to_string(&path).expect("read valid source");
     assert_eq!(original.matches("  return pending;").count(), 1);
     let source = original.replace("  return pending;", "  let marker = \"🦀\"; let wrong: U64 = true;\n  let missing = unknownValue;\n  return pending;").replace('\n', "\r\n");
@@ -183,7 +183,7 @@ fn application_build_emits_compiler_records_and_preserves_output_on_failure() {
 fn application_build_emits_parser_eof_location_without_publishing() {
     let root = temp_tree("parser-eof");
     let config = write_external_action_application(&root);
-    let path = root.join("src/observe-workspace.edict");
+    let path = root.join("src/observe-workspace.amblicit");
     let source = "// 🦀\r\npackage examples.broken@1;\r\nintent broken(";
     fs::write(&path, source).expect("write EOF source");
     let output = build(&config);
@@ -247,9 +247,9 @@ fn write_application_fixture_resources(root: &Path) {
 
     for (path, bytes) in [
         (
-            source_directory.join("observe-workspace.edict"),
+            source_directory.join("observe-workspace.amblicit"),
             include_bytes!(
-                "../../../fixtures/lawpack/workspace-snapshot/observe-workspace.edict"
+                "../../../fixtures/lawpack/workspace-snapshot/observe-workspace.amblicit"
             )
             .as_slice(),
         ),
@@ -364,7 +364,7 @@ fn write_external_action_application(root: &Path) -> PathBuf {
         "schema": "edict.application/v1",
         "buildKind": "externalAction",
         "coordinate": "examples.workspace_observer@1",
-        "sources": ["src/observe-workspace.edict"],
+        "sources": ["src/observe-workspace.amblicit"],
         "lawpacks": [{
             "manifest": "vendor/workspace-snapshot/manifest.cbor",
             "exports": "vendor/workspace-snapshot/exports.cbor",
@@ -440,13 +440,13 @@ fn application_signature_mismatch_has_structured_field_context() {
     )
     .expect("write config");
     let declaration = "type WideInput = { basis: String<max=128>, key: String<max=65>, message: String<max=256>, };\n\n";
-    let source = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.edict")
+    let source = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.amblicit")
         .replace(
             "type GreetingCreated",
             &format!("{declaration}type GreetingCreated"),
         )
         .replace("input: hello.CreateGreetingInput", "input: WideInput");
-    fs::write(root.join("src/observe-workspace.edict"), source).expect("write mismatch source");
+    fs::write(root.join("src/observe-workspace.amblicit"), source).expect("write mismatch source");
     let output = build(&config);
     assert_eq!(output.status.code(), Some(2));
     let stream = records(&output.stderr);
@@ -480,10 +480,10 @@ fn application_signature_mismatch_has_structured_field_context() {
 
 fn write_module_application(root: &Path, libraries: &[(&str, &str, &str)]) -> PathBuf {
     let config = write_external_action_application(root);
-    let source_path = root.join("src/observe-workspace.edict");
+    let source_path = root.join("src/observe-workspace.amblicit");
     let mut source = fs::read_to_string(&source_path).expect("root source");
     let mut imports = String::new();
-    let mut sources = vec![json!("src/observe-workspace.edict")];
+    let mut sources = vec![json!("src/observe-workspace.amblicit")];
     for (coordinate, name, library) in libraries {
         let pin =
             amblicit_syntax::source_closure::source_module_digest(library).expect("source digest");
@@ -492,7 +492,7 @@ fn write_module_application(root: &Path, libraries: &[(&str, &str, &str)]) -> Pa
             "use module {coordinate} digest \"{pin}\" as {name};"
         )
         .expect("format import");
-        let path = format!("src/{name}.edict");
+        let path = format!("src/{name}.amblicit");
         fs::write(root.join(&path), library).expect("library source");
         sources.push(json!(path));
     }
@@ -534,7 +534,7 @@ fn application_build_emits_original_library_locations_across_modules() {
         ("first", first, "return true"),
         ("second", second, "return false"),
     ] {
-        let path = root.join(format!("src/{name}.edict"));
+        let path = root.join(format!("src/{name}.amblicit"));
         let canonical = fs::canonicalize(&path)
             .expect("canonical path")
             .display()
@@ -597,7 +597,7 @@ fn application_build_reports_dependency_parse_and_link_failures_at_original_path
             .unwrap_or_else(|| panic!("expected {stage}/{kind}: {stream:?}"));
         assert_location(
             cause,
-            &root.join("src/bad.edict"),
+            &root.join("src/bad.amblicit"),
             library,
             library.find(anchor).expect("diagnostic anchor"),
         );
@@ -615,9 +615,9 @@ fn application_module_surface_failures_preserve_original_locations() {
         let library = "package library.bad@1;\r\n// 🦀\r\nfn repeated() -> U64 { return 1; }\r\nfn repeated() -> U64 { return 2; }";
         let config = write_module_application(&root, &[("library.bad@1", "bad", library)]);
         let path = if in_root {
-            root.join("src/observe-workspace.edict")
+            root.join("src/observe-workspace.amblicit")
         } else {
-            root.join("src/bad.edict")
+            root.join("src/bad.amblicit")
         };
         if in_root {
             let mut source = fs::read_to_string(&path).expect("root source");
@@ -631,7 +631,7 @@ fn application_module_surface_failures_preserve_original_locations() {
                 amblicit_syntax::source_closure::source_module_digest(valid).expect("valid pin");
             let old =
                 amblicit_syntax::source_closure::source_module_digest(library).expect("old pin");
-            fs::write(root.join("src/bad.edict"), valid).expect("valid dependency");
+            fs::write(root.join("src/bad.amblicit"), valid).expect("valid dependency");
             let source = fs::read_to_string(&path)
                 .expect("root source")
                 .replace(&old.to_string(), &pin.to_string());

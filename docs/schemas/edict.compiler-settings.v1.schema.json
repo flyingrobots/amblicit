@@ -172,7 +172,7 @@
         "pattern": "^\\.[A-Za-z0-9_-]+$"
       },
       "uniqueItems": true,
-      "default": [".edict"]
+      "default": [".amblicit"]
     },
     "followSymlinks": {
       "type": "boolean",

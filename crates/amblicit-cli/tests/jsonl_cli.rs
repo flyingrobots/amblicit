@@ -131,7 +131,7 @@ fn build_rejects_compiler_input_records_instead_of_ignoring_them() {
             "schema": "edict.compiler.input/v1",
             "type": "compilerInput",
             "kind": "source",
-            "name": "ignored.edict",
+            "name": "ignored.amblicit",
             "source": VALID_SOURCE,
         }),
     ]));
@@ -221,7 +221,7 @@ fn build_rejects_explicit_default_values_for_forbidden_settings() {
     for (field, value) in [
         ("emit", json!([])),
         ("followSymlinks", json!(false)),
-        ("directoryExtensions", json!([".edict"])),
+        ("directoryExtensions", json!([".amblicit"])),
         ("checkOnly", json!(false)),
     ] {
         let mut settings = json!({
@@ -384,7 +384,7 @@ fn check_accepts_inline_source_jsonl_and_emits_jsonl_stdout() {
             "schema": "edict.compiler.input/v1",
             "type": "compilerInput",
             "kind": "source",
-            "name": "inline.edict",
+            "name": "inline.amblicit",
             "source": VALID_SOURCE,
         }),
     ]));
@@ -411,7 +411,7 @@ fn project_accepts_dirty_source_and_emits_syntax_core_target_ir_projection() {
             "schema": "edict.compiler.input/v1",
             "type": "compilerInput",
             "kind": "source",
-            "name": "unsaved/demo.echo.edict",
+            "name": "unsaved/demo.echo.amblicit",
             "source": ECHO_SOURCE,
         }),
     ]));
@@ -437,7 +437,7 @@ fn project_exposes_ordered_effect_binding_and_guard_without_hoisting() {
         settings,
         json!({
             "schema": "edict.compiler.input/v1", "type": "compilerInput",
-            "kind": "source", "name": "ordered.edict", "source": source,
+            "kind": "source", "name": "ordered.amblicit", "source": source,
         }),
     ]));
     let stdout = assert_successful_projection_output(&output);
@@ -475,7 +475,7 @@ fn project_exposes_structured_loop_order() {
         settings,
         json!({
             "schema": "edict.compiler.input/v1", "type": "compilerInput",
-            "kind": "source", "name": "structured.edict", "source": source,
+            "kind": "source", "name": "structured.amblicit", "source": source,
         }),
     ]));
     let stdout = assert_successful_projection_output(&output);
@@ -503,7 +503,7 @@ fn project_exposes_external_requests_as_non_callable_review_data() {
             "schema": "edict.compiler.input/v1",
             "type": "compilerInput",
             "kind": "source",
-            "name": "unsaved/external-request.edict",
+            "name": "unsaved/external-request.amblicit",
             "source": EXTERNAL_REQUEST_SOURCE,
         }),
     ]));
@@ -597,7 +597,7 @@ fn project_invalid_source_emits_diagnostics_without_process_failure() {
             "schema": "edict.compiler.input/v1",
             "type": "compilerInput",
             "kind": "source",
-            "name": "unsaved/broken.edict",
+            "name": "unsaved/broken.amblicit",
             "source": "package demo.broken@1\n",
         }),
     ]));
@@ -644,7 +644,7 @@ fn project_reserved_type_identity_emits_the_stable_compiler_kind() {
             "schema": "edict.compiler.input/v1",
             "type": "compilerInput",
             "kind": "source",
-            "name": "unsaved/reserved.edict",
+            "name": "unsaved/reserved.amblicit",
             "source": source,
         }),
     ]));
@@ -681,7 +681,7 @@ fn project_target_lowering_failure_is_structured_projection_data() {
             "schema": "edict.compiler.input/v1",
             "type": "compilerInput",
             "kind": "source",
-            "name": "unsaved/pure.edict",
+            "name": "unsaved/pure.amblicit",
             "source": VALID_SOURCE,
         }),
     ]));
@@ -738,7 +738,7 @@ fn project_syntax_only_does_not_run_authoritative_compiler_path() {
             "schema": "edict.compiler.input/v1",
             "type": "compilerInput",
             "kind": "source",
-            "name": "unsaved/incomplete.edict",
+            "name": "unsaved/incomplete.amblicit",
             "source": "package demo.incomplete@1\n",
         }),
     ]));
@@ -773,7 +773,7 @@ fn project_syntax_only_lex_failure_emits_visible_diagnostics() {
             "schema": "edict.compiler.input/v1",
             "type": "compilerInput",
             "kind": "source",
-            "name": "unsaved/broken-lex.edict",
+            "name": "unsaved/broken-lex.amblicit",
             "source": "package demo.broken@1;\nlet value = \"unterminated",
         }),
     ]));
@@ -826,7 +826,7 @@ fn invalid_project_settings_report_project_command() {
             "schema": "edict.compiler.input/v1",
             "type": "compilerInput",
             "kind": "source",
-            "name": "unsaved/demo.echo.edict",
+            "name": "unsaved/demo.echo.amblicit",
             "source": ECHO_SOURCE,
         }),
     ]));
@@ -865,7 +865,7 @@ fn check_rejects_invalid_source_with_jsonl_stderr_only() {
             "schema": "edict.compiler.input/v1",
             "type": "compilerInput",
             "kind": "source",
-            "name": "broken.edict",
+            "name": "broken.amblicit",
             "source": "package examples.broken@1\n",
         }),
     ]));
@@ -981,7 +981,7 @@ fn retired_stdin_cap_variable_is_ignored() {
 fn input_root_rejects_path_outside_configured_root() {
     let allowed = temp_tree("allowed-root");
     let outside = temp_tree("outside-root");
-    let outside_source = outside.join("outside.edict");
+    let outside_source = outside.join("outside.amblicit");
     fs::write(&outside_source, VALID_SOURCE).expect("write outside source");
 
     let output = run_edict(&jsonl([
@@ -1019,7 +1019,7 @@ fn input_root_rejects_path_outside_configured_root() {
 #[test]
 fn input_root_null_rejects_as_invalid_settings() {
     let outside = temp_tree("null-input-root-outside");
-    let outside_source = outside.join("outside.edict");
+    let outside_source = outside.join("outside.amblicit");
     fs::write(&outside_source, VALID_SOURCE).expect("write outside source");
 
     let output = run_edict(&jsonl([
@@ -1077,7 +1077,7 @@ fn projection_object_settings_null_reject_as_invalid_settings() {
                 "schema": "edict.compiler.input/v1",
                 "type": "compilerInput",
                 "kind": "source",
-                "name": "inline.edict",
+                "name": "inline.amblicit",
                 "source": VALID_SOURCE,
             }),
         ]));
@@ -1109,7 +1109,7 @@ fn projection_object_settings_null_reject_as_invalid_settings() {
 fn input_root_rejects_glob_outside_configured_root() {
     let allowed = temp_tree("allowed-glob-root");
     let outside = temp_tree("outside-glob-root");
-    fs::write(outside.join("outside.edict"), VALID_SOURCE).expect("write outside source");
+    fs::write(outside.join("outside.amblicit"), VALID_SOURCE).expect("write outside source");
 
     let output = run_edict(&jsonl([
         json!({
@@ -1122,7 +1122,7 @@ fn input_root_rejects_glob_outside_configured_root() {
             "schema": "edict.compiler.input/v1",
             "type": "compilerInput",
             "kind": "glob",
-            "pattern": format!("{}/*.edict", outside.display()),
+            "pattern": format!("{}/*.amblicit", outside.display()),
         }),
     ]));
 
@@ -1150,10 +1150,10 @@ fn input_root_glob_skips_dangling_symlink_matches() {
     use std::os::unix::fs::symlink;
 
     let root = temp_tree("glob-dangling-symlink");
-    let source = root.join("valid.edict");
-    let broken = root.join("broken.edict");
+    let source = root.join("valid.amblicit");
+    let broken = root.join("broken.amblicit");
     fs::write(&source, VALID_SOURCE).expect("write valid source");
-    symlink(root.join("missing.edict"), &broken).expect("create dangling symlink");
+    symlink(root.join("missing.amblicit"), &broken).expect("create dangling symlink");
 
     let output = run_edict(&jsonl([
         json!({
@@ -1166,7 +1166,7 @@ fn input_root_glob_skips_dangling_symlink_matches() {
             "schema": "edict.compiler.input/v1",
             "type": "compilerInput",
             "kind": "glob",
-            "pattern": format!("{}/*.edict", root.display()),
+            "pattern": format!("{}/*.amblicit", root.display()),
         }),
     ]));
 
@@ -1190,8 +1190,8 @@ fn check_accepts_path_directory_path_list_glob_and_source_records() {
     let root = temp_tree("inputs");
     let nested = root.join("nested");
     fs::create_dir_all(&nested).expect("create nested fixture dir");
-    let first = root.join("first.edict");
-    let second = nested.join("second.edict");
+    let first = root.join("first.amblicit");
+    let second = nested.join("second.amblicit");
     fs::write(&first, VALID_SOURCE).expect("write first source");
     fs::write(&second, VALID_SOURCE).expect("write second source");
     fs::write(root.join("ignored.txt"), VALID_SOURCE).expect("write ignored source");
@@ -1201,7 +1201,7 @@ fn check_accepts_path_directory_path_list_glob_and_source_records() {
             "schema": "edict.compiler.settings/v1",
             "type": "compilerSettings",
             "operation": "check",
-            "directoryExtensions": [".edict"],
+            "directoryExtensions": [".amblicit"],
             "followSymlinks": false,
         }),
         json!({
@@ -1226,13 +1226,13 @@ fn check_accepts_path_directory_path_list_glob_and_source_records() {
             "schema": "edict.compiler.input/v1",
             "type": "compilerInput",
             "kind": "glob",
-            "pattern": format!("{}/**/*.edict", root.display()),
+            "pattern": format!("{}/**/*.amblicit", root.display()),
         }),
         json!({
             "schema": "edict.compiler.input/v1",
             "type": "compilerInput",
             "kind": "source",
-            "name": "inline.edict",
+            "name": "inline.amblicit",
             "source": VALID_SOURCE,
         }),
     ]));
@@ -1250,6 +1250,92 @@ fn check_accepts_path_directory_path_list_glob_and_source_records() {
     let stdout = assert_jsonl_stream(&output.stdout, "stdout");
     assert_eq!(check_result_count(&stdout), 8);
     assert_status(&stdout, "ok", 0);
+}
+
+#[test]
+fn directory_input_selects_only_amblicit_sources_by_default() {
+    // Stage 3 of the Amblicit rename: the default `directoryExtensions` set is
+    // exactly `[".amblicit"]`. A legacy `.edict` file in a directory input is
+    // not a source unless the caller names that extension explicitly.
+    let root = temp_tree("directory-default-extension");
+    let amblicit = root.join("a.amblicit");
+    let legacy = root.join("b.edict");
+    fs::write(&amblicit, VALID_SOURCE).expect("write amblicit source");
+    fs::write(&legacy, VALID_SOURCE).expect("write legacy source");
+
+    let default_paths = checked_directory_paths(&root, None);
+    let explicit_legacy_paths = checked_directory_paths(&root, Some(json!([".edict"])));
+
+    let _ = fs::remove_dir_all(&root);
+
+    assert_eq!(default_paths, vec![amblicit.display().to_string()]);
+    assert_eq!(explicit_legacy_paths, vec![legacy.display().to_string()]);
+}
+
+fn checked_directory_paths(root: &std::path::Path, extensions: Option<Value>) -> Vec<String> {
+    let mut settings = json!({
+        "schema": "edict.compiler.settings/v1",
+        "type": "compilerSettings",
+        "operation": "check",
+    });
+    if let Some(extensions) = extensions {
+        settings["directoryExtensions"] = extensions;
+    }
+    let output = run_edict(&jsonl([
+        settings,
+        json!({
+            "schema": "edict.compiler.input/v1",
+            "type": "compilerInput",
+            "kind": "directory",
+            "path": root,
+        }),
+    ]));
+
+    assert!(output.status.success(), "directory check should succeed");
+    assert!(
+        output.stderr.is_empty(),
+        "successful check must not write stderr"
+    );
+    let stdout = assert_jsonl_stream(&output.stdout, "stdout");
+    assert_status_counts(&stdout, 1, 0);
+    stdout
+        .iter()
+        .filter(|line| line.get("type").and_then(Value::as_str) == Some("checkResult"))
+        .map(|line| {
+            line.pointer("/input/path")
+                .and_then(Value::as_str)
+                .expect("directory check result names its path")
+                .to_owned()
+        })
+        .collect()
+}
+
+#[test]
+fn inline_source_without_name_reports_amblicit_display_name() {
+    let output = run_edict(&jsonl([
+        json!({
+            "schema": "edict.compiler.settings/v1",
+            "type": "compilerSettings",
+            "operation": "check",
+        }),
+        json!({
+            "schema": "edict.compiler.input/v1",
+            "type": "compilerInput",
+            "kind": "source",
+            "source": VALID_SOURCE,
+        }),
+    ]));
+
+    assert!(output.status.success(), "inline check should succeed");
+    let stdout = assert_jsonl_stream(&output.stdout, "stdout");
+    let result = stdout
+        .iter()
+        .find(|line| line.get("type").and_then(Value::as_str) == Some("checkResult"))
+        .expect("inline check emits a result");
+    assert_eq!(
+        result.pointer("/input/name").and_then(Value::as_str),
+        Some("inline.amblicit")
+    );
 }
 
 #[test]
@@ -1639,7 +1725,7 @@ fn assert_syntax_projection(stdout: &[Value]) {
             .get("input")
             .and_then(|input| input.get("name"))
             .and_then(Value::as_str),
-        Some("unsaved/demo.echo.edict")
+        Some("unsaved/demo.echo.amblicit")
     );
     let spans = syntax
         .get("spans")

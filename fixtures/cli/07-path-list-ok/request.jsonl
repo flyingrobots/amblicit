@@ -1,2 +1,2 @@
 {"schema":"edict.compiler.settings/v1","type":"compilerSettings","operation":"check"}
-{"schema":"edict.compiler.input/v1","type":"compilerInput","kind":"pathList","paths":["inputs/second.edict","inputs/first.edict"]}
+{"schema":"edict.compiler.input/v1","type":"compilerInput","kind":"pathList","paths":["inputs/second.amblicit","inputs/first.amblicit"]}

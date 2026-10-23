@@ -66,7 +66,7 @@ const LAWPACK_ADAPTER_FIXTURE: &[u8] =
 const RESULT_PROJECTION_FIXTURE: &[u8] =
     include_bytes!("../../../fixtures/lawpack/hello-echo/create-greeting.result-projection.cbor");
 const OPERATION_SOURCE: &str =
-    include_str!("../../../fixtures/lang/operations/explicit-basis-u64.edict");
+    include_str!("../../../fixtures/lang/operations/explicit-basis-u64.amblicit");
 const EXPECTED_DOMAIN_BINDINGS: [(&str, &str); 8] = [
     (AUTHORITY_FACTS_API_VERSION, "authority-facts"),
     (CORE_MODULE_DIGEST_DOMAIN, "core-module"),
@@ -1722,8 +1722,8 @@ fn source_function_contract_preserves_old_modules_and_requires_new_schema_select
             },
         );
     let values = [
-        include_str!("../../../fixtures/lang/functions/range-assembly-baseline.edict"),
-        include_str!("../../../fixtures/lang/functions/range-assembly.edict"),
+        include_str!("../../../fixtures/lang/functions/range-assembly-baseline.amblicit"),
+        include_str!("../../../fixtures/lang/functions/range-assembly.amblicit"),
     ]
     .map(|source| {
         let core = compile_to_core(&parse_module(source).unwrap(), &context).unwrap();

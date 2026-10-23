@@ -5,7 +5,7 @@
 **Amblicit is lawful computation within explicit bounds.** An Amblicit program states what it will read, what it may change, what it costs and how it can fail. The compiler checks the supported parts of that statement before anything runs. [Current status](#current-status) lists what it does not check yet. The result is a digest-bound artifact that a runtime can review, admit and replay.
 
 > [!NOTE]
-> Amblicit was previously named **Edict**. The rename happens in stages. The packages, the `amblicit` library and the `amblicit` CLI use the new name. The `.edict` source extension, the editor grammars and the `edict.*` wire identifiers keep their current names until their stage lands. The [name decision](./docs/design/amblicit-name.md) lists every current and planned name.
+> Amblicit was previously named **Edict**. The rename happens in stages. The packages, the `amblicit` library, the `amblicit` CLI, the `.amblicit` source extension and the editor grammars (scope `source.amblicit`) use the new name. Until stage 4 lands, the `edict.*/vN` wire identifiers and the other `edict` values inside canonical bytes, the WIT package `edict:target-provider` and the files whose names embed a wire identifier keep the old name. The [name decision](./docs/design/amblicit-name.md) lists every current and planned name.
 
 Amblicit is alpha software. The compiler, the CLI and Target IR exist and have tests. Runtime execution belongs to the target runtime, such as [Echo](https://github.com/flyingrobots/echo). [Current status](#current-status) lists what works today.
 
@@ -53,7 +53,7 @@ These invariants come from the [language specification](./docs/SPEC_edict-langua
 
 ## A first intent
 
-This intent is [`fixtures/lang/bounds/bounded-hello.edict`](./fixtures/lang/bounds/bounded-hello.edict):
+This intent is [`fixtures/lang/bounds/bounded-hello.amblicit`](./fixtures/lang/bounds/bounded-hello.amblicit):
 
 ```graphql
 package examples.hello@1;
@@ -166,14 +166,14 @@ The CLI reads JSONL requests on stdin and writes only JSONL. To check a source f
 ```sh
 printf '%s\n%s\n' \
   '{"schema":"edict.compiler.settings/v1","type":"compilerSettings","operation":"check"}' \
-  '{"schema":"edict.compiler.input/v1","type":"compilerInput","kind":"path","path":"fixtures/lang/bounds/bounded-hello.edict"}' \
+  '{"schema":"edict.compiler.input/v1","type":"compilerInput","kind":"path","path":"fixtures/lang/bounds/bounded-hello.amblicit"}' \
   | target/debug/amblicit
 ```
 
 A clean check exits with `0` and writes this output:
 
 ```text
-{"command":"check","input":{"kind":"path","path":"fixtures/lang/bounds/bounded-hello.edict"},"schema":"edict.cli.check-result/v1","status":"ok","type":"checkResult"}
+{"command":"check","input":{"kind":"path","path":"fixtures/lang/bounds/bounded-hello.amblicit"},"schema":"edict.cli.check-result/v1","status":"ok","type":"checkResult"}
 {"checked":1,"command":"check","errors":0,"exitCode":0,"schema":"edict.cli.event/v1","status":"ok","type":"status"}
 ```
 

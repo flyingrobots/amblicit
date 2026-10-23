@@ -719,7 +719,7 @@ fn parse_compiler_input(
     match kind {
         "source" => Ok(CompilerInput::Source {
             name: optional_string_field(object, "name")
-                .unwrap_or_else(|| "inline.edict".to_owned()),
+                .unwrap_or_else(|| "inline.amblicit".to_owned()),
             source: require_string_field(object, "source", line)?.to_owned(),
         }),
         "path" => Ok(CompilerInput::Path {
@@ -2490,7 +2490,7 @@ fn write_record(writer: &mut dyn Write, record: &Value) {
 }
 
 fn default_directory_extensions() -> Vec<String> {
-    vec![".edict".to_owned()]
+    vec![".amblicit".to_owned()]
 }
 
 #[cfg(test)]

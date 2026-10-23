@@ -13,7 +13,7 @@ use amblicit_syntax::{
     CompilerStage, CoreBudget, EffectWriteClassFact, OperationProfileFact, WriteClass,
 };
 
-const BOUNDED_HELLO: &str = include_str!("../../../fixtures/lang/bounds/bounded-hello.edict");
+const BOUNDED_HELLO: &str = include_str!("../../../fixtures/lang/bounds/bounded-hello.amblicit");
 
 #[test]
 fn file_backed_authority_facts_compile_bounded_hello() {

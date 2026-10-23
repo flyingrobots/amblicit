@@ -5,7 +5,7 @@ use std::process::{Command, Stdio};
 
 #[test]
 fn public_project_compiles_jim_source_functions_to_authenticated_core_and_target() {
-    let source = include_str!("../../../fixtures/lang/functions/range-assembly.edict");
+    let source = include_str!("../../../fixtures/lang/functions/range-assembly.amblicit");
     let settings = json!({
         "schema": "edict.compiler.settings/v1", "type": "compilerSettings",
         "operation": "project", "emit": ["diagnostics", "core", "targetIr"],
@@ -24,7 +24,7 @@ fn public_project_compiles_jim_source_functions_to_authenticated_core_and_target
         }
     });
     let input = json!({"schema": "edict.compiler.input/v1", "type": "compilerInput",
-        "kind": "source", "name": "RangeAssembly.edict", "source": source});
+        "kind": "source", "name": "RangeAssembly.amblicit", "source": source});
     let mut child = Command::new(env!("CARGO_BIN_EXE_amblicit"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -93,7 +93,7 @@ fn public_project_deep_expression_returns_a_diagnostic_without_aborting() {
         }
     });
     let input = json!({"schema": "edict.compiler.input/v1", "type": "compilerInput",
-        "kind": "source", "name": "DeepExpression.edict", "source": source});
+        "kind": "source", "name": "DeepExpression.amblicit", "source": source});
     // The compiler runs as its normal process, without the unit witness's larger test stack.
     let mut child = Command::new(env!("CARGO_BIN_EXE_amblicit"))
         .stdin(Stdio::piped())

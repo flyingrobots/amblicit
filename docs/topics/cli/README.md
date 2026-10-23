@@ -128,7 +128,7 @@ has this shape:
 {
   "schema": "edict.application/v1",
   "coordinate": "examples.hello_echo@1",
-  "sources": ["src/hello_echo.edict"],
+  "sources": ["src/hello_echo.amblicit"],
   "lawpacks": [{
     "manifest": "vendor/causal-cell/manifest.cbor",
     "exports": "vendor/causal-cell/exports.cbor",
@@ -151,7 +151,7 @@ selects the request-only route explicitly:
   "schema": "edict.application/v1",
   "buildKind": "externalAction",
   "coordinate": "examples.workspace_observer@1",
-  "sources": ["src/observe-workspace.edict"],
+  "sources": ["src/observe-workspace.amblicit"],
   "lawpacks": [{
     "manifest": "vendor/workspace-snapshot/manifest.cbor",
     "exports": "vendor/workspace-snapshot/exports.cbor",
@@ -262,6 +262,15 @@ filesystem privileges. Callers that accept untrusted request records can set
 within that root, or the CLI rejects the request with `InputPathOutsideRoot` and
 exit `2`. Inline source records are not filesystem reads. [CLI-REQ-003,
 CLI-REQ-011]
+
+Amblicit source files use the `.amblicit` extension. A directory input selects
+the files whose extension is in `directoryExtensions`, and the default set is
+exactly `[".amblicit"]`. The CLI does not fall back to the legacy `.edict`
+extension: a directory input selects a `.edict` file only when the caller lists
+`.edict` in `directoryExtensions`. Path, path-list, and glob inputs read exactly
+the files that the caller names or that the glob pattern matches; they do not
+filter by extension. An inline `source` record without `name` reports the
+display name `inline.amblicit`. [CLI-REQ-002]
 
 Successful `check` results are emitted to stdout. A successful `build` emits
 only its terminal status record to stdout after the accepted artifacts have

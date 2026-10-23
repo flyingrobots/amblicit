@@ -67,7 +67,7 @@ manifest:
 
 ```sh
 EDICT_CELL_DIGEST="$(cat "$EDICT_APP/vendor/cell/manifest.sha256")"
-"$EDICT_CELL_HELPER" source 64 1024 4096 "$EDICT_CELL_DIGEST" > "$EDICT_APP/src/create.edict"
+"$EDICT_CELL_HELPER" source 64 1024 4096 "$EDICT_CELL_DIGEST" > "$EDICT_APP/src/create.amblicit"
 "$EDICT_CELL_HELPER" application > "$EDICT_APP/edict.application.json"
 ```
 

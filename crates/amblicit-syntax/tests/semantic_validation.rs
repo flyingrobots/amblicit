@@ -2,10 +2,10 @@
 
 use amblicit_syntax::{parse_module, validate_module, validate_surface, SemanticErrorKind};
 
-const BOUNDED_HELLO: &str = include_str!("../../../fixtures/lang/bounds/bounded-hello.edict");
+const BOUNDED_HELLO: &str = include_str!("../../../fixtures/lang/bounds/bounded-hello.amblicit");
 const CONDITIONAL_BLOB: &str =
-    include_str!("../../../fixtures/lang/effects/conditional-blob.edict");
-const READ_GREETING: &str = include_str!("../../../fixtures/lang/effects/read-greeting.edict");
+    include_str!("../../../fixtures/lang/effects/conditional-blob.amblicit");
+const READ_GREETING: &str = include_str!("../../../fixtures/lang/effects/read-greeting.amblicit");
 
 fn semantic_kinds(src: &str) -> Vec<SemanticErrorKind> {
     let module = parse_module(src).expect("source parses");

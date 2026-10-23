@@ -1,2 +1,2 @@
-{"command":"check","input":{"kind":"source","name":"broken.edict"},"kind":"ExpectedToken","schema":"edict.cli.diagnostic/v1","severity":"error","span":{"end":26,"start":26},"stage":"parse","type":"diagnostic"}
+{"command":"check","input":{"kind":"source","name":"broken.amblicit"},"kind":"ExpectedToken","schema":"edict.cli.diagnostic/v1","severity":"error","span":{"end":26,"start":26},"stage":"parse","type":"diagnostic"}
 {"checked":0,"command":"check","errors":1,"exitCode":1,"schema":"edict.cli.event/v1","status":"error","type":"status"}

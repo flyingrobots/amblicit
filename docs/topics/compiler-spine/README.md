@@ -339,7 +339,7 @@ input-constraint enforcement, or runtime byte-copy charging.
   each selected block retains its own locals, effects, and yielded result.
   The accepted shape is:
 
-  ```edict
+  ```amblicit
   let name = if predicate {
     supported_statement;
     yield value;

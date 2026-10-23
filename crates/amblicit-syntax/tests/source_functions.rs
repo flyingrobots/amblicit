@@ -11,8 +11,9 @@ use amblicit_syntax::{
 };
 
 const JIM_BASELINE: &str =
-    include_str!("../../../fixtures/lang/functions/range-assembly-baseline.edict");
-const JIM_FUNCTIONS: &str = include_str!("../../../fixtures/lang/functions/range-assembly.edict");
+    include_str!("../../../fixtures/lang/functions/range-assembly-baseline.amblicit");
+const JIM_FUNCTIONS: &str =
+    include_str!("../../../fixtures/lang/functions/range-assembly.amblicit");
 const IMPORT: &str = "use lawpack example.bounds@1 digest \"sha256:1111111111111111111111111111111111111111111111111111111111111111\" as helpers;";
 
 fn context(steps: u64) -> CompilerContext {
@@ -923,7 +924,7 @@ fn independent_target_rejects_even_unused_source_imported_authority_collisions()
         include_bytes!("../../../fixtures/lawpack/hello-echo/adapter.cbor"),
     )
     .unwrap();
-    let authored = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.edict")
+    let authored = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.amblicit")
         .replace("package examples.hello_echo@1;", "package hello.echo@1;")
         .replace("intent createGreeting(", "intent invokeGreeting(");
     let module = parse_module(&authored).unwrap();

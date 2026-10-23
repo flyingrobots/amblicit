@@ -3,7 +3,7 @@
 # Scope: semantic/release bundle digest preimage shape and digest values only.
 # Non-scope: canonical Target IR bytes and ContractBundleManifest bytes.
 
-source_fixture = fixtures/lang/bounds/bounded-hello.edict
+source_fixture = fixtures/lang/bounds/bounded-hello.amblicit
 core_ir_coordinate = edict.core.bounded-hello/v1
 source_artifact = contracts/hello.edict source.contracts.hello sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 source_profile_semantic_facts = source-profile.hello/v1 sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff

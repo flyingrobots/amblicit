@@ -292,7 +292,7 @@ fn configurable_cell_real_provider_accepts_both_variants() {
         assert_eq!(authored.status.code(), Some(0), "{authored:?}");
         let digest = fs::read_to_string(root.join("vendor/cell/manifest.sha256")).unwrap();
         fs::write(
-            root.join("src/create.edict"),
+            root.join("src/create.amblicit"),
             command::render(&["source", "64", scalars, bytes, digest.trim()]).unwrap(),
         )
         .unwrap();
@@ -402,7 +402,7 @@ fn check_invalid_closures(
     let new_digest = fs::read_to_string(root.join("vendor/cell/manifest.sha256")).unwrap();
     assert_ne!(digest, new_digest);
     fs::write(
-        root.join("src/create.edict"),
+        root.join("src/create.amblicit"),
         command::render(&["source", "64", scalars, bytes, new_digest.trim()]).unwrap(),
     )
     .unwrap();
@@ -433,7 +433,7 @@ fn check_invalid_configurations(
 ) {
     use std::fs;
     let original = fs::read(root.join("edict.lawpack.json")).unwrap();
-    let source = fs::read(root.join("src/create.edict")).unwrap();
+    let source = fs::read(root.join("src/create.amblicit")).unwrap();
     for case in ["zero-cap", "aliased-fields"] {
         let mut document: serde_json::Value = serde_json::from_slice(&original).unwrap();
         let configuration = &mut document["lawpack"]["localResources"][0]["value"];
@@ -453,7 +453,7 @@ fn check_invalid_configurations(
         assert_eq!(authored.status.code(), Some(0), "{case}: {authored:?}");
         let digest = fs::read_to_string(root.join("vendor/cell/manifest.sha256")).unwrap();
         fs::write(
-            root.join("src/create.edict"),
+            root.join("src/create.amblicit"),
             command::render(&["source", "64", scalars, bytes, digest.trim()]).unwrap(),
         )
         .unwrap();
@@ -475,7 +475,7 @@ fn check_invalid_configurations(
         );
     }
     fs::write(root.join("edict.lawpack.json"), original).unwrap();
-    fs::write(root.join("src/create.edict"), source).unwrap();
+    fs::write(root.join("src/create.amblicit"), source).unwrap();
     let restored = run_public_build(root, "lawpack", "edict.lawpack.json");
     assert_eq!(restored.status.code(), Some(0), "{restored:?}");
 }
@@ -492,7 +492,7 @@ fn check_independent_byte_cap(
 ) {
     use std::fs;
     let original = fs::read(root.join("edict.lawpack.json")).unwrap();
-    let source = fs::read(root.join("src/create.edict")).unwrap();
+    let source = fs::read(root.join("src/create.amblicit")).unwrap();
     let mut document: serde_json::Value = serde_json::from_slice(&original).unwrap();
     document["lawpack"]["localResources"][0]["value"]["maxReplacementBytes"] = 1.into();
     fs::write(
@@ -504,7 +504,7 @@ fn check_independent_byte_cap(
     assert_eq!(authored.status.code(), Some(0), "{authored:?}");
     let digest = fs::read_to_string(root.join("vendor/cell/manifest.sha256")).unwrap();
     fs::write(
-        root.join("src/create.edict"),
+        root.join("src/create.amblicit"),
         command::render(&["source", "64", scalars, bytes, digest.trim()]).unwrap(),
     )
     .unwrap();
@@ -530,7 +530,7 @@ fn check_independent_byte_cap(
         &CanonicalValue::Integer(1)
     );
     fs::write(root.join("edict.lawpack.json"), original).unwrap();
-    fs::write(root.join("src/create.edict"), source).unwrap();
+    fs::write(root.join("src/create.amblicit"), source).unwrap();
     let restored = run_public_build(root, "lawpack", "edict.lawpack.json");
     assert_eq!(restored.status.code(), Some(0), "{restored:?}");
     let restored = run_public_build(root, "application", "edict.application.json");

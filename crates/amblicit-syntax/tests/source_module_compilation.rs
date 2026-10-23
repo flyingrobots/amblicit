@@ -459,15 +459,16 @@ fn linker_preserves_builtin_request_constructors_and_rewrites_their_type_argumen
 #[test]
 fn linked_root_preserves_capability_request_operations() {
     let library = "package library.metrics@1;";
-    let source = include_str!("../../../fixtures/lang/external-actions/workspace-snapshot.edict")
-        .replacen(
-            "package examples.workspace_observer@1;",
-            &format!(
-                "package examples.workspace_observer@1; {}",
-                import("library.metrics@1", library, "metrics")
-            ),
-            1,
-        );
+    let source =
+        include_str!("../../../fixtures/lang/external-actions/workspace-snapshot.amblicit")
+            .replacen(
+                "package examples.workspace_observer@1;",
+                &format!(
+                    "package examples.workspace_observer@1; {}",
+                    import("library.metrics@1", library, "metrics")
+                ),
+                1,
+            );
     let closure =
         resolve_source_closure(&source, &[library], SourceClosureLimits::default()).unwrap();
     let linked = link_source_closure(&closure).unwrap();

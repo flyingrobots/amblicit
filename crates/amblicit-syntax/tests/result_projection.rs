@@ -18,7 +18,7 @@ use amblicit_syntax::{
 const MANIFEST_BYTES: &[u8] = include_bytes!("../../../fixtures/lawpack/hello-echo/manifest.cbor");
 const EXPORTS_BYTES: &[u8] = include_bytes!("../../../fixtures/lawpack/hello-echo/exports.cbor");
 const ADAPTER_BYTES: &[u8] = include_bytes!("../../../fixtures/lawpack/hello-echo/adapter.cbor");
-const SOURCE: &str = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.edict");
+const SOURCE: &str = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.amblicit");
 const PROJECTION_BYTES: &[u8] =
     include_bytes!("../../../fixtures/lawpack/hello-echo/create-greeting.result-projection.cbor");
 const PROJECTION_DIGEST: &str =
