@@ -81,5 +81,5 @@ code and artifacts:
 | --- | --- |
 | `refines` | none |
 | `supersedes` | none |
-| `depends_on` | [Documentation standards](../topics/documentation/README.md) |
+| `depends_on` | [DOCS-REQ-007](../topics/documentation/README.md#durable-decision-discipline) |
 | `related` | [Language specification](../SPEC_edict-language-v1.md), [README](../../README.md) |
