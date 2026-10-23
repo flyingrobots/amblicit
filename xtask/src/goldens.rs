@@ -18,7 +18,7 @@ use amblicit_syntax::{
 
 use crate::util::{dirs, read_to_string, run_cmd};
 
-const CLI_MAX_STDIN_BYTES_ENV: &str = "EDICT_CLI_MAX_STDIN_BYTES";
+const CLI_MAX_STDIN_BYTES_ENV: &str = "AMBLICIT_CLI_MAX_STDIN_BYTES";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AuthorityFactsGoldenMode {

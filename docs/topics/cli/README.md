@@ -10,7 +10,7 @@ every output record is JSON Lines.
 
 The `amblicit` binary reads compiler requests from stdin as JSONL records. It emits
 only JSONL records on stdout and stderr. Stdin is bounded before request parsing:
-the default cap is 8 MiB, and `EDICT_CLI_MAX_STDIN_BYTES` may override that cap
+the default cap is 8 MiB, and `AMBLICIT_CLI_MAX_STDIN_BYTES` may override that cap
 with a positive byte count. Over-limit input is rejected with an `InputTooLarge`
 CLI diagnostic and exit `2`. [CLI-REQ-001, CLI-REQ-010]
 

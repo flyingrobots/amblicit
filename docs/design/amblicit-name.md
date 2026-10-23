@@ -72,6 +72,7 @@ with a planned name keeps its current name until the matching stage lands:
 | Crates (packages) | `flyingrobots-amblicit`, `amblicit-cli`, `amblicit-syntax`, `amblicit-provider-schema`, `amblicit-provider-host-wasmtime` (previously `flyingrobots-edict`, `edict-cli`, `edict-syntax`, `edict-provider-schema`, `edict-provider-host-wasmtime`) | none, renamed | 2 |
 | Facade library | `amblicit` (package `flyingrobots-amblicit`; previously `edict`) | none, renamed | 2 |
 | CLI binary | `amblicit` (previously `edict`) | none, renamed | 2 |
+| CLI stdin-cap environment variable | `AMBLICIT_CLI_MAX_STDIN_BYTES` (previously `EDICT_CLI_MAX_STDIN_BYTES`) | none, renamed | 2 |
 | Source extension | `.edict` | `.amblicit` | 3 |
 | Editor scope | `source.edict` | `source.amblicit` | 3 |
 | Wire identifiers | `edict.*/vN` | `amblicit.*/vN`, new versions | 4 |

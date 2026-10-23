@@ -21,8 +21,9 @@ versions still track specification maturity rather than a released product.
   `flyingrobots-amblicit`. The `--help` usage text and the invalid-argument
   message now name `amblicit`. Wire identifiers (`edict.*/vN`), canonical
   bytes, digests, golden artifacts, diagnostic kinds, the `.edict` source
-  extension, the editor grammars and the `EDICT_CLI_MAX_STDIN_BYTES`
-  environment variable do not change. The
+  extension and the editor grammars do not change. The stdin cap environment
+  variable `EDICT_CLI_MAX_STDIN_BYTES` is now `AMBLICIT_CLI_MAX_STDIN_BYTES`;
+  the old name is no longer read. The
   [name decision](docs/design/amblicit-name.md) lists the current names.
 
 - Rename the project to **Amblicit** (slogan: *Use only as declared.*). This is
