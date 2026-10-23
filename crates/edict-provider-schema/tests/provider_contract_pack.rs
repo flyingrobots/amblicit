@@ -437,6 +437,89 @@ fn ordered_target_ir_schema_requires_explicit_execution_order() {
     );
 }
 
+/// Rewrite an ordered or structured artifact into the phased `targetIrArtifact`
+/// shape without any execution order, keeping its domain. A legacy rewrite also
+/// drops the semantic closure and the closed-only intent fields.
+fn as_phased_target_ir(value: &CanonicalValue, closed: bool) -> CanonicalValue {
+    let mut phased = value.clone();
+    *map_value_mut(&mut phased, "kind") = text("targetIrArtifact");
+    let CanonicalValue::Map(fields) = &mut phased else {
+        panic!("artifact map");
+    };
+    if !closed {
+        fields.retain(|(key, _)| key != &text("semanticClosure"));
+    }
+    let CanonicalValue::Map(intents) = map_value_mut(&mut phased, "intents") else {
+        panic!("intents map");
+    };
+    for (_, intent) in intents {
+        let CanonicalValue::Map(fields) = intent else {
+            panic!("intent map");
+        };
+        fields.retain(|(key, _)| {
+            key != &text("executionOrder")
+                && (closed || (key != &text("pureBindings") && key != &text("basis")))
+        });
+    }
+    phased
+}
+
+#[test]
+fn phased_target_ir_alternatives_refuse_ordered_and_structured_domains() {
+    let pack = assemble(canonical_target_profile_contract_resources());
+    let structured =
+        decode_canonical_cbor(STRUCTURED_TARGET_IR_FIXTURE).expect("canonical v3 golden");
+    let mut ordered_artifact = representative_target_ir("echo.dpo@1");
+    ordered_artifact.domain = "echo.span-ir/v2".to_owned();
+    ordered_artifact
+        .intents
+        .get_mut("apply")
+        .expect("intent")
+        .execution_order = Some(vec![
+        TargetIrOrderEntry::Instruction("apply.require.0".to_owned()),
+        TargetIrOrderEntry::Instruction("apply.require.1".to_owned()),
+    ]);
+    let ordered = encode_target_ir_value(&ordered_artifact);
+    let phased = [
+        ("closed from v2", as_phased_target_ir(&ordered, true)),
+        ("legacy from v2", as_phased_target_ir(&ordered, false)),
+        ("legacy from v3", as_phased_target_ir(&structured, false)),
+    ];
+    assert!(
+        matches!(&phased[0].1, CanonicalValue::Map(fields)
+            if fields.iter().any(|(key, _)| key == &text("semanticClosure"))),
+        "the closed case keeps its semantic closure"
+    );
+
+    for (case, document) in phased {
+        // Phased kind, no executionOrder, ordered or structured domain.
+        for domain in ["echo.span-ir/v2", "echo.span-ir/v3"] {
+            let mut reserved = document.clone();
+            *map_value_mut(&mut reserved, "domain") = text(domain);
+            assert_eq!(
+                pack.validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &reserved),
+                Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch),
+                "{case} under {domain}"
+            );
+        }
+        // Controls: the identical phased document under any other domain
+        // validates, so the refusal is caused by the reserved domain alone.
+        for domain in [
+            "echo.span-ir/v1",
+            "echo.span-ir/v4",
+            "echo.span-ir/V2",
+            "echo.span-ir/v",
+            "echo.span-ir/v22",
+            "gitwarp.commit-reducer-ir/v1",
+        ] {
+            let mut other = document.clone();
+            *map_value_mut(&mut other, "domain") = text(domain);
+            pack.validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &other)
+                .unwrap_or_else(|error| panic!("{case} under {domain}: {error:?}"));
+        }
+    }
+}
+
 #[test]
 fn target_ir_root_accepts_only_closed_nonempty_pure_bindings() {
     let pack = assemble(canonical_target_profile_contract_resources());

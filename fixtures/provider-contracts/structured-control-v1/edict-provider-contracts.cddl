@@ -918,10 +918,18 @@ target-ir-artifact = target-ir-phased-artifact / target-ir-ordered-artifact /
 target-ir-phased-artifact = target-ir-closed-artifact / target-ir-legacy-artifact
 
 target-ir-artifact-common = (
-  domain: tstr,
+  domain: target-ir-phased-domain,
   targetProfile: target-ir-resource-ref,
   sourceCoreCoordinate: tstr .regexp "(?s).+",
 )
+
+; The phased shapes may carry any domain except the ordered and structured
+; ones, so a v2 or v3 document cannot omit its required execution order by
+; claiming the phased kind. The pattern (Rust `regex` syntax, anchored by `^`
+; and `$`) accepts every text except exactly "echo.span-ir/v2" and
+; "echo.span-ir/v3": any length other than 15 characters, or a 15-character
+; text that differs from both at its first differing position.
+target-ir-phased-domain = tstr .regexp "(?s)^(?:.{0,14}|.{16,}|[^e].{14}|e[^c].{13}|ec[^h].{12}|ech[^o].{11}|echo[^.].{10}|echo[.][^s].{9}|echo[.]s[^p].{8}|echo[.]sp[^a].{7}|echo[.]spa[^n].{6}|echo[.]span[^-].{5}|echo[.]span-[^i].{4}|echo[.]span-i[^r].{3}|echo[.]span-ir[^/].{2}|echo[.]span-ir/[^v].{1}|echo[.]span-ir/v[^23])$"
 
 ; v2 binds one execution order over the instruction tables. The encoder also
 ; validates the exact permutation and producer-before-consumer dependencies.

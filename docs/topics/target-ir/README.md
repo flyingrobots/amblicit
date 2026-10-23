@@ -240,7 +240,11 @@ and `Branch` with details `for` and `branch`, keep their exact bytes, and the
 v2 encoder refuses control entries. [TIR-REQ-060]
 
 Selection is explicit through the same paths as v2. The current provider
-contract publication adds the v3 schema root; prior publications are unchanged.
+contract publication adds the v3 schema root, and its phased
+`targetIrArtifact` shapes refuse the `echo.span-ir/v2` and `echo.span-ir/v3`
+domains, so an ordered or structured document cannot drop its required
+`executionOrder` by claiming the phased kind. Prior publications are
+unchanged, including their unrestricted phased domain.
 Result projections still refuse intents with structured control
 (`CoreTargetMismatch`), so the public application-build route cannot yet admit
 a v3 intent. Echo's provider checks the Target IR domain exactly and refuses

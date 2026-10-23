@@ -22,8 +22,10 @@ versions still track specification maturity rather than a released product.
   `structured-control-v1` provider contract pack adds the v3 schema root; prior
   packs are byte-identical. Its recursive order-entry choice dispatches `for`
   and `branch` entries on their `kind` tag, so the production provider schema
-  registry constructs that pack. Echo's provider refuses v3, result projections
-  do not yet support structured intents, and no runtime execution is claimed.
+  registry constructs that pack, and its phased `targetIrArtifact` shapes
+  refuse the v2 and v3 domains so neither can omit its required order. Echo's
+  provider refuses v3, result projections do not yet support structured
+  intents, and no runtime execution is claimed.
 
 - Admit target-catalog pure intrinsics: `admit_target_pure_intrinsics` accepts
   exactly the required contracts, at exact versions, from catalog bytes that
