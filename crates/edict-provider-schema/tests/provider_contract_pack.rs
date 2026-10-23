@@ -601,6 +601,31 @@ fn structured_for_entry_schema_accepts_only_literal_bounds() {
 }
 
 #[test]
+fn structured_iterable_schema_refuses_empty_aggregates() {
+    let pack = assemble(canonical_target_profile_contract_resources());
+    let value = nested_structured_target_ir_value();
+    for kind in ["all", "any"] {
+        let mut invalid = value.clone();
+        let entry = loop_in_branch_mut(&mut invalid);
+        let iterable = map_value_mut(entry, "iterable").clone();
+        *map_value_mut(entry, "iterable") = map(vec![
+            ("kind", text("if")),
+            (
+                "predicate",
+                map(vec![("kind", text(kind)), ("values", array(vec![]))]),
+            ),
+            ("then", iterable.clone()),
+            ("else", iterable),
+        ]);
+        assert_eq!(
+            pack.validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &invalid),
+            Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch),
+            "empty {kind} in a loop iterable"
+        );
+    }
+}
+
+#[test]
 fn source_module_publication_is_reproduced_from_frozen_target_ir_schema() {
     let old = assemble_provider_contract_pack(ProviderContractPackInput {
         target_ir_cddl: PRE_STRUCTURED_TARGET_IR_CDDL,

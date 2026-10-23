@@ -71,17 +71,12 @@ fn intent_has_valid_order(intent: &TargetIrIntent, structured: bool) -> bool {
     {
         return false;
     }
-    // The Core schema requires one or more `all`/`any` values. v3 refuses an
-    // empty aggregate in any requirement; v1/v2 requirement encoding is unchanged.
-    if structured
-        && intent
-            .requirements
-            .iter()
-            .any(|requirement| super::predicate_has_empty_aggregate(&requirement.predicate, 0))
-    {
-        return false;
-    }
-    let mut available = LocalAvailability::default();
+    // The Core schema requires one or more `all`/`any` values. Under v3 every
+    // predicate the walk visits must satisfy it; v2 encoding is unchanged.
+    let mut available = LocalAvailability {
+        reject_empty_aggregates: structured,
+        ..LocalAvailability::default()
+    };
     if !intent
         .basis
         .as_ref()
@@ -180,7 +175,6 @@ impl<'a> OrderWalk<'a> {
             }
             TargetIrOrderEntry::Branch(entry) => {
                 self.control_id(&entry.id)
-                    && !super::predicate_has_empty_aggregate(&entry.predicate, 0)
                     && self.available.predicate(&entry.predicate, 0)
                     && self.scoped(|walk| walk.entries(&entry.then_entries, depth + 1))
                     && self.scoped(|walk| walk.entries(&entry.else_entries, depth + 1))
@@ -193,6 +187,8 @@ impl<'a> OrderWalk<'a> {
 struct LocalAvailability<'a> {
     input: Option<&'a LocalRef>,
     producers: BTreeMap<&'a str, &'a LocalRef>,
+    /// v3 refuses `all`/`any` with no values wherever a predicate appears.
+    reject_empty_aggregates: bool,
 }
 
 impl<'a> LocalAvailability<'a> {
@@ -279,9 +275,12 @@ impl<'a> LocalAvailability<'a> {
         match predicate {
             CorePredicate::True | CorePredicate::False => true,
             CorePredicate::Not(inner) => self.predicate(inner, depth + 1),
-            CorePredicate::All(predicates) | CorePredicate::Any(predicates) => predicates
-                .iter()
-                .all(|predicate| self.predicate(predicate, depth + 1)),
+            CorePredicate::All(predicates) | CorePredicate::Any(predicates) => {
+                (!self.reject_empty_aggregates || !predicates.is_empty())
+                    && predicates
+                        .iter()
+                        .all(|predicate| self.predicate(predicate, depth + 1))
+            }
             CorePredicate::Compare { left, right, .. } => {
                 self.expression(left, depth + 1) && self.expression(right, depth + 1)
             }

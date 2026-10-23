@@ -248,13 +248,12 @@ a closure-free intent whose innermost block is empty, 62 nested statement
 branches with a `true` predicate or 61 nested loops over a field of the input
 are the deepest that lower. When a semantic closure requires the Core module
 digest, a Core module too deep to encode refuses earlier, with
-`InvalidCoreIdentity`. A branch or
-requirement predicate containing an `all` or `any` with no values, at any depth
-including inside an `if` expression operand, violates the Core schema: v3
-lowering refuses it with `InvalidCoreIdentity` detail
-`empty_predicate_aggregate`, and the v3 encoder refuses such a branch entry or
-requirement with `UnsupportedValue`. v1 and v2 requirement encoding is
-unchanged. [TIR-REQ-060]
+`InvalidCoreIdentity`. An `all` or `any`
+with no values anywhere in a v3 intent (a branch or requirement predicate, a
+loop iterable, or any other expression that carries a predicate, such as an
+`if`) violates the Core schema: v3 lowering refuses it with
+`InvalidCoreIdentity` detail `empty_predicate_aggregate`, and the v3 encoder
+refuses it with `UnsupportedValue`. v1 and v2 encoding is unchanged. [TIR-REQ-060]
 
 Value-yielding branches refuse with `UnsupportedCoreNode` detail
 `branch_binding`; a loop body or arm whose Core block result is not null refuses

@@ -932,6 +932,15 @@ fn validate_pure_binding_graphs(
                 {
                     return Some(failure);
                 }
+                // The Core schema requires one or more `all`/`any` values; one
+                // check covers every predicate the v3 intent carries.
+                if let Some(node_index) = intent_empty_aggregate(intent) {
+                    return Some(invalid_pure_binding(
+                        intent_name,
+                        node_index,
+                        "empty_predicate_aggregate",
+                    ));
+                }
             } else if intent
                 .body
                 .nodes
@@ -1217,11 +1226,6 @@ fn validate_structured_instruction<'a>(
             return invalid("structured Target IR does not support this Core node");
         }
     };
-    if let CoreNode::Require { predicate, .. } = node {
-        if predicate_has_empty_aggregate(predicate, 0) {
-            return invalid("empty_predicate_aggregate");
-        }
-    }
     if !node_expressions_have_closed_authority(
         context.core,
         context.pure_functions,
@@ -1296,9 +1300,6 @@ fn validate_structured_control<'a>(
             then_block,
             else_block,
         } => {
-            if predicate_has_empty_aggregate(predicate, 0) {
-                return invalid("empty_predicate_aggregate");
-            }
             if !predicate_fits_core_types(
                 context.core,
                 context.pure_functions,
@@ -2355,7 +2356,7 @@ fn expression_references_are_available(
 /// Whether a predicate, or a predicate inside one of its expressions, contains
 /// an `all` or `any` with no values, which `docs/abi/edict-core.cddl` forbids.
 /// Nesting beyond the canonical depth is left to the callers' depth checks.
-pub(crate) fn predicate_has_empty_aggregate(predicate: &CorePredicate, depth: usize) -> bool {
+fn predicate_has_empty_aggregate(predicate: &CorePredicate, depth: usize) -> bool {
     if depth > MAX_CANONICAL_NESTING_DEPTH {
         return false;
     }
@@ -2371,6 +2372,93 @@ pub(crate) fn predicate_has_empty_aggregate(predicate: &CorePredicate, depth: us
         CorePredicate::Compare { left, right, .. } => {
             expression_has_empty_aggregate(left, depth + 1)
                 || expression_has_empty_aggregate(right, depth + 1)
+        }
+    }
+}
+
+/// Locate an empty `all`/`any` anywhere in a v3 intent: `Some(None)` for intent
+/// metadata or the result, `Some(Some(i))` for top-level node `i` (including its
+/// nested blocks), and `None` when every aggregate is nonempty.
+fn intent_empty_aggregate(intent: &CoreIntent) -> Option<Option<usize>> {
+    if intent
+        .basis
+        .as_ref()
+        .is_some_and(|basis| expression_has_empty_aggregate(basis, 0))
+        || intent
+            .input_constraints
+            .iter()
+            .any(|constraint| predicate_has_empty_aggregate(&constraint.predicate, 0))
+    {
+        return Some(None);
+    }
+    if let Some(index) = intent
+        .body
+        .nodes
+        .iter()
+        .position(|node| node_has_empty_aggregate(node, 0))
+    {
+        return Some(Some(index));
+    }
+    expression_has_empty_aggregate(&intent.body.result, 0).then_some(None)
+}
+
+fn block_has_empty_aggregate(block: &CoreBlock, depth: usize) -> bool {
+    depth <= MAX_CANONICAL_NESTING_DEPTH
+        && (block
+            .nodes
+            .iter()
+            .any(|node| node_has_empty_aggregate(node, depth + 1))
+            || expression_has_empty_aggregate(&block.result, depth + 1))
+}
+
+fn node_has_empty_aggregate(node: &CoreNode, depth: usize) -> bool {
+    if depth > MAX_CANONICAL_NESTING_DEPTH {
+        return false;
+    }
+    let reason_has = |reason: &CoreObstructionReason| {
+        reason
+            .payload
+            .values()
+            .any(|value| expression_has_empty_aggregate(value, depth + 1))
+    };
+    match node {
+        CoreNode::Let { value, .. } => expression_has_empty_aggregate(value, depth + 1),
+        CoreNode::Require { predicate, arm } => {
+            let (CoreRequireFailureArm::Terminal { reason }
+            | CoreRequireFailureArm::ContinueObstructed { reason }) = arm;
+            predicate_has_empty_aggregate(predicate, depth + 1) || reason_has(reason)
+        }
+        CoreNode::Effect {
+            input,
+            obstruction_map,
+            ..
+        } => {
+            expression_has_empty_aggregate(input, depth + 1)
+                || obstruction_map
+                    .values()
+                    .any(|arm| expression_has_empty_aggregate(&arm.value, depth + 1))
+        }
+        CoreNode::ExternalActionRequest {
+            input,
+            authority_scope,
+            basis,
+            ..
+        } => [input, authority_scope.as_ref(), basis.as_ref()]
+            .into_iter()
+            .any(|expression| expression_has_empty_aggregate(expression, depth + 1)),
+        CoreNode::For { iter, body, .. } => {
+            expression_has_empty_aggregate(iter, depth + 1)
+                || block_has_empty_aggregate(body, depth + 1)
+        }
+        CoreNode::Branch {
+            predicate,
+            then_block,
+            else_block,
+            ..
+        } => {
+            predicate_has_empty_aggregate(predicate, depth + 1)
+                || block_has_empty_aggregate(then_block, depth + 1)
+                || block_has_empty_aggregate(else_block, depth + 1)
         }
     }
 }

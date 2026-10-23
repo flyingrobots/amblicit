@@ -16,8 +16,9 @@ versions still track specification maturity rather than a released product.
   encoder check nested blocks independently. Value-yielding branches, non-null
   control block results, coordinate loop bounds (`coordinate_loop_bound`, since
   Target has no authenticated constant values; the v3 encoder and the current
-  schema also refuse them) and external requests refuse under v3; a branch or
-  requirement predicate with an empty `all`/`any` refuses in v3 lowering
+  schema also refuse them) and external requests refuse under v3; an empty
+  `all`/`any` anywhere in a v3 intent (branch or requirement predicate, loop
+  iterable or other expression) refuses in v3 lowering
   (`empty_predicate_aggregate`) and in the v3 encoder, and an artifact deeper
   than the canonical nesting limit refuses at lowering
   (`canonical_nesting_depth`) rather than in the encoder. **Breaking (Rust

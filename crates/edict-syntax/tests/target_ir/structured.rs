@@ -698,6 +698,84 @@ fn requirement_predicates_with_empty_aggregates_refuse_under_v3() {
     encode_target_ir_artifact(&ordered).expect("v2 requirement encoding is unchanged");
 }
 
+fn conditional_iterable(predicate: CorePredicate, iterable: &CoreExpr) -> CoreExpr {
+    CoreExpr::If {
+        predicate: Box::new(predicate),
+        then_value: Box::new(iterable.clone()),
+        else_value: Box::new(iterable.clone()),
+    }
+}
+
+/// The Core loop at the top level (node 0) or inside the top-level branch.
+fn core_loop_iterable(core: &mut CoreModule, in_branch: bool) -> &mut CoreExpr {
+    let nodes = &mut core.intents.get_mut("t").expect("intent").body.nodes;
+    let node = if in_branch {
+        let CoreNode::Branch { then_block, .. } = &mut nodes[1] else {
+            panic!("Core branch expected");
+        };
+        &mut then_block.nodes[0]
+    } else {
+        &mut nodes[0]
+    };
+    let CoreNode::For { iter, .. } = node else {
+        panic!("Core for expected");
+    };
+    iter
+}
+
+#[test]
+fn loop_iterables_with_empty_aggregates_refuse_under_v3() {
+    let baseline = loop_core(BRANCH_IN_LOOP_AND_LOOP_IN_BRANCH);
+    let artifact = structured_artifact(BRANCH_IN_LOOP_AND_LOOP_IN_BRANCH);
+    for in_branch in [false, true] {
+        let iterable = core_loop_iterable(&mut baseline.clone(), in_branch).clone();
+        for (case, predicate) in [
+            ("empty all", CorePredicate::All(Vec::new())),
+            ("empty any", CorePredicate::Any(Vec::new())),
+            (
+                "empty any inside not",
+                CorePredicate::Not(Box::new(CorePredicate::Any(Vec::new()))),
+            ),
+        ] {
+            let case = format!("{case} iterable, in_branch={in_branch}");
+            let conditional = conditional_iterable(predicate, &iterable);
+            let mut core = baseline.clone();
+            *core_loop_iterable(&mut core, in_branch) = conditional.clone();
+            let report = lower_to_target_ir(&core, &structured_facts());
+            assert_refused(
+                &report,
+                TargetLoweringFailureKind::InvalidCoreIdentity,
+                Some("empty_predicate_aggregate"),
+                &case,
+            );
+
+            let mut encoded = artifact.clone();
+            let order = order_mut(&mut encoded);
+            let entry = if in_branch {
+                &mut branch_entry_mut(&mut order[1]).then_entries[0]
+            } else {
+                &mut order[0]
+            };
+            for_entry_mut(entry).iterable = conditional;
+            assert_unsupported_value(&encoded, &case);
+        }
+
+        // Control: Target lowering does not accept conditional iterables at
+        // all, so the encoder is the control: a nonempty aggregate encodes.
+        let mut encoded = artifact.clone();
+        let order = order_mut(&mut encoded);
+        let entry = if in_branch {
+            &mut branch_entry_mut(&mut order[1]).then_entries[0]
+        } else {
+            &mut order[0]
+        };
+        for_entry_mut(entry).iterable =
+            conditional_iterable(CorePredicate::All(vec![CorePredicate::True]), &iterable);
+        encode_target_ir_artifact(&encoded)
+            .unwrap_or_else(|error| panic!("nonempty iterable, in_branch={in_branch}: {error:?}"));
+    }
+}
+
 #[test]
 fn requirement_inside_loop_stays_in_the_loop_body() {
     let artifact = structured_artifact(REQUIREMENT_IN_LOOP);
