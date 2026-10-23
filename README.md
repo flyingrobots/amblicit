@@ -170,9 +170,9 @@ printf '%s\n%s\n' \
   | target/debug/edict
 ```
 
-A clean check exits with `0`:
+A clean check exits with `0` and writes this output:
 
-```json
+```text
 {"command":"check","input":{"kind":"path","path":"fixtures/lang/bounds/bounded-hello.edict"},"schema":"edict.cli.check-result/v1","status":"ok","type":"checkResult"}
 {"checked":1,"command":"check","errors":0,"exitCode":0,"schema":"edict.cli.event/v1","status":"ok","type":"status"}
 ```
