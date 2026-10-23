@@ -43,7 +43,7 @@ These invariants come from the [language specification](./docs/SPEC_edict-langua
 | Principle | Meaning | Spec |
 | --- | --- | --- |
 | No ambient authority | No clock, randomness, filesystem, network or environment unless the caller supplies it as explicit input | I-002, I-003 |
-| Deterministic | The same source and pinned law produce byte-identical artifacts | I-003, I-010 |
+| Deterministic | The same source, source profile, lawpack and target-profile digests, compiler version and compile options produce byte-identical artifacts | I-003, I-010 |
 | Total | Loops walk finite, bounded collections. Recursion is refused. Cost is checked against a budget. | I-004, I-016 |
 | Typed effects | Effects come from imported, digest-locked lawpacks and target profiles, not from footprint text that an author writes | I-005, I-008 |
 | Failure is a value | Every effect that can fail maps to a named obstruction. There are no exceptions. | I-012, I-025 |
