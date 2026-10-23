@@ -14,7 +14,7 @@ const commaSep = rule => optional(commaSep1(rule));
 const commaSep1 = rule => seq(rule, repeat(seq(',', rule)), optional(','));
 
 module.exports = grammar({
-  name: 'edict',
+  name: 'amblicit',
 
   extras: $ => [
     /\s/,

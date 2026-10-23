@@ -1,9 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-  "name": "Edict",
-  "scopeName": "source.edict",
+  "name": "Amblicit",
+  "scopeName": "source.amblicit",
   "fileTypes": [
-    "edict"
+    "amblicit"
   ],
   "patterns": [
     {
@@ -35,11 +35,11 @@
     "comments": {
       "patterns": [
         {
-          "name": "comment.line.double-slash.edict",
+          "name": "comment.line.double-slash.amblicit",
           "match": "//.*$"
         },
         {
-          "name": "comment.block.edict",
+          "name": "comment.block.amblicit",
           "begin": "/\\*",
           "end": "\\*/"
         }
@@ -48,12 +48,12 @@
     "strings": {
       "patterns": [
         {
-          "name": "string.quoted.double.edict",
+          "name": "string.quoted.double.amblicit",
           "begin": "\"",
           "end": "\"",
           "patterns": [
             {
-              "name": "constant.character.escape.edict",
+              "name": "constant.character.escape.amblicit",
               "match": "\\\\."
             }
           ]
@@ -61,27 +61,27 @@
       ]
     },
     "numbers": {
-      "name": "constant.numeric.integer.edict",
+      "name": "constant.numeric.integer.amblicit",
       "match": "\\b[0-9]+(?:_[0-9]+)*(?:i32|i64|u32|u64)?\\b|\\b[0-9]+(?:_[0-9]+)*_"
     },
     "keywords": {
-      "name": "keyword.control.edict",
+      "name": "keyword.control.amblicit",
       "match": "\\b(?:package|use|type|enum|variant|intent|returns|profile|implements|basis|footprint|budget|where|let|return|request|require|guarantee|assert|if|then|else|for|in|bounded|yield|match|shape|lawpack|target|core|capability|as|digest|fn|const|true|false)\\b"
     },
     "types": {
-      "name": "entity.name.type.edict",
+      "name": "entity.name.type.amblicit",
       "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
     },
     "operators": {
-      "name": "keyword.operator.edict",
+      "name": "keyword.operator.amblicit",
       "match": "->|=>|==|!=|<=|>=|&&|\\|\\||=|<|>|\\+|-|\\*|/|%|!"
     },
     "punctuation": {
-      "name": "punctuation.separator.edict",
+      "name": "punctuation.separator.amblicit",
       "match": "::|\\.\\.\\.|[;:,.@(){}\\[\\]]"
     },
     "identifiers": {
-      "name": "variable.other.edict",
+      "name": "variable.other.amblicit",
       "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
     }
   }

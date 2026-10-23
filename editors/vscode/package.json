@@ -1,13 +1,13 @@
 {
-  "name": "edict-vscode",
-  "displayName": "Edict",
-  "description": "Syntax highlighting for Edict source files.",
+  "name": "amblicit-vscode",
+  "displayName": "Amblicit",
+  "description": "Syntax highlighting for Amblicit source files.",
   "version": "0.6.0-alpha.1",
   "publisher": "flyingrobots",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/flyingrobots/edict.git",
+    "url": "https://github.com/flyingrobots/amblicit.git",
     "directory": "editors/vscode"
   },
   "engines": {
@@ -17,29 +17,29 @@
     "Programming Languages"
   ],
   "keywords": [
-    "edict",
+    "amblicit",
     "syntax",
     "highlighting"
   ],
   "contributes": {
     "languages": [
       {
-        "id": "edict",
+        "id": "amblicit",
         "aliases": [
-          "Edict",
-          "edict"
+          "Amblicit",
+          "amblicit"
         ],
         "extensions": [
-          ".edict"
+          ".amblicit"
         ],
         "configuration": "./language-configuration.json"
       }
     ],
     "grammars": [
       {
-        "language": "edict",
-        "scopeName": "source.edict",
-        "path": "./syntaxes/edict.tmLanguage.json"
+        "language": "amblicit",
+        "scopeName": "source.amblicit",
+        "path": "./syntaxes/amblicit.tmLanguage.json"
       }
     ]
   }

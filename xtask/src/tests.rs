@@ -666,7 +666,7 @@ fn tree_sitter_query_atoms_for_capture(query: &str, capture: &str) -> BTreeSet<S
 
 fn textmate_grammar() -> Value {
     let root = repo_root().expect("repo root");
-    let grammar = fs::read_to_string(root.join("grammars/textmate/edict.tmLanguage.json"))
+    let grammar = fs::read_to_string(root.join("grammars/textmate/amblicit.tmLanguage.json"))
         .expect("TextMate grammar");
     serde_json::from_str(&grammar).expect("TextMate grammar must be valid JSON")
 }
@@ -821,10 +821,10 @@ fn is_tree_sitter_delimiter(line: &str) -> bool {
 #[test]
 fn tree_sitter_grammar_declares_current_editor_contract() {
     let root = repo_root().expect("repo root");
-    let grammar = fs::read_to_string(root.join("grammars/tree-sitter-edict/grammar.js"))
+    let grammar = fs::read_to_string(root.join("grammars/tree-sitter-amblicit/grammar.js"))
         .expect("Tree-sitter grammar source");
     let highlights =
-        fs::read_to_string(root.join("grammars/tree-sitter-edict/queries/highlights.scm"))
+        fs::read_to_string(root.join("grammars/tree-sitter-amblicit/queries/highlights.scm"))
             .expect("Tree-sitter highlight query");
 
     for rule in [
@@ -924,7 +924,7 @@ fn tree_sitter_grammar_declares_current_editor_contract() {
 fn tree_sitter_query_covers_public_keyword_roles() {
     let root = repo_root().expect("repo root");
     let highlights =
-        fs::read_to_string(root.join("grammars/tree-sitter-edict/queries/highlights.scm"))
+        fs::read_to_string(root.join("grammars/tree-sitter-amblicit/queries/highlights.scm"))
             .expect("Tree-sitter highlight query");
     let source = r"
 package examples.keywords@1;
@@ -952,7 +952,7 @@ fn run() {}
 fn tree_sitter_query_operator_and_punctuation_roles_match_public_highlighter() {
     let root = repo_root().expect("repo root");
     let highlights =
-        fs::read_to_string(root.join("grammars/tree-sitter-edict/queries/highlights.scm"))
+        fs::read_to_string(root.join("grammars/tree-sitter-amblicit/queries/highlights.scm"))
             .expect("Tree-sitter highlight query");
     let source = "= == != < <= > >= + - * / % ! && || => :: ... ; : , . @ ( ) { }";
     let public_roles = amblicit_syntax::highlight_source(source)
@@ -991,15 +991,15 @@ fn tree_sitter_query_operator_and_punctuation_roles_match_public_highlighter() {
 #[test]
 fn textmate_grammar_declares_current_editor_contract() {
     let grammar = textmate_grammar();
-    assert_eq!(json_str(&grammar, "name"), "Edict");
-    assert_eq!(json_str(&grammar, "scopeName"), "source.edict");
+    assert_eq!(json_str(&grammar, "name"), "Amblicit");
+    assert_eq!(json_str(&grammar, "scopeName"), "source.amblicit");
     let file_types = grammar
         .get("fileTypes")
         .and_then(Value::as_array)
         .expect("TextMate grammar missing file types");
     assert!(
-        file_types.iter().any(|file_type| file_type == "edict"),
-        "TextMate grammar must register .edict files"
+        file_types.iter().any(|file_type| file_type == "amblicit"),
+        "TextMate grammar must register .amblicit files"
     );
 
     let includes = textmate_includes(&grammar);
@@ -1023,13 +1023,13 @@ fn textmate_grammar_declares_current_editor_contract() {
     assert!(
         comments
             .iter()
-            .any(|pattern| json_str(pattern, "name") == "comment.line.double-slash.edict"),
+            .any(|pattern| json_str(pattern, "name") == "comment.line.double-slash.amblicit"),
         "TextMate grammar must scope line comments"
     );
     assert!(
         comments
             .iter()
-            .any(|pattern| json_str(pattern, "name") == "comment.block.edict"),
+            .any(|pattern| json_str(pattern, "name") == "comment.block.amblicit"),
         "TextMate grammar must scope block comments"
     );
 }
@@ -1109,7 +1109,7 @@ fn textmate_grammar_scopes_public_number_spans_in_version_labels() {
 fn vscode_extension_declares_textmate_language_contract() {
     let root = repo_root().expect("repo root");
     let manifest = vscode_extension_manifest();
-    assert_eq!(json_str(&manifest, "name"), "edict-vscode");
+    assert_eq!(json_str(&manifest, "name"), "amblicit-vscode");
     assert_eq!(json_str(&manifest, "publisher"), "flyingrobots");
 
     let engines = json_object(&manifest, "engines");
@@ -1130,15 +1130,15 @@ fn vscode_extension_declares_textmate_language_contract() {
     let languages = json_array(contributes, "languages");
     let language = languages
         .iter()
-        .find(|language| json_str(language, "id") == "edict")
-        .expect("VS Code extension must register the Edict language");
+        .find(|language| json_str(language, "id") == "amblicit")
+        .expect("VS Code extension must register the Amblicit language");
     assert!(
-        json_string_array_contains(language, "extensions", ".edict"),
-        "VS Code extension must register .edict files"
+        json_string_array_contains(language, "extensions", ".amblicit"),
+        "VS Code extension must register .amblicit files"
     );
     assert!(
-        json_string_array_contains(language, "aliases", "Edict"),
-        "VS Code extension must expose the Edict language alias"
+        json_string_array_contains(language, "aliases", "Amblicit"),
+        "VS Code extension must expose the Amblicit language alias"
     );
     assert_eq!(
         json_str(language, "configuration"),
@@ -1148,12 +1148,12 @@ fn vscode_extension_declares_textmate_language_contract() {
     let grammars = json_array(contributes, "grammars");
     let grammar = grammars
         .iter()
-        .find(|grammar| json_str(grammar, "language") == "edict")
-        .expect("VS Code extension must map the Edict language to a grammar");
-    assert_eq!(json_str(grammar, "scopeName"), "source.edict");
+        .find(|grammar| json_str(grammar, "language") == "amblicit")
+        .expect("VS Code extension must map the Amblicit language to a grammar");
+    assert_eq!(json_str(grammar, "scopeName"), "source.amblicit");
     assert_eq!(
         json_str(grammar, "path"),
-        "./syntaxes/edict.tmLanguage.json"
+        "./syntaxes/amblicit.tmLanguage.json"
     );
 
     let extension_grammar = read_json_file(
@@ -1177,8 +1177,8 @@ fn vscode_language_configuration_matches_lexer_boundaries() {
         .expect("VS Code extension manifest must contribute editor behavior");
     let language = json_array(contributes, "languages")
         .iter()
-        .find(|language| json_str(language, "id") == "edict")
-        .expect("VS Code extension must register the Edict language");
+        .find(|language| json_str(language, "id") == "amblicit")
+        .expect("VS Code extension must register the Amblicit language");
     let config = read_json_file(
         &root
             .join("editors/vscode")
@@ -1218,9 +1218,10 @@ fn vscode_language_configuration_matches_lexer_boundaries() {
 #[test]
 fn tree_sitter_corpus_examples_match_reference_parser() {
     let root = repo_root().expect("repo root");
-    let corpus =
-        fs::read_to_string(root.join("grammars/tree-sitter-edict/test/corpus/current-subset.txt"))
-            .expect("Tree-sitter corpus");
+    let corpus = fs::read_to_string(
+        root.join("grammars/tree-sitter-amblicit/test/corpus/current-subset.txt"),
+    )
+    .expect("Tree-sitter corpus");
     let examples = parse_tree_sitter_corpus(&corpus);
     assert!(
         !examples.is_empty(),

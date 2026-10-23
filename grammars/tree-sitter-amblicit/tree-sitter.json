@@ -1,27 +1,27 @@
 {
   "grammars": [
     {
-      "name": "edict",
-      "camelcase": "Edict",
-      "scope": "source.edict",
+      "name": "amblicit",
+      "camelcase": "Amblicit",
+      "scope": "source.amblicit",
       "path": ".",
       "file-types": [
-        "edict"
+        "amblicit"
       ],
-      "injection-regex": "^edict$"
+      "injection-regex": "^amblicit$"
     }
   ],
   "metadata": {
     "version": "0.0.0",
     "license": "Apache-2.0",
-    "description": "Tree-sitter grammar source for Edict",
+    "description": "Tree-sitter grammar source for Amblicit",
     "authors": [
       {
         "name": "Flying Robots"
       }
     ],
     "links": {
-      "repository": "https://github.com/flyingrobots/edict"
+      "repository": "https://github.com/flyingrobots/amblicit"
     }
   },
   "bindings": {
