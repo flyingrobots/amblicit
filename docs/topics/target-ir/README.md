@@ -192,7 +192,11 @@ intent. The order is a tree: an instruction entry is the text id of a pure
 binding, step or requirement in the existing tables; a control entry is a map.
 [TIR-REQ-060]
 
-```json
+The example below is abridged and is not valid JSON. The `{...}` placeholders
+replace two Core values: `binder` is a Core `local-ref` and `iterable` is a Core
+`core-expr`, encoded as `docs/abi/edict-target-ir.cddl` defines them.
+
+```text
 {"executionOrder": [
   {"kind": "for", "id": "t.for.0", "binder": {...}, "iterable": {...},
    "bound": {"kind": "literal", "value": 4}, "body": ["t.step.0"]}
