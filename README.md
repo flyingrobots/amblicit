@@ -46,7 +46,7 @@ These invariants come from the [language specification](./docs/SPEC_edict-langua
 | Deterministic | The same source, source profile, lawpack and target-profile digests, compiler version and compile options produce byte-identical artifacts | I-003, I-010 |
 | Total | Loops walk finite, bounded collections. Recursion is refused. Cost is checked against a budget. | I-004, I-016 |
 | Typed effects | Effects come from imported, digest-locked lawpacks and target profiles, not from footprint text that an author writes | I-005, I-008 |
-| Failure is a value | Every effect that can fail maps to a named obstruction. There are no exceptions. | I-012, I-025 |
+| Failure is a value | An effect failure that the target profile declares as domain-mappable maps to a named obstruction. Participant, integrity, resource and internal faults stay with the platform. There are no exceptions. | I-012, I-025 |
 | Runtime-neutral core | Core IR has no nodes, rows, keys or commits. A target profile owns storage and lowering. | I-001, I-011 |
 | Atomic | An intent applies as one unit, or it leaves the target state unchanged | I-029 |
 | Evidence is not authority | Digests and certificates record what was checked. The runtime decides admission. | I-014, I-028 |
