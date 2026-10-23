@@ -421,6 +421,134 @@ fn branch_inside_loop_and_loop_inside_branch_keep_structure() {
     encode_target_ir_artifact(&artifact).expect("nested structure encodes");
 }
 
+/// Branch predicates that each contain an empty `all` or `any` somewhere the
+/// Core schema requires one or more values, built around a valid predicate.
+fn empty_aggregate_predicates(valid: &CorePredicate) -> Vec<(&'static str, CorePredicate)> {
+    let CorePredicate::Compare { left, right, .. } = valid else {
+        panic!("comparison predicate expected");
+    };
+    vec![
+        ("empty all", CorePredicate::All(Vec::new())),
+        ("empty any", CorePredicate::Any(Vec::new())),
+        (
+            "empty all inside not",
+            CorePredicate::Not(Box::new(CorePredicate::All(Vec::new()))),
+        ),
+        (
+            "empty any inside all",
+            CorePredicate::All(vec![valid.clone(), CorePredicate::Any(Vec::new())]),
+        ),
+        (
+            "empty all inside not inside any",
+            CorePredicate::Any(vec![
+                valid.clone(),
+                CorePredicate::Not(Box::new(CorePredicate::All(Vec::new()))),
+            ]),
+        ),
+        (
+            "empty any inside an if operand",
+            CorePredicate::Compare {
+                op: CompareOp::Ne,
+                left: CoreExpr::If {
+                    predicate: Box::new(CorePredicate::Any(Vec::new())),
+                    then_value: Box::new(left.clone()),
+                    else_value: Box::new(left.clone()),
+                },
+                right: right.clone(),
+            },
+        ),
+    ]
+}
+
+fn nonempty_aggregate_predicates(valid: &CorePredicate) -> Vec<(&'static str, CorePredicate)> {
+    vec![
+        ("singleton all", CorePredicate::All(vec![valid.clone()])),
+        (
+            "nested any",
+            CorePredicate::Any(vec![
+                valid.clone(),
+                CorePredicate::Not(Box::new(CorePredicate::All(vec![valid.clone()]))),
+            ]),
+        ),
+    ]
+}
+
+fn core_branch_predicate(core: &mut CoreModule, in_loop: bool) -> &mut CorePredicate {
+    let nodes = &mut core.intents.get_mut("t").expect("intent").body.nodes;
+    let node = if in_loop {
+        let CoreNode::For { body, .. } = &mut nodes[0] else {
+            panic!("Core for expected");
+        };
+        &mut body.nodes[0]
+    } else {
+        &mut nodes[1]
+    };
+    let CoreNode::Branch { predicate, .. } = node else {
+        panic!("Core branch expected");
+    };
+    predicate
+}
+
+#[test]
+fn branch_predicates_with_empty_aggregates_refuse_in_lowering() {
+    let baseline = loop_core(BRANCH_IN_LOOP_AND_LOOP_IN_BRANCH);
+    for in_loop in [false, true] {
+        let valid = core_branch_predicate(&mut baseline.clone(), in_loop).clone();
+        for (case, predicate) in empty_aggregate_predicates(&valid) {
+            let mut core = baseline.clone();
+            *core_branch_predicate(&mut core, in_loop) = predicate;
+            let report = lower_to_target_ir(&core, &structured_facts());
+            assert_refused(
+                &report,
+                TargetLoweringFailureKind::InvalidCoreIdentity,
+                Some("empty_predicate_aggregate"),
+                &format!("{case}, in_loop={in_loop}"),
+            );
+        }
+        for (case, predicate) in nonempty_aggregate_predicates(&valid) {
+            let mut core = baseline.clone();
+            *core_branch_predicate(&mut core, in_loop) = predicate;
+            let report = lower_to_target_ir(&core, &structured_facts());
+            assert_eq!(
+                report.status,
+                TargetLoweringStatus::Lowered,
+                "{case}, in_loop={in_loop}: {report:?}"
+            );
+            encode_target_ir_artifact(&report.artifact.expect("artifact"))
+                .unwrap_or_else(|error| panic!("{case}, in_loop={in_loop}: {error:?}"));
+        }
+    }
+}
+
+#[test]
+fn branch_predicates_with_empty_aggregates_refuse_in_the_encoder() {
+    let baseline = structured_artifact(BRANCH_IN_LOOP_AND_LOOP_IN_BRANCH);
+    for in_loop in [false, true] {
+        let valid = branch_predicate_mut(&mut baseline.clone(), in_loop).clone();
+        for (case, predicate) in empty_aggregate_predicates(&valid) {
+            let mut artifact = baseline.clone();
+            *branch_predicate_mut(&mut artifact, in_loop) = predicate;
+            assert_unsupported_value(&artifact, &format!("{case}, in_loop={in_loop}"));
+        }
+        for (case, predicate) in nonempty_aggregate_predicates(&valid) {
+            let mut artifact = baseline.clone();
+            *branch_predicate_mut(&mut artifact, in_loop) = predicate;
+            encode_target_ir_artifact(&artifact)
+                .unwrap_or_else(|error| panic!("{case}, in_loop={in_loop}: {error:?}"));
+        }
+    }
+}
+
+fn branch_predicate_mut(artifact: &mut TargetIrArtifact, in_loop: bool) -> &mut CorePredicate {
+    let order = order_mut(artifact);
+    let entry = if in_loop {
+        &mut for_entry_mut(&mut order[0]).body[0]
+    } else {
+        &mut order[1]
+    };
+    &mut branch_entry_mut(entry).predicate
+}
+
 #[test]
 fn requirement_inside_loop_stays_in_the_loop_body() {
     let artifact = structured_artifact(REQUIREMENT_IN_LOOP);

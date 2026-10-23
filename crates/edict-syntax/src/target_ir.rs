@@ -30,6 +30,7 @@ use crate::core_ir::{
     MAX_CORE_GRAPH_DEPTH, MAX_CORE_TYPE_DEPTH,
 };
 use crate::digest_core_module;
+use crate::MAX_CANONICAL_NESTING_DEPTH;
 use crate::lowerability::{LowerabilityEffectStatus, LowerabilityReport, LowerabilityStatus};
 use crate::result_projection::emit_result_projection_with_closure;
 use crate::target_intrinsics::TargetPureIntrinsicFact;
@@ -1259,6 +1260,9 @@ fn validate_structured_control<'a>(
             then_block,
             else_block,
         } => {
+            if predicate_has_empty_aggregate(predicate, 0) {
+                return invalid("empty_predicate_aggregate");
+            }
             if !predicate_fits_core_types(
                 context.core,
                 context.pure_functions,
@@ -2308,6 +2312,54 @@ fn expression_references_are_available(
         } => {
             expression_references_are_available(then_value, available)
                 && expression_references_are_available(else_value, available)
+        }
+    }
+}
+
+/// Whether a predicate, or a predicate inside one of its expressions, contains
+/// an `all` or `any` with no values, which `docs/abi/edict-core.cddl` forbids.
+/// Nesting beyond the canonical depth is left to the callers' depth checks.
+pub(crate) fn predicate_has_empty_aggregate(predicate: &CorePredicate, depth: usize) -> bool {
+    if depth > MAX_CANONICAL_NESTING_DEPTH {
+        return false;
+    }
+    match predicate {
+        CorePredicate::True | CorePredicate::False => false,
+        CorePredicate::Not(value) => predicate_has_empty_aggregate(value, depth + 1),
+        CorePredicate::All(values) | CorePredicate::Any(values) => {
+            values.is_empty()
+                || values
+                    .iter()
+                    .any(|value| predicate_has_empty_aggregate(value, depth + 1))
+        }
+        CorePredicate::Compare { left, right, .. } => {
+            expression_has_empty_aggregate(left, depth + 1)
+                || expression_has_empty_aggregate(right, depth + 1)
+        }
+    }
+}
+
+fn expression_has_empty_aggregate(expression: &CoreExpr, depth: usize) -> bool {
+    if depth > MAX_CANONICAL_NESTING_DEPTH {
+        return false;
+    }
+    match expression {
+        CoreExpr::Local { .. } | CoreExpr::Const(_) => false,
+        CoreExpr::Record { fields } => fields
+            .values()
+            .any(|value| expression_has_empty_aggregate(value, depth + 1)),
+        CoreExpr::List { values } | CoreExpr::Call { args: values, .. } => values
+            .iter()
+            .any(|value| expression_has_empty_aggregate(value, depth + 1)),
+        CoreExpr::Field { base, .. } => expression_has_empty_aggregate(base, depth + 1),
+        CoreExpr::If {
+            predicate,
+            then_value,
+            else_value,
+        } => {
+            predicate_has_empty_aggregate(predicate, depth + 1)
+                || expression_has_empty_aggregate(then_value, depth + 1)
+                || expression_has_empty_aggregate(else_value, depth + 1)
         }
     }
 }

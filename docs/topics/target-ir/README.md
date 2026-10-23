@@ -226,7 +226,11 @@ independently requires every table instruction exactly once in the whole tree,
 nonempty unique control ids disjoint from instruction ids, binders that reuse
 no produced or visible identity, scoped producer-before-consumer references,
 and the canonical nesting depth. Failures are `InvalidCoreIdentity` or
-`CanonicalErrorKind::UnsupportedValue` with no artifact. [TIR-REQ-060]
+`CanonicalErrorKind::UnsupportedValue` with no artifact. A branch predicate
+containing an `all` or `any` with no values, at any depth including inside an
+`if` expression operand, violates the Core schema: lowering refuses it with
+`InvalidCoreIdentity` detail `empty_predicate_aggregate`, and the encoder
+refuses such a branch entry with `UnsupportedValue`. [TIR-REQ-060]
 
 Value-yielding branches refuse with `UnsupportedCoreNode` detail
 `branch_binding`; a loop body or arm whose Core block result is not null refuses

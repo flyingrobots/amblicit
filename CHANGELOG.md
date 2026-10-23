@@ -16,7 +16,8 @@ versions still track specification maturity rather than a released product.
   encoder check nested blocks independently. Value-yielding branches, non-null
   control block results, coordinate loop bounds (`coordinate_loop_bound`, since
   Target has no authenticated constant values) and external requests refuse
-  under v3. **Breaking (Rust API):** `TargetIrIntent::execution_order` is now
+  under v3; a branch predicate with an empty `all`/`any` refuses in lowering
+  (`empty_predicate_aggregate`) and in the encoder. **Breaking (Rust API):** `TargetIrIntent::execution_order` is now
   `Option<Vec<TargetIrOrderEntry>>`; v2 still encodes a flat array of ids with
   unchanged bytes, and v1/v2 keep their `for`/`branch` refusals. A new
   `structured-control-v1` provider contract pack adds the v3 schema root; prior

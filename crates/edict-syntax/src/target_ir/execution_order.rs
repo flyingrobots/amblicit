@@ -165,6 +165,7 @@ impl<'a> OrderWalk<'a> {
             }
             TargetIrOrderEntry::Branch(entry) => {
                 self.control_id(&entry.id)
+                    && !super::predicate_has_empty_aggregate(&entry.predicate, 0)
                     && self.available.predicate(&entry.predicate, 0)
                     && self.scoped(|walk| walk.entries(&entry.then_entries, depth + 1))
                     && self.scoped(|walk| walk.entries(&entry.else_entries, depth + 1))
