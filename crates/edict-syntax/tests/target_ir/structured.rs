@@ -1125,6 +1125,202 @@ fn conditional_scalar_list_iterable_lowers_under_v3() {
     }
 }
 
+const COMPARISONS: &str = "package a.b@1;\n\
+    type Leaf = { id: String<max=16>, };\n\
+    type Input = { id: String<max=16>, tag: Bytes<max=8>, n: U64, leaves: List<Leaf, max=4>, nums: List<U64, max=4>, };\n\
+    type Receipt = { id: String<max=16>, };\n\
+    type Output = { id: String<max=16>, };\n\
+    intent t(input: Input) returns Output\n\
+      profile p.effectful\n\
+      basis none\n\
+      budget <= p.loop {\n\
+      let receipt: Receipt = target.replace(input.id)\n\
+        else { rejected(reason) => domain.WriteRejected };\n\
+      if input.tag == input.tag {\n\
+        require input.n == input.n else domain.WriteRejected;\n\
+      }\n\
+      for leaf in input.leaves bounded 4 {\n\
+        if input.tag != input.tag {\n\
+          require input.n == input.n else domain.WriteRejected;\n\
+        }\n\
+      }\n\
+      for x in input.nums bounded 4 {\n\
+        let seen: U64 = x;\n\
+      }\n\
+      return { id: input.id };\n\
+    }";
+
+fn input_field(core: &CoreModule, field: &str) -> CoreExpr {
+    let input = core.intents["t"]
+        .body
+        .locals
+        .iter()
+        .find(|local| local.id == "arg.0")
+        .expect("input local")
+        .clone();
+    CoreExpr::Field {
+        base: Box::new(CoreExpr::Local { reference: input }),
+        field: field.to_owned(),
+    }
+}
+
+fn compare(op: CompareOp, left: CoreExpr, right: CoreExpr) -> CorePredicate {
+    CorePredicate::Compare { op, left, right }
+}
+
+/// The top-level branch (node 1) or the branch inside the first loop (node 2).
+fn comparison_branch(core: &mut CoreModule, nested: bool) -> &mut CoreNode {
+    let nodes = &mut core.intents.get_mut("t").expect("intent").body.nodes;
+    if nested {
+        let CoreNode::For { body, .. } = &mut nodes[2] else {
+            panic!("Core for expected");
+        };
+        &mut body.nodes[0]
+    } else {
+        &mut nodes[1]
+    }
+}
+
+fn set_branch_predicate(core: &mut CoreModule, nested: bool, predicate: CorePredicate) {
+    let CoreNode::Branch { predicate: old, .. } = comparison_branch(core, nested) else {
+        panic!("Core branch expected");
+    };
+    *old = predicate;
+}
+
+fn comparisons_core() -> CoreModule {
+    let module = edict_syntax::parse_module(COMPARISONS).expect("source parses");
+    compile_to_core(&module, &loop_context()).expect("source compiles")
+}
+
+#[test]
+fn v3_ordered_comparisons_require_integer_operands() {
+    let baseline = comparisons_core();
+    let tag = input_field(&baseline, "tag");
+    let n = input_field(&baseline, "n");
+    let ordered = [CompareOp::Lt, CompareOp::Le, CompareOp::Gt, CompareOp::Ge];
+
+    // Controls: byte equality as compiled, and integer ordering, lower.
+    let report = lower_to_target_ir(&baseline, &structured_facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+    let artifact = report.artifact.expect("artifact");
+    encode_target_ir_artifact(&artifact).expect("byte equality encodes");
+    for nested in [false, true] {
+        let mut core = baseline.clone();
+        set_branch_predicate(
+            &mut core,
+            nested,
+            compare(CompareOp::Lt, n.clone(), n.clone()),
+        );
+        let report = lower_to_target_ir(&core, &structured_facts());
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Lowered,
+            "integer ordering, nested={nested}: {report:?}"
+        );
+    }
+    let mut integer_iterable = baseline.clone();
+    let (_, iter, _) = core_loop(&mut integer_iterable, 3);
+    *iter = CoreExpr::If {
+        predicate: Box::new(compare(CompareOp::Ge, n.clone(), n.clone())),
+        then_value: Box::new(iter.clone()),
+        else_value: Box::new(iter.clone()),
+    };
+    let report = lower_to_target_ir(&integer_iterable, &structured_facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+
+    // Lowering: byte ordering in branch, requirement and iterable predicates.
+    let mut cases = Vec::new();
+    for op in ordered {
+        let mut core = baseline.clone();
+        set_branch_predicate(&mut core, false, compare(op, tag.clone(), tag.clone()));
+        cases.push((format!("top-level branch {op:?}"), core));
+    }
+    let mut nested = baseline.clone();
+    set_branch_predicate(
+        &mut nested,
+        true,
+        compare(CompareOp::Ge, tag.clone(), tag.clone()),
+    );
+    cases.push(("nested branch Ge".to_owned(), nested));
+    let mut requirement = baseline.clone();
+    let CoreNode::Branch { then_block, .. } = comparison_branch(&mut requirement, false) else {
+        panic!("Core branch expected");
+    };
+    let CoreNode::Require { predicate, .. } = &mut then_block.nodes[0] else {
+        panic!("Core require expected");
+    };
+    *predicate = compare(CompareOp::Lt, tag.clone(), tag.clone());
+    cases.push(("requirement in branch Lt".to_owned(), requirement));
+    let mut iterable = baseline.clone();
+    let (_, iter, _) = core_loop(&mut iterable, 3);
+    *iter = CoreExpr::If {
+        predicate: Box::new(compare(CompareOp::Lt, tag.clone(), tag.clone())),
+        then_value: Box::new(iter.clone()),
+        else_value: Box::new(iter.clone()),
+    };
+    cases.push(("conditional iterable Lt".to_owned(), iterable));
+    for (case, core) in cases {
+        let report = lower_to_target_ir(&core, &structured_facts());
+        assert_refused(
+            &report,
+            TargetLoweringFailureKind::InvalidCoreIdentity,
+            Some("inadmissible_comparison_operator"),
+            &case,
+        );
+    }
+}
+
+#[test]
+fn v3_encoder_refuses_ordered_comparisons_of_non_integers() {
+    let report = lower_to_target_ir(&comparisons_core(), &structured_facts());
+    let artifact = report.artifact.expect("artifact");
+    // Encoder: provably non-integer ordering in branch predicates.
+    let bytes = || CoreExpr::Const(CoreValue::Bytes(vec![1]));
+    let int = || {
+        CoreExpr::Const(CoreValue::Int {
+            width: "U64".to_owned(),
+            value: "1".to_owned(),
+        })
+    };
+    let with_predicate = |nested: bool, predicate: CorePredicate| {
+        let mut encoded = artifact.clone();
+        let order = order_mut(&mut encoded);
+        let entry = if nested {
+            &mut for_entry_mut(&mut order[2]).body[0]
+        } else {
+            &mut order[1]
+        };
+        branch_entry_mut(entry).predicate = predicate;
+        encoded
+    };
+    for nested in [false, true] {
+        assert_unsupported_value(
+            &with_predicate(nested, compare(CompareOp::Lt, bytes(), bytes())),
+            &format!("byte ordering, nested={nested}"),
+        );
+        encode_target_ir_artifact(&with_predicate(
+            nested,
+            compare(CompareOp::Lt, int(), int()),
+        ))
+        .unwrap_or_else(|error| panic!("integer ordering, nested={nested}: {error:?}"));
+    }
+
+    // v2 requirement encoding is unchanged by the v3 check.
+    let report = lower_to_target_ir(
+        &loop_core(TOP_LEVEL_REQUIREMENT),
+        &facts_for(ECHO_ORDERED_SPAN_IR_DOMAIN),
+    );
+    let mut ordered_v2 = report.artifact.expect("v2 artifact");
+    ordered_v2
+        .intents
+        .get_mut("t")
+        .expect("intent")
+        .requirements[0]
+        .predicate = compare(CompareOp::Lt, bytes(), bytes());
+    encode_target_ir_artifact(&ordered_v2).expect("v2 encoding is unchanged");
+}
+
 #[test]
 fn requirement_inside_loop_stays_in_the_loop_body() {
     let artifact = structured_artifact(REQUIREMENT_IN_LOOP);

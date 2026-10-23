@@ -9,7 +9,8 @@ use super::{
     ECHO_ORDERED_SPAN_IR_DOMAIN, ECHO_STRUCTURED_SPAN_IR_DOMAIN,
 };
 use crate::core_ir::{
-    CoreBound, CoreExpr, CorePredicate, LocalRef, ResourceRef, CORE_APPLICATION_INPUT_LOCAL_ID,
+    CompareOp, CoreBound, CoreExpr, CorePredicate, CoreValue, LocalRef, ResourceRef,
+    CORE_APPLICATION_INPUT_LOCAL_ID,
 };
 use crate::MAX_CANONICAL_NESTING_DEPTH;
 
@@ -88,7 +89,7 @@ fn intent_has_valid_order(intent: &TargetIrIntent, structured: bool) -> bool {
     // The Core schema requires one or more `all`/`any` values. Under v3 every
     // predicate the walk visits must satisfy it; v2 encoding is unchanged.
     let mut available = LocalAvailability {
-        reject_empty_aggregates: structured,
+        structured_checks: structured,
         ..LocalAvailability::default()
     };
     if !intent
@@ -218,8 +219,9 @@ impl<'a> OrderWalk<'a> {
 struct LocalAvailability<'a> {
     input: Option<&'a LocalRef>,
     producers: BTreeMap<&'a str, &'a LocalRef>,
-    /// v3 refuses `all`/`any` with no values wherever a predicate appears.
-    reject_empty_aggregates: bool,
+    /// v3 refuses `all`/`any` with no values and ordered comparisons of
+    /// provably non-integer operands wherever a predicate appears.
+    structured_checks: bool,
 }
 
 impl<'a> LocalAvailability<'a> {
@@ -307,14 +309,45 @@ impl<'a> LocalAvailability<'a> {
             CorePredicate::True | CorePredicate::False => true,
             CorePredicate::Not(inner) => self.predicate(inner, depth + 1),
             CorePredicate::All(predicates) | CorePredicate::Any(predicates) => {
-                (!self.reject_empty_aggregates || !predicates.is_empty())
+                (!self.structured_checks || !predicates.is_empty())
                     && predicates
                         .iter()
                         .all(|predicate| self.predicate(predicate, depth + 1))
             }
-            CorePredicate::Compare { left, right, .. } => {
-                self.expression(left, depth + 1) && self.expression(right, depth + 1)
+            CorePredicate::Compare { op, left, right } => {
+                (!self.structured_checks
+                    || !matches!(
+                        op,
+                        CompareOp::Lt | CompareOp::Le | CompareOp::Gt | CompareOp::Ge
+                    )
+                    || !(provably_non_integer(left) || provably_non_integer(right)))
+                    && self.expression(left, depth + 1)
+                    && self.expression(right, depth + 1)
             }
         }
+    }
+}
+
+/// Whether an operand is non-integer from the artifact alone. The encoder has
+/// no type table, so field projections and calls are left to lowering, which
+/// resolves operand types exactly.
+fn provably_non_integer(expression: &CoreExpr) -> bool {
+    match expression {
+        CoreExpr::Const(value) => !matches!(value, CoreValue::Int { .. }),
+        CoreExpr::Record { .. } | CoreExpr::List { .. } => true,
+        CoreExpr::Local { reference } => {
+            let ty = reference.ty.as_str();
+            ty == "Bool"
+                || ty == "Unit"
+                || ["String<", "Bytes<", "Record<", "Option<", "List<", "Map<"]
+                    .into_iter()
+                    .any(|prefix| ty.starts_with(prefix))
+        }
+        CoreExpr::If {
+            then_value,
+            else_value,
+            ..
+        } => provably_non_integer(then_value) || provably_non_integer(else_value),
+        CoreExpr::Field { .. } | CoreExpr::Call { .. } => false,
     }
 }

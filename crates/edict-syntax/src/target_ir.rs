@@ -23,7 +23,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::core_ir::{
     core_type_fits, is_lowercase_sha256_review_digest, named_core_type_closure, resolved_core_type,
-    validate_core_module_type_integrity, CoreBlock, CoreBound, CoreBudget, CoreExpr,
+    validate_core_module_type_integrity, CompareOp, CoreBlock, CoreBound, CoreBudget, CoreExpr,
     CoreExternalActionBudget, CoreImportKind, CoreIntent, CoreModule, CoreNode, CoreObstructionArm,
     CoreObstructionReason, CorePredicate, CoreRequireFailureArm, CoreType, CoreValue,
     InputConstraint, LocalRef, ResourceRef, CORE_API_VERSION, CORE_APPLICATION_INPUT_LOCAL_ID,
@@ -1056,6 +1056,13 @@ fn validate_pure_binding_graph(
             "result references an undeclared or conflicting local",
         ));
     }
+    if structured && !intent_comparisons_admissible(core, pure_functions, intent, &available) {
+        return Some(invalid_pure_binding(
+            intent_name,
+            None,
+            INADMISSIBLE_COMPARISON,
+        ));
+    }
     (!expression_fits_declared_type(
         core,
         pure_functions,
@@ -1254,6 +1261,9 @@ fn validate_structured_instruction<'a>(
     ) {
         return invalid("Core node contains an invalid or unauthorized expression");
     }
+    if !node_comparisons_admissible(context.core, context.pure_functions, node, available) {
+        return invalid(INADMISSIBLE_COMPARISON);
+    }
     // Obstruction binders stay scoped to their arm for references, but are
     // recorded intent-wide like every other introduced identity, so no visible,
     // claimed or later identity (sibling arm, loop binder, producer) reuses one.
@@ -1317,6 +1327,9 @@ fn validate_structured_control<'a>(
             ) {
                 return invalid("loop iterable is not a bounded list whose items fit the binder");
             }
+            if !node_comparisons_admissible(context.core, context.pure_functions, node, available) {
+                return invalid(INADMISSIBLE_COMPARISON);
+            }
             if body.locals.iter().find(|local| local.id == binder.id) != Some(binder)
                 || !claimed.insert(binder.id.as_str())
             {
@@ -1340,6 +1353,9 @@ fn validate_structured_control<'a>(
                 available,
             ) {
                 return invalid("branch predicate contains an invalid or unauthorized expression");
+            }
+            if !node_comparisons_admissible(context.core, context.pure_functions, node, available) {
+                return invalid(INADMISSIBLE_COMPARISON);
             }
             vec![then_block, else_block]
         }
@@ -2524,6 +2540,156 @@ fn expression_has_empty_aggregate(expression: &CoreExpr, depth: usize) -> bool {
             predicate_has_empty_aggregate(predicate, depth + 1)
                 || expression_has_empty_aggregate(then_value, depth + 1)
                 || expression_has_empty_aggregate(else_value, depth + 1)
+        }
+    }
+}
+
+/// Stable v3 detail for an ordered comparison outside the closed operator set.
+const INADMISSIBLE_COMPARISON: &str = "inadmissible_comparison_operator";
+
+/// The closed operator set admits `<`, `<=`, `>` and `>=` only between
+/// integers; bytes, strings, booleans and records admit only `==` and `!=`.
+fn ordered_operands_are_integers(
+    core: &CoreModule,
+    pure_functions: &[TargetPureFunctionFact],
+    operands: [&CoreExpr; 2],
+    available: &BTreeMap<&str, &LocalRef>,
+) -> bool {
+    operands.into_iter().all(|operand| {
+        matches!(
+            comparison_operand_shape(core, pure_functions, operand, available),
+            Some(ComparisonOperandShape::Coordinate(coordinate))
+                if matches!(resolved_core_type(core, &coordinate), Some(CoreType::Int { .. }))
+        )
+    })
+}
+
+/// Whether every comparison in a predicate, including predicates inside its
+/// `if` operands, uses an operator its operand types admit.
+fn predicate_comparisons_admissible(
+    core: &CoreModule,
+    pure_functions: &[TargetPureFunctionFact],
+    predicate: &CorePredicate,
+    available: &BTreeMap<&str, &LocalRef>,
+    depth: usize,
+) -> bool {
+    if depth > MAX_CANONICAL_NESTING_DEPTH {
+        return false;
+    }
+    match predicate {
+        CorePredicate::True | CorePredicate::False => true,
+        CorePredicate::Not(value) => {
+            predicate_comparisons_admissible(core, pure_functions, value, available, depth + 1)
+        }
+        CorePredicate::All(values) | CorePredicate::Any(values) => values.iter().all(|value| {
+            predicate_comparisons_admissible(core, pure_functions, value, available, depth + 1)
+        }),
+        CorePredicate::Compare { op, left, right } => {
+            (!matches!(
+                op,
+                CompareOp::Lt | CompareOp::Le | CompareOp::Gt | CompareOp::Ge
+            ) || ordered_operands_are_integers(core, pure_functions, [left, right], available))
+                && expression_comparisons_admissible(
+                    core,
+                    pure_functions,
+                    left,
+                    available,
+                    depth + 1,
+                )
+                && expression_comparisons_admissible(
+                    core,
+                    pure_functions,
+                    right,
+                    available,
+                    depth + 1,
+                )
+        }
+    }
+}
+
+fn expression_comparisons_admissible(
+    core: &CoreModule,
+    pure_functions: &[TargetPureFunctionFact],
+    expression: &CoreExpr,
+    available: &BTreeMap<&str, &LocalRef>,
+    depth: usize,
+) -> bool {
+    if depth > MAX_CANONICAL_NESTING_DEPTH {
+        return false;
+    }
+    let child = |value: &CoreExpr| {
+        expression_comparisons_admissible(core, pure_functions, value, available, depth + 1)
+    };
+    match expression {
+        CoreExpr::Local { .. } | CoreExpr::Const(_) => true,
+        CoreExpr::Record { fields } => fields.values().all(child),
+        CoreExpr::List { values } | CoreExpr::Call { args: values, .. } => values.iter().all(child),
+        CoreExpr::Field { base, .. } => child(base),
+        CoreExpr::If {
+            predicate,
+            then_value,
+            else_value,
+        } => {
+            predicate_comparisons_admissible(core, pure_functions, predicate, available, depth + 1)
+                && child(then_value)
+                && child(else_value)
+        }
+    }
+}
+
+/// Operator admissibility for a v3 intent's basis, input constraints and
+/// result, judged in the end-of-body scope (metadata references only the input).
+fn intent_comparisons_admissible(
+    core: &CoreModule,
+    pure_functions: &[TargetPureFunctionFact],
+    intent: &CoreIntent,
+    available: &BTreeMap<&str, &LocalRef>,
+) -> bool {
+    intent.basis.as_ref().is_none_or(|basis| {
+        expression_comparisons_admissible(core, pure_functions, basis, available, 0)
+    }) && intent.input_constraints.iter().all(|constraint| {
+        predicate_comparisons_admissible(core, pure_functions, &constraint.predicate, available, 0)
+    }) && expression_comparisons_admissible(core, pure_functions, &intent.body.result, available, 0)
+}
+
+/// Operator admissibility for one v3 node's own predicates and expressions,
+/// in the scope its expressions see; nested blocks are judged on their own.
+fn node_comparisons_admissible<'a>(
+    core: &CoreModule,
+    pure_functions: &[TargetPureFunctionFact],
+    node: &'a CoreNode,
+    available: &BTreeMap<&'a str, &'a LocalRef>,
+) -> bool {
+    let expression = |value: &CoreExpr, scope: &BTreeMap<&str, &LocalRef>| {
+        expression_comparisons_admissible(core, pure_functions, value, scope, 0)
+    };
+    match node {
+        CoreNode::Let { value, .. } => expression(value, available),
+        CoreNode::Require { predicate, arm } => {
+            let (CoreRequireFailureArm::Terminal { reason }
+            | CoreRequireFailureArm::ContinueObstructed { reason }) = arm;
+            predicate_comparisons_admissible(core, pure_functions, predicate, available, 0)
+                && reason
+                    .payload
+                    .values()
+                    .all(|value| expression(value, available))
+        }
+        CoreNode::Effect {
+            input,
+            obstruction_map,
+            ..
+        } => {
+            expression(input, available)
+                && obstruction_map.values().all(|arm| {
+                    let mut scope = available.clone();
+                    scope.insert(arm.binder.id.as_str(), &arm.binder);
+                    expression(&arm.value, &scope)
+                })
+        }
+        CoreNode::ExternalActionRequest { .. } => true,
+        CoreNode::For { iter, .. } => expression(iter, available),
+        CoreNode::Branch { predicate, .. } => {
+            predicate_comparisons_admissible(core, pure_functions, predicate, available, 0)
         }
     }
 }
