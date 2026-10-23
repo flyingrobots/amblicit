@@ -629,6 +629,75 @@ fn structured_nesting_refuses_at_lowering_beyond_the_canonical_depth() {
     }
 }
 
+const TOP_LEVEL_REQUIREMENT: &str = "  let receipt: Receipt = target.replace(input.id)\n\
+        else { rejected(reason) => domain.WriteRejected };\n\
+      require receipt.id != \"\" else domain.WriteRejected;\n\
+      return { id: receipt.id };\n\
+    }";
+
+/// The Core requirement predicate: top-level (node 1) or inside the loop body.
+fn core_require_predicate(core: &mut CoreModule, in_loop: bool) -> &mut CorePredicate {
+    let nodes = &mut core.intents.get_mut("t").expect("intent").body.nodes;
+    let node = if in_loop {
+        let CoreNode::For { body, .. } = &mut nodes[1] else {
+            panic!("Core for expected");
+        };
+        &mut body.nodes[0]
+    } else {
+        &mut nodes[1]
+    };
+    let CoreNode::Require { predicate, .. } = node else {
+        panic!("Core require expected");
+    };
+    predicate
+}
+
+#[test]
+fn requirement_predicates_with_empty_aggregates_refuse_under_v3() {
+    for (source, in_loop) in [(TOP_LEVEL_REQUIREMENT, false), (REQUIREMENT_IN_LOOP, true)] {
+        let baseline = loop_core(source);
+        let valid = core_require_predicate(&mut baseline.clone(), in_loop).clone();
+        let artifact = structured_artifact(source);
+        for (case, predicate) in empty_aggregate_predicates(&valid) {
+            let case = format!("{case}, in_loop={in_loop}");
+            let mut core = baseline.clone();
+            *core_require_predicate(&mut core, in_loop) = predicate.clone();
+            let report = lower_to_target_ir(&core, &structured_facts());
+            assert_refused(
+                &report,
+                TargetLoweringFailureKind::InvalidCoreIdentity,
+                Some("empty_predicate_aggregate"),
+                &case,
+            );
+            let mut encoded = artifact.clone();
+            encoded.intents.get_mut("t").expect("intent").requirements[0].predicate = predicate;
+            assert_unsupported_value(&encoded, &case);
+        }
+        for (case, predicate) in nonempty_aggregate_predicates(&valid) {
+            let mut core = baseline.clone();
+            *core_require_predicate(&mut core, in_loop) = predicate;
+            let report = lower_to_target_ir(&core, &structured_facts());
+            assert_eq!(
+                report.status,
+                TargetLoweringStatus::Lowered,
+                "{case}: {report:?}"
+            );
+            encode_target_ir_artifact(&report.artifact.expect("artifact"))
+                .unwrap_or_else(|error| panic!("{case}: {error:?}"));
+        }
+    }
+
+    // v2 requirement encoding is unchanged: the same predicate still encodes.
+    let report = lower_to_target_ir(
+        &loop_core(TOP_LEVEL_REQUIREMENT),
+        &facts_for(ECHO_ORDERED_SPAN_IR_DOMAIN),
+    );
+    let mut ordered = report.artifact.expect("v2 artifact");
+    ordered.intents.get_mut("t").expect("intent").requirements[0].predicate =
+        CorePredicate::All(Vec::new());
+    encode_target_ir_artifact(&ordered).expect("v2 requirement encoding is unchanged");
+}
+
 #[test]
 fn requirement_inside_loop_stays_in_the_loop_body() {
     let artifact = structured_artifact(REQUIREMENT_IN_LOOP);

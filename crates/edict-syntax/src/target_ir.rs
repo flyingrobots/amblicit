@@ -1217,6 +1217,11 @@ fn validate_structured_instruction<'a>(
             return invalid("structured Target IR does not support this Core node");
         }
     };
+    if let CoreNode::Require { predicate, .. } = node {
+        if predicate_has_empty_aggregate(predicate, 0) {
+            return invalid("empty_predicate_aggregate");
+        }
+    }
     if !node_expressions_have_closed_authority(
         context.core,
         context.pure_functions,

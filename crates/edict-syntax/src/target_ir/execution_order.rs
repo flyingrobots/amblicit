@@ -71,6 +71,16 @@ fn intent_has_valid_order(intent: &TargetIrIntent, structured: bool) -> bool {
     {
         return false;
     }
+    // The Core schema requires one or more `all`/`any` values. v3 refuses an
+    // empty aggregate in any requirement; v1/v2 requirement encoding is unchanged.
+    if structured
+        && intent
+            .requirements
+            .iter()
+            .any(|requirement| super::predicate_has_empty_aggregate(&requirement.predicate, 0))
+    {
+        return false;
+    }
     let mut available = LocalAvailability::default();
     if !intent
         .basis
