@@ -576,6 +576,31 @@ fn encoder_output_with_nested_loops_and_branches_matches_the_current_schema() {
 }
 
 #[test]
+fn structured_for_entry_schema_accepts_only_literal_bounds() {
+    let pack = assemble(canonical_target_profile_contract_resources());
+    let value = nested_structured_target_ir_value();
+    pack.validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &value)
+        .expect("literal bounds validate");
+    let coordinate = || {
+        map(vec![
+            ("kind", text("coordinate")),
+            ("ref", text("example.bounds@1.maxItems")),
+        ])
+    };
+    let mut top = value.clone();
+    *map_value_mut(&mut nested_order_mut(&mut top)[0], "bound") = coordinate();
+    let mut in_branch = value.clone();
+    *map_value_mut(loop_in_branch_mut(&mut in_branch), "bound") = coordinate();
+    for (case, invalid) in [("top-level loop", top), ("loop inside a branch", in_branch)] {
+        assert_eq!(
+            pack.validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &invalid),
+            Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch),
+            "{case}"
+        );
+    }
+}
+
+#[test]
 fn source_module_publication_is_reproduced_from_frozen_target_ir_schema() {
     let old = assemble_provider_contract_pack(ProviderContractPackInput {
         target_ir_cddl: PRE_STRUCTURED_TARGET_IR_CDDL,

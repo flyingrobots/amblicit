@@ -1015,7 +1015,9 @@ target-ir-for-entry = {
   id: tstr .regexp "(?s).+",
   binder: local-ref,
   iterable: core-expr,
-  bound: core-bound,
+  ; Target has no authenticated constant values, so v3 admits only literal
+  ; loop bounds; lowering and the encoder refuse coordinate bounds.
+  bound: literal-bound,
   body: [* target-ir-order-entry],
 }
 

@@ -8,7 +8,9 @@ use super::{
     TargetIrRequireFailure, TargetIrRequirement, TargetIrStep, ECHO_DPO_TARGET_PROFILE,
     ECHO_ORDERED_SPAN_IR_DOMAIN, ECHO_STRUCTURED_SPAN_IR_DOMAIN,
 };
-use crate::core_ir::{CoreExpr, CorePredicate, LocalRef, CORE_APPLICATION_INPUT_LOCAL_ID};
+use crate::core_ir::{
+    CoreBound, CoreExpr, CorePredicate, LocalRef, CORE_APPLICATION_INPUT_LOCAL_ID,
+};
 use crate::MAX_CANONICAL_NESTING_DEPTH;
 
 pub(crate) fn artifact_has_valid_execution_order(artifact: &TargetIrArtifact) -> bool {
@@ -154,7 +156,10 @@ impl<'a> OrderWalk<'a> {
                 self.available.instruction(instruction)
             }
             TargetIrOrderEntry::For(entry) => {
-                self.control_id(&entry.id)
+                // Target has no authenticated constant values, so a v3 loop
+                // bound must be literal, as lowering requires.
+                matches!(entry.bound, CoreBound::Literal(_))
+                    && self.control_id(&entry.id)
                     && self.available.expression(&entry.iterable, 0)
                     && !self.table_locals.contains(entry.binder.id.as_str())
                     && self.claimed.insert(entry.binder.id.as_str())

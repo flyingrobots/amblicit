@@ -1170,6 +1170,35 @@ fn coordinate_loop_bounds_refuse_without_authenticated_constant_values() {
 }
 
 #[test]
+fn encoder_refuses_coordinate_loop_bounds() {
+    let coordinate = || CoreBound::Coordinate("example.bounds@1.maxItems".to_owned());
+    let mut top = structured_artifact(ENSURE_EACH_LEAF);
+    for_entry_mut(&mut order_mut(&mut top)[0]).bound = coordinate();
+    assert_unsupported_value(&top, "coordinate bound on a top-level loop");
+
+    let nested = structured_artifact(NESTED_LOOPS);
+    let mut inner = nested.clone();
+    let outer = for_entry_mut(&mut order_mut(&mut inner)[0]);
+    for_entry_mut(&mut outer.body[0]).bound = coordinate();
+    assert_unsupported_value(&inner, "coordinate bound on a loop inside a loop");
+
+    let branched = structured_artifact(BRANCH_IN_LOOP_AND_LOOP_IN_BRANCH);
+    let mut in_branch = branched.clone();
+    let branch = branch_entry_mut(&mut order_mut(&mut in_branch)[1]);
+    for_entry_mut(&mut branch.then_entries[0]).bound = coordinate();
+    assert_unsupported_value(&in_branch, "coordinate bound on a loop inside a branch");
+
+    // Control: the unmodified artifacts with literal bounds encode.
+    for (case, artifact) in [
+        ("top", structured_artifact(ENSURE_EACH_LEAF)),
+        ("nested", nested),
+        ("branched", branched),
+    ] {
+        encode_target_ir_artifact(&artifact).unwrap_or_else(|error| panic!("{case}: {error:?}"));
+    }
+}
+
+#[test]
 fn empty_literal_iterable_lowers_with_its_body_intact() {
     let mut core = loop_core(ENSURE_EACH_LEAF);
     with_loop(

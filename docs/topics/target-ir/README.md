@@ -261,7 +261,9 @@ with `control_block_result`; external-action requests refuse with
 coordinate refuses with `coordinate_loop_bound` at any nesting depth: Target
 has no authenticated constant values, so it cannot prove that the coordinate's
 value covers the iterable maximum and fails closed until such evidence exists.
-Literal bounds are unaffected. v1 and v2 still refuse `For` and `Branch` with
+The v3 encoder independently refuses a `for` entry with a coordinate bound
+(`UnsupportedValue`), and the current provider contract publication admits only
+a literal `bound`. Literal bounds are unaffected. v1 and v2 still refuse `For` and `Branch` with
 details `for` and `branch`, keep their exact bytes, and the v2 encoder refuses
 control entries. [TIR-REQ-060]
 

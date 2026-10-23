@@ -15,8 +15,8 @@ versions still track specification maturity rather than a released product.
   arm locals are scoped to their block; Core validation and the canonical
   encoder check nested blocks independently. Value-yielding branches, non-null
   control block results, coordinate loop bounds (`coordinate_loop_bound`, since
-  Target has no authenticated constant values) and external requests refuse
-  under v3; a branch predicate with an empty `all`/`any` refuses in lowering
+  Target has no authenticated constant values; the v3 encoder and the current
+  schema also refuse them) and external requests refuse under v3; a branch predicate with an empty `all`/`any` refuses in lowering
   (`empty_predicate_aggregate`) and in the encoder, and an artifact deeper than
   the canonical nesting limit refuses at lowering (`canonical_nesting_depth`)
   rather than in the encoder. **Breaking (Rust API):** `TargetIrIntent::execution_order` is now
