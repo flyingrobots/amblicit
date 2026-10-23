@@ -82,7 +82,8 @@ intent sayHello(input: HelloInput)
 
 - Each type has a bound, such as `String<max=256>`. Thus the cost is known before execution.
 - `use lawpack ... digest` pins the law that the intent depends on to an exact hash. A change to the law changes the identity of the artifact.
-- `profile`, `basis` and `budget` are claims. The compiler checks them against facts that the lawpack supplies.
+- `profile` and `budget` are claims. When the compiler lowers the intent, it resolves them against compiler-context facts that the caller supplies. The `check` operation does not load these facts or a lawpack.
+- `basis none` declares that the intent does not need a basis.
 - The body cannot reach a database, a clock or a network.
 
 ## Effects and failure
