@@ -24,7 +24,10 @@ The current target IR implementation is deliberately narrow:
   `gitwarp.commit-reducer-ir/v1`;
 - selected source/Core shape: source-ordered pure `let` bindings, the first
   supported effectful Core effect node, Echo `require` guard requirements, and
-  typed external-action request data;
+  typed external-action request data; under the explicitly selected
+  `echo.span-ir/v3` domain only, also bounded `for` loops over a Core `List`
+  and statement-only branches (external-action requests refuse under
+  `echo.span-ir/v2` and `echo.span-ir/v3`);
 - selected outcome: a deterministic target-owned review artifact with canonical
   `edict.canonical-cbor/v1` bytes and a reviewed
   `edict.target-ir.artifact/v1` digest;
@@ -399,7 +402,9 @@ Supplying unsupported Core capability flags rejects with
 outside the supported pure binding, effect, external-request, and Echo
 requirement shapes
 rejects with
-`TargetLoweringFailureKind::UnsupportedCoreNode`. Supplying a target-specific
+`TargetLoweringFailureKind::UnsupportedCoreNode`. Under `echo.span-ir/v3`, bounded
+`for` loops and statement-only branches are also supported shapes, and
+external-request nodes reject as they do under `echo.span-ir/v2`. Supplying a target-specific
 Core feature that the selected target does not support rejects with
 `TargetLoweringFailureKind::UnsupportedTargetFeature`. Missing or ambiguous
 effect lowering facts, non-Echo target intrinsics, missing operation-profile
