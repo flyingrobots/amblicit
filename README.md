@@ -234,7 +234,7 @@ match check("package examples.hello@1;\n") {
 
 - The parser, semantic validation and the compiler spine to Core IR. These cover pure records, bounded control flow, imported helpers, source functions and the annotated effect subset.
 - Canonical CBOR encodings and digests for Core IR and Target IR, with reviewed golden fixtures.
-- Target IR lowering for `echo.dpo@1` (`echo.span-ir/v1` and `echo.span-ir/v2`) and for `gitwarp.ref_crdt@1` (review artifacts only).
+- Target IR lowering for `echo.dpo@1` (`echo.span-ir/v1`, `echo.span-ir/v2` and `echo.span-ir/v3`) and for `gitwarp.ref_crdt@1` (review artifacts only). Bounded loops over lists and statement branches lower only under the explicitly selected `echo.span-ir/v3`.
 - Pinned target pure intrinsics, such as the Echo content-address constructor.
 - Target-profile validation, lowerability checks, contract-bundle validation and admission-boundary checks.
 - File-backed authority facts, and typed external-action requests as data.
@@ -243,7 +243,8 @@ match check("package examples.hello@1;\n") {
 
 **Not yet:**
 
-- Lowering of all v1 language features. For example, Target IR does not yet lower loops or statement branches.
+- Lowering of all v1 language features. For example, Target IR does not lower value-yielding branches, and the CLI application build cannot produce an `echo.span-ir/v3` artifact yet.
+- Execution of `echo.span-ir/v3` on Echo. Echo's provider accepts only the Target IR domains that it names, and it does not name v3.
 - Exhaustive obstruction mapping. The specification requires a mapping for every domain-mappable failure of an effect; the compiler checks only the mappings that the author supplies.
 - Enforcement of authored footprint ceilings. The compiler accepts a `footprint` clause but does not check it yet.
 - Runtime execution in this repository. Runtimes such as Echo own execution.
