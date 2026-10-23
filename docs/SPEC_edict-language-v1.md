@@ -471,7 +471,7 @@ All effects are imported effects:
 There are no ambient Core effects. In particular, `record history.foo { ... }`
 is not a Core event-store primitive. It is sugar for a lawpack semantic effect:
 
-```edict
+```amblicit
 record history.textRangeReplaced {
   historyId: input.historyId,
 };
@@ -479,7 +479,7 @@ record history.textRangeReplaced {
 
 desugars to:
 
-```edict
+```amblicit
 let _ = history.textRangeReplaced.record({
   historyId: input.historyId,
 });
@@ -500,7 +500,7 @@ or other runtime mutation, it is not read-only.
 
 Edict v1 uses A-normal effect form. Effectful calls may appear only as:
 
-```edict
+```amblicit
 let x = importedEffect(...);
 importedEffect(...);
 ```
@@ -517,13 +517,13 @@ Effectful calls are rejected inside:
 
 Rejected v1 example:
 
-```edict
+```amblicit
 let z = hash(foo.read(), bar.create({ id: input.id }));
 ```
 
 Required v1 form:
 
-```edict
+```amblicit
 let fooValue = foo.read()
   else domain.FooMissing;
 let barValue = bar.create({ id: input.id })
@@ -541,7 +541,7 @@ A-normal effect form still needs a source construct for optional and conditional
 effects. Edict v1 permits effectful branch expressions only in `let` binding
 position:
 
-```edict
+```amblicit
 let initialBlob = if len(initialBytes) == 0 {
   yield none<shape.TextBlob>();
 } else {
@@ -598,7 +598,7 @@ terms.
 
 Recommended Echo-shaped model:
 
-```edict
+```amblicit
 echo.ref<T>(id) -> EchoRef<T>
 echo.ref<T>(id).read() -> T
 echo.ref<T>(id).exists() -> Bool
@@ -650,7 +650,7 @@ Target and lawpack effects can fail at runtime even when source typechecks.
 Source authors map effect failure classes to domain obstructions with an
 effect-level `else` clause:
 
-```edict
+```amblicit
 let worldline = worldlineRef.read()
   else rope.WorldlineMissing;
 
@@ -673,7 +673,7 @@ must be handled exactly once. A mapping arm may **bind the low-level failure** a
 typed obstruction payload** from it. A bare coordinate is sugar for an empty
 payload:
 
-```edict
+```amblicit
 let blob = blobRef.ensure(candidate)
   else {
     mismatch(fault) => rope.TextBlobHashConflict({
@@ -688,7 +688,7 @@ let blob = blobRef.ensure(candidate)
 
 Runtime guards construct payloads the same way:
 
-```edict
+```amblicit
 require currentHead == expectedHead
   else rope.StaleBaseHead({
     expected: expectedHead,
@@ -949,7 +949,7 @@ Any such concept must come from a target profile import.
 Every effectful target operation must be reachable through an explicit target
 import:
 
-```edict
+```amblicit
 use target echo.dpo@1 as echo;
 ```
 
@@ -1196,7 +1196,7 @@ wish.
 An Edict source file declares one package and zero or more imports and
 declarations:
 
-```edict
+```amblicit
 package graft.structural_history@1;
 
 use shape "schemas/structural-history.graphql" as shape;
@@ -1242,7 +1242,7 @@ intent recordGitWarpImportBatch(input: RecordGitWarpImportBatchInput)
 
 Portable semantic Edict can target a lawpack instead of a concrete runtime:
 
-```edict
+```amblicit
 package graft.structural_history@1;
 
 use lawpack history.optics@1 digest "sha256:..." as history;
@@ -1762,7 +1762,7 @@ lawpack-defined raw text scalar, not ambiently normalized `String`.
 and `Map`; `Bytes` may instead require one exact byte length, and `String` may
 also pin a canonicalization policy:
 
-```edict
+```amblicit
 String<max=128>
 String<max=128, canonical=nfc>
 Bytes<max=65536>
@@ -2378,7 +2378,7 @@ effective cardinalities are derived effect-analysis artifacts.
 
 Examples:
 
-```edict
+```amblicit
 let basisValue = echo.ref<StructuralBasis>(input.basisId).read()
   else history.StructuralBasisMissing;
 ```
@@ -2391,7 +2391,7 @@ reads:
   node StructuralBasis[input.basisId]
 ```
 
-```edict
+```amblicit
 log.stream("history").append<HistoryEntryRecorded>(event);
 ```
 
@@ -2403,7 +2403,7 @@ writes:
   append stream history event HistoryEntryRecorded
 ```
 
-```edict
+```amblicit
 let entry = history.entry.record(event);
 ```
 
@@ -2480,7 +2480,7 @@ lawProfile:
 
 A source clause such as:
 
-```edict
+```amblicit
 profile echo.createOnly
 ```
 
@@ -3489,7 +3489,7 @@ effect-level obstruction mapping, explicit budgets, and target symbolic refs.
 sketch uses `jedit.rope@1` helper functions and `echo.dpo@1` target intrinsics
 to keep Echo graph semantics behind the target profile.
 
-```edict
+```amblicit
 package jedit.rope_contract@1;
 
 use shape "contracts/jedit/rope.graphql" as shape;
@@ -3811,7 +3811,7 @@ version may admit invocation only with verifier-approved callee summaries or
 inlined effects, costs, obstructions, target requirements, and admission
 requirements.
 
-```edict
+```amblicit
 package jedit.text_buffer_optic@1;
 
 use shape "contracts/jedit/text-buffer-optic.graphql" as optic;
@@ -3897,7 +3897,7 @@ The structural-history contract is semantic and storage-neutral in shape. It is
 a good fit for portable Edict because it can be expressed first as history facts
 and then lowered to Echo, git-warp, KV, or event-log targets through lawpacks.
 
-```edict
+```amblicit
 package jedit.structural_history@1;
 
 use shape "contracts/jedit/structural-history.graphql" as historyShape;

@@ -26,14 +26,14 @@ behavior.
 
 Current parser-supported syntax:
 
-```edict
+```amblicit
 require jim.basisFresh(input.basis)
   else jim.EditObstruction.StaleBase;
 ```
 
 First-class parser-supported obstruction-strand syntax:
 
-```edict
+```amblicit
 require jim.basisFresh(input.basis)
   else continue obstructed {
     reason: jim.EditObstruction.StaleBase,

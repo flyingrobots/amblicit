@@ -8,7 +8,7 @@ It does not declare provider or runtime support.
 A source function has ordered typed parameters, a declared return type,
 immutable `let` bindings and one terminal `return`:
 
-```edict
+```amblicit
 fn assembleFragments(left: Bytes<max=8>, right: Bytes<max=8>) -> Bytes<max=16> {
   let bytes = left + right;
   return bytes;

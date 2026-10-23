@@ -8,6 +8,29 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- **Breaking:** stage 3 of the Amblicit rename renames the source extension
+  and the editor grammars. Source files use `.amblicit` in place of `.edict`.
+  A CLI directory input now selects only `.amblicit` files by default: the
+  default `directoryExtensions` is `[".amblicit"]`, and the CLI does not fall
+  back to `.edict`. An inline `source` record without `name` now reports
+  `inline.amblicit`. The TextMate grammar is
+  `grammars/textmate/amblicit.tmLanguage.json` with the scope
+  `source.amblicit` and token scopes ending in `.amblicit`. The Tree-sitter
+  grammar is `amblicit` in `grammars/tree-sitter-amblicit` and exports
+  `tree_sitter_amblicit`. The VS Code/Cursor extension is `amblicit-vscode`
+  with the language id `amblicit`. To migrate, rename `.edict` files to
+  `.amblicit` (for example, `for f in $(git ls-files '*.edict'); do git mv
+  "$f" "${f%.edict}.amblicit"; done`) and update the source paths in
+  `edict.application/v1` manifests. A caller that must still check a
+  directory of `.edict` files can set `"directoryExtensions": [".edict"]`.
+  Uninstall the `flyingrobots.edict-vscode` extension and install
+  `amblicit-vscode`, and update any editor configuration, theme or query that
+  names `source.edict`, the `edict` language id or `tree_sitter_edict`. Wire
+  identifiers (`edict.*/vN`), the WIT package `edict:target-provider`,
+  canonical bytes and digests do not change. The CLI golden fixtures and the bundle digest golden
+  change only in the source path text. The
+  [name decision](docs/design/amblicit-name.md) lists the current names.
+
 - **Breaking:** stage 2 of the Amblicit rename renames the packages, the
   facade library and the CLI binary. The package `flyingrobots-edict` is now
   `flyingrobots-amblicit`, with the library name `amblicit` in place of

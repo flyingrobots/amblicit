@@ -61,7 +61,7 @@ a spec says it should produce.
 
 The file is `fixtures/lawpack/hello-echo/create-greeting.amblicit`, reproduced exactly:
 
-```edict
+```amblicit
 package examples.hello_echo@1;
 
 use lawpack hello.echo@1 digest "sha256:aff1c3580f4b817bf3db9af8e6ca8e15ef7d57dea578b71deaf3a249f863c5af" as hello;
