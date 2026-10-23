@@ -760,8 +760,10 @@ fn loop_iterables_with_empty_aggregates_refuse_under_v3() {
             assert_unsupported_value(&encoded, &case);
         }
 
-        // Control: Target lowering does not accept conditional iterables at
-        // all, so the encoder is the control: a nonempty aggregate encodes.
+        // Control: this fixture's `Leaf` record iterable does not lower when
+        // wrapped in a conditional, so the encoder is the control here (a
+        // nonempty aggregate encodes); a conditional scalar-list iterable that
+        // does lower is covered by `conditional_scalar_list_iterable_lowers_under_v3`.
         let mut encoded = artifact.clone();
         let order = order_mut(&mut encoded);
         let entry = if in_branch {
@@ -1056,6 +1058,70 @@ fn v3_binders_are_unique_across_the_intent() {
         ("sibling loop step binding", shared_producer),
     ] {
         assert_unsupported_value(&artifact, case);
+    }
+}
+
+/// A loop over one of two `List<U64, max=4>` fields chosen by a conditional.
+const CONDITIONAL_SCALAR_LIST: &str = "package a.b@1;\n\
+    type Input = { id: String<max=16>, nums: List<U64, max=4>, others: List<U64, max=4>, };\n\
+    type Receipt = { id: String<max=16>, };\n\
+    type Output = { id: String<max=16>, };\n\
+    intent t(input: Input) returns Output\n\
+      profile p.effectful\n\
+      basis none\n\
+      budget <= p.loop {\n\
+      let receipt: Receipt = target.replace(input.id)\n\
+        else { rejected(reason) => domain.WriteRejected };\n\
+      for n in input.nums bounded 4 {\n\
+        let seen: U64 = n;\n\
+      }\n\
+      return { id: input.id };\n\
+    }";
+
+#[test]
+fn conditional_scalar_list_iterable_lowers_under_v3() {
+    let module = edict_syntax::parse_module(CONDITIONAL_SCALAR_LIST).expect("source parses");
+    let baseline = compile_to_core(&module, &loop_context()).expect("source compiles");
+    let with_predicate = |predicate: CorePredicate| {
+        let mut core = baseline.clone();
+        let (_, iter, _) = core_loop(&mut core, 1);
+        let CoreExpr::Field { base: input, .. } = iter.clone() else {
+            panic!("field iterable expected");
+        };
+        *iter = CoreExpr::If {
+            predicate: Box::new(predicate),
+            then_value: Box::new(iter.clone()),
+            else_value: Box::new(CoreExpr::Field {
+                base: input,
+                field: "others".to_owned(),
+            }),
+        };
+        core
+    };
+
+    let report = lower_to_target_ir(
+        &with_predicate(CorePredicate::All(vec![CorePredicate::True])),
+        &structured_facts(),
+    );
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+    let artifact = report.artifact.expect("conditional iterable artifact");
+    assert!(matches!(
+        for_entry(&order(&artifact)[1]).iterable,
+        CoreExpr::If { .. }
+    ));
+    encode_target_ir_artifact(&artifact).expect("conditional iterable encodes");
+
+    for (case, predicate) in [
+        ("empty all", CorePredicate::All(Vec::new())),
+        ("empty any", CorePredicate::Any(Vec::new())),
+    ] {
+        let report = lower_to_target_ir(&with_predicate(predicate), &structured_facts());
+        assert_refused(
+            &report,
+            TargetLoweringFailureKind::InvalidCoreIdentity,
+            Some("empty_predicate_aggregate"),
+            case,
+        );
     }
 }
 
