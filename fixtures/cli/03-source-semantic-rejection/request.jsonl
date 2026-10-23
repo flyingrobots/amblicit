@@ -1,2 +1,2 @@
 {"schema":"edict.compiler.settings/v1","type":"compilerSettings","operation":"check"}
-{"schema":"edict.compiler.input/v1","type":"compilerInput","kind":"source","name":"unbounded.edict","source":"package examples.unbounded@1;\ntype Bad = { name: String };\n"}
+{"schema":"edict.compiler.input/v1","type":"compilerInput","kind":"source","name":"unbounded.amblicit","source":"package examples.unbounded@1;\ntype Bad = { name: String };\n"}

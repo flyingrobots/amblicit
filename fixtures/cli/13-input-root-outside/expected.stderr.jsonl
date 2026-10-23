@@ -1,2 +1,2 @@
-{"command":"check","input":{"kind":"stdin"},"kind":"InputPathOutsideRoot","message":"outside/outside.edict resolves outside configured inputRoot","schema":"edict.cli.diagnostic/v1","severity":"error","stage":"cli","type":"diagnostic"}
+{"command":"check","input":{"kind":"stdin"},"kind":"InputPathOutsideRoot","message":"outside/outside.amblicit resolves outside configured inputRoot","schema":"edict.cli.diagnostic/v1","severity":"error","stage":"cli","type":"diagnostic"}
 {"checked":0,"command":"check","errors":1,"exitCode":2,"schema":"edict.cli.event/v1","status":"error","type":"status"}

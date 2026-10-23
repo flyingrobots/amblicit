@@ -1,2 +1,2 @@
-{"command":"check","input":{"kind":"source","name":"greeting.edict"},"schema":"edict.cli.check-result/v1","status":"ok","type":"checkResult"}
+{"command":"check","input":{"kind":"source","name":"greeting.amblicit"},"schema":"edict.cli.check-result/v1","status":"ok","type":"checkResult"}
 {"checked":1,"command":"check","errors":0,"exitCode":0,"schema":"edict.cli.event/v1","status":"ok","type":"status"}

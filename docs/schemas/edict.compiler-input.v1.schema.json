@@ -18,7 +18,7 @@
     },
     "name": {
       "type": "string",
-      "description": "Optional display name for inline `source` input; defaults to `inline.edict`."
+      "description": "Optional display name for inline `source` input; defaults to `inline.amblicit`."
     },
     "source": {
       "type": "string",

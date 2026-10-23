@@ -1,1 +1,1 @@
-{"schema":"edict.compiler.input/v1","type":"compilerInput","kind":"source","name":"orphan.edict","source":"package examples.hello@1;\n"}
+{"schema":"edict.compiler.input/v1","type":"compilerInput","kind":"source","name":"orphan.amblicit","source":"package examples.hello@1;\n"}
