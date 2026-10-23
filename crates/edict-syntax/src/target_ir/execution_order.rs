@@ -9,26 +9,40 @@ use super::{
     ECHO_ORDERED_SPAN_IR_DOMAIN, ECHO_STRUCTURED_SPAN_IR_DOMAIN,
 };
 use crate::core_ir::{
-    CoreBound, CoreExpr, CorePredicate, LocalRef, CORE_APPLICATION_INPUT_LOCAL_ID,
+    CoreBound, CoreExpr, CorePredicate, LocalRef, ResourceRef, CORE_APPLICATION_INPUT_LOCAL_ID,
 };
 use crate::MAX_CANONICAL_NESTING_DEPTH;
 
+/// `None` for a phased domain (no execution order), otherwise whether the
+/// ordered domain is the structured v3 one.
+fn order_mode(domain: &str) -> Option<bool> {
+    match domain {
+        ECHO_ORDERED_SPAN_IR_DOMAIN => Some(false),
+        ECHO_STRUCTURED_SPAN_IR_DOMAIN => Some(true),
+        _ => None,
+    }
+}
+
+/// The artifact-level half of the execution-order check: ordered and
+/// structured domains require the Echo DPO target profile.
+pub(crate) fn header_has_valid_execution_order(domain: &str, target_profile: &ResourceRef) -> bool {
+    order_mode(domain).is_none() || target_profile.coordinate == ECHO_DPO_TARGET_PROFILE
+}
+
+/// The per-intent half of the execution-order check, on a borrowed intent.
+pub(crate) fn intent_has_valid_execution_order(domain: &str, intent: &TargetIrIntent) -> bool {
+    match order_mode(domain) {
+        None => intent.execution_order.is_none(),
+        Some(structured) => intent_has_valid_order(intent, structured),
+    }
+}
+
 pub(crate) fn artifact_has_valid_execution_order(artifact: &TargetIrArtifact) -> bool {
-    let structured = match artifact.domain.as_str() {
-        ECHO_ORDERED_SPAN_IR_DOMAIN => false,
-        ECHO_STRUCTURED_SPAN_IR_DOMAIN => true,
-        _ => {
-            return artifact
-                .intents
-                .values()
-                .all(|intent| intent.execution_order.is_none());
-        }
-    };
-    artifact.target_profile.coordinate == ECHO_DPO_TARGET_PROFILE
+    header_has_valid_execution_order(&artifact.domain, &artifact.target_profile)
         && artifact
             .intents
             .values()
-            .all(|intent| intent_has_valid_order(intent, structured))
+            .all(|intent| intent_has_valid_execution_order(&artifact.domain, intent))
 }
 
 #[derive(Clone, Copy)]
