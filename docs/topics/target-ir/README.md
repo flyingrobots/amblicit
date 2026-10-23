@@ -221,8 +221,7 @@ has its own scope. Obstruction-arm binders stay scoped to their arm, as in v2.
 Core-to-Target validation covers nested blocks under v3: types, closed
 authority, block local tables, unique identities across the intent, binder
 identity, iterable shape (a list whose items fit the binder, with a literal
-bound no smaller than its maximum, or a coordinate bound below an imported
-digest-locked lawpack), totality and intrinsic cost. The canonical encoder
+bound no smaller than its maximum), totality and intrinsic cost. The canonical encoder
 independently requires every table instruction exactly once in the whole tree,
 nonempty unique control ids disjoint from instruction ids, binders that reuse
 no produced or visible identity, scoped producer-before-consumer references,
@@ -232,7 +231,11 @@ and the canonical nesting depth. Failures are `InvalidCoreIdentity` or
 Value-yielding branches refuse with `UnsupportedCoreNode` detail
 `branch_binding`; a loop body or arm whose Core block result is not null refuses
 with `control_block_result`; external-action requests refuse with
-`ordered_external_action_request`, as under v2. v1 and v2 still refuse `For`
+`ordered_external_action_request`, as under v2. A loop whose bound is a
+coordinate refuses with `coordinate_loop_bound` at any nesting depth: Target
+has no authenticated constant values, so it cannot prove that the coordinate's
+value covers the iterable maximum and fails closed until such evidence exists.
+Literal bounds are unaffected. v1 and v2 still refuse `For`
 and `Branch` with details `for` and `branch`, keep their exact bytes, and the
 v2 encoder refuses control entries. [TIR-REQ-060]
 

@@ -14,15 +14,16 @@ versions still track specification maturity rather than a released product.
   id and carries the Core binder, iterable, bound and predicate. Loop-body and
   arm locals are scoped to their block; Core validation and the canonical
   encoder check nested blocks independently. Value-yielding branches, non-null
-  control block results and external requests refuse under v3. **Breaking
-  (Rust API):** `TargetIrIntent::execution_order` is now
+  control block results, coordinate loop bounds (`coordinate_loop_bound`, since
+  Target has no authenticated constant values) and external requests refuse
+  under v3. **Breaking (Rust API):** `TargetIrIntent::execution_order` is now
   `Option<Vec<TargetIrOrderEntry>>`; v2 still encodes a flat array of ids with
   unchanged bytes, and v1/v2 keep their `for`/`branch` refusals. A new
   `structured-control-v1` provider contract pack adds the v3 schema root; prior
   packs are byte-identical. Its recursive order-entry choice dispatches `for`
   and `branch` entries on their `kind` tag, so the production provider schema
-  registry constructs that pack. Echo's provider refuses v3, result projections do
-  not yet support structured intents, and no runtime execution is claimed.
+  registry constructs that pack. Echo's provider refuses v3, result projections
+  do not yet support structured intents, and no runtime execution is claimed.
 
 - Admit target-catalog pure intrinsics: `admit_target_pure_intrinsics` accepts
   exactly the required contracts, at exact versions, from catalog bytes that

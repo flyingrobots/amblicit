@@ -1294,9 +1294,10 @@ fn validate_structured_control<'a>(
     None
 }
 
-/// A loop iterable must be a bounded list whose items fit the binder. A literal
-/// bound must cover the list maximum; a coordinate bound must name a constant
-/// below an imported digest-locked lawpack, whose value the compiler checked.
+/// A loop iterable must be a bounded list whose items fit the binder, and its
+/// literal bound must cover the list maximum. Target has no authenticated
+/// constant values, so a coordinate bound never fits (it is refused earlier
+/// with `coordinate_loop_bound`).
 fn loop_iterable_fits_binder(
     core: &CoreModule,
     pure_functions: &[TargetPureFunctionFact],
@@ -1305,25 +1306,14 @@ fn loop_iterable_fits_binder(
     binder: &LocalRef,
     available: &BTreeMap<&str, &LocalRef>,
 ) -> bool {
-    let literal_bound = match bound {
-        CoreBound::Literal(value) => Some(*value),
-        CoreBound::Coordinate(coordinate) => {
-            if !core.imports.iter().any(|import| {
-                import.kind == CoreImportKind::Lawpack
-                    && import.resource.is_digest_locked()
-                    && coordinate_is_below_lawpack(coordinate, &import.resource)
-            }) {
-                return false;
-            }
-            None
-        }
+    let CoreBound::Literal(bound) = *bound else {
+        return false;
     };
     if resolved_core_type(core, &binder.ty).is_none() {
         return false;
     }
     if let CoreExpr::List { values } = iterable {
-        return literal_bound
-            .is_none_or(|bound| u64::try_from(values.len()).is_ok_and(|count| count <= bound))
+        return u64::try_from(values.len()).is_ok_and(|count| count <= bound)
             && values.iter().all(|value| {
                 expression_fits_declared_type(core, pure_functions, value, &binder.ty, available)
             });
@@ -1335,7 +1325,7 @@ fn loop_iterable_fits_binder(
     let Some(CoreType::List { item, max }) = resolved_core_type(core, &coordinate) else {
         return false;
     };
-    core_type_fits(core, &item, &binder.ty) && literal_bound.is_none_or(|bound| max <= bound)
+    core_type_fits(core, &item, &binder.ty) && max <= bound
 }
 
 fn block_local_identities_are_valid(block: &CoreBlock, depth: usize) -> bool {
@@ -2777,6 +2767,12 @@ fn structured_node_refusal(node: &CoreNode) -> Option<&'static str> {
         CoreNode::Branch {
             binding: Some(_), ..
         } => Some("branch_binding"),
+        // Target has no authenticated constant values, so it cannot prove that
+        // a coordinate bound covers the iterable maximum; it fails closed.
+        CoreNode::For {
+            bound: CoreBound::Coordinate(_),
+            ..
+        } => Some("coordinate_loop_bound"),
         CoreNode::For { body, .. } => (body.result != null).then_some("control_block_result"),
         CoreNode::Branch {
             then_block,

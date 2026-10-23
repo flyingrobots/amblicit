@@ -901,30 +901,57 @@ fn coordinate_bound_core() -> CoreModule {
 }
 
 #[test]
-fn coordinate_bounds_must_be_owned_by_an_imported_lawpack() {
-    let core = coordinate_bound_core();
-    let report = lower_to_target_ir(&core, &structured_facts());
-    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
-    let artifact = report.artifact.expect("coordinate-bound artifact");
-    assert_eq!(
-        for_entry(&order(&artifact)[0]).bound,
-        CoreBound::Coordinate("example.bounds@1.maxItems".to_owned())
-    );
-    encode_target_ir_artifact(&artifact).expect("coordinate-bound artifact encodes");
+fn coordinate_loop_bounds_refuse_without_authenticated_constant_values() {
+    // Target has no authenticated constant values, so it cannot prove that a
+    // coordinate bound covers the iterable maximum and must fail closed.
+    let compiled = coordinate_bound_core();
+    let forged = |coordinate: &str| {
+        let mut core = coordinate_bound_core();
+        with_loop(&mut core, None, CoreBound::Coordinate(coordinate.to_owned()));
+        core
+    };
+    // A loop nested inside a branch is checked as well.
+    let mut nested = loop_core(BRANCH_IN_LOOP_AND_LOOP_IN_BRANCH);
+    let CoreNode::Branch { then_block, .. } =
+        &mut nested.intents.get_mut("t").expect("intent").body.nodes[1]
+    else {
+        panic!("top-level branch expected");
+    };
+    let CoreNode::For { bound, .. } = &mut then_block.nodes[0] else {
+        panic!("loop inside branch expected");
+    };
+    *bound = CoreBound::Coordinate("example.bounds@1.maxItems".to_owned());
 
-    let mut foreign = core;
-    with_loop(
-        &mut foreign,
-        None,
-        CoreBound::Coordinate("other.package@1.maxItems".to_owned()),
-    );
-    let report = lower_to_target_ir(&foreign, &structured_facts());
-    assert_refused(
-        &report,
-        TargetLoweringFailureKind::InvalidCoreIdentity,
-        None,
-        "coordinate outside every imported lawpack",
-    );
+    for (case, core) in [
+        ("compiled in-namespace constant covering the maximum", compiled),
+        (
+            "in-namespace constant the compiler never checked",
+            forged("example.bounds@1.fewItems"),
+        ),
+        (
+            "nonexistent constant in the namespace",
+            forged("example.bounds@1.absent"),
+        ),
+        (
+            "coordinate outside every imported lawpack",
+            forged("other.package@1.maxItems"),
+        ),
+        ("coordinate loop inside a branch", nested),
+    ] {
+        let report = lower_to_target_ir(&core, &structured_facts());
+        assert_refused(
+            &report,
+            TargetLoweringFailureKind::UnsupportedCoreNode,
+            Some("coordinate_loop_bound"),
+            case,
+        );
+    }
+
+    // Control: the same compiled loop with a literal bound lowers.
+    let mut literal = coordinate_bound_core();
+    with_loop(&mut literal, None, CoreBound::Literal(4));
+    let report = lower_to_target_ir(&literal, &structured_facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
 }
 
 #[test]
