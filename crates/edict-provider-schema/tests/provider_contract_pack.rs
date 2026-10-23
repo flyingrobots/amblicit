@@ -1,28 +1,35 @@
 //! Canonical Rust-neutral provider contract-pack assembly and validation.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use cddl_cat::flatten::flatten_from_str;
+
 use edict_provider_schema::{
     assemble_provider_contract_pack, validate_provider_contract_pack_manifest,
-    ProviderContractInstanceValidationErrorKind, ProviderContractPack,
-    ProviderContractPackFailureKind, ProviderContractPackInput, PROVIDER_CONTRACT_PACK_API_VERSION,
+    ProviderArtifactSchemaRegistry, ProviderContractInstanceValidationErrorKind,
+    ProviderContractPack, ProviderContractPackFailureKind, ProviderContractPackInput,
+    ResolvedProviderSchemaArtifact, PROVIDER_CONTRACT_PACK_API_VERSION,
     PROVIDER_CONTRACT_PACK_COORDINATE, PROVIDER_CONTRACT_PACK_LICENSE,
     TARGET_IR_ARTIFACT_CDDL_ROOT,
 };
 use edict_syntax::{
-    canonical_target_profile_contract_resources, compile_to_core, decode_canonical_cbor,
-    digest_target_profile_contract_resource, encode_core_module, encode_result_projection,
-    encode_target_ir_artifact, lower_to_target_ir, parse_module, CanonicalValue, CompilerContext,
-    CoreBudget, CoreExpr, CoreExternalActionBudget, CoreObstructionReason, CorePredicate,
-    CoreValue, LocalRef, ProviderArtifactSchemaValidationErrorKind, ResourceRef, ResultProjection,
-    ResultProjectionExpr, ResultProjectionSource, TargetEffectLowering, TargetIrArtifact,
-    TargetIrExternalActionRequest, TargetIrIntent, TargetIrLoweringFacts, TargetIrOrderEntry,
-    TargetIrPureBinding, TargetIrRequireFailure, TargetIrRequirement, TargetIrSemanticClosure,
-    TargetProfileContractResource, WriteClass, AUTHORITY_FACTS_API_VERSION,
+    bind_target_provider_manifest, canonical_target_profile_contract_resources, compile_to_core,
+    decode_canonical_cbor, digest_target_profile_contract_resource, encode_core_module,
+    encode_result_projection, encode_target_ir_artifact, lower_to_target_ir, parse_module,
+    CanonicalValue, CompilerContext, CoreBudget, CoreExpr, CoreExternalActionBudget,
+    CoreObstructionReason, CorePredicate, CoreValue, LocalRef, ProviderArtifactKind,
+    ProviderArtifactRef, ProviderArtifactSchemaValidationErrorKind,
+    ProviderArtifactSchemaValidator, ProviderArtifactSource, ProviderSchemaBinding,
+    ProviderSchemaFormat, ResourceRef, ResultProjection, ResultProjectionExpr,
+    ResultProjectionSource, TargetEffectLowering, TargetIrArtifact, TargetIrExternalActionRequest,
+    TargetIrIntent, TargetIrLoweringFacts, TargetIrOrderEntry, TargetIrPureBinding,
+    TargetIrRequireFailure, TargetIrRequirement, TargetIrSemanticClosure,
+    TargetProfileContractResource, TargetProviderManifest, WriteClass, AUTHORITY_FACTS_API_VERSION,
     CORE_MODULE_DIGEST_DOMAIN, ECHO_DPO_TARGET_PROFILE, ECHO_STRUCTURED_SPAN_IR_DOMAIN,
     PROVIDER_LAWPACK_ARTIFACT_DOMAIN, RESULT_PROJECTION_DIGEST_DOMAIN,
-    TARGET_IR_ARTIFACT_DIGEST_DOMAIN, TARGET_PROFILE_API_VERSION,
+    TARGET_IR_ARTIFACT_DIGEST_DOMAIN, TARGET_PROFILE_API_VERSION, TARGET_PROVIDER_ABI,
+    TARGET_PROVIDER_MANIFEST_API_VERSION,
 };
 use sha2::{Digest, Sha256};
 
@@ -623,6 +630,88 @@ fn structured_iterable_schema_refuses_empty_aggregates() {
             "empty {kind} in a loop iterable"
         );
     }
+}
+
+#[test]
+fn published_target_ir_binding_constructs_the_production_registry_and_validates_v3() {
+    const PUBLISHED_CDDL: &[u8] = include_bytes!(
+        "../../../fixtures/provider-contracts/structured-control-v1/edict-provider-contracts.cddl"
+    );
+    const PUBLISHED_MANIFEST: &[u8] =
+        include_bytes!("../../../fixtures/provider-contracts/structured-control-v1/manifest.json");
+
+    // The in-memory pack is exactly the published publication, so its typed
+    // manifest carries the published domain bindings.
+    let pack = assemble(canonical_target_profile_contract_resources());
+    assert_eq!(pack.cddl_bytes(), PUBLISHED_CDDL);
+    assert_eq!(pack.manifest_bytes(), PUBLISHED_MANIFEST);
+    let binding = pack
+        .manifest()
+        .domains
+        .iter()
+        .find(|binding| binding.domain == TARGET_IR_ARTIFACT_DIGEST_DOMAIN)
+        .expect("the publication binds edict.target-ir.artifact/v1");
+    assert_eq!(binding.root_rule, TARGET_IR_ARTIFACT_CDDL_ROOT);
+
+    // The production registry's only constructor consumes a provider manifest;
+    // only the provider identity below is test data. The schema artifact is the
+    // published CDDL, digest-locked, under the published domain and root.
+    let digest = |bytes: &[u8]| format!("sha256:{:x}", Sha256::digest(bytes));
+    let resource = |coordinate: &str, digest: String| ResourceRef {
+        coordinate: coordinate.to_owned(),
+        digest: Some(digest),
+    };
+    let manifest = TargetProviderManifest {
+        api_version: TARGET_PROVIDER_MANIFEST_API_VERSION.to_owned(),
+        provider_abi: TARGET_PROVIDER_ABI.to_owned(),
+        provider: resource("example.provider@1", format!("sha256:{}", "3".repeat(64))),
+        artifacts: vec![ProviderArtifactRef {
+            role: "schema.edict-contracts".to_owned(),
+            artifact_kind: ProviderArtifactKind::ArtifactSchema,
+            resource: resource(PROVIDER_CONTRACT_PACK_COORDINATE, digest(PUBLISHED_CDDL)),
+            source: ProviderArtifactSource::Generated {
+                semantic_source: resource(
+                    "example.semantic-source@1",
+                    format!("sha256:{}", "1".repeat(64)),
+                ),
+                generator: resource("example.generator@1", format!("sha256:{}", "2".repeat(64))),
+            },
+        }],
+        schema_bindings: vec![ProviderSchemaBinding {
+            domain: binding.domain.clone(),
+            schema_role: "schema.edict-contracts".to_owned(),
+            format: ProviderSchemaFormat::SelfContainedCddlV1,
+            root_rule: binding.root_rule.clone(),
+        }],
+    };
+    let validated = bind_target_provider_manifest(&manifest).expect("manifest validates");
+    let registry = ProviderArtifactSchemaRegistry::from_manifest(
+        &validated,
+        [ResolvedProviderSchemaArtifact {
+            role: "schema.edict-contracts".to_owned(),
+            bytes: Arc::from(PUBLISHED_CDDL),
+        }],
+        [TARGET_IR_ARTIFACT_DIGEST_DOMAIN],
+    )
+    .unwrap_or_else(|failure| {
+        panic!(
+            "the published binding must construct the registry: {:?}",
+            failure.kind()
+        )
+    });
+
+    let structured =
+        decode_canonical_cbor(STRUCTURED_TARGET_IR_FIXTURE).expect("canonical v3 golden");
+    registry
+        .validate_canonical_value(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &structured)
+        .expect("the production registry validates the reviewed v3 golden");
+    let mut missing = structured;
+    let intents = map_value_mut(&mut missing, "intents");
+    remove_map_field(map_value_mut(intents, "t"), "executionOrder");
+    assert_eq!(
+        registry.validate_canonical_value(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &missing),
+        Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+    );
 }
 
 #[test]
