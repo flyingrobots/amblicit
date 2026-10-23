@@ -120,8 +120,8 @@ struct OrderWalk<'a> {
     table_locals: BTreeSet<&'a str>,
     instructions: BTreeMap<&'a str, Instruction<'a>>,
     control_ids: BTreeSet<&'a str>,
-    /// Loop binders across the whole intent, so a binder can never reuse a
-    /// visible or previously introduced identity.
+    /// Loop binders across the whole intent and, under v3, every obstruction
+    /// binder and producer binding, so no identity is introduced twice.
     claimed: BTreeSet<&'a str>,
     available: LocalAvailability<'a>,
 }
@@ -149,6 +149,22 @@ impl<'a> OrderWalk<'a> {
         valid
     }
 
+    /// Under v3, every identity an instruction introduces (obstruction binders
+    /// and its result binding) is unique across the whole intent, although
+    /// references to an obstruction binder stay scoped to its arm.
+    fn claim_identities(&mut self, instruction: Instruction<'a>) -> bool {
+        match instruction {
+            Instruction::Binding(node) => self.claimed.insert(node.binding.id.as_str()),
+            Instruction::Step(node) => {
+                node.obstruction_arms
+                    .values()
+                    .all(|arm| self.claimed.insert(arm.binder.id.as_str()))
+                    && self.claimed.insert(node.binding.id.as_str())
+            }
+            Instruction::Require(_) => true,
+        }
+    }
+
     fn entry(&mut self, entry: &'a TargetIrOrderEntry, depth: usize) -> bool {
         match entry {
             TargetIrOrderEntry::Instruction(id) => {
@@ -158,7 +174,8 @@ impl<'a> OrderWalk<'a> {
                 let Some(instruction) = self.instructions.remove(id.as_str()) else {
                     return false;
                 };
-                self.available.instruction(instruction)
+                (!self.structured || self.claim_identities(instruction))
+                    && self.available.instruction(instruction)
             }
             TargetIrOrderEntry::For(entry) => {
                 // Target has no authenticated constant values, so a v3 loop

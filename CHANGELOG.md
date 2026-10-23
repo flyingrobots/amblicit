@@ -14,26 +14,27 @@ versions still track specification maturity rather than a released product.
   id and carries the Core binder, iterable, bound and predicate. Loop-body and
   arm locals are scoped to their block; Core validation and the canonical
   encoder check nested blocks independently. Value-yielding branches, non-null
-  control block results, coordinate loop bounds (`coordinate_loop_bound`, since
-  Target has no authenticated constant values; the v3 encoder and the current
-  schema also refuse them) and external requests refuse under v3; an empty
-  `all`/`any` anywhere in a v3 intent (branch or requirement predicate, loop
-  iterable or other expression) refuses in v3 lowering
+  control block results, coordinate loop bounds (`coordinate_loop_bound`,
+  since Target has no authenticated constant values; the v3 encoder and the
+  current schema also refuse them) and external requests refuse under v3; an
+  empty `all`/`any` anywhere in a v3 intent (branch or requirement predicate,
+  loop iterable or other expression) refuses in v3 lowering
   (`empty_predicate_aggregate`) and in the v3 encoder, an obstruction binder
-  reusing a visible or claimed identity refuses in v3 lowering, and lowering
-  never returns a v3 artifact its encoder refuses (`canonical_nesting_depth`
-  for nesting, otherwise `structured_artifact_unencodable`); an intrinsic call
-  in a loop body refuses even when its admitted cost is zero. **Breaking (Rust
-  API):** `TargetIrIntent::execution_order` is now
-  `Option<Vec<TargetIrOrderEntry>>`; v2 still encodes a flat array of ids with
-  unchanged bytes, and v1/v2 keep their `for`/`branch` refusals. A new
-  `structured-control-v1` provider contract pack adds the v3 schema root; prior
-  packs are byte-identical. Its recursive order-entry choice dispatches `for`
-  and `branch` entries on their `kind` tag, so the production provider schema
-  registry constructs that pack, and its phased `targetIrArtifact` shapes
-  refuse the v2 and v3 domains so neither can omit its required order. Echo's
-  provider refuses v3, result projections do not yet support structured
-  intents, and no runtime execution is claimed.
+  reusing any identity introduced in the intent, or reused by a later one,
+  refuses in v3 lowering and the v3 encoder, and lowering never returns a v3
+  artifact its encoder refuses (`canonical_nesting_depth` for nesting,
+  otherwise `structured_artifact_unencodable`); an intrinsic call in a loop
+  body refuses even when its admitted cost is zero. **Breaking (Rust API):**
+  `TargetIrIntent::execution_order` is now `Option<Vec<TargetIrOrderEntry>>`;
+  v2 still encodes a flat array of ids with unchanged bytes, and v1/v2 keep
+  their `for`/`branch` refusals. A new `structured-control-v1` provider
+  contract pack adds the v3 schema root; prior packs are byte-identical. Its
+  recursive order-entry choice dispatches `for` and `branch` entries on their
+  `kind` tag, so the production provider schema registry constructs that pack,
+  and its phased `targetIrArtifact` shapes refuse the v2 and v3 domains so
+  neither can omit its required order. Echo's provider refuses v3, result
+  projections do not yet support structured intents, and no runtime execution
+  is claimed.
 
 - Admit target-catalog pure intrinsics: `admit_target_pure_intrinsics` accepts
   exactly the required contracts, at exact versions, from catalog bytes that

@@ -233,13 +233,16 @@ Core-to-Target validation covers nested blocks under v3: types, closed
 authority, block local tables, unique identities across the intent, binder
 identity, obstruction-binder freshness (an arm binder may not reuse the input,
 a visible local, a loop binder or any identity already introduced in the
-intent), iterable shape (a list whose items fit the binder, with a literal
-bound no smaller than its maximum), totality and intrinsic cost. Failures are
-`InvalidCoreIdentity` with no artifact. The canonical encoder independently
-requires every table instruction exactly once in the whole tree, nonempty
-unique control ids disjoint from instruction ids, binders that reuse no
-produced or visible identity, and scoped producer-before-consumer references;
-it refuses with `CanonicalErrorKind::UnsupportedValue`. [TIR-REQ-060]
+intent, and is itself recorded intent-wide so no sibling arm, later loop binder
+or producer reuses it, while references to it stay scoped to its arm), iterable
+shape (a list whose items fit the binder, with a literal bound no smaller than
+its maximum), totality and intrinsic cost. Failures are `InvalidCoreIdentity`
+with no artifact. The canonical encoder independently requires every table
+instruction exactly once in the whole tree, nonempty unique control ids
+disjoint from instruction ids, loop binders, obstruction binders and producer
+bindings that are each introduced once across the whole v3 intent, and scoped
+producer-before-consumer references; it refuses with
+`CanonicalErrorKind::UnsupportedValue`. [TIR-REQ-060]
 
 Lowering encodes a v3 artifact before returning it and never reports
 `Lowered` for one its own encoder refuses. Each control level adds a map and an

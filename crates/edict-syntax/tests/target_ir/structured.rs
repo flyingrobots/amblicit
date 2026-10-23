@@ -868,6 +868,197 @@ fn obstruction_binders_must_be_fresh_under_v3() {
     );
 }
 
+const SIBLING_ARM_EFFECTS: &str = "  if input.id != \"\" {\n\
+        let first: Receipt = target.replace(input.id)\n\
+          else { rejected(reason) => domain.WriteRejected };\n\
+      } else {\n\
+        let second: Receipt = target.replace(input.id)\n\
+          else { rejected(reason) => domain.WriteRejected };\n\
+      }\n\
+      return { id: input.id };\n\
+    }";
+
+/// The single effect node of a block, mutably.
+fn block_effect(block: &mut CoreBlock) -> &mut CoreNode {
+    block
+        .nodes
+        .iter_mut()
+        .find(|node| matches!(node, CoreNode::Effect { .. }))
+        .expect("Core effect in block")
+}
+
+fn arm_binder(node: &CoreNode) -> LocalRef {
+    let CoreNode::Effect {
+        obstruction_map, ..
+    } = node
+    else {
+        panic!("Core effect expected");
+    };
+    obstruction_map
+        .values()
+        .next()
+        .expect("obstruction arm")
+        .binder
+        .clone()
+}
+
+/// Replace a block's effect obstruction binder (and its local-table entry).
+fn reuse_arm_binder(block: &mut CoreBlock, binder: &LocalRef) {
+    let old = arm_binder(block_effect(block));
+    let CoreNode::Effect {
+        obstruction_map, ..
+    } = block_effect(block)
+    else {
+        unreachable!()
+    };
+    obstruction_map.values_mut().next().expect("arm").binder = binder.clone();
+    block.locals.retain(|local| local.id != old.id);
+    block.locals.push(binder.clone());
+}
+
+/// `SIBLING_LOOPS` whose second loop is raw Core over `[null]` with `binder`.
+fn sibling_loops_with_second_binder(binder: impl FnOnce(&LocalRef) -> LocalRef) -> CoreModule {
+    let mut core = loop_core(SIBLING_LOOPS);
+    let (_, _, first_body) = core_loop(&mut core, 0);
+    let first_arm = arm_binder(block_effect(first_body));
+    let (second_binder, iter, body) = core_loop(&mut core, 1);
+    let CoreExpr::Field { base: input, .. } = iter.clone() else {
+        panic!("field iterable expected");
+    };
+    *iter = CoreExpr::List {
+        values: vec![CoreExpr::Const(CoreValue::Null)],
+    };
+    let CoreNode::Effect {
+        input: effect_input,
+        ..
+    } = block_effect(body)
+    else {
+        unreachable!()
+    };
+    *effect_input = CoreExpr::Field {
+        base: input,
+        field: "id".to_owned(),
+    };
+    let new_binder = binder(&first_arm);
+    let old_id = second_binder.id.clone();
+    body.locals.retain(|local| local.id != old_id);
+    body.locals.push(new_binder.clone());
+    *second_binder = new_binder;
+    core
+}
+
+#[test]
+fn v3_binders_are_unique_across_the_intent() {
+    // Controls: fresh binders lower and encode.
+    let fresh_unit = |arm: &LocalRef| LocalRef {
+        id: "local.fresh".to_owned(),
+        alpha_name: "$fresh".to_owned(),
+        ty: arm.ty.clone(),
+    };
+    let mut controls = vec![
+        ("sibling loops", loop_core(SIBLING_LOOPS)),
+        ("sibling arms", loop_core(SIBLING_ARM_EFFECTS)),
+        (
+            "raw second loop",
+            sibling_loops_with_second_binder(fresh_unit),
+        ),
+    ]
+    .into_iter()
+    .map(|(case, core)| {
+        let report = lower_to_target_ir(&core, &structured_facts());
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Lowered,
+            "{case}: {report:?}"
+        );
+        let artifact = report.artifact.expect("artifact");
+        encode_target_ir_artifact(&artifact).unwrap_or_else(|error| panic!("{case}: {error:?}"));
+        artifact
+    });
+    let sibling_loops = controls.next().expect("sibling loops");
+    let sibling_arms = controls.next().expect("sibling arms");
+    let raw_second_loop = controls.next().expect("raw second loop");
+
+    // Lowering: the second sibling loop's effect reuses the first's binder.
+    let mut loops = loop_core(SIBLING_LOOPS);
+    let (_, _, first_body) = core_loop(&mut loops, 0);
+    let first_arm = arm_binder(block_effect(first_body));
+    let (_, _, second_body) = core_loop(&mut loops, 1);
+    reuse_arm_binder(second_body, &first_arm);
+
+    // Lowering: the else arm's effect reuses the then arm's binder.
+    let mut arms = loop_core(SIBLING_ARM_EFFECTS);
+    let CoreNode::Branch {
+        then_block,
+        else_block,
+        ..
+    } = &mut arms.intents.get_mut("t").expect("intent").body.nodes[0]
+    else {
+        panic!("Core branch expected");
+    };
+    let then_arm = arm_binder(block_effect(then_block));
+    reuse_arm_binder(else_block, &then_arm);
+
+    // Lowering: a later loop binder reuses an earlier obstruction binder.
+    let later_loop = sibling_loops_with_second_binder(Clone::clone);
+
+    for (case, core) in [
+        ("sibling loop obstruction binder", loops),
+        ("sibling arm obstruction binder", arms),
+        ("later loop binder", later_loop),
+    ] {
+        let report = lower_to_target_ir(&core, &structured_facts());
+        assert_refused(
+            &report,
+            TargetLoweringFailureKind::InvalidCoreIdentity,
+            None,
+            case,
+        );
+    }
+
+    // Encoder: the same reuses in hand-built artifacts.
+    let first_step_arm = |artifact: &TargetIrArtifact| {
+        artifact.intents["t"].steps[0]
+            .obstruction_arms
+            .values()
+            .next()
+            .expect("arm")
+            .binder
+            .clone()
+    };
+    let reuse_second_step_arm = |artifact: &TargetIrArtifact| {
+        let mut changed = artifact.clone();
+        let binder = first_step_arm(artifact);
+        changed.intents.get_mut("t").expect("intent").steps[1]
+            .obstruction_arms
+            .values_mut()
+            .next()
+            .expect("arm")
+            .binder = binder;
+        changed
+    };
+    let mut later_binder = raw_second_loop.clone();
+    let binder = first_step_arm(&raw_second_loop);
+    for_entry_mut(&mut order_mut(&mut later_binder)[1]).binder = binder;
+    let mut shared_producer = sibling_loops.clone();
+    let first_binding = shared_producer.intents["t"].steps[0].binding.clone();
+    shared_producer.intents.get_mut("t").expect("intent").steps[1].binding = first_binding;
+    for (case, artifact) in [
+        (
+            "sibling loop obstruction binder",
+            reuse_second_step_arm(&sibling_loops),
+        ),
+        (
+            "sibling arm obstruction binder",
+            reuse_second_step_arm(&sibling_arms),
+        ),
+        ("later loop binder", later_binder),
+        ("sibling loop step binding", shared_producer),
+    ] {
+        assert_unsupported_value(&artifact, case);
+    }
+}
+
 #[test]
 fn requirement_inside_loop_stays_in_the_loop_body() {
     let artifact = structured_artifact(REQUIREMENT_IN_LOOP);

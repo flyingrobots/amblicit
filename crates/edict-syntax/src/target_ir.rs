@@ -1251,17 +1251,19 @@ fn validate_structured_instruction<'a>(
     ) {
         return invalid("Core node contains an invalid or unauthorized expression");
     }
-    // Obstruction binders are scoped to their arm, but like every other
-    // introduced identity they may not reuse a visible or claimed one.
+    // Obstruction binders stay scoped to their arm for references, but are
+    // recorded intent-wide like every other introduced identity, so no visible,
+    // claimed or later identity (sibling arm, loop binder, producer) reuses one.
     if let CoreNode::Effect {
         obstruction_map, ..
     } = node
     {
-        if obstruction_map.values().any(|arm| {
-            available.contains_key(arm.binder.id.as_str())
-                || claimed.contains(arm.binder.id.as_str())
-        }) {
-            return invalid("obstruction binder reuses a visible or claimed identity");
+        for arm in obstruction_map.values() {
+            if available.contains_key(arm.binder.id.as_str())
+                || !claimed.insert(arm.binder.id.as_str())
+            {
+                return invalid("obstruction binder reuses a visible or claimed identity");
+            }
         }
     }
     if let Some(binding) = binding {
