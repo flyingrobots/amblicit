@@ -317,15 +317,18 @@ impl<'a> LocalAvailability<'a> {
                         .iter()
                         .all(|predicate| self.predicate(predicate, depth + 1))
             }
+            // The depth-guarded traversal runs first, so the classifier only
+            // sees operands the canonical depth admits.
             CorePredicate::Compare { op, left, right } => {
-                (!self.structured_checks
-                    || !matches!(
-                        op,
-                        CompareOp::Lt | CompareOp::Le | CompareOp::Gt | CompareOp::Ge
-                    )
-                    || !(provably_non_integer(left) || provably_non_integer(right)))
-                    && self.expression(left, depth + 1)
+                self.expression(left, depth + 1)
                     && self.expression(right, depth + 1)
+                    && (!self.structured_checks
+                        || !matches!(
+                            op,
+                            CompareOp::Lt | CompareOp::Le | CompareOp::Gt | CompareOp::Ge
+                        )
+                        || !(provably_non_integer(left, depth + 1)
+                            || provably_non_integer(right, depth + 1)))
             }
         }
     }
@@ -334,7 +337,14 @@ impl<'a> LocalAvailability<'a> {
 /// Whether an operand is non-integer from the artifact alone. The encoder has
 /// no type table, so field projections and calls are left to lowering, which
 /// resolves operand types exactly.
-fn provably_non_integer(expression: &CoreExpr) -> bool {
+fn provably_non_integer(expression: &CoreExpr, depth: usize) -> bool {
+    #[cfg(test)]
+    classifier_visits::visit();
+    // Beyond the canonical depth the operand is unrepresentable anyway; treat
+    // it as non-integer so the comparison fails closed.
+    if depth > MAX_CANONICAL_NESTING_DEPTH {
+        return true;
+    }
     match expression {
         CoreExpr::Const(value) => !matches!(value, CoreValue::Int { .. }),
         CoreExpr::Record { .. } | CoreExpr::List { .. } => true,
@@ -350,7 +360,29 @@ fn provably_non_integer(expression: &CoreExpr) -> bool {
             then_value,
             else_value,
             ..
-        } => provably_non_integer(then_value) || provably_non_integer(else_value),
+        } => {
+            provably_non_integer(then_value, depth + 1)
+                || provably_non_integer(else_value, depth + 1)
+        }
         CoreExpr::Field { .. } | CoreExpr::Call { .. } => false,
+    }
+}
+
+/// Test-only count of operand-classifier visits; a single nested operand
+/// chain visits once per level, so this bounds its recursion depth without
+/// exhausting the stack.
+#[cfg(test)]
+pub(crate) mod classifier_visits {
+    use std::cell::Cell;
+
+    thread_local!(static VISITS: Cell<usize> = const { Cell::new(0) });
+
+    pub(super) fn visit() {
+        VISITS.with(|visits| visits.set(visits.get() + 1));
+    }
+
+    /// Return and reset the visit count.
+    pub(crate) fn take() -> usize {
+        VISITS.with(|visits| visits.replace(0))
     }
 }

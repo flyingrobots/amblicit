@@ -2584,18 +2584,9 @@ fn predicate_comparisons_admissible(
         CorePredicate::All(values) | CorePredicate::Any(values) => values.iter().all(|value| {
             predicate_comparisons_admissible(core, pure_functions, value, available, depth + 1)
         }),
+        // Recurse through the depth-guarded walk first, then classify.
         CorePredicate::Compare { op, left, right } => {
-            (!matches!(
-                op,
-                CompareOp::Lt | CompareOp::Le | CompareOp::Gt | CompareOp::Ge
-            ) || ordered_operands_are_integers(core, pure_functions, [left, right], available))
-                && expression_comparisons_admissible(
-                    core,
-                    pure_functions,
-                    left,
-                    available,
-                    depth + 1,
-                )
+            expression_comparisons_admissible(core, pure_functions, left, available, depth + 1)
                 && expression_comparisons_admissible(
                     core,
                     pure_functions,
@@ -2603,6 +2594,15 @@ fn predicate_comparisons_admissible(
                     available,
                     depth + 1,
                 )
+                && (!matches!(
+                    op,
+                    CompareOp::Lt | CompareOp::Le | CompareOp::Gt | CompareOp::Ge
+                ) || ordered_operands_are_integers(
+                    core,
+                    pure_functions,
+                    [left, right],
+                    available,
+                ))
         }
     }
 }
@@ -3554,8 +3554,9 @@ mod tests {
 
     use super::{
         authenticated_named_type_closure_matches, structured_encoding_failure, TargetIrArtifact,
-        TargetIrIntent, TargetIrOrderEntry, TargetIrRequireFailure, TargetIrRequirement,
-        TargetLoweringFailureKind, ECHO_DPO_TARGET_PROFILE, ECHO_STRUCTURED_SPAN_IR_DOMAIN,
+        TargetIrBranchEntry, TargetIrIntent, TargetIrOrderEntry, TargetIrRequireFailure,
+        TargetIrRequirement, TargetLoweringFailureKind, ECHO_DPO_TARGET_PROFILE,
+        ECHO_STRUCTURED_SPAN_IR_DOMAIN,
     };
     use crate::core_ir::{
         CoreBudget, CoreExpr, CoreModule, CoreObstructionReason, CorePredicate, CoreType,
@@ -3604,6 +3605,43 @@ mod tests {
                 },
             )]),
         }
+    }
+
+    /// An ordered comparison whose integer operand nests far past the canonical
+    /// depth refuses with a structured error, and the operand classifier never
+    /// walks deeper than the depth-guarded traversal admits.
+    #[test]
+    fn deep_ordered_comparison_operands_refuse_within_the_depth_guard() {
+        const LEVELS: usize = 2_000;
+        let int = || {
+            CoreExpr::Const(CoreValue::Int {
+                width: "U64".to_owned(),
+                value: "1".to_owned(),
+            })
+        };
+        let deep = (0..LEVELS).fold(int(), |inner, _| CoreExpr::If {
+            predicate: Box::new(CorePredicate::True),
+            then_value: Box::new(inner),
+            else_value: Box::new(int()),
+        });
+        let artifact = structured_artifact(vec![TargetIrOrderEntry::Branch(TargetIrBranchEntry {
+            id: "t.branch.0".to_owned(),
+            predicate: CorePredicate::Compare {
+                op: crate::core_ir::CompareOp::Lt,
+                left: deep,
+                right: int(),
+            },
+            then_entries: Vec::new(),
+            else_entries: Vec::new(),
+        })]);
+        super::execution_order::classifier_visits::take();
+        let error = crate::encode_target_ir_artifact(&artifact).expect_err("too deep");
+        assert_eq!(error.kind(), crate::CanonicalErrorKind::UnsupportedValue);
+        let visits = super::execution_order::classifier_visits::take();
+        assert!(
+            visits <= 2 * (crate::MAX_CANONICAL_NESTING_DEPTH + 1),
+            "the operand classifier visited {visits} levels"
+        );
     }
 
     /// Lowering must never return `Lowered` for a v3 artifact its own encoder

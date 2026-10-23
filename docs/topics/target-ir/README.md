@@ -269,7 +269,9 @@ types and refuses any other pairing with `InvalidCoreIdentity` detail
 `inadmissible_comparison_operator`. The v3 encoder has no type table, so it
 refuses an ordered comparison only when an operand is provably non-integer
 from the artifact itself (a non-integer constant, a record or list, or a local
-of a builtin non-integer type), with `UnsupportedValue`. [TIR-REQ-060]
+of a builtin non-integer type), with `UnsupportedValue`. Both walks bound
+operand classification by the canonical nesting depth and run their
+depth-guarded traversal first. [TIR-REQ-060]
 
 Value-yielding branches refuse with `UnsupportedCoreNode` detail
 `branch_binding`; a loop body or arm whose Core block result is not null refuses
