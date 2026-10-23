@@ -108,7 +108,7 @@ resource selected by the lawpack manifest.
 Display metadata is not part of this manifest. Human-facing names, codenames,
 and marketing copy live in sidecar documents keyed by the target profile digest.
 
-The reference `edict_syntax` conformance surface accepts typed manifest values
+The reference `amblicit_syntax` conformance surface accepts typed manifest values
 only. It validates the profile API version, identity, accepted Core ABI,
 digest-locked component references, canonical encoding rule, direct
 lawpack-adapter ABI compatibility, and v1 application doctrine. The checker is

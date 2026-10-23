@@ -9,7 +9,7 @@ an admission claim.
 
 ## Public Surface
 
-The `edict_syntax` crate exposes `check_lowerability` and typed lowerability
+The `amblicit_syntax` crate exposes `check_lowerability` and typed lowerability
 data structures for:
 
 - `LoweringRequirements`, the typed pre-lowering question;
@@ -52,7 +52,7 @@ The canonical artifact shape for `edict.lowering-requirements/v1` is named in
 
 The following are not implemented by this lowerability slice:
 
-- CLI commands such as `edict explain lowerability`;
+- CLI commands such as `amblicit explain lowerability`;
 - canonical-CBOR encode/decode helpers for `LoweringRequirements`;
 - target-profile manifest loading from files;
 - Target IR generation;

@@ -60,7 +60,7 @@ The current specification set is:
 - [Authority Facts Topic](./topics/authority-facts/): JSON and canonical-CBOR
   compiler context facts with digest-bound source identity, normative CDDL, and
   stable load/decode failures.
-- [CLI Topic](./topics/cli/): JSONL-only `edict` command-line boundary for
+- [CLI Topic](./topics/cli/): JSONL-only `amblicit` command-line boundary for
   stdin request records, structured stdout/stderr events, and compiler settings.
 - [Contract Bundles Topic](./topics/contract-bundles/): typed v1
   participant-neutral bundle and assurance evidence manifest validation.

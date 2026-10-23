@@ -3,11 +3,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use edict_provider_schema::{
+use amblicit_provider_schema::{
     PROVIDER_CONTRACT_PACK_API_VERSION, PROVIDER_CONTRACT_PACK_COORDINATE,
     PROVIDER_CONTRACT_PACK_LICENSE,
 };
-use edict_syntax::{
+use amblicit_syntax::{
     canonical_target_profile_contract_resources, parse_module, AUTHORITY_FACTS_API_VERSION,
     CORE_MODULE_DIGEST_DOMAIN, PROVIDER_LAWPACK_ARTIFACT_DOMAIN, TARGET_IR_ARTIFACT_DIGEST_DOMAIN,
     TARGET_PROFILE_API_VERSION,
@@ -183,7 +183,7 @@ fn assert_provider_contract_manifest_metadata(manifest: &Value) {
             (PROVIDER_LAWPACK_ARTIFACT_DOMAIN, "lawpack-manifest"),
             ("edict.lowering-requirements/v1", "lowering-requirements"),
             (
-                edict_syntax::RESULT_PROJECTION_DIGEST_DOMAIN,
+                amblicit_syntax::RESULT_PROJECTION_DIGEST_DOMAIN,
                 "result-projection"
             ),
             ("edict.source-closure/v1", "source-closure"),
@@ -932,10 +932,10 @@ use capability caps.auth@1 as caps;
 const demo = 1;
 fn run() {}
 ";
-    let public_keywords = edict_syntax::highlight_source(source)
+    let public_keywords = amblicit_syntax::highlight_source(source)
         .expect("source lexes for highlighting")
         .into_iter()
-        .filter(|token| token.role == edict_syntax::HighlightRole::Keyword)
+        .filter(|token| token.role == amblicit_syntax::HighlightRole::Keyword)
         .map(|token| token.lexeme(source).to_owned())
         .collect::<BTreeSet<_>>();
     let query_keywords = tree_sitter_query_atoms_for_capture(&highlights, "@keyword");
@@ -955,7 +955,7 @@ fn tree_sitter_query_operator_and_punctuation_roles_match_public_highlighter() {
         fs::read_to_string(root.join("grammars/tree-sitter-edict/queries/highlights.scm"))
             .expect("Tree-sitter highlight query");
     let source = "= == != < <= > >= + - * / % ! && || => :: ... ; : , . @ ( ) { }";
-    let public_roles = edict_syntax::highlight_source(source)
+    let public_roles = amblicit_syntax::highlight_source(source)
         .expect("operator and punctuation source lexes")
         .into_iter()
         .map(|token| (token.lexeme(source).to_owned(), token.role))
@@ -971,7 +971,7 @@ fn tree_sitter_query_operator_and_punctuation_roles_match_public_highlighter() {
         if let Some(role) = public_roles.get(&operator) {
             assert_eq!(
                     *role,
-                    edict_syntax::HighlightRole::Operator,
+                    amblicit_syntax::HighlightRole::Operator,
                     "Tree-sitter query marks `{operator}` as operator but public highlighter emits {role:?}"
                 );
         }
@@ -981,7 +981,7 @@ fn tree_sitter_query_operator_and_punctuation_roles_match_public_highlighter() {
         if let Some(role) = public_roles.get(&punctuation) {
             assert_eq!(
                     *role,
-                    edict_syntax::HighlightRole::Punctuation,
+                    amblicit_syntax::HighlightRole::Punctuation,
                     "Tree-sitter query marks `{punctuation}` as punctuation but public highlighter emits {role:?}"
                 );
         }
@@ -1047,7 +1047,7 @@ fn textmate_grammar_covers_public_highlight_roles() {
             bounded yield match shape lawpack target core capability as digest fn const true \
             false HelloInput input = == != < <= > >= + - * / % ! && || => -> :: ... ; : , . @ \
             ( ) { } [ ] \"text\" 123";
-    let highlights = edict_syntax::highlight_source(source).expect("highlight role source");
+    let highlights = amblicit_syntax::highlight_source(source).expect("highlight role source");
 
     for token in highlights {
         let lexeme = token.lexeme(source).trim();
@@ -1055,29 +1055,29 @@ fn textmate_grammar_covers_public_highlight_roles() {
             continue;
         }
         match token.role {
-            edict_syntax::HighlightRole::Keyword => assert!(
+            amblicit_syntax::HighlightRole::Keyword => assert!(
                 textmate_regex_matches_literal(keyword_regex, lexeme),
                 "TextMate keyword regex must cover `{lexeme}`"
             ),
-            edict_syntax::HighlightRole::Operator => assert!(
+            amblicit_syntax::HighlightRole::Operator => assert!(
                 textmate_regex_matches_literal(operator_regex, lexeme),
                 "TextMate operator regex must cover `{lexeme}`"
             ),
-            edict_syntax::HighlightRole::Punctuation => assert!(
+            amblicit_syntax::HighlightRole::Punctuation => assert!(
                 textmate_regex_matches_literal(punctuation_regex, lexeme),
                 "TextMate punctuation regex must cover `{lexeme}`"
             ),
-            edict_syntax::HighlightRole::TypeIdentifier => assert!(
+            amblicit_syntax::HighlightRole::TypeIdentifier => assert!(
                 textmate_regex_matches_literal(type_regex, lexeme),
                 "TextMate type regex must cover `{lexeme}`"
             ),
-            edict_syntax::HighlightRole::Identifier => assert!(
+            amblicit_syntax::HighlightRole::Identifier => assert!(
                 textmate_regex_matches_literal(identifier_regex, lexeme),
                 "TextMate identifier regex must cover `{lexeme}`"
             ),
-            edict_syntax::HighlightRole::Comment
-            | edict_syntax::HighlightRole::Number
-            | edict_syntax::HighlightRole::String => {}
+            amblicit_syntax::HighlightRole::Comment
+            | amblicit_syntax::HighlightRole::Number
+            | amblicit_syntax::HighlightRole::String => {}
         }
     }
 }
@@ -1087,11 +1087,11 @@ fn textmate_grammar_scopes_public_number_spans_in_version_labels() {
     let grammar = textmate_grammar();
     let number_regex = textmate_repository_match(&grammar, "numbers");
     let source = "package examples.tooling@1_beta;";
-    let public_number = edict_syntax::highlight_source(source)
+    let public_number = amblicit_syntax::highlight_source(source)
         .expect("version label source lexes")
         .into_iter()
         .find(|token| {
-            token.role == edict_syntax::HighlightRole::Number && token.lexeme(source) == "1_"
+            token.role == amblicit_syntax::HighlightRole::Number && token.lexeme(source) == "1_"
         })
         .expect("public highlighter emits leading numeric version-label span");
     let number_spans = textmate_regex_spans(number_regex, source);
@@ -1732,21 +1732,21 @@ fn release_prep_scaffolds_version_policy_changelog_and_notes() {
 
     let package_version = "version = \"0.12.0-alpha.1\"";
     assert!(
-        fs::read_to_string(root.join("crates/edict-cli/Cargo.toml"))
-            .expect("edict-cli manifest")
+        fs::read_to_string(root.join("crates/amblicit-cli/Cargo.toml"))
+            .expect("amblicit-cli manifest")
             .contains(package_version),
-        "release prep must bump edict-cli"
+        "release prep must bump amblicit-cli"
     );
     assert!(
-        fs::read_to_string(root.join("crates/edict-syntax/Cargo.toml"))
-            .expect("edict-syntax manifest")
+        fs::read_to_string(root.join("crates/amblicit-syntax/Cargo.toml"))
+            .expect("amblicit-syntax manifest")
             .contains(package_version),
-        "release prep must bump edict-syntax"
+        "release prep must bump amblicit-syntax"
     );
     let lockfile = fs::read_to_string(root.join("Cargo.lock")).expect("lockfile");
     assert!(
-        lockfile.contains("name = \"edict-cli\"\nversion = \"0.12.0-alpha.1\"")
-            && lockfile.contains("name = \"edict-syntax\"\nversion = \"0.12.0-alpha.1\""),
+        lockfile.contains("name = \"amblicit-cli\"\nversion = \"0.12.0-alpha.1\"")
+            && lockfile.contains("name = \"amblicit-syntax\"\nversion = \"0.12.0-alpha.1\""),
         "release prep must update workspace package lockfile entries"
     );
     let changelog = fs::read_to_string(root.join("CHANGELOG.md")).expect("changelog");
@@ -1827,13 +1827,13 @@ fn release_prep_keeps_facade_exact_dependency_resolvable() {
     }
     let facade = packages
         .iter()
-        .find(|package| package["name"] == "flyingrobots-edict")
+        .find(|package| package["name"] == "flyingrobots-amblicit")
         .expect("facade package");
     let syntax = facade["dependencies"]
         .as_array()
         .expect("facade dependencies")
         .iter()
-        .find(|dependency| dependency["name"] == "edict-syntax")
+        .find(|dependency| dependency["name"] == "amblicit-syntax")
         .expect("facade implementation dependency");
     assert_eq!(syntax["req"], "=0.12.0-alpha.1");
     assert_eq!(
@@ -1853,9 +1853,9 @@ fn release_prep_rejects_existing_release_notes_before_writing() {
     )
     .expect("existing release notes");
     let tracked = [
-        "crates/edict-cli/Cargo.toml",
-        "crates/edict-syntax/Cargo.toml",
-        "crates/edict/Cargo.toml",
+        "crates/amblicit-cli/Cargo.toml",
+        "crates/amblicit-syntax/Cargo.toml",
+        "crates/amblicit/Cargo.toml",
         "Cargo.lock",
         "CHANGELOG.md",
         "docs/topics/release-process/policy.toml",
@@ -1897,37 +1897,37 @@ fn write_release_prep_scaffold_fixture(root: &Path) {
     fs::create_dir_all(root).expect("workspace dir");
     fs::write(
         root.join("Cargo.toml"),
-        "[workspace]\nmembers = [\"crates/edict-cli\", \"crates/edict-syntax\", \"crates/edict\"]\nresolver = \"3\"\n",
+        "[workspace]\nmembers = [\"crates/amblicit-cli\", \"crates/amblicit-syntax\", \"crates/amblicit\"]\nresolver = \"3\"\n",
     )
     .expect("workspace manifest");
-    for package in ["edict-cli", "edict-syntax", "edict"] {
+    for package in ["amblicit-cli", "amblicit-syntax", "amblicit"] {
         let source = root.join("crates").join(package).join("src");
         fs::create_dir_all(&source).expect("package source dir");
         fs::write(source.join("lib.rs"), "").expect("library target");
     }
     fs::write(
-        root.join("crates/edict/Cargo.toml"),
-        "[package]\nname = \"flyingrobots-edict\"\nversion = \"0.11.0-alpha.1\"\n[dependencies]\nedict-syntax = { path = \"../edict-syntax\", version = \"=0.11.0-alpha.1\" }\n",
+        root.join("crates/amblicit/Cargo.toml"),
+        "[package]\nname = \"flyingrobots-amblicit\"\nversion = \"0.11.0-alpha.1\"\n[dependencies]\namblicit-syntax = { path = \"../amblicit-syntax\", version = \"=0.11.0-alpha.1\" }\n",
     )
     .expect("facade manifest");
-    fs::create_dir_all(root.join("crates/edict-cli")).expect("edict-cli dir");
-    fs::create_dir_all(root.join("crates/edict-syntax")).expect("edict-syntax dir");
+    fs::create_dir_all(root.join("crates/amblicit-cli")).expect("amblicit-cli dir");
+    fs::create_dir_all(root.join("crates/amblicit-syntax")).expect("amblicit-syntax dir");
     fs::create_dir_all(root.join("docs/releases")).expect("release notes dir");
     fs::create_dir_all(root.join("docs/topics/release-process")).expect("release topic dir");
     fs::create_dir_all(root.join("xtask/src")).expect("xtask source dir");
     fs::write(
-        root.join("crates/edict-cli/Cargo.toml"),
-        "[package]\nname = \"edict-cli\"\nversion = \"0.11.0-alpha.1\"\n",
+        root.join("crates/amblicit-cli/Cargo.toml"),
+        "[package]\nname = \"amblicit-cli\"\nversion = \"0.11.0-alpha.1\"\n",
     )
-    .expect("edict-cli manifest");
+    .expect("amblicit-cli manifest");
     fs::write(
-        root.join("crates/edict-syntax/Cargo.toml"),
-        "[package]\nname = \"edict-syntax\"\nversion = \"0.11.0-alpha.1\"\n",
+        root.join("crates/amblicit-syntax/Cargo.toml"),
+        "[package]\nname = \"amblicit-syntax\"\nversion = \"0.11.0-alpha.1\"\n",
     )
-    .expect("edict-syntax manifest");
+    .expect("amblicit-syntax manifest");
     fs::write(
             root.join("Cargo.lock"),
-            "version = 4\n\n[[package]]\nname = \"edict-cli\"\nversion = \"0.11.0-alpha.1\"\n\n[[package]]\nname = \"edict-syntax\"\nversion = \"0.11.0-alpha.1\"\n\n[[package]]\nname = \"flyingrobots-edict\"\nversion = \"0.11.0-alpha.1\"\ndependencies = [\n \"edict-syntax\",\n]\n",
+            "version = 4\n\n[[package]]\nname = \"amblicit-cli\"\nversion = \"0.11.0-alpha.1\"\n\n[[package]]\nname = \"amblicit-syntax\"\nversion = \"0.11.0-alpha.1\"\n\n[[package]]\nname = \"flyingrobots-amblicit\"\nversion = \"0.11.0-alpha.1\"\ndependencies = [\n \"amblicit-syntax\",\n]\n",
         )
         .expect("lockfile");
     fs::write(
@@ -2255,7 +2255,7 @@ fn cli_golden_binary_path_uses_cargo_metadata_target_directory() {
         binary,
         target_directory
             .join("debug")
-            .join(format!("edict{}", std::env::consts::EXE_SUFFIX))
+            .join(format!("amblicit{}", std::env::consts::EXE_SUFFIX))
     );
 }
 

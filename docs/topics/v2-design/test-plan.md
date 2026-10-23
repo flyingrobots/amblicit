@@ -22,7 +22,7 @@ In scope:
 
 Out of scope:
 
-- implementing v2 adapter declarations in `edict_syntax`;
+- implementing v2 adapter declarations in `amblicit_syntax`;
 - accepting lawpack adapter ABI declarations in target profiles;
 - changing v1 lowerability behavior;
 - Target IR generation;
@@ -45,7 +45,7 @@ Out of scope:
 
 | Fixture | Purpose | Oracle |
 | --- | --- | --- |
-| crates/edict-syntax/tests/lowerability.rs | Existing v1 boundary fixtures. | Chained, floating, and ambiguous direct adapters remain unsupported. |
+| crates/amblicit-syntax/tests/lowerability.rs | Existing v1 boundary fixtures. | Chained, floating, and ambiguous direct adapters remain unsupported. |
 | planned v2 adapter-closure fixture corpus | Planned positive and negative v2 closure cases. | Must prove consumes-gated fixed-point resolution, ambiguity rejection, cycle rejection, and stable evidence hashing. |
 
 ## Test Cases
@@ -57,7 +57,7 @@ Out of scope:
 | V2DESIGN-TP-003 | planned | Closure success | V2DESIGN-REQ-003, V2DESIGN-REQ-006 | A closed acyclic adapter universe selects only adapters that consume current unresolved obligations and discharges root and transitive obligations with stable closure evidence. | - | - | Assert selected adapter coordinates, consumed obligations, and evidence digest behavior. |
 | V2DESIGN-TP-004 | planned | Ordering and ambiguity | V2DESIGN-REQ-004 | Reordered equivalent candidates produce the same result, while semantically distinct candidate sets reject as ambiguous. | - | - | Assert stable ambiguity kinds, not diagnostic prose. |
 | V2DESIGN-TP-005 | planned | Failure diagnostics | V2DESIGN-REQ-005 | Unsatisfied transitive obligations, adapter dependency cycles, ABI conflicts, version conflicts, and floating candidates reject with stable diagnostic kinds. | - | - | Diagnostics are structured values. |
-| V2DESIGN-TP-006 | implemented | v1 boundary | V2DESIGN-REQ-007 | Existing v1 lowerability rejects chained adapter claims with a stable failure kind. | v1_rejects_chained_adapter_claims | crates/edict-syntax/tests/lowerability.rs | Existing behavior guard; no v2 implementation claim. |
+| V2DESIGN-TP-006 | implemented | v1 boundary | V2DESIGN-REQ-007 | Existing v1 lowerability rejects chained adapter claims with a stable failure kind. | v1_rejects_chained_adapter_claims | crates/amblicit-syntax/tests/lowerability.rs | Existing behavior guard; no v2 implementation claim. |
 
 ## Determinism Obligations
 

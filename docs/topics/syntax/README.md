@@ -8,10 +8,10 @@ not a proposal document. Future syntax and semantic behavior live in
 
 ## Public Surface
 
-The parser crate is `edict-syntax`. Its public boundary is:
+The parser crate is `amblicit-syntax`. Its public boundary is:
 
 ```rust
-use edict_syntax::{parse_module, ParseErrorKind};
+use amblicit_syntax::{parse_module, ParseErrorKind};
 
 let module = parse_module(
     "package examples.hello@1;\n\

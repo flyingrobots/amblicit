@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://flyingrobots.dev/schemas/edict/cli-info/v1",
   "title": "Edict CLI Info v1",
-  "description": "JSONL informational record emitted to stdout for `edict --help` and `edict --version`.",
+  "description": "JSONL informational record emitted to stdout for `amblicit --help` and `amblicit --version`.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "type", "topic", "version"],
@@ -18,7 +18,7 @@
     },
     "version": {
       "type": "string",
-      "description": "The `edict` binary version."
+      "description": "The `amblicit` binary version."
     },
     "usage": {
       "type": "string",

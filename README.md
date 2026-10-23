@@ -5,7 +5,7 @@
 **Amblicit is lawful computation within explicit bounds.** An Amblicit program states what it will read, what it may change, what it costs and how it can fail. The compiler checks the supported parts of that statement before anything runs. [Current status](#current-status) lists what it does not check yet. The result is a digest-bound artifact that a runtime can review, admit and replay.
 
 > [!NOTE]
-> Amblicit was previously named **Edict**. The rename happens in stages. Crate names, the `edict` CLI, `.edict` source files and `edict.*` wire identifiers keep their current names until their stage lands. The [name decision](./docs/design/amblicit-name.md) lists every current and planned name.
+> Amblicit was previously named **Edict**. The rename happens in stages. The packages, the `amblicit` library and the `amblicit` CLI use the new name. The `.edict` source extension, the editor grammars and the `edict.*` wire identifiers keep their current names until their stage lands. The [name decision](./docs/design/amblicit-name.md) lists every current and planned name.
 
 Amblicit is alpha software. The compiler, the CLI and Target IR exist and have tests. Runtime execution belongs to the target runtime, such as [Echo](https://github.com/flyingrobots/echo). [Current status](#current-status) lists what works today.
 
@@ -158,7 +158,7 @@ The compiler's checks have limits:
 Amblicit is not on crates.io (`publish = false`). Build it from source with Rust 1.96 or later:
 
 ```sh
-cargo build -p edict-cli       # produces target/debug/edict
+cargo build -p amblicit-cli       # produces target/debug/amblicit
 ```
 
 The CLI reads JSONL requests on stdin and writes only JSONL. To check a source file:
@@ -167,7 +167,7 @@ The CLI reads JSONL requests on stdin and writes only JSONL. To check a source f
 printf '%s\n%s\n' \
   '{"schema":"edict.compiler.settings/v1","type":"compilerSettings","operation":"check"}' \
   '{"schema":"edict.compiler.input/v1","type":"compilerInput","kind":"path","path":"fixtures/lang/bounds/bounded-hello.edict"}' \
-  | target/debug/edict
+  | target/debug/amblicit
 ```
 
 A clean check exits with `0` and writes this output:
@@ -196,13 +196,13 @@ A `build` request contains one settings record and no compiler-input records. Th
 ```sh
 printf '%s\n' \
   '{"schema":"edict.compiler.settings/v1","type":"compilerSettings","operation":"build","application":"edict.application.json"}' \
-  | /path/to/edict/target/debug/edict
+  | /path/to/amblicit/target/debug/amblicit
 ```
 
 ```sh
 printf '%s\n' \
   '{"schema":"edict.compiler.settings/v1","type":"compilerSettings","operation":"build","lawpack":"edict.lawpack.json"}' \
-  | /path/to/edict/target/debug/edict
+  | /path/to/amblicit/target/debug/amblicit
 ```
 
 - An application build either calls the selected provider for its supported executable package, or publishes the supported request-only Core IR and Target IR slice.
@@ -219,7 +219,7 @@ The [lawpack authoring guide](./docs/topics/lawpack-authoring/README.md) explain
 ### As a library
 
 ```rust
-use edict::{check, CheckOutcome};
+use amblicit::{check, CheckOutcome};
 
 match check("package examples.hello@1;\n") {
     CheckOutcome::Valid => println!("ok"),

@@ -8,28 +8,28 @@ current branch; it is not a future package plan.
 The Rust workspace has six members:
 
 ```text
-flyingrobots-edict  ->  edict-syntax
-edict-cli  ->  edict-syntax
-xtask      ->  edict-syntax
-edict-provider-schema  ->  edict-syntax
-edict-provider-host-wasmtime  ->  edict-provider-schema  ->  edict-syntax
-edict-provider-host-wasmtime  ->  edict-syntax
+flyingrobots-amblicit  ->  amblicit-syntax
+amblicit-cli  ->  amblicit-syntax
+xtask      ->  amblicit-syntax
+amblicit-provider-schema  ->  amblicit-syntax
+amblicit-provider-host-wasmtime  ->  amblicit-provider-schema  ->  amblicit-syntax
+amblicit-provider-host-wasmtime  ->  amblicit-syntax
 ```
 
-`edict-syntax` has no dependency on the CLI or `xtask`. The CLI owns the public
-JSONL process boundary and delegates language work to `edict-syntax`. `xtask`
+`amblicit-syntax` has no dependency on the CLI or `xtask`. The CLI owns the public
+JSONL process boundary and delegates language work to `amblicit-syntax`. `xtask`
 owns repository maintenance checks, reviewed golden regeneration, release
 process guards, and topic-shelf contract checks.
-`edict-provider-schema` owns the immutable digest-bound CDDL registry used to
+`amblicit-provider-schema` owns the immutable digest-bound CDDL registry used to
 validate provider artifact instances without a component-runtime dependency.
-`edict-provider-host-wasmtime` owns the capability-denied external component
+`amblicit-provider-host-wasmtime` owns the capability-denied external component
 runtime without exposing Wasmtime types through Edict contracts.
 
 ## Crates
 
-### `flyingrobots-edict`
+### `flyingrobots-amblicit`
 
-`flyingrobots-edict` exposes the Rust library name `edict`. It is the curated
+`flyingrobots-amblicit` exposes the Rust library name `amblicit`. It is the curated
 public facade for source checking, stable diagnostic classifications, and
 canonical Core, Target IR, and result-projection artifact identity operations.
 The [public Rust API topic](docs/topics/public-rust-api/README.md) owns this
@@ -41,9 +41,9 @@ intended public Rust boundary; it neither authorizes nor claims crates.io
 publication. The CLI remains the complete application-build and JSONL process
 boundary.
 
-### `edict-syntax`
+### `amblicit-syntax`
 
-`edict-syntax` is the implementation crate for more than syntax. Its public name
+`amblicit-syntax` is the implementation crate for more than syntax. Its public name
 is historical and currently too narrow for its responsibilities. The crate
 exports:
 
@@ -94,9 +94,9 @@ Module map:
 | `highlight` | Lexical highlight roles consumed by editor tooling. |
 | `lib` | Public API facade and re-exports for the current alpha surface. |
 
-### `edict-cli`
+### `amblicit-cli`
 
-`edict-cli` provides the `edict` binary and its small support library. The binary
+`amblicit-cli` provides the `amblicit` binary and its small support library. The binary
 is JSONL-only today:
 
 - it accepts compiler settings and compiler input records on stdin;
@@ -105,16 +105,16 @@ is JSONL-only today:
 - it enforces a bounded stdin size;
 - it can confine path, path-list, directory, and glob inputs to an optional
   `inputRoot`;
-- it delegates parse and surface validation to `edict_syntax::check`.
+- it delegates parse and surface validation to `amblicit_syntax::check`.
 
 The CLI does not compile to Core, lower to Target IR, assemble bundles, admit
 bundles, or execute runtime behavior. It should remain a stream-contract and
 local input-boundary owner unless a future topic shelf expands its public
 surface.
 
-### `edict-provider-schema`
+### `amblicit-provider-schema`
 
-`edict-provider-schema` is the concrete, runtime-independent provider artifact
+`amblicit-provider-schema` is the concrete, runtime-independent provider artifact
 schema authority. It consumes a validated provider manifest plus explicit
 in-memory schema bytes, verifies their raw SHA-256 identities, compiles
 self-contained CDDL, proves required-domain closure, and implements the pure
@@ -122,9 +122,9 @@ self-contained CDDL, proves required-domain closure, and implements the pure
 no provider resolver, filesystem or network loader, Wasmtime dependency, or
 mutable registry API.
 
-### `edict-provider-host-wasmtime`
+### `amblicit-provider-host-wasmtime`
 
-`edict-provider-host-wasmtime` consumes selected manifest component proofs,
+`amblicit-provider-host-wasmtime` consumes selected manifest component proofs,
 resolver-supplied bytes, opaque validated requests, the concrete schema
 registry, and explicit invocation limits. It verifies component bytes against
 the selected digest before decoding, enforces a digest-covered exact contract
@@ -158,7 +158,7 @@ scaffolding but does not decide scope or create GitHub state.
 
 The workspace also owns a parser-checked external provider WIT transport
 contract under `docs/abi/`. `xtask` verifies its resolved package and world
-graph. `edict-syntax` mirrors its values for pure invocation validation, while
+graph. `amblicit-syntax` mirrors its values for pure invocation validation, while
 the private Wasmtime host performs typed external lowerer and verifier dispatch.
 
 The `xtask` implementation is split by responsibility:
@@ -213,21 +213,21 @@ resolution and target runtime execution remain outside this lane.
 Use these rules when placing new code:
 
 - Language model, validation, compiler, canonicalization, target, bundle, and
-  admission-boundary behavior belongs in `edict-syntax` until the crate-scope
+  admission-boundary behavior belongs in `amblicit-syntax` until the crate-scope
   decision changes the package layout.
 - CLI stream parsing, process exit codes, stdin/path trust boundaries, and JSONL
-  record production belong in `edict-cli`.
+  record production belong in `amblicit-cli`.
 - Repository checks, golden regeneration, release scaffolding, workflow guards,
   and topic-shelf validation belong in `xtask`.
-- `edict-syntax` must not depend on `edict-cli` or `xtask`.
-- `edict-provider-schema` may depend on `edict-syntax`; `edict-syntax` must not
+- `amblicit-syntax` must not depend on `amblicit-cli` or `xtask`.
+- `amblicit-provider-schema` may depend on `amblicit-syntax`; `amblicit-syntax` must not
   depend on the concrete registry.
-- `edict-provider-host-wasmtime` may depend on the schema registry and syntax
+- `amblicit-provider-host-wasmtime` may depend on the schema registry and syntax
   contracts. Neither dependency may depend on the host, and Wasmtime types must
   not cross its public boundary.
-- `edict-cli` may depend on `edict-syntax`; it should not duplicate language
+- `amblicit-cli` may depend on `amblicit-syntax`; it should not duplicate language
   semantics that the library already owns.
-- `xtask` may depend on `edict-syntax` and may inspect repository files, but its
+- `xtask` may depend on `amblicit-syntax` and may inspect repository files, but its
   checks must remain deterministic and avoid live GitHub state unless a workflow
   explicitly owns that boundary.
 

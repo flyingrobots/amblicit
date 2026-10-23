@@ -12,7 +12,7 @@ Edict-owned resource slots in `edict.target-profile/v1`:
 | `edict.wasm-component/v1` | `wasm-component.cbor` | `wasm-component.sha256` |
 
 The executable semantic model lives in
-`crates/edict-syntax/src/target_profile_contract_resources.rs`. Each digest is
+`crates/amblicit-syntax/src/target_profile_contract_resources.rs`. Each digest is
 SHA-256 over `['edict.digest/v1', <coordinate>, <canonical value>]`, not the raw
 file bytes or this review document.
 

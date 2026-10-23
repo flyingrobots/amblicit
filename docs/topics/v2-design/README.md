@@ -15,7 +15,7 @@ behavior.
 
 ## Current Contract
 
-- v2 adapter declarations do not exist in `edict_syntax`.
+- v2 adapter declarations do not exist in `amblicit_syntax`.
 - No adapter-composition resolver exists.
 - No closure evidence artifact, canonicalization rule, or digest exists.
 - No v2 diagnostic enum exists.

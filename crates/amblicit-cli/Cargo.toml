@@ -1,0 +1,38 @@
+[package]
+name = "amblicit-cli"
+version = "0.11.0-alpha.1"
+description = "Amblicit JSONL compiler command-line interface"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "amblicit"
+path = "src/main.rs"
+
+[dependencies]
+cap-fs-ext = "4.0.3"
+cap-std = "4.0.3"
+amblicit-provider-host-wasmtime = { path = "../amblicit-provider-host-wasmtime" }
+amblicit-provider-schema = { path = "../amblicit-provider-schema" }
+amblicit-syntax = { path = "../amblicit-syntax" }
+glob = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(any(target_vendor = "apple", target_os = "linux", target_os = "android", target_os = "redox"))'.dependencies]
+rustix = { version = "1.1.4", features = ["fs"] }
+
+[dev-dependencies]
+tempfile = "3"
+serde_json = "1"
+jsonschema = { version = "0.58.6", default-features = false }
+
+[[example]]
+name = "configurable-causal-cell"
+path = "examples/configurable_causal_cell/main.rs"

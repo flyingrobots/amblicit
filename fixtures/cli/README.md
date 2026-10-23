@@ -1,8 +1,8 @@
 # CLI Golden Fixtures
 
-Each subdirectory is one end-to-end golden case for the public `edict` CLI. The
+Each subdirectory is one end-to-end golden case for the public `amblicit` CLI. The
 `golden_cli_fixtures_replay_exactly` test (in
-`crates/edict-cli/tests/golden_cli.rs`) replays every case through the compiled
+`crates/amblicit-cli/tests/golden_cli.rs`) replays every case through the compiled
 binary and matches stdout, stderr, and the exit code byte-for-byte against the
 checked-in goldens.
 

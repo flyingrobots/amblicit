@@ -18,7 +18,7 @@ canonicalization.
 The public validation entry point is `validate_surface`:
 
 ```rust
-use edict_syntax::{parse_module, validate_surface, SemanticErrorKind};
+use amblicit_syntax::{parse_module, validate_surface, SemanticErrorKind};
 
 let module = parse_module(
     "package examples.hello@1;\n\

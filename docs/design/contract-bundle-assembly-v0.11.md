@@ -3,7 +3,7 @@
 Status: design record for the `v0.11.0-alpha.1` contract-bundle assembly slice.
 This is a scope boundary note, not a bundle manifesto. The normative contract is
 [SPEC - Continuum Contract Bundle v1](../SPEC_continuum-contract-bundle-v1.md);
-the existing validation surface is in `crates/edict-syntax/src/contract_bundle.rs`.
+the existing validation surface is in `crates/amblicit-syntax/src/contract_bundle.rs`.
 
 ## Why this note exists
 

@@ -7,7 +7,7 @@ case "$CARGO_TARGET_DIR" in
 esac
 export CARGO_TARGET_DIR
 EDICT_SOURCE="$(pwd)"
-EDICT_BINARY="$CARGO_TARGET_DIR/debug/edict"
+EDICT_BINARY="$CARGO_TARGET_DIR/debug/amblicit"
 export EDICT_SOURCE EDICT_BINARY
-cargo build --locked -p edict-cli
+cargo build --locked -p amblicit-cli
 exec python3 scripts/consumer-witnesses/jedit-state-read.py

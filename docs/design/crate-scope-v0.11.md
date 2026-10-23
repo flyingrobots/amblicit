@@ -4,7 +4,7 @@ Status: decided for the audit-remediation branch. Implementation is deferred.
 
 ## Decision
 
-Edict should eventually split the current overbroad `edict-syntax` crate into
+Edict should eventually split the current overbroad `amblicit-syntax` crate into
 layered crates behind an umbrella crate. A simple rename is not the preferred
 long-term fix.
 
@@ -12,20 +12,20 @@ The target package shape is:
 
 | Future crate | Intended responsibility |
 | --- | --- |
-| `edict-syntax` | Lexing, parsing, source AST, and syntax-adjacent diagnostics. |
-| `edict-core` | Surface validation, compiler context, compiler spine, Core IR, canonical Core encoding, and Core digest helpers. |
-| `edict-targets` | Target-profile conformance, lowerability, and Target IR artifact construction/canonicalization. |
-| `edict-admission` | Contract-bundle assembly/validation and Edict-owned Gate C request/receipt validation. |
-| `edict` | Curated umbrella re-exports for the supported public alpha API. |
+| `amblicit-syntax` | Lexing, parsing, source AST, and syntax-adjacent diagnostics. |
+| `amblicit-core` | Surface validation, compiler context, compiler spine, Core IR, canonical Core encoding, and Core digest helpers. |
+| `amblicit-targets` | Target-profile conformance, lowerability, and Target IR artifact construction/canonicalization. |
+| `amblicit-admission` | Contract-bundle assembly/validation and Edict-owned Gate C request/receipt validation. |
+| `amblicit` | Curated umbrella re-exports for the supported public alpha API. |
 
 The dependency direction should be acyclic:
 
 ```text
-edict
-  -> edict-admission
-      -> edict-targets
-          -> edict-core
-              -> edict-syntax
+amblicit
+  -> amblicit-admission
+      -> amblicit-targets
+          -> amblicit-core
+              -> amblicit-syntax
 ```
 
 The exact split can be narrower when implemented, but dependency direction must
@@ -43,7 +43,7 @@ all live in one crate. Renaming the crate would keep that architecture intact.
 This audit branch is closing several behavior, tooling, and documentation
 findings. Moving public APIs across packages would create a large semver and
 review surface without changing runtime behavior. It would also interfere with
-the ongoing release-train evidence that currently cites `edict_syntax` public
+the ongoing release-train evidence that currently cites `amblicit_syntax` public
 items directly.
 
 The package split should be its own pre-1.0 migration slice with:
@@ -56,7 +56,7 @@ The package split should be its own pre-1.0 migration slice with:
 
 ## Current Branch Rule
 
-Until the split lands, new code may continue to live in `edict-syntax` only when
+Until the split lands, new code may continue to live in `amblicit-syntax` only when
 it preserves the internal layer order documented in
 [`ARCHITECTURE.md`](../../ARCHITECTURE.md):
 

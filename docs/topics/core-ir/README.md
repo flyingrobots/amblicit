@@ -18,7 +18,7 @@ Core is downstream of the source AST. The source parser still returns source
 AST, not Core; the compiler-spine shelf owns the initial executable lowering
 from source AST to in-memory Core.
 
-The `edict_syntax` crate exposes `encode_core_module` for
+The `amblicit_syntax` crate exposes `encode_core_module` for
 `edict.canonical-cbor/v1` Core bytes, `decode_canonical_cbor` for canonical byte
 validation, `encode_canonical_cbor` for decoded canonical values, and
 `digest_core_module` for the domain-separated `edict.core.module/v1` digest. The

@@ -10,8 +10,8 @@ It uses the existing JSON authoring API without changing the stock generator.
 From the Edict checkout, build both binaries:
 
 ```sh
-cargo build -p edict-cli --bin edict --example configurable-causal-cell
-EDICT_BIN="$(pwd)/target/debug/edict"
+cargo build -p amblicit-cli --bin amblicit --example configurable-causal-cell
+EDICT_BIN="$(pwd)/target/debug/amblicit"
 EDICT_CELL_HELPER="$(pwd)/target/debug/examples/configurable-causal-cell"
 ```
 

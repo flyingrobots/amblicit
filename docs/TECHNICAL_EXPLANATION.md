@@ -109,7 +109,7 @@ Once compiled and admitted as a **Contract Bundle**, the runtime executes the in
 ## 4. The Entry Point: Compilation Lifecycle
 
 The parsing of Edict source code begins with the `parse_module` function defined
-in [lib.rs](../crates/edict-syntax/src/lib.rs#L18-L21) (specifically exposed
+in [lib.rs](../crates/amblicit-syntax/src/lib.rs#L18-L21) (specifically exposed
 from the `parser` module).
 
 ```mermaid
@@ -160,7 +160,7 @@ The lexical analysis phase scans character sequences to emit a `Vec<Token>` stre
 ### The Source of Truth (Lexer State)
 
 During lexing, the state lives entirely in memory within the `Lexer<'a>` struct
-defined in [token.rs](../crates/edict-syntax/src/token.rs#L143-L146):
+defined in [token.rs](../crates/amblicit-syntax/src/token.rs#L143-L146):
 
 ```rust
 struct Lexer<'a> {
@@ -284,7 +284,7 @@ Expressions in Edict are parsed using **precedence climbing**, which allows
 efficient parsing of infix operations without deep call stacks. The parser
 defines standard levels of precedence (relational, additive, multiplicative,
 etc.) using the helper `binop_left` defined in
-[parser.rs](../crates/edict-syntax/src/parser.rs#L1109-L1132):
+[parser.rs](../crates/amblicit-syntax/src/parser.rs#L1109-L1132):
 
 ```rust
 fn binop_left(
@@ -554,7 +554,7 @@ Traditional programming languages embrace concurrency (multithreading, async que
 
 ## 11. External Dependencies & Boundaries
 
-Edict maintains a strict code boundary. The syntax crate `edict-syntax` keeps
+Edict maintains a strict code boundary. The syntax crate `amblicit-syntax` keeps
 its dependency surface explicit and narrow:
 
 - **No Parser Framework Dependency**: Parsing remains hand-written and
@@ -630,7 +630,7 @@ Edict incorporates several specific syntactic and behavioral designs that differ
 
 ### Quirk B: Contextual Keyword Resolution
 
-- **Quirk**: Keywords like `max`, `min`, `canonical`, `type`, and `intent` are not reserved tokens in Edict. The lexer produces a generic `Ident(String)` token for all keywords. The [parser](../crates/edict-syntax/src/parser.rs#L44-L92) determines contextually whether an identifier represents a declaration keyword or a variable name.
+- **Quirk**: Keywords like `max`, `min`, `canonical`, `type`, and `intent` are not reserved tokens in Edict. The lexer produces a generic `Ident(String)` token for all keywords. The [parser](../crates/amblicit-syntax/src/parser.rs#L44-L92) determines contextually whether an identifier represents a declaration keyword or a variable name.
 - **Why We Did It This Way**: In languages with reserved keyword sets, developers cannot use common words like `type` or `max` as field names (e.g., `payload.type` or `object.max` are syntax errors in Rust and Java unless escaped). By matching keywords contextually, Edict allows developers to write natural, standard API interfaces while keeping the underlying compiler lexer simple and zero-dependency.
 
 ### Quirk C: Obstruction-Driven Control Flow (No Exceptions)

@@ -57,7 +57,7 @@ Out of scope:
 | RUST-TP-006 | planned | Lint ratchet | RUST-REQ-006 | Add scoped lint allowances and then deny library-code footgun lints. | - | - | Planned cleanup slice. |
 | RUST-TP-007 | implemented | Dependency gate | RUST-REQ-007 | CI installs pinned cargo-deny and checks both root and provider fixture guest lockfiles under the reviewed advisory, license, ban, and source policy. | cargo_deny_supply_chain_gate_covers_root_and_fixture_guest | deny.toml, .github/workflows/ci.yml, Cargo.lock, fixtures/providers/components/guests/Cargo.lock | This gate does not publish crates. |
 | RUST-TP-008 | planned | Fuzzing | RUST-REQ-008 | Add fuzz targets for parser/decoder surfaces. | - | - | Planned hardening slice. |
-| RUST-TP-009 | implemented | MSRV guard | RUST-REQ-009 | Cargo metadata reports Rust 1.96 for every workspace package, and the exact CI toolchain label agrees. | workspace_msrv_matches_the_ci_toolchain | Cargo.toml, crates/edict-cli/Cargo.toml, crates/edict-provider-host-wasmtime/Cargo.toml, crates/edict-provider-schema/Cargo.toml, crates/edict-syntax/Cargo.toml, xtask/Cargo.toml, .github/workflows/ci.yml | Required by the pinned Bunny 0.6.0 numeric dependency. |
+| RUST-TP-009 | implemented | MSRV guard | RUST-REQ-009 | Cargo metadata reports Rust 1.96 for every workspace package, and the exact CI toolchain label agrees. | workspace_msrv_matches_the_ci_toolchain | Cargo.toml, crates/amblicit-cli/Cargo.toml, crates/amblicit-provider-host-wasmtime/Cargo.toml, crates/amblicit-provider-schema/Cargo.toml, crates/amblicit-syntax/Cargo.toml, xtask/Cargo.toml, .github/workflows/ci.yml | Required by the pinned Bunny 0.6.0 numeric dependency. |
 
 ## Determinism Obligations
 

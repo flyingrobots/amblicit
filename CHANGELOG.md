@@ -8,6 +8,23 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- **Breaking:** stage 2 of the Amblicit rename renames the packages, the
+  facade library and the CLI binary. The package `flyingrobots-edict` is now
+  `flyingrobots-amblicit`, with the library name `amblicit` in place of
+  `edict`. `edict-cli`, `edict-syntax`, `edict-provider-schema` and
+  `edict-provider-host-wasmtime` are now `amblicit-cli`, `amblicit-syntax`,
+  `amblicit-provider-schema` and `amblicit-provider-host-wasmtime`, in
+  `crates/amblicit*`. The CLI binary `edict` is now `amblicit`. To migrate,
+  build with `cargo build -p amblicit-cli` and run `target/debug/amblicit`,
+  write `use amblicit::…` in place of `use edict::…` (and `amblicit_syntax::`
+  in place of `edict_syntax::`), and depend on
+  `flyingrobots-amblicit`. The `--help` usage text and the invalid-argument
+  message now name `amblicit`. Wire identifiers (`edict.*/vN`), canonical
+  bytes, digests, golden artifacts, diagnostic kinds, the `.edict` source
+  extension, the editor grammars and the `EDICT_CLI_MAX_STDIN_BYTES`
+  environment variable do not change. The
+  [name decision](docs/design/amblicit-name.md) lists the current names.
+
 - Rename the project to **Amblicit** (slogan: *Use only as declared.*). This is
   stage 1 of a staged rename: the root `README.md` uses the new name, and the
   documentation router links to the name decision. Crate names, the `edict` CLI, `.edict` source files and

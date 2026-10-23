@@ -71,7 +71,7 @@ jobs:
         run: rustup toolchain install stable --profile minimal
       - name: Write publication fails closed before I/O
         run: >-
-          cargo +stable test -p edict-cli
+          cargo +stable test -p amblicit-cli
           windows_lawpack_build_fails_closed_before_document_io
           -- --nocapture
 

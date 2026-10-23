@@ -17,7 +17,7 @@ identity system, or policy behind those files.
 
 ## Public Surface
 
-The public authority-facts surface lives in `edict_syntax`:
+The public authority-facts surface lives in `amblicit_syntax`:
 
 - `load_authority_facts_file` parses and validates one JSON authority-facts
   document. [AUTHFACTS-REQ-001]

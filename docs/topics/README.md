@@ -38,7 +38,7 @@ cargo xtask verify
 - [Authority Facts](./authority-facts/README.md): JSON and canonical-CBOR
   compiler context facts with digest-bound source identity, normative CDDL, and
   stable load/decode failures.
-- [CLI](./cli/README.md): JSONL-only `edict` command-line boundary for stdin
+- [CLI](./cli/README.md): JSONL-only `amblicit` command-line boundary for stdin
   request records, structured stdout/stderr events, and compiler settings.
 - [Compiler Spine](./compiler-spine/README.md): executable source-AST to
   in-memory Core IR stage contract for the initial lowerable subset.
@@ -84,7 +84,7 @@ cargo xtask verify
   design, I/O boundary, dependency, generated-artifact, and review policy.
 - [Semantic Validation](./semantic-validation/README.md): source/surface
   `validate_surface` stage contract and verification matrix.
-- [Syntax](./syntax/README.md): Phase 1 `edict-syntax` lexer/parser contract and
+- [Syntax](./syntax/README.md): Phase 1 `amblicit-syntax` lexer/parser contract and
   verification matrix.
 - [Target IR](./target-ir/README.md): first target-owned artifact generation
   boundary for Echo Span IR and later target profiles.

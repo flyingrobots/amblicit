@@ -1,0 +1,23 @@
+[package]
+name = "amblicit-provider-host-wasmtime"
+version = "0.11.0-alpha.1"
+description = "Capability-denied Wasmtime component host for Amblicit providers"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+amblicit-provider-schema = { path = "../amblicit-provider-schema" }
+amblicit-syntax = { path = "../amblicit-syntax" }
+sha2 = "0.10.9"
+wasmparser = { version = "=0.251.0", default-features = false, features = ["component-model", "std", "validate"] }
+wasmtime = { version = "=48.0.7", default-features = false, features = ["component-model", "cranelift", "runtime", "std"] }
+
+[dev-dependencies]
+wasm-encoder = "=0.251.0"
+wat = "=1.251.0"

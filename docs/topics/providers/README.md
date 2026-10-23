@@ -15,7 +15,7 @@ packages or interpret runtime-specific semantics.
 
 ## Current Contract
 
-The `edict_syntax` crate exposes:
+The `amblicit_syntax` crate exposes:
 
 - `TargetProviderManifest`;
 - `ProviderArtifactRef`;
@@ -52,7 +52,7 @@ exposes:
 - `ValidatedProviderOutcome` plus `ProviderOutputManifest` for results that have
   crossed the complete validation boundary.
 
-The private `edict-provider-schema` crate supplies the production
+The private `amblicit-provider-schema` crate supplies the production
 `ProviderArtifactSchemaValidator`. Its constructor accepts only an opaque
 validated manifest, explicit in-memory schema bytes keyed by manifest role, and
 the host-authored required-domain closure. It verifies raw schema digests,
@@ -66,7 +66,7 @@ evaluation has descended into a proper map key/value or array element; direct
 or mutual aliases and choice-only cycles therefore remain invalid. Structurally
 unusable roots reject during construction, and every repeated array or map
 member must still be provably input-consuming. Before component execution,
-`edict-provider-schema` audits recursive roots for structural progress and
+`amblicit-provider-schema` audits recursive roots for structural progress and
 validates canonical values under the exact nesting gate, preventing
 zero-progress validation independently of any external execution budget. When
 competing alternatives can re-enter recursive validation, every alternative
@@ -145,7 +145,7 @@ manifest-bound schema registry. The trusted Edict pack's productive recursive
 Core rules satisfy the same guarded structural-descent policy applied to every
 provider schema. [PROVIDERS-REQ-030, PROVIDERS-REQ-031]
 
-The private `edict-provider-host-wasmtime` crate supplies the component host.
+The private `amblicit-provider-host-wasmtime` crate supplies the component host.
 Its input is a selected component proof plus resolver-supplied bytes; it performs
 no discovery, fetching, mutable-name lookup, or cache lookup. Preparation
 recomputes the selected manifest digest before decoding, requires exactly one
@@ -349,7 +349,7 @@ fixtures/core/canonical/bounded-hello.core.cbor
 fixtures/target-ir/canonical/echo-effectful.target-ir.cbor
 ```
 
-`crates/edict-syntax/tests/provider_invocation.rs` binds those bytes into typed
+`crates/amblicit-syntax/tests/provider_invocation.rs` binds those bytes into typed
 lowering and verification requests, then exercises accepted envelopes and
 structured negative mutations without loading a component.
 

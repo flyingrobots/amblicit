@@ -1,7 +1,7 @@
 # Author an Application-Owned Lawpack
 
 This guide shows an application repository how to turn one reviewable JSON
-definition into the canonical lawpack artifacts consumed by `edict application
+definition into the canonical lawpack artifacts consumed by `amblicit application
 build`. The application owns the vocabulary and declarations. Edict owns schema
 checking, canonical CBOR, digest framing, closure validation, and publication.
 No provider component or runtime participates in authoring.
@@ -345,7 +345,7 @@ Follow [Author a causal-cell lawpack with your own limits](../../how-to/configur
 to generate the documents and run the public build commands.
 
 The application-owned support modules under
-`crates/edict-cli/examples/configurable_causal_cell/` derive a complete
+`crates/amblicit-cli/examples/configurable_causal_cell/` derive a complete
 `edict.lawpack-build/v1` document from explicit key/value scalar bounds and a
 replacement-byte cap. Edict derives local resource identities during authoring;
 the helper does not edit CBOR or calculate replacement digest pins itself.

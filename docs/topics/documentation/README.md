@@ -29,7 +29,7 @@ Edict uses these page types:
 Topic shelves in `docs/topics/` are contributor and evidence material first.
 They may contain explanation or reference facts, but they are not a substitute
 for user-facing tutorials or task guides for directly operated surfaces such as
-the `edict` CLI. [DOCS-REQ-002]
+the `amblicit` CLI. [DOCS-REQ-002]
 
 ## Edict documentation shape
 

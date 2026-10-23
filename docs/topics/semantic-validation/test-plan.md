@@ -6,8 +6,8 @@ Status: current verification design for source-AST semantic validation.
 
 In scope:
 
-- `edict_syntax::validate_surface`;
-- `edict_syntax::validate_module` as a compatibility alias for the same stage;
+- `amblicit_syntax::validate_surface`;
+- `amblicit_syntax::validate_module` as a compatibility alias for the same stage;
 - stable `SemanticErrorKind` identities;
 - source-AST checks independent of import resolution, resolved typing,
   target/lawpack facts, and Core IR;
@@ -24,7 +24,7 @@ Out of scope for this first slice:
 
 | ID | Status | Requirement | Source |
 | --- | --- | --- | --- |
-| SEMVAL-REQ-001 | implemented | Validation returns structured semantic errors with stable kinds and source span payloads. | crates/edict-syntax/src/semantic.rs |
+| SEMVAL-REQ-001 | implemented | Validation returns structured semantic errors with stable kinds and source span payloads. | crates/amblicit-syntax/src/semantic.rs |
 | SEMVAL-REQ-002 | implemented | Runtime `String` and `Bytes` type references must be explicitly bounded. | EDICT-LANG-BOUNDS-001 |
 | SEMVAL-REQ-003 | implemented | Each intent must declare at least one operation mode: `profile` or `implements`. | EDICT-LANG-INTENT-CLAUSES-001 |
 | SEMVAL-REQ-004 | implemented | Each intent must declare a `budget` clause. | EDICT-LANG-INTENT-CLAUSES-001 |

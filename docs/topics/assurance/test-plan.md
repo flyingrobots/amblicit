@@ -23,9 +23,9 @@ Out of scope:
 
 | ID | Status | Requirement | Source |
 | --- | --- | --- | --- |
-| ASSURANCE-REQ-001 | implemented | Contract-bundle assurance evidence is optional, role-tagged, digest-locked, and bound to the selected bundle subject when present. | crates/edict-syntax/src/contract_bundle.rs, docs/GUIDE_edict-assurance-transparency.md |
-| ASSURANCE-REQ-002 | implemented | Assurance evidence must match the bundle target-profile digest and target-IR digest. | crates/edict-syntax/src/contract_bundle.rs |
-| ASSURANCE-REQ-003 | implemented | Admission artifacts remain outside participant-neutral contract bundles. | crates/edict-syntax/src/contract_bundle.rs, docs/SPEC_continuum-admission-v1.md |
+| ASSURANCE-REQ-001 | implemented | Contract-bundle assurance evidence is optional, role-tagged, digest-locked, and bound to the selected bundle subject when present. | crates/amblicit-syntax/src/contract_bundle.rs, docs/GUIDE_edict-assurance-transparency.md |
+| ASSURANCE-REQ-002 | implemented | Assurance evidence must match the bundle target-profile digest and target-IR digest. | crates/amblicit-syntax/src/contract_bundle.rs |
+| ASSURANCE-REQ-003 | implemented | Admission artifacts remain outside participant-neutral contract bundles. | crates/amblicit-syntax/src/contract_bundle.rs, docs/SPEC_continuum-admission-v1.md |
 | ASSURANCE-REQ-004 | gap | HOLMES, Watson, Moriarty, transparency, profile-diff, and hash-ladder tooling are not implemented in this repository. | docs/GUIDE_edict-assurance-transparency.md, ROADMAP.md |
 
 ## Fixtures
