@@ -20,7 +20,7 @@ The current target IR implementation is deliberately narrow:
 
 - selected target profile: `echo.dpo@1` or `gitwarp.ref_crdt@1`;
 - selected Target IR artifact domain: `echo.span-ir/v1`, explicitly ordered
-  `echo.span-ir/v2`, or
+  `echo.span-ir/v2`, explicitly structured `echo.span-ir/v3`, or
   `gitwarp.commit-reducer-ir/v1`;
 - selected source/Core shape: source-ordered pure `let` bindings, the first
   supported effectful Core effect node, Echo `require` guard requirements, and
@@ -179,6 +179,65 @@ refuses at Target lowering; an experimental v2 selection reaches the pinned
 old Echo provider's schema gate and refuses before provider execution or
 package publication. It does not repin Jim or claim a released Echo v2 target
 contract. [TIR-REQ-050]
+
+## Structured control flow
+
+`echo.span-ir/v3` under `echo.dpo@1` extends the v2 execution order with
+bounded `for` loops over a Core `List` and statement-only branches. It uses
+`kind: "structuredTargetIrArtifact"` and requires `executionOrder` on every
+intent. The order is a tree: an instruction entry is the text id of a pure
+binding, step or requirement in the existing tables; a control entry is a map.
+[TIR-REQ-060]
+
+```json
+{"executionOrder": [
+  {"kind": "for", "id": "t.for.0", "binder": {...}, "iterable": {...},
+   "bound": {"kind": "literal", "value": 4}, "body": ["t.step.0"]}
+]}
+```
+
+A `for` entry carries the Core binder, iterable and bound exactly; a `branch`
+entry carries the Core predicate and `then`/`else` entry arrays. Control ids are
+`<intent>.for.<n>` and `<intent>.branch.<n>`, numbered per kind in source
+pre-order; instruction ids continue the intent tables, so a loop body's effect
+appears once in `steps` however many elements the loop visits. The Core
+evaluation budget is copied unchanged and no effective cardinality is derived,
+following spec invariant I-016. [TIR-REQ-060]
+
+The iterable is evaluated once at loop entry in the enclosing scope. The binder
+is in scope only in the body. Locals a body introduces are available to later
+entries of the same body, are fresh per iteration, and are not visible after
+the loop. A branch predicate is evaluated in the enclosing scope and each arm
+has its own scope. Obstruction-arm binders stay scoped to their arm, as in v2.
+[TIR-REQ-060]
+
+Core-to-Target validation covers nested blocks under v3: types, closed
+authority, block local tables, unique identities across the intent, binder
+identity, iterable shape (a list whose items fit the binder, with a literal
+bound no smaller than its maximum, or a coordinate bound below an imported
+digest-locked lawpack), totality and intrinsic cost. The canonical encoder
+independently requires every table instruction exactly once in the whole tree,
+nonempty unique control ids disjoint from instruction ids, binders that reuse
+no produced or visible identity, scoped producer-before-consumer references,
+and the canonical nesting depth. Failures are `InvalidCoreIdentity` or
+`CanonicalErrorKind::UnsupportedValue` with no artifact. [TIR-REQ-060]
+
+Value-yielding branches refuse with `UnsupportedCoreNode` detail
+`branch_binding`; a loop body or arm whose Core block result is not null refuses
+with `control_block_result`; external-action requests refuse with
+`ordered_external_action_request`, as under v2. v1 and v2 still refuse `For`
+and `Branch` with details `for` and `branch`, keep their exact bytes, and the
+v2 encoder refuses control entries. [TIR-REQ-060]
+
+Selection is explicit through the same paths as v2. The current provider
+contract publication adds the v3 schema root; prior publications are unchanged.
+Result projections still refuse intents with structured control
+(`CoreTargetMismatch`), so the public application-build route cannot yet admit
+a v3 intent. Echo's provider checks the Target IR domain exactly and refuses
+v3; this is compiler evidence only, with no runtime loop or branch execution.
+Issue #267 asks that the loop bound be charged against an effect budget; Edict
+declares no effect budget today (`targetBudget` is unimplemented), so the bound
+is preserved as Core data and the Core step budget is unchanged. [TIR-REQ-060]
 
 ## Shared expression and identity validation
 
@@ -364,7 +423,10 @@ The following are not implemented by this slice:
 - Echo runtime receipts for first-class resumable obstruction strands;
 - Echo request admission, adapter execution, and settlement resumption;
 - additional target profiles beyond Echo and git-warp;
-- v2 chained or composite adapter resolution.
+- v2 chained or composite adapter resolution;
+- result projections and application builds for structured v3 intents;
+- value-yielding branches, `Map` iteration, and an effect budget charged by
+  loop bounds.
 
 The verification matrix is tracked in [test-plan.md](./test-plan.md).
 

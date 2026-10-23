@@ -17,10 +17,10 @@ use edict_syntax::{
     CoreExternalActionBudget, CoreObstructionReason, CorePredicate, CoreValue, LocalRef,
     ProviderArtifactSchemaValidationErrorKind, ResourceRef, ResultProjection, ResultProjectionExpr,
     ResultProjectionSource, TargetIrArtifact, TargetIrExternalActionRequest, TargetIrIntent,
-    TargetIrPureBinding, TargetIrRequireFailure, TargetIrRequirement, TargetIrSemanticClosure,
-    TargetProfileContractResource, WriteClass, AUTHORITY_FACTS_API_VERSION,
-    CORE_MODULE_DIGEST_DOMAIN, PROVIDER_LAWPACK_ARTIFACT_DOMAIN, RESULT_PROJECTION_DIGEST_DOMAIN,
-    TARGET_IR_ARTIFACT_DIGEST_DOMAIN, TARGET_PROFILE_API_VERSION,
+    TargetIrOrderEntry, TargetIrPureBinding, TargetIrRequireFailure, TargetIrRequirement,
+    TargetIrSemanticClosure, TargetProfileContractResource, WriteClass,
+    AUTHORITY_FACTS_API_VERSION, CORE_MODULE_DIGEST_DOMAIN, PROVIDER_LAWPACK_ARTIFACT_DOMAIN,
+    RESULT_PROJECTION_DIGEST_DOMAIN, TARGET_IR_ARTIFACT_DIGEST_DOMAIN, TARGET_PROFILE_API_VERSION,
 };
 use sha2::{Digest, Sha256};
 
@@ -33,6 +33,12 @@ const AUTHORITY_FACTS_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-auth
 const RESULT_PROJECTION_CDDL: &[u8] =
     include_bytes!("../../../docs/abi/edict-result-projection.cddl");
 const TARGET_IR_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-target-ir.cddl");
+/// Target IR schema bytes before the structured `echo.span-ir/v3` root; the
+/// v1, source-function and source-module publications embed these bytes.
+const PRE_STRUCTURED_TARGET_IR_CDDL: &[u8] =
+    include_bytes!("../../../fixtures/target-ir/pre-structured-target-ir.cddl");
+const STRUCTURED_TARGET_IR_FIXTURE: &[u8] =
+    include_bytes!("../../../fixtures/target-ir/canonical/echo-structured-loop.target-ir.cbor");
 const CORE_FIXTURE: &[u8] =
     include_bytes!("../../../fixtures/core/canonical/bounded-hello.core.cbor");
 const EXTERNAL_REQUEST_CORE_FIXTURE: &[u8] =
@@ -310,6 +316,90 @@ fn target_ir_root_matches_reference_encoder() {
 }
 
 #[test]
+fn structured_target_ir_schema_accepts_nested_order_entries() {
+    let pack = assemble(canonical_target_profile_contract_resources());
+    let value = decode_canonical_cbor(STRUCTURED_TARGET_IR_FIXTURE).expect("canonical v3 golden");
+    pack.validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &value)
+        .expect("v3 schema agrees with the reviewed encoder output");
+
+    let mut missing = value.clone();
+    let intents = map_value_mut(&mut missing, "intents");
+    remove_map_field(map_value_mut(intents, "t"), "executionOrder");
+    let mut downgraded = value.clone();
+    *map_value_mut(&mut downgraded, "domain") = CanonicalValue::Text("echo.span-ir/v2".to_owned());
+    let mut downgraded_kind = value.clone();
+    *map_value_mut(&mut downgraded_kind, "kind") =
+        CanonicalValue::Text("orderedTargetIrArtifact".to_owned());
+    let mut unknown_entry = value.clone();
+    let intents = map_value_mut(&mut unknown_entry, "intents");
+    let CanonicalValue::Array(order) = map_value_mut(map_value_mut(intents, "t"), "executionOrder")
+    else {
+        panic!("order array");
+    };
+    *map_value_mut(&mut order[0], "kind") = CanonicalValue::Text("loop".to_owned());
+    let mut malformed_body = value.clone();
+    let intents = map_value_mut(&mut malformed_body, "intents");
+    let CanonicalValue::Array(order) = map_value_mut(map_value_mut(intents, "t"), "executionOrder")
+    else {
+        panic!("order array");
+    };
+    *map_value_mut(&mut order[0], "body") =
+        CanonicalValue::Array(vec![CanonicalValue::Text(String::new())]);
+    let mut missing_bound = value.clone();
+    let intents = map_value_mut(&mut missing_bound, "intents");
+    let CanonicalValue::Array(order) = map_value_mut(map_value_mut(intents, "t"), "executionOrder")
+    else {
+        panic!("order array");
+    };
+    remove_map_field(&mut order[0], "bound");
+    for (case, invalid) in [
+        ("missing order", missing),
+        ("v2 domain", downgraded),
+        ("v2 kind", downgraded_kind),
+        ("unknown entry kind", unknown_entry),
+        ("empty nested id", malformed_body),
+        ("missing bound", missing_bound),
+    ] {
+        assert_eq!(
+            pack.validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &invalid),
+            Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch),
+            "{case}"
+        );
+    }
+}
+
+#[test]
+fn source_module_publication_is_reproduced_from_frozen_target_ir_schema() {
+    let old = assemble_provider_contract_pack(ProviderContractPackInput {
+        target_ir_cddl: PRE_STRUCTURED_TARGET_IR_CDDL,
+        ..input(canonical_target_profile_contract_resources())
+    })
+    .unwrap();
+    assert_eq!(
+        old.cddl_bytes(),
+        include_bytes!(
+            "../../../fixtures/provider-contracts/source-modules-v1/edict-provider-contracts.cddl"
+        )
+    );
+    assert_eq!(
+        old.manifest_bytes(),
+        include_bytes!("../../../fixtures/provider-contracts/source-modules-v1/manifest.json")
+    );
+    let structured =
+        decode_canonical_cbor(STRUCTURED_TARGET_IR_FIXTURE).expect("canonical v3 golden");
+    assert_eq!(
+        old.validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &structured),
+        Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch),
+        "the frozen publication does not reinterpret v3"
+    );
+    let current = assemble(canonical_target_profile_contract_resources());
+    assert_ne!(old.raw_sha256(), current.raw_sha256());
+    current
+        .validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &structured)
+        .expect("the current publication accepts v3");
+}
+
+#[test]
 fn ordered_target_ir_schema_requires_explicit_execution_order() {
     let pack = assemble(canonical_target_profile_contract_resources());
     let mut artifact = representative_target_ir("echo.dpo@1");
@@ -319,8 +409,8 @@ fn ordered_target_ir_schema_requires_explicit_execution_order() {
         .get_mut("apply")
         .expect("intent")
         .execution_order = Some(vec![
-        "apply.require.0".to_owned(),
-        "apply.require.1".to_owned(),
+        TargetIrOrderEntry::Instruction("apply.require.0".to_owned()),
+        TargetIrOrderEntry::Instruction("apply.require.1".to_owned()),
     ]);
     let value = encode_target_ir_value(&artifact);
     pack.validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &value)
@@ -1212,7 +1302,7 @@ fn source_function_contract_preserves_old_modules_and_requires_new_schema_select
     });
     let old = assemble_provider_contract_pack(input_with(
         include_bytes!("../../../fixtures/lang/functions/legacy-core.cddl"),
-        TARGET_IR_CDDL,
+        PRE_STRUCTURED_TARGET_IR_CDDL,
         canonical_target_profile_contract_resources(),
     ))
     .unwrap();
@@ -1263,7 +1353,7 @@ fn source_closure_contract_has_its_own_domain_and_closed_typed_wire() {
         .expect("source closure publication has a distinct typed domain");
     let old = assemble_provider_contract_pack(input_with(
         CORE_CDDL,
-        TARGET_IR_CDDL,
+        PRE_STRUCTURED_TARGET_IR_CDDL,
         canonical_target_profile_contract_resources(),
     ))
     .unwrap();

@@ -46,10 +46,12 @@ Edict-owned target-profile contract resources live in
 [`target-profile/contract-resources/`](./target-profile/contract-resources/).
 The first canonical lawpack manifest/export fixture and its digest-pinned Edict
 source live in [`lawpack/hello-echo/`](./lawpack/hello-echo/).
-The Rust-neutral provider contract pack and its exact manifest live in
-[`provider-contracts/source-functions-v1/`](./provider-contracts/source-functions-v1/).
-The prior [`provider-contracts/v1/`](./provider-contracts/v1/) publication remains
-unchanged for explicitly pinned function-free consumers.
+The current Rust-neutral provider contract pack and its exact manifest live in
+[`provider-contracts/structured-control-v1/`](./provider-contracts/structured-control-v1/).
+The prior [`provider-contracts/v1/`](./provider-contracts/v1/),
+[`source-functions-v1/`](./provider-contracts/source-functions-v1/) and
+[`source-modules-v1/`](./provider-contracts/source-modules-v1/) publications
+remain unchanged for explicitly pinned consumers.
 Additional source coverage, relapse-zoo cases, runtime-owned target fixtures,
 and admission fixtures remain planned as their owning implementation slices
 land.

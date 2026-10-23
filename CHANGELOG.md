@@ -8,6 +8,20 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Add explicitly selected `echo.span-ir/v3` structured Target IR (#267). Bounded
+  `for` over `List` and statement `if` lower to `for`/`branch` entries in a
+  nested `executionOrder` that references the existing instruction tables by
+  id and carries the Core binder, iterable, bound and predicate. Loop-body and
+  arm locals are scoped to their block; Core validation and the canonical
+  encoder check nested blocks independently. Value-yielding branches, non-null
+  control block results and external requests refuse under v3. **Breaking
+  (Rust API):** `TargetIrIntent::execution_order` is now
+  `Option<Vec<TargetIrOrderEntry>>`; v2 still encodes a flat array of ids with
+  unchanged bytes, and v1/v2 keep their `for`/`branch` refusals. A new
+  `structured-control-v1` provider contract pack adds the v3 schema root; prior
+  packs are byte-identical. Echo's provider refuses v3, result projections do
+  not yet support structured intents, and no runtime execution is claimed.
+
 - Admit target-catalog pure intrinsics: `admit_target_pure_intrinsics` accepts
   exactly the required contracts, at exact versions, from catalog bytes that
   match a trusted pin, and refuses unknown, effectful, incomplete or mismatched

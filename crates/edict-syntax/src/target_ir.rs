@@ -23,10 +23,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::core_ir::{
     core_type_fits, is_lowercase_sha256_review_digest, named_core_type_closure, resolved_core_type,
-    validate_core_module_type_integrity, CoreBudget, CoreExpr, CoreExternalActionBudget,
-    CoreImportKind, CoreIntent, CoreModule, CoreNode, CoreObstructionArm, CoreObstructionReason,
-    CorePredicate, CoreRequireFailureArm, CoreType, CoreValue, InputConstraint, LocalRef,
-    ResourceRef, CORE_API_VERSION, CORE_APPLICATION_INPUT_LOCAL_ID, MAX_CORE_TYPE_DEPTH,
+    validate_core_module_type_integrity, CoreBlock, CoreBound, CoreBudget, CoreExpr,
+    CoreExternalActionBudget, CoreImportKind, CoreIntent, CoreModule, CoreNode, CoreObstructionArm,
+    CoreObstructionReason, CorePredicate, CoreRequireFailureArm, CoreType, CoreValue,
+    InputConstraint, LocalRef, ResourceRef, CORE_API_VERSION, CORE_APPLICATION_INPUT_LOCAL_ID,
+    MAX_CORE_GRAPH_DEPTH, MAX_CORE_TYPE_DEPTH,
 };
 use crate::digest_core_module;
 use crate::lowerability::{LowerabilityEffectStatus, LowerabilityReport, LowerabilityStatus};
@@ -37,6 +38,7 @@ use crate::{ResultProjectionArtifact, ResultProjectionFailure};
 pub const ECHO_DPO_TARGET_PROFILE: &str = "echo.dpo@1";
 pub const ECHO_SPAN_IR_DOMAIN: &str = "echo.span-ir/v1";
 pub const ECHO_ORDERED_SPAN_IR_DOMAIN: &str = "echo.span-ir/v2";
+pub const ECHO_STRUCTURED_SPAN_IR_DOMAIN: &str = "echo.span-ir/v3";
 pub const GITWARP_REF_CRDT_TARGET_PROFILE: &str = "gitwarp.ref_crdt@1";
 pub const GITWARP_COMMIT_REDUCER_IR_DOMAIN: &str = "gitwarp.commit-reducer-ir/v1";
 
@@ -44,6 +46,9 @@ pub const GITWARP_COMMIT_REDUCER_IR_DOMAIN: &str = "gitwarp.commit-reducer-ir/v1
 enum ExecutionModel {
     PreStepGuards,
     Ordered,
+    /// `echo.span-ir/v3`: ordered instructions plus bounded loops and
+    /// statement branches.
+    Structured,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -418,9 +423,11 @@ pub struct TargetIrSemanticClosure {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TargetIrIntent {
     pub operation_profile: String,
-    /// Exact instruction-id permutation for explicitly selected ordered Target IR.
-    /// Legacy artifacts omit this field.
-    pub execution_order: Option<Vec<String>>,
+    /// Exact execution order over the instruction tables for explicitly
+    /// selected ordered (`echo.span-ir/v2`) or structured (`echo.span-ir/v3`)
+    /// Target IR. v2 permits only instruction entries; v3 adds bounded loops
+    /// and statement branches. Legacy artifacts omit this field.
+    pub execution_order: Option<Vec<TargetIrOrderEntry>>,
     pub basis: Option<CoreExpr>,
     pub input_constraints: Vec<InputConstraint>,
     pub core_evaluation_budget: CoreBudget,
@@ -429,6 +436,47 @@ pub struct TargetIrIntent {
     pub steps: Vec<TargetIrStep>,
     pub external_action_requests: Vec<TargetIrExternalActionRequest>,
     pub result: CoreExpr,
+}
+
+/// One entry of an ordered or structured execution order.
+///
+/// Instruction payloads stay in the intent's `pure_bindings`, `steps` and
+/// `requirements` tables; the order references them by id exactly once.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TargetIrOrderEntry {
+    /// Id of a pure binding, target step or requirement.
+    Instruction(String),
+    /// Bounded loop over a Core `List` (`echo.span-ir/v3` only).
+    For(TargetIrForEntry),
+    /// Statement-only branch (`echo.span-ir/v3` only).
+    Branch(TargetIrBranchEntry),
+}
+
+/// Bounded loop copied from a Core `for` node.
+///
+/// The iterable is evaluated once at loop entry in the enclosing scope. The
+/// binder and locals introduced by the body are visible only to later entries
+/// of the same body, are fresh for each iteration, and are not visible after
+/// the loop. The bound is the Core bound; no effective cardinality is derived.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TargetIrForEntry {
+    pub id: String,
+    pub binder: LocalRef,
+    pub iterable: CoreExpr,
+    pub bound: CoreBound,
+    pub body: Vec<TargetIrOrderEntry>,
+}
+
+/// Statement-only branch copied from a Core `branch` node without a binding.
+///
+/// The predicate is evaluated in the enclosing scope. Each arm has its own
+/// scope; locals introduced by an arm are not visible after the branch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TargetIrBranchEntry {
+    pub id: String,
+    pub predicate: CorePredicate,
+    pub then_entries: Vec<TargetIrOrderEntry>,
+    pub else_entries: Vec<TargetIrOrderEntry>,
 }
 
 /// One source-ordered pure Core binding retained for target evaluation.
@@ -504,7 +552,12 @@ pub fn lower_to_target_ir(
     if let Some(failure) = pure_intrinsics::foreign_target(facts) {
         return unsupported(vec![failure]);
     }
-    let core_failures = validate_core_module(core, &facts.pure_functions, &facts.effect_signatures);
+    let core_failures = validate_core_module(
+        core,
+        &facts.pure_functions,
+        &facts.effect_signatures,
+        target_selection.execution_model,
+    );
     if !core_failures.is_empty() {
         return unsupported(core_failures);
     }
@@ -603,13 +656,10 @@ pub(crate) fn semantic_closure_for_core(
     let lawpacks = digest_locked_import_set(core, CoreImportKind::Lawpack, "lawpack")?;
     let capabilities = digest_locked_import_set(core, CoreImportKind::Capability, "capability")?;
     let has_explicit_basis = core.intents.values().any(|intent| intent.basis.is_some());
-    let has_pure_bindings = core.intents.values().any(|intent| {
-        intent
-            .body
-            .nodes
-            .iter()
-            .any(|node| matches!(node, CoreNode::Let { .. }))
-    });
+    let has_pure_bindings = core
+        .intents
+        .values()
+        .any(|intent| block_has_pure_binding(&intent.body, 0));
     if core.functions.is_empty()
         && !has_explicit_basis
         && !has_pure_bindings
@@ -633,6 +683,28 @@ pub(crate) fn semantic_closure_for_core(
         lawpacks: lawpacks.into_values().collect(),
         capabilities: capabilities.into_values().collect(),
     }))
+}
+
+/// Whether a block or any nested control block contains a `let`. Nested lets
+/// become pure bindings only in structured Target IR; legacy domains refuse
+/// the enclosing control node before an artifact exists.
+fn block_has_pure_binding(block: &CoreBlock, depth: usize) -> bool {
+    depth <= MAX_CORE_GRAPH_DEPTH
+        && block.nodes.iter().any(|node| match node {
+            CoreNode::Let { .. } => true,
+            CoreNode::For { body, .. } => block_has_pure_binding(body, depth + 1),
+            CoreNode::Branch {
+                then_block,
+                else_block,
+                ..
+            } => {
+                block_has_pure_binding(then_block, depth + 1)
+                    || block_has_pure_binding(else_block, depth + 1)
+            }
+            CoreNode::Require { .. }
+            | CoreNode::Effect { .. }
+            | CoreNode::ExternalActionRequest { .. } => false,
+        })
 }
 
 fn digest_locked_import_set(
@@ -708,6 +780,12 @@ fn validate_target_selection(
         target_selection.target_ir_domain = ECHO_ORDERED_SPAN_IR_DOMAIN;
         target_selection.execution_model = ExecutionModel::Ordered;
     }
+    if facts.target_profile.coordinate == ECHO_DPO_TARGET_PROFILE
+        && facts.target_ir_domain == ECHO_STRUCTURED_SPAN_IR_DOMAIN
+    {
+        target_selection.target_ir_domain = ECHO_STRUCTURED_SPAN_IR_DOMAIN;
+        target_selection.execution_model = ExecutionModel::Structured;
+    }
     if facts.target_ir_domain != target_selection.target_ir_domain {
         return Err(vec![TargetLoweringFailure {
             kind: TargetLoweringFailureKind::UnsupportedTargetIrDomain,
@@ -723,6 +801,7 @@ fn validate_core_module(
     core: &CoreModule,
     pure_functions: &[TargetPureFunctionFact],
     effect_signatures: &[TargetEffectSignatureFact],
+    execution_model: ExecutionModel,
 ) -> Vec<TargetLoweringFailure> {
     if core.api_version != CORE_API_VERSION {
         return vec![TargetLoweringFailure {
@@ -779,14 +858,16 @@ fn validate_core_module(
     {
         return vec![failure];
     }
-    validate_pure_binding_graphs(core, pure_functions, effect_signatures)
+    validate_pure_binding_graphs(core, pure_functions, effect_signatures, execution_model)
 }
 
 fn validate_pure_binding_graphs(
     core: &CoreModule,
     pure_functions: &[TargetPureFunctionFact],
     effect_signatures: &[TargetEffectSignatureFact],
+    execution_model: ExecutionModel,
 ) -> Vec<TargetLoweringFailure> {
+    let structured = execution_model == ExecutionModel::Structured;
     core.intents
         .iter()
         .filter_map(|(intent_name, intent)| {
@@ -811,7 +892,15 @@ fn validate_pure_binding_graphs(
                     "target pure-intrinsic cost is unestablished or exceeds the step budget",
                 ));
             }
-            if intent
+            if structured {
+                // Unsupported structured shapes refuse with their stable
+                // detail before the nested-block graph judgment runs.
+                if let Some(failure) =
+                    structured_shape_failure(intent_name, &intent.body.nodes, None, 0)
+                {
+                    return Some(failure);
+                }
+            } else if intent
                 .body
                 .nodes
                 .iter()
@@ -820,23 +909,38 @@ fn validate_pure_binding_graphs(
                 return None;
             }
             validate_pure_binding_graph(
-                core,
-                pure_functions,
-                effect_signatures,
-                intent_name,
+                GraphContext {
+                    core,
+                    pure_functions,
+                    effect_signatures,
+                    intent_name,
+                },
                 intent,
+                structured,
             )
         })
         .collect()
 }
 
+#[derive(Clone, Copy)]
+struct GraphContext<'a> {
+    core: &'a CoreModule,
+    pure_functions: &'a [TargetPureFunctionFact],
+    effect_signatures: &'a [TargetEffectSignatureFact],
+    intent_name: &'a str,
+}
+
 fn validate_pure_binding_graph(
-    core: &CoreModule,
-    pure_functions: &[TargetPureFunctionFact],
-    effect_signatures: &[TargetEffectSignatureFact],
-    intent_name: &str,
+    context: GraphContext<'_>,
     intent: &CoreIntent,
+    structured: bool,
 ) -> Option<TargetLoweringFailure> {
+    let GraphContext {
+        core,
+        pure_functions,
+        intent_name,
+        ..
+    } = context;
     let locals = intent
         .body
         .locals
@@ -877,14 +981,63 @@ fn validate_pure_binding_graph(
             "intent metadata contains an invalid or unauthorized expression",
         ));
     }
-    for (node_index, node) in intent.body.nodes.iter().enumerate() {
+    let failure = if structured {
+        let mut claimed = BTreeSet::from([input.id.as_str()]);
+        validate_structured_block(context, &intent.body, None, &mut available, &mut claimed, 0)
+    } else {
+        validate_flat_nodes(context, &intent.body.nodes, &locals, &mut available)
+    };
+    if failure.is_some() {
+        return failure;
+    }
+    if !expression_references_are_available(&intent.body.result, &available) {
+        return Some(invalid_pure_binding(
+            intent_name,
+            None,
+            "result references an undeclared or conflicting local",
+        ));
+    }
+    (!expression_fits_declared_type(
+        core,
+        pure_functions,
+        &intent.body.result,
+        &intent.output,
+        &available,
+    ))
+    .then(|| {
+        invalid_pure_binding(
+            intent_name,
+            None,
+            &format!(
+                "result expression does not match declared output type `{}`",
+                intent.output
+            ),
+        )
+    })
+}
+
+/// v1/v2 graph judgment over a flat intent body. Control nodes are refused at
+/// lowering; their nested blocks are not part of this judgment.
+fn validate_flat_nodes<'a>(
+    context: GraphContext<'_>,
+    nodes: &'a [CoreNode],
+    locals: &BTreeMap<&str, &LocalRef>,
+    available: &mut BTreeMap<&'a str, &'a LocalRef>,
+) -> Option<TargetLoweringFailure> {
+    let GraphContext {
+        core,
+        pure_functions,
+        effect_signatures,
+        intent_name,
+    } = context;
+    for (node_index, node) in nodes.iter().enumerate() {
         if !node_expressions_have_closed_authority(
             core,
             pure_functions,
             effect_signatures,
             node,
-            &locals,
-            &available,
+            locals,
+            available,
         ) {
             return Some(invalid_pure_binding(
                 intent_name,
@@ -913,33 +1066,279 @@ fn validate_pure_binding_graph(
             ));
         }
     }
-    if !expression_references_are_available(&intent.body.result, &available) {
-        return Some(invalid_pure_binding(
-            intent_name,
-            None,
-            "result references an undeclared or conflicting local",
-        ));
-    }
-    (!expression_fits_declared_type(
-        core,
-        pure_functions,
-        &intent.body.result,
-        &intent.output,
-        &available,
-    ))
-    .then(|| {
-        invalid_pure_binding(
-            intent_name,
-            None,
-            &format!(
-                "result expression does not match declared output type `{}`",
-                intent.output
-            ),
-        )
-    })
+    None
 }
 
-fn block_local_identities_are_valid(block: &crate::core_ir::CoreBlock, depth: usize) -> bool {
+/// Stable refusal for Core shapes outside the structured v3 contract, checked
+/// over every nested block before the structured graph judgment.
+fn structured_shape_failure(
+    intent_name: &str,
+    nodes: &[CoreNode],
+    top_index: Option<usize>,
+    depth: usize,
+) -> Option<TargetLoweringFailure> {
+    if depth > MAX_CORE_GRAPH_DEPTH {
+        return Some(invalid_pure_binding(
+            intent_name,
+            top_index,
+            "structured control nesting exceeds the Core graph depth",
+        ));
+    }
+    for (index, node) in nodes.iter().enumerate() {
+        let node_index = top_index.unwrap_or(index);
+        if let Some(detail) = structured_node_refusal(node) {
+            return Some(TargetLoweringFailure {
+                kind: TargetLoweringFailureKind::UnsupportedCoreNode,
+                intent: Some(intent_name.to_owned()),
+                node_index: Some(node_index),
+                detail: detail.to_owned(),
+            });
+        }
+        let blocks: Vec<&CoreBlock> = match node {
+            CoreNode::Branch {
+                then_block,
+                else_block,
+                ..
+            } => vec![then_block, else_block],
+            CoreNode::For { body, .. } => vec![body],
+            CoreNode::Let { .. }
+            | CoreNode::Effect { .. }
+            | CoreNode::Require { .. }
+            | CoreNode::ExternalActionRequest { .. } => continue,
+        };
+        for block in blocks {
+            let failure =
+                structured_shape_failure(intent_name, &block.nodes, Some(node_index), depth + 1);
+            if failure.is_some() {
+                return failure;
+            }
+        }
+    }
+    None
+}
+
+/// Validate one structured block in its own scope.
+///
+/// `available` holds the locals visible to the block's first node; locals the
+/// block introduces are added for later nodes of the same block only, because
+/// nested blocks validate against a clone of their enclosing scope. `claimed`
+/// spans the whole intent, so no identity is introduced twice in any scope.
+fn validate_structured_block<'a>(
+    context: GraphContext<'a>,
+    block: &'a CoreBlock,
+    top_index: Option<usize>,
+    available: &mut BTreeMap<&'a str, &'a LocalRef>,
+    claimed: &mut BTreeSet<&'a str>,
+    depth: usize,
+) -> Option<TargetLoweringFailure> {
+    let locals = block
+        .locals
+        .iter()
+        .map(|local| (local.id.as_str(), local))
+        .collect::<BTreeMap<_, _>>();
+    if depth > MAX_CORE_GRAPH_DEPTH || locals.len() != block.locals.len() {
+        return Some(invalid_pure_binding(
+            context.intent_name,
+            top_index,
+            "structured block local table is invalid",
+        ));
+    }
+    for (index, node) in block.nodes.iter().enumerate() {
+        let node_index = top_index.unwrap_or(index);
+        let failure = match node {
+            CoreNode::For { .. } | CoreNode::Branch { .. } => {
+                validate_structured_control(context, node, node_index, available, claimed, depth)
+            }
+            CoreNode::Let { .. }
+            | CoreNode::Effect { .. }
+            | CoreNode::Require { .. }
+            | CoreNode::ExternalActionRequest { .. } => validate_structured_instruction(
+                context, node, node_index, &locals, available, claimed,
+            ),
+        };
+        if failure.is_some() {
+            return failure;
+        }
+    }
+    None
+}
+
+fn validate_structured_instruction<'a>(
+    context: GraphContext<'_>,
+    node: &'a CoreNode,
+    node_index: usize,
+    locals: &BTreeMap<&str, &LocalRef>,
+    available: &mut BTreeMap<&'a str, &'a LocalRef>,
+    claimed: &mut BTreeSet<&'a str>,
+) -> Option<TargetLoweringFailure> {
+    let invalid = |detail: &str| {
+        Some(invalid_pure_binding(
+            context.intent_name,
+            Some(node_index),
+            detail,
+        ))
+    };
+    let binding = match node {
+        CoreNode::Let { binding, .. } | CoreNode::Effect { binding, .. } => Some(binding),
+        CoreNode::Require { .. } => None,
+        CoreNode::ExternalActionRequest { .. } | CoreNode::For { .. } | CoreNode::Branch { .. } => {
+            return invalid("structured Target IR does not support this Core node");
+        }
+    };
+    if !node_expressions_have_closed_authority(
+        context.core,
+        context.pure_functions,
+        context.effect_signatures,
+        node,
+        locals,
+        available,
+    ) {
+        return invalid("Core node contains an invalid or unauthorized expression");
+    }
+    if let Some(binding) = binding {
+        if locals.get(binding.id.as_str()).copied() != Some(binding)
+            || !claimed.insert(binding.id.as_str())
+            || available.insert(binding.id.as_str(), binding).is_some()
+        {
+            return invalid(
+                "binding identity is missing, duplicated, or conflicts with its block table",
+            );
+        }
+    }
+    None
+}
+
+/// Validate a loop or statement branch against its enclosing scope, then each
+/// nested block in a child scope that is discarded afterwards.
+fn validate_structured_control<'a>(
+    context: GraphContext<'a>,
+    node: &'a CoreNode,
+    node_index: usize,
+    available: &BTreeMap<&'a str, &'a LocalRef>,
+    claimed: &mut BTreeSet<&'a str>,
+    depth: usize,
+) -> Option<TargetLoweringFailure> {
+    let invalid = |detail: &str| {
+        Some(invalid_pure_binding(
+            context.intent_name,
+            Some(node_index),
+            detail,
+        ))
+    };
+    let mut scope = available.clone();
+    let blocks: Vec<&'a CoreBlock> = match node {
+        CoreNode::For {
+            binder,
+            iter,
+            bound,
+            body,
+        } => {
+            if !loop_iterable_fits_binder(
+                context.core,
+                context.pure_functions,
+                iter,
+                bound,
+                binder,
+                available,
+            ) {
+                return invalid("loop iterable is not a bounded list whose items fit the binder");
+            }
+            if body.locals.iter().find(|local| local.id == binder.id) != Some(binder)
+                || !claimed.insert(binder.id.as_str())
+            {
+                return invalid(
+                    "loop binder is missing from its body table or reuses an existing identity",
+                );
+            }
+            scope.insert(binder.id.as_str(), binder);
+            vec![body]
+        }
+        CoreNode::Branch {
+            binding: None,
+            predicate,
+            then_block,
+            else_block,
+        } => {
+            if !predicate_fits_core_types(
+                context.core,
+                context.pure_functions,
+                predicate,
+                available,
+            ) {
+                return invalid("branch predicate contains an invalid or unauthorized expression");
+            }
+            vec![then_block, else_block]
+        }
+        CoreNode::Branch { .. }
+        | CoreNode::Let { .. }
+        | CoreNode::Effect { .. }
+        | CoreNode::Require { .. }
+        | CoreNode::ExternalActionRequest { .. } => {
+            return invalid("structured Target IR does not support this Core node");
+        }
+    };
+    for block in blocks {
+        let mut block_scope = scope.clone();
+        let failure = validate_structured_block(
+            context,
+            block,
+            Some(node_index),
+            &mut block_scope,
+            claimed,
+            depth + 1,
+        );
+        if failure.is_some() {
+            return failure;
+        }
+    }
+    None
+}
+
+/// A loop iterable must be a bounded list whose items fit the binder. A literal
+/// bound must cover the list maximum; a coordinate bound must name a constant
+/// below an imported digest-locked lawpack, whose value the compiler checked.
+fn loop_iterable_fits_binder(
+    core: &CoreModule,
+    pure_functions: &[TargetPureFunctionFact],
+    iterable: &CoreExpr,
+    bound: &CoreBound,
+    binder: &LocalRef,
+    available: &BTreeMap<&str, &LocalRef>,
+) -> bool {
+    let literal_bound = match bound {
+        CoreBound::Literal(value) => Some(*value),
+        CoreBound::Coordinate(coordinate) => {
+            if !core.imports.iter().any(|import| {
+                import.kind == CoreImportKind::Lawpack
+                    && import.resource.is_digest_locked()
+                    && coordinate_is_below_lawpack(coordinate, &import.resource)
+            }) {
+                return false;
+            }
+            None
+        }
+    };
+    if resolved_core_type(core, &binder.ty).is_none() {
+        return false;
+    }
+    if let CoreExpr::List { values } = iterable {
+        return literal_bound
+            .is_none_or(|bound| u64::try_from(values.len()).is_ok_and(|count| count <= bound))
+            && values.iter().all(|value| {
+                expression_fits_declared_type(core, pure_functions, value, &binder.ty, available)
+            });
+    }
+    let Some(coordinate) = expression_type_coordinate(core, pure_functions, iterable, available)
+    else {
+        return false;
+    };
+    let Some(CoreType::List { item, max }) = resolved_core_type(core, &coordinate) else {
+        return false;
+    };
+    core_type_fits(core, &item, &binder.ty) && literal_bound.is_none_or(|bound| max <= bound)
+}
+
+fn block_local_identities_are_valid(block: &CoreBlock, depth: usize) -> bool {
     if depth > MAX_CORE_TYPE_DEPTH {
         return false;
     }
@@ -2202,7 +2601,25 @@ fn lower_intent(
     }
 
     let mut state = IntentLoweringState::default();
-    for (node_index, node) in intent.body.nodes.iter().enumerate() {
+    if context.target_selection.execution_model == ExecutionModel::Structured {
+        let mut counters = ControlCounters::default();
+        state.execution_order = lower_structured_nodes(
+            intent_name,
+            &intent.body.nodes,
+            None,
+            context,
+            &mut state,
+            &mut counters,
+            failures,
+        );
+    }
+    for (node_index, node) in intent
+        .body
+        .nodes
+        .iter()
+        .enumerate()
+        .filter(|_| context.target_selection.execution_model != ExecutionModel::Structured)
+    {
         if context.target_selection.execution_model == ExecutionModel::Ordered
             && matches!(node, CoreNode::ExternalActionRequest { .. })
         {
@@ -2223,7 +2640,9 @@ fn lower_intent(
                 _ => None,
             };
             if let Some(id) = id {
-                state.execution_order.push(id.clone());
+                state
+                    .execution_order
+                    .push(TargetIrOrderEntry::Instruction(id.clone()));
             }
         }
     }
@@ -2243,7 +2662,8 @@ fn lower_intent(
 
     TargetIrIntent {
         operation_profile: intent.required_operation_profile.clone(),
-        execution_order: (context.target_selection.execution_model == ExecutionModel::Ordered)
+        execution_order: (context.target_selection.execution_model
+            != ExecutionModel::PreStepGuards)
             .then_some(state.execution_order),
         basis: intent.basis.clone(),
         input_constraints: intent.input_constraints.clone(),
@@ -2256,6 +2676,144 @@ fn lower_intent(
     }
 }
 
+#[derive(Default)]
+struct ControlCounters {
+    loops: usize,
+    branches: usize,
+}
+
+/// Lower Core nodes into structured order entries. Control ids are numbered
+/// per kind in source pre-order; instruction ids continue the intent tables.
+fn lower_structured_nodes(
+    intent_name: &str,
+    nodes: &[CoreNode],
+    top_index: Option<usize>,
+    context: &TargetLoweringContext<'_>,
+    state: &mut IntentLoweringState,
+    counters: &mut ControlCounters,
+    failures: &mut Vec<TargetLoweringFailure>,
+) -> Vec<TargetIrOrderEntry> {
+    let mut entries = Vec::new();
+    for (index, node) in nodes.iter().enumerate() {
+        let node_index = top_index.unwrap_or(index);
+        if let Some(detail) = structured_node_refusal(node) {
+            failures.push(TargetLoweringFailure {
+                kind: TargetLoweringFailureKind::UnsupportedCoreNode,
+                intent: Some(intent_name.to_owned()),
+                node_index: Some(node_index),
+                detail: detail.to_owned(),
+            });
+            continue;
+        }
+        let mut lower_block =
+            |state: &mut IntentLoweringState, counters: &mut ControlCounters, block: &CoreBlock| {
+                lower_structured_nodes(
+                    intent_name,
+                    &block.nodes,
+                    Some(node_index),
+                    context,
+                    state,
+                    counters,
+                    failures,
+                )
+            };
+        let entry = match node {
+            CoreNode::For {
+                binder,
+                iter,
+                bound,
+                body,
+            } => {
+                let id = format!("{intent_name}.for.{}", counters.loops);
+                counters.loops += 1;
+                Some(TargetIrOrderEntry::For(TargetIrForEntry {
+                    id,
+                    binder: binder.clone(),
+                    iterable: iter.clone(),
+                    bound: bound.clone(),
+                    body: lower_block(state, counters, body),
+                }))
+            }
+            CoreNode::Branch {
+                predicate,
+                then_block,
+                else_block,
+                ..
+            } => {
+                let id = format!("{intent_name}.branch.{}", counters.branches);
+                counters.branches += 1;
+                let then_entries = lower_block(state, counters, then_block);
+                let else_entries = lower_block(state, counters, else_block);
+                Some(TargetIrOrderEntry::Branch(TargetIrBranchEntry {
+                    id,
+                    predicate: predicate.clone(),
+                    then_entries,
+                    else_entries,
+                }))
+            }
+            CoreNode::Let { .. }
+            | CoreNode::Effect { .. }
+            | CoreNode::Require { .. }
+            | CoreNode::ExternalActionRequest { .. } => lower_structured_instruction(
+                intent_name,
+                node_index,
+                node,
+                context,
+                state,
+                failures,
+            ),
+        };
+        entries.extend(entry);
+    }
+    entries
+}
+
+/// The stable `UnsupportedCoreNode` detail for a Core node outside the
+/// structured v3 contract, judged on the node itself (not its nested blocks).
+fn structured_node_refusal(node: &CoreNode) -> Option<&'static str> {
+    let null = CoreExpr::Const(CoreValue::Null);
+    match node {
+        CoreNode::ExternalActionRequest { .. } => Some("ordered_external_action_request"),
+        CoreNode::Branch {
+            binding: Some(_), ..
+        } => Some("branch_binding"),
+        CoreNode::For { body, .. } => (body.result != null).then_some("control_block_result"),
+        CoreNode::Branch {
+            then_block,
+            else_block,
+            ..
+        } => (then_block.result != null || else_block.result != null)
+            .then_some("control_block_result"),
+        CoreNode::Let { .. } | CoreNode::Effect { .. } | CoreNode::Require { .. } => None,
+    }
+}
+
+fn lower_structured_instruction(
+    intent_name: &str,
+    node_index: usize,
+    node: &CoreNode,
+    context: &TargetLoweringContext<'_>,
+    state: &mut IntentLoweringState,
+    failures: &mut Vec<TargetLoweringFailure>,
+) -> Option<TargetIrOrderEntry> {
+    let before = (
+        state.pure_bindings.len(),
+        state.steps.len(),
+        state.requirements.len(),
+    );
+    lower_node(intent_name, node_index, node, context, state, failures);
+    let id = if state.pure_bindings.len() > before.0 {
+        state.pure_bindings.last().map(|node| &node.id)
+    } else if state.steps.len() > before.1 {
+        state.steps.last().map(|node| &node.id)
+    } else if state.requirements.len() > before.2 {
+        state.requirements.last().map(|node| &node.id)
+    } else {
+        None
+    };
+    id.map(|id| TargetIrOrderEntry::Instruction(id.clone()))
+}
+
 struct TargetLoweringContext<'a> {
     target_selection: TargetSelection,
     obstruction_coordinates: &'a BTreeSet<&'a str>,
@@ -2264,7 +2822,7 @@ struct TargetLoweringContext<'a> {
 
 #[derive(Default)]
 struct IntentLoweringState {
-    execution_order: Vec<String>,
+    execution_order: Vec<TargetIrOrderEntry>,
     pure_bindings: Vec<TargetIrPureBinding>,
     requirements: Vec<TargetIrRequirement>,
     steps: Vec<TargetIrStep>,

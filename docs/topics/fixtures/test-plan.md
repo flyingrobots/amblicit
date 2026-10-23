@@ -51,8 +51,8 @@ Out of scope:
 | fixtures/authority-facts/canonical/example-effectful.authority-facts.cbor | Reviewed canonical authority-facts byte fixture. | Matches executable `edict.canonical-cbor/v1` output. |
 | fixtures/authority-facts/canonical/example-effectful.authority-facts.sha256 | Reviewed authority-facts digest fixture. | Matches the domain-framed `edict.authority-facts/v1` digest. |
 | fixtures/target-profile/contract-resources/README.md | Five reviewed Edict-owned target-profile contract resources and digest fixtures. | Every file matches the executable model and its coordinate-framed identity. |
-| fixtures/provider-contracts/source-modules-v1/edict-provider-contracts.cddl | Reviewed self-contained provider CDDL pack. | Exact bytes match deterministic assembly from authoritative ABI sources. |
-| fixtures/provider-contracts/source-modules-v1/manifest.json | Reviewed provider contract-pack manifest. | Exact bytes and all embedded schema/resource identities match deterministic assembly. |
+| fixtures/provider-contracts/structured-control-v1/edict-provider-contracts.cddl | Reviewed self-contained provider CDDL pack. | Exact bytes match deterministic assembly from authoritative ABI sources. |
+| fixtures/provider-contracts/structured-control-v1/manifest.json | Reviewed provider contract-pack manifest. | Exact bytes and all embedded schema/resource identities match deterministic assembly. |
 | fixtures/lawpack/hello-echo/README.md | First reviewed canonical lawpack fixture and digest-pinned source. | `cargo xtask lawpack-goldens --check` reproduces exact bytes and digests; the public loader corroborates the source import digest. |
 | fixtures/lawpack/causal-cell/README.md | Portable capability closure for external Edict applications. | `cargo xtask lawpack-goldens --check` validates, compiles through, and reproduces the exact closure. |
 

@@ -1,23 +1,32 @@
-//! Canonical ordering integrity for the explicitly selected v2 artifact.
+//! Canonical ordering integrity for the explicitly selected v2 (ordered) and
+//! v3 (structured) artifacts.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
-    TargetIrArtifact, TargetIrIntent, TargetIrPureBinding, TargetIrRequireFailure,
-    TargetIrRequirement, TargetIrStep, ECHO_DPO_TARGET_PROFILE, ECHO_ORDERED_SPAN_IR_DOMAIN,
+    TargetIrArtifact, TargetIrIntent, TargetIrOrderEntry, TargetIrPureBinding,
+    TargetIrRequireFailure, TargetIrRequirement, TargetIrStep, ECHO_DPO_TARGET_PROFILE,
+    ECHO_ORDERED_SPAN_IR_DOMAIN, ECHO_STRUCTURED_SPAN_IR_DOMAIN,
 };
 use crate::core_ir::{CoreExpr, CorePredicate, LocalRef, CORE_APPLICATION_INPUT_LOCAL_ID};
 use crate::MAX_CANONICAL_NESTING_DEPTH;
 
 pub(crate) fn artifact_has_valid_execution_order(artifact: &TargetIrArtifact) -> bool {
-    if artifact.domain != ECHO_ORDERED_SPAN_IR_DOMAIN {
-        return artifact
+    let structured = match artifact.domain.as_str() {
+        ECHO_ORDERED_SPAN_IR_DOMAIN => false,
+        ECHO_STRUCTURED_SPAN_IR_DOMAIN => true,
+        _ => {
+            return artifact
+                .intents
+                .values()
+                .all(|intent| intent.execution_order.is_none());
+        }
+    };
+    artifact.target_profile.coordinate == ECHO_DPO_TARGET_PROFILE
+        && artifact
             .intents
             .values()
-            .all(|intent| intent.execution_order.is_none());
-    }
-    artifact.target_profile.coordinate == ECHO_DPO_TARGET_PROFILE
-        && artifact.intents.values().all(intent_has_valid_order)
+            .all(|intent| intent_has_valid_order(intent, structured))
 }
 
 #[derive(Clone, Copy)]
@@ -27,14 +36,14 @@ enum Instruction<'a> {
     Require(&'a TargetIrRequirement),
 }
 
-fn intent_has_valid_order(intent: &TargetIrIntent) -> bool {
+fn intent_has_valid_order(intent: &TargetIrIntent, structured: bool) -> bool {
     let Some(order) = &intent.execution_order else {
         return false;
     };
     if !intent.external_action_requests.is_empty() {
         return false;
     }
-    let mut instructions = intent
+    let instructions = intent
         .pure_bindings
         .iter()
         .map(|node| (node.id.as_str(), Instruction::Binding(node)))
@@ -52,7 +61,12 @@ fn intent_has_valid_order(intent: &TargetIrIntent) -> bool {
         )
         .collect::<BTreeMap<_, _>>();
     let count = intent.pure_bindings.len() + intent.steps.len() + intent.requirements.len();
-    if instructions.len() != count || order.len() != count || instructions.contains_key("") {
+    // Every instruction appears exactly once; a v2 order is flat, so its
+    // length must also match. A v3 tree is checked by the walk below.
+    if instructions.len() != count
+        || (!structured && order.len() != count)
+        || instructions.contains_key("")
+    {
         return false;
     }
     let mut available = LocalAvailability::default();
@@ -67,15 +81,96 @@ fn intent_has_valid_order(intent: &TargetIrIntent) -> bool {
     {
         return false;
     }
-    for id in order {
-        let Some(instruction) = instructions.remove(id.as_str()) else {
-            return false;
-        };
-        if !available.instruction(instruction) {
+    let instruction_ids = instructions.keys().copied().collect();
+    let table_locals = intent
+        .pure_bindings
+        .iter()
+        .map(|node| node.binding.id.as_str())
+        .chain(intent.steps.iter().map(|node| node.binding.id.as_str()))
+        .collect();
+    let mut walk = OrderWalk {
+        structured,
+        instruction_ids,
+        table_locals,
+        instructions,
+        control_ids: BTreeSet::new(),
+        claimed: BTreeSet::new(),
+        available,
+    };
+    walk.entries(order, 0)
+        && walk.instructions.is_empty()
+        && walk.available.expression(&intent.result, 0)
+}
+
+/// One pass over an order tree. Every table instruction is consumed exactly
+/// once across all scopes; control ids are nonempty, unique and disjoint from
+/// instruction ids; locals introduced inside a loop body or branch arm are
+/// visible only to later entries of that block.
+struct OrderWalk<'a> {
+    structured: bool,
+    instruction_ids: BTreeSet<&'a str>,
+    /// Locals produced by table instructions, wherever they appear.
+    table_locals: BTreeSet<&'a str>,
+    instructions: BTreeMap<&'a str, Instruction<'a>>,
+    control_ids: BTreeSet<&'a str>,
+    /// Loop binders across the whole intent, so a binder can never reuse a
+    /// visible or previously introduced identity.
+    claimed: BTreeSet<&'a str>,
+    available: LocalAvailability<'a>,
+}
+
+impl<'a> OrderWalk<'a> {
+    fn entries(&mut self, entries: &'a [TargetIrOrderEntry], depth: usize) -> bool {
+        if depth > MAX_CANONICAL_NESTING_DEPTH {
             return false;
         }
+        entries.iter().all(|entry| self.entry(entry, depth))
     }
-    instructions.is_empty() && available.expression(&intent.result, 0)
+
+    fn control_id(&mut self, id: &'a str) -> bool {
+        self.structured
+            && !id.is_empty()
+            && !self.instruction_ids.contains(id)
+            && self.control_ids.insert(id)
+    }
+
+    /// Run `body` in a child scope and restore the enclosing scope afterwards.
+    fn scoped(&mut self, body: impl FnOnce(&mut Self) -> bool) -> bool {
+        let saved = self.available.producers.clone();
+        let valid = body(self);
+        self.available.producers = saved;
+        valid
+    }
+
+    fn entry(&mut self, entry: &'a TargetIrOrderEntry, depth: usize) -> bool {
+        match entry {
+            TargetIrOrderEntry::Instruction(id) => {
+                if self.control_ids.contains(id.as_str()) {
+                    return false;
+                }
+                let Some(instruction) = self.instructions.remove(id.as_str()) else {
+                    return false;
+                };
+                self.available.instruction(instruction)
+            }
+            TargetIrOrderEntry::For(entry) => {
+                self.control_id(&entry.id)
+                    && self.available.expression(&entry.iterable, 0)
+                    && !self.table_locals.contains(entry.binder.id.as_str())
+                    && self.claimed.insert(entry.binder.id.as_str())
+                    && self.scoped(|walk| {
+                        walk.available.introduce(&entry.binder)
+                            && walk.entries(&entry.body, depth + 1)
+                    })
+            }
+            TargetIrOrderEntry::Branch(entry) => {
+                self.control_id(&entry.id)
+                    && self.available.predicate(&entry.predicate, 0)
+                    && self.scoped(|walk| walk.entries(&entry.then_entries, depth + 1))
+                    && self.scoped(|walk| walk.entries(&entry.else_entries, depth + 1))
+            }
+        }
+    }
 }
 
 #[derive(Default)]

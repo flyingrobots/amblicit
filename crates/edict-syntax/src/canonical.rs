@@ -550,13 +550,11 @@ fn target_ir_artifact_value(artifact: &TargetIrArtifact) -> Result<CanonicalValu
     let mut entries = vec![
         (
             "kind",
-            text(
-                if artifact.domain == crate::target_ir::ECHO_ORDERED_SPAN_IR_DOMAIN {
-                    "orderedTargetIrArtifact"
-                } else {
-                    "targetIrArtifact"
-                },
-            ),
+            text(match artifact.domain.as_str() {
+                crate::target_ir::ECHO_ORDERED_SPAN_IR_DOMAIN => "orderedTargetIrArtifact",
+                crate::target_ir::ECHO_STRUCTURED_SPAN_IR_DOMAIN => "structuredTargetIrArtifact",
+                _ => "targetIrArtifact",
+            }),
         ),
         ("domain", text(&artifact.domain)),
         (
@@ -743,10 +741,7 @@ fn target_ir_intent_value(intent: &TargetIrIntent) -> Result<CanonicalValue, Can
         ("result", core_expr_value(&intent.result)?),
     ];
     if let Some(order) = &intent.execution_order {
-        entries.push((
-            "executionOrder",
-            CanonicalValue::Array(order.iter().map(|id| text(id)).collect()),
-        ));
+        entries.push(("executionOrder", target_ir_order_value(order)?));
     }
     if let Some(basis) = &intent.basis {
         entries.push(("basis", core_expr_value(basis)?));
@@ -774,6 +769,33 @@ fn target_ir_intent_value(intent: &TargetIrIntent) -> Result<CanonicalValue, Can
         ));
     }
     Ok(map(entries))
+}
+
+/// v2 orders encode as an array of instruction ids. v3 trees add `for` and
+/// `branch` maps whose nested arrays use the same entry encoding; the domain
+/// check in `artifact_has_valid_execution_order` keeps maps out of v2.
+fn target_ir_order_value(
+    order: &[crate::target_ir::TargetIrOrderEntry],
+) -> Result<CanonicalValue, CanonicalError> {
+    use crate::target_ir::TargetIrOrderEntry;
+    array_results(order.iter().map(|entry| match entry {
+        TargetIrOrderEntry::Instruction(id) => Ok(text(id)),
+        TargetIrOrderEntry::For(entry) => Ok(map([
+            ("kind", text("for")),
+            ("id", text(&entry.id)),
+            ("binder", local_ref_value(&entry.binder)),
+            ("iterable", core_expr_value(&entry.iterable)?),
+            ("bound", core_bound_value(&entry.bound)),
+            ("body", target_ir_order_value(&entry.body)?),
+        ])),
+        TargetIrOrderEntry::Branch(entry) => Ok(map([
+            ("kind", text("branch")),
+            ("id", text(&entry.id)),
+            ("predicate", core_predicate_value(&entry.predicate)?),
+            ("then", target_ir_order_value(&entry.then_entries)?),
+            ("else", target_ir_order_value(&entry.else_entries)?),
+        ])),
+    }))
 }
 
 fn target_ir_pure_binding_value(

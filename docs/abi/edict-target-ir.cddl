@@ -18,7 +18,8 @@ target-ir-resource-ref = {
   digest: sha256-digest,
 }
 
-target-ir-artifact = target-ir-phased-artifact / target-ir-ordered-artifact
+target-ir-artifact = target-ir-phased-artifact / target-ir-ordered-artifact /
+                     target-ir-structured-artifact
 
 target-ir-phased-artifact = target-ir-closed-artifact / target-ir-legacy-artifact
 
@@ -61,6 +62,63 @@ target-ir-ordered-intent = {
 target-ir-ordered-legacy-intent = {
   target-ir-intent-common,
   executionOrder: [* tstr .regexp "(?s).+"],
+}
+
+; v3 replaces the flat order with a tree. Instruction ids still reference the
+; pureBindings, steps, and requirements tables; `for` and `branch` entries carry
+; the Core iterable, bound, binder, and predicate. The encoder validates the
+; exactly-once instruction cover, unique control ids, and block scoping.
+target-ir-structured-artifact = target-ir-structured-closed / target-ir-structured-legacy
+
+target-ir-structured-common = (
+  domain: "echo.span-ir/v3",
+  targetProfile: target-ir-resource-ref,
+  sourceCoreCoordinate: tstr .regexp "(?s).+",
+)
+
+target-ir-structured-closed = {
+  kind: "structuredTargetIrArtifact",
+  target-ir-structured-common,
+  semanticClosure: target-ir-semantic-closure,
+  intents: { * tstr => target-ir-structured-intent },
+}
+
+target-ir-structured-legacy = {
+  kind: "structuredTargetIrArtifact",
+  target-ir-structured-common,
+  intents: { * tstr => target-ir-structured-legacy-intent },
+}
+
+target-ir-structured-intent = {
+  target-ir-intent-common,
+  ? basis: core-expr,
+  ? pureBindings: [1* target-ir-pure-binding],
+  executionOrder: [* target-ir-order-entry],
+}
+
+target-ir-structured-legacy-intent = {
+  target-ir-intent-common,
+  executionOrder: [* target-ir-order-entry],
+}
+
+target-ir-order-entry = tstr .regexp "(?s).+" / target-ir-for-entry /
+                        target-ir-branch-entry
+
+target-ir-for-entry = {
+  kind: "for",
+  id: tstr .regexp "(?s).+",
+  binder: local-ref,
+  iterable: core-expr,
+  bound: core-bound,
+  body: [* target-ir-order-entry],
+}
+
+target-ir-branch-entry = {
+  kind: "branch",
+  id: tstr .regexp "(?s).+",
+  predicate: core-predicate,
+  then: [* target-ir-order-entry],
+  else: [* target-ir-order-entry],
 }
 
 target-ir-closed-artifact = {

@@ -114,13 +114,20 @@ Controls whose nested rule graph is opaque through the schema dependency, such
 as `.cbor`, reject with a stable unsupported-control failure rather than being
 accepted without a complete closure proof.
 The checked Rust-neutral artifacts live under
-[`fixtures/provider-contracts/source-modules-v1/`](../../../fixtures/provider-contracts/source-modules-v1/):
+[`fixtures/provider-contracts/structured-control-v1/`](../../../fixtures/provider-contracts/structured-control-v1/):
 one self-contained Apache-2.0 CDDL file and one deterministic manifest mapping
 logical contracts and provider artifact domains to exact roots. The prior
-[function-free v1 publication](../../../fixtures/provider-contracts/v1/) and
+[function-free v1 publication](../../../fixtures/provider-contracts/v1/),
 [source-function publication](../../../fixtures/provider-contracts/source-functions-v1/)
-remain byte-identical for explicitly pinned consumers. The source-module
-publication adds the `source-closure` root and `edict.source-closure/v1` domain.
+and [source-module publication](../../../fixtures/provider-contracts/source-modules-v1/)
+remain byte-identical for explicitly pinned consumers; tests reassemble them
+from the frozen pre-v3 Target IR schema in
+`fixtures/target-ir/pre-structured-target-ir.cddl`. The structured-control
+publication adds the `echo.span-ir/v3` variant of the `target-ir-artifact`
+root, with recursive `for` and `branch` order entries discriminated by their
+literal `kind`; it accepts actual v3 encoder output and refuses missing or
+downgraded orders. Schema acceptance is not provider or runtime support. The
+source-module publication adds the `source-closure` root and `edict.source-closure/v1` domain.
 It validates the closed envelope and typed module digests, including actual
 source-closure encoder output; it refuses a legacy source byte string under
 that domain. Import pins, root membership, reachability, topology and aggregate
