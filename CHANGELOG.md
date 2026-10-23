@@ -9,8 +9,8 @@ versions still track specification maturity rather than a released product.
 ## [Unreleased]
 
 - Rename the project to **Amblicit** (slogan: *Use only as declared.*). This is
-  stage 1 of a staged rename: the root `README.md` and the documentation router
-  use the new name. Crate names, the `edict` CLI, `.edict` source files and
+  stage 1 of a staged rename: the root `README.md` uses the new name, and the
+  documentation router links to the name decision. Crate names, the `edict` CLI, `.edict` source files and
   `edict.*` wire identifiers do not change in this stage. The
   [name decision](docs/design/amblicit-name.md) lists the stages and the
   current and planned names.
