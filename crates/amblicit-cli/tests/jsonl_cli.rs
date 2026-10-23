@@ -938,6 +938,45 @@ fn oversized_stdin_rejects_with_input_too_large_diagnostic() {
     assert_status(&stderr, "error", 2);
 }
 
+fn reports_input_too_large(output: &Output) -> bool {
+    assert_jsonl_stream(&output.stderr, "stderr")
+        .iter()
+        .any(|line| line.get("kind").and_then(Value::as_str) == Some("InputTooLarge"))
+}
+
+#[test]
+fn retired_stdin_cap_variable_is_ignored() {
+    const RETIRED: &str = "EDICT_CLI_MAX_STDIN_BYTES";
+    let oversized = "x".repeat(65);
+
+    let retired_only = run_edict_with_env(&oversized, &[(RETIRED, "64")]);
+    assert!(
+        !reports_input_too_large(&retired_only),
+        "the retired variable alone must not set the stdin cap"
+    );
+
+    let new_wins_high = run_edict_with_env(
+        &oversized,
+        &[(RETIRED, "64"), (amblicit_cli::MAX_STDIN_BYTES_ENV, "1024")],
+    );
+    assert!(
+        !reports_input_too_large(&new_wins_high),
+        "the new variable must decide the cap when both are set"
+    );
+
+    let new_wins_low = run_edict_with_env(
+        &oversized,
+        &[
+            (RETIRED, "1048576"),
+            (amblicit_cli::MAX_STDIN_BYTES_ENV, "64"),
+        ],
+    );
+    assert!(
+        reports_input_too_large(&new_wins_low),
+        "the new variable must decide the cap when both are set"
+    );
+}
+
 #[test]
 fn input_root_rejects_path_outside_configured_root() {
     let allowed = temp_tree("allowed-root");
