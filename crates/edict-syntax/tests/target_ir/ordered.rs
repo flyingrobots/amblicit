@@ -125,10 +125,10 @@ fn encoder_refuses_missing_duplicate_foreign_and_forward_order_entries() {
     let baseline = ordered_artifact(ECHO_EFFECT_OUTPUT_DEPENDENT_REQUIRE);
     let invalid_orders = [
         None,
-        Some(vec!["t.step.0".to_owned()]),
-        Some(vec!["t.step.0".to_owned(), "t.step.0".to_owned()]),
-        Some(vec!["t.step.0".to_owned(), "other.require.0".to_owned()]),
-        Some(vec!["t.require.0".to_owned(), "t.step.0".to_owned()]),
+        Some(vec!["t.step.0"]),
+        Some(vec!["t.step.0", "t.step.0"]),
+        Some(vec!["t.step.0", "other.require.0"]),
+        Some(vec!["t.require.0", "t.step.0"]),
     ];
     for order in invalid_orders {
         let mut artifact = baseline.clone();
@@ -136,7 +136,11 @@ fn encoder_refuses_missing_duplicate_foreign_and_forward_order_entries() {
             .intents
             .get_mut("t")
             .expect("intent")
-            .execution_order = order;
+            .execution_order = order.map(|ids| {
+            ids.into_iter()
+                .map(|id| edict_syntax::TargetIrOrderEntry::Instruction(id.to_owned()))
+                .collect()
+        });
         assert_eq!(
             encode_target_ir_artifact(&artifact)
                 .expect_err("bad order")
@@ -246,4 +250,15 @@ fn ordered_contract_does_not_silently_drop_external_requests() {
         .iter()
         .any(|failure| failure.kind == TargetLoweringFailureKind::UnsupportedCoreNode));
     assert!(report.artifact.is_none());
+}
+
+#[test]
+fn ordered_v2_bytes_are_pinned_across_structured_control_flow() {
+    let artifact = ordered_artifact(ECHO_EFFECT_OUTPUT_DEPENDENT_REQUIRE);
+    assert_eq!(
+        digest_target_ir_artifact(&artifact)
+            .expect("ordered digest")
+            .to_review_string(),
+        "sha256:742e21450db8d2c35d32a9395d4976a00dea93a350f4471af1c9859de8376759"
+    );
 }

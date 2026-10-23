@@ -492,71 +492,64 @@ pub fn decode_canonical_cbor(bytes: &[u8]) -> Result<CanonicalValue, CanonicalEr
     Ok(value)
 }
 
-fn target_ir_artifact_value(artifact: &TargetIrArtifact) -> Result<CanonicalValue, CanonicalError> {
-    if !crate::target_ir::execution_order::artifact_has_valid_execution_order(artifact) {
-        return Err(CanonicalError::new(
-            CanonicalErrorKind::UnsupportedValue,
-            "Target IR execution order is invalid for its selected domain",
-        ));
-    }
-    if artifact.source_core_coordinate.is_empty() {
-        return Err(CanonicalError::new(
-            CanonicalErrorKind::UnsupportedValue,
-            "Target IR source Core coordinate is empty",
-        ));
-    }
-    let has_external_action_requests = artifact
-        .intents
-        .values()
-        .any(|intent| !intent.external_action_requests.is_empty());
-    let has_pure_bindings = artifact
-        .intents
-        .values()
-        .any(|intent| !intent.pure_bindings.is_empty());
-    if artifact.semantic_closure.is_none()
-        && (artifact
-            .intents
-            .values()
-            .any(|intent| intent.basis.is_some())
-            || has_pure_bindings
-            || has_external_action_requests)
-    {
-        return Err(CanonicalError::new(
-            CanonicalErrorKind::UnsupportedValue,
-            "basis-, pure-binding-, or external-action-bearing Target IR requires a semantic closure",
-        ));
-    }
-    if let Some(closure) = &artifact.semantic_closure {
-        for request in artifact
-            .intents
-            .values()
-            .flat_map(|intent| &intent.external_action_requests)
+fn target_ir_order_error() -> CanonicalError {
+    CanonicalError::new(
+        CanonicalErrorKind::UnsupportedValue,
+        "Target IR execution order is invalid for its selected domain",
+    )
+}
+
+fn target_ir_closure_required_error() -> CanonicalError {
+    CanonicalError::new(
+        CanonicalErrorKind::UnsupportedValue,
+        "basis-, pure-binding-, or external-action-bearing Target IR requires a semantic closure",
+    )
+}
+
+/// Whether an intent can only be represented with a semantic closure.
+fn target_ir_intent_requires_closure(intent: &TargetIrIntent) -> bool {
+    intent.basis.is_some()
+        || !intent.pure_bindings.is_empty()
+        || !intent.external_action_requests.is_empty()
+}
+
+/// Every request operation of one intent must be in the capability closure.
+fn check_target_ir_intent_capabilities(
+    closure: &TargetIrSemanticClosure,
+    intent: &TargetIrIntent,
+) -> Result<(), CanonicalError> {
+    for request in &intent.external_action_requests {
+        if !closure
+            .capabilities
+            .iter()
+            .any(|capability| capability == &request.operation)
         {
-            if !closure
-                .capabilities
-                .iter()
-                .any(|capability| capability == &request.operation)
-            {
-                return Err(CanonicalError::new(
-                    CanonicalErrorKind::UnsupportedValue,
-                    format!(
-                        "Target IR request operation `{}` is absent from the capability closure",
-                        request.operation.coordinate
-                    ),
-                ));
-            }
+            return Err(CanonicalError::new(
+                CanonicalErrorKind::UnsupportedValue,
+                format!(
+                    "Target IR request operation `{}` is absent from the capability closure",
+                    request.operation.coordinate
+                ),
+            ));
         }
     }
-    let mut entries = vec![
+    Ok(())
+}
+
+/// The envelope entries that precede `intents`.
+fn target_ir_header_entries(
+    artifact: &TargetIrArtifact,
+) -> Result<Vec<(&'static str, CanonicalValue)>, CanonicalError> {
+    #[cfg(test)]
+    target_ir_work::add_header_bytes(artifact.source_core_coordinate.len());
+    Ok(vec![
         (
             "kind",
-            text(
-                if artifact.domain == crate::target_ir::ECHO_ORDERED_SPAN_IR_DOMAIN {
-                    "orderedTargetIrArtifact"
-                } else {
-                    "targetIrArtifact"
-                },
-            ),
+            text(match artifact.domain.as_str() {
+                crate::target_ir::ECHO_ORDERED_SPAN_IR_DOMAIN => "orderedTargetIrArtifact",
+                crate::target_ir::ECHO_STRUCTURED_SPAN_IR_DOMAIN => "structuredTargetIrArtifact",
+                _ => "targetIrArtifact",
+            }),
         ),
         ("domain", text(&artifact.domain)),
         (
@@ -567,16 +560,14 @@ fn target_ir_artifact_value(artifact: &TargetIrArtifact) -> Result<CanonicalValu
             "sourceCoreCoordinate",
             text(&artifact.source_core_coordinate),
         ),
-        (
-            "intents",
-            string_map_results(
-                artifact
-                    .intents
-                    .iter()
-                    .map(|(name, intent)| Ok((name.as_str(), target_ir_intent_value(intent)?))),
-            )?,
-        ),
-    ];
+    ])
+}
+
+/// The envelope entry that follows `intents`, after its coordinate check.
+fn push_target_ir_semantic_closure(
+    artifact: &TargetIrArtifact,
+    entries: &mut Vec<(&'static str, CanonicalValue)>,
+) -> Result<(), CanonicalError> {
     if let Some(closure) = &artifact.semantic_closure {
         if closure.source_core.coordinate != artifact.source_core_coordinate {
             return Err(CanonicalError::new(
@@ -589,7 +580,128 @@ fn target_ir_artifact_value(artifact: &TargetIrArtifact) -> Result<CanonicalValu
             target_ir_semantic_closure_value(closure)?,
         ));
     }
+    Ok(())
+}
+
+fn target_ir_artifact_value(artifact: &TargetIrArtifact) -> Result<CanonicalValue, CanonicalError> {
+    if !crate::target_ir::execution_order::artifact_has_valid_execution_order(artifact) {
+        return Err(target_ir_order_error());
+    }
+    if artifact.source_core_coordinate.is_empty() {
+        return Err(CanonicalError::new(
+            CanonicalErrorKind::UnsupportedValue,
+            "Target IR source Core coordinate is empty",
+        ));
+    }
+    if artifact.semantic_closure.is_none()
+        && artifact
+            .intents
+            .values()
+            .any(target_ir_intent_requires_closure)
+    {
+        return Err(target_ir_closure_required_error());
+    }
+    if let Some(closure) = &artifact.semantic_closure {
+        for intent in artifact.intents.values() {
+            check_target_ir_intent_capabilities(closure, intent)?;
+        }
+    }
+    let mut entries = target_ir_header_entries(artifact)?;
+    entries.push((
+        "intents",
+        string_map_results(
+            artifact
+                .intents
+                .iter()
+                .map(|(name, intent)| Ok((name.as_str(), target_ir_intent_value(intent)?))),
+        )?,
+    ));
+    push_target_ir_semantic_closure(artifact, &mut entries)?;
     Ok(map(entries))
+}
+
+/// Canonical depth of each intent value: root map, then the `intents` map.
+const TARGET_IR_INTENT_DEPTH: usize = 2;
+
+/// Check, once, everything the full encoder requires of the envelope apart
+/// from its intents, using the same builders and depth as the full encoder.
+pub(crate) fn check_target_ir_header(artifact: &TargetIrArtifact) -> Result<(), CanonicalError> {
+    if !crate::target_ir::execution_order::header_has_valid_execution_order(
+        &artifact.domain,
+        &artifact.target_profile,
+    ) {
+        return Err(target_ir_order_error());
+    }
+    if artifact.source_core_coordinate.is_empty() {
+        return Err(CanonicalError::new(
+            CanonicalErrorKind::UnsupportedValue,
+            "Target IR source Core coordinate is empty",
+        ));
+    }
+    let mut entries = target_ir_header_entries(artifact)?;
+    push_target_ir_semantic_closure(artifact, &mut entries)?;
+    encode_value(&map(entries), &mut Vec::new(), 0)
+}
+
+/// Check one borrowed intent against the envelope it belongs to, with the same
+/// per-intent checks, value builder and canonical depth as the full encoder.
+/// No envelope is built and no header value is copied.
+pub(crate) fn check_target_ir_intent(
+    artifact: &TargetIrArtifact,
+    name: &str,
+    intent: &TargetIrIntent,
+) -> Result<(), CanonicalError> {
+    if !crate::target_ir::execution_order::intent_has_valid_execution_order(
+        &artifact.domain,
+        intent,
+    ) {
+        return Err(target_ir_order_error());
+    }
+    match &artifact.semantic_closure {
+        None if target_ir_intent_requires_closure(intent) => {
+            return Err(target_ir_closure_required_error());
+        }
+        None => {}
+        Some(closure) => check_target_ir_intent_capabilities(closure, intent)?,
+    }
+    let value = target_ir_intent_value(intent)?;
+    let mut scratch = Vec::new();
+    encode_value(&text(name), &mut scratch, TARGET_IR_INTENT_DEPTH)?;
+    encode_value(&value, &mut scratch, TARGET_IR_INTENT_DEPTH)
+}
+
+/// Test-only counts of the real Target IR encoding work: bytes of the shared
+/// source Core coordinate copied into header values, and the number of values
+/// built for each intent (keyed by the intent's address during one call).
+#[cfg(test)]
+pub(crate) mod target_ir_work {
+    use std::cell::{Cell, RefCell};
+    use std::collections::BTreeMap;
+
+    use crate::target_ir::TargetIrIntent;
+
+    thread_local! {
+        static HEADER_BYTES: Cell<usize> = const { Cell::new(0) };
+        static INTENT_VALUES: RefCell<BTreeMap<usize, usize>> =
+            const { RefCell::new(BTreeMap::new()) };
+    }
+
+    pub(crate) fn add_header_bytes(count: usize) {
+        HEADER_BYTES.with(|bytes| bytes.set(bytes.get() + count));
+    }
+
+    pub(crate) fn add_intent_value(intent: &TargetIrIntent) {
+        let key = std::ptr::from_ref(intent) as usize;
+        INTENT_VALUES.with(|values| *values.borrow_mut().entry(key).or_default() += 1);
+    }
+
+    /// Return and reset `(header bytes, values built per intent)`.
+    pub(crate) fn take() -> (usize, BTreeMap<usize, usize>) {
+        (
+            HEADER_BYTES.with(|bytes| bytes.replace(0)),
+            INTENT_VALUES.with(|values| std::mem::take(&mut *values.borrow_mut())),
+        )
+    }
 }
 
 fn target_ir_semantic_closure_value(
@@ -721,6 +833,8 @@ fn validate_target_ir_intent_identities(intent: &TargetIrIntent) -> Result<(), C
 }
 
 fn target_ir_intent_value(intent: &TargetIrIntent) -> Result<CanonicalValue, CanonicalError> {
+    #[cfg(test)]
+    target_ir_work::add_intent_value(intent);
     validate_target_ir_intent_identities(intent)?;
     let mut entries = vec![
         ("operationProfile", text(&intent.operation_profile)),
@@ -743,10 +857,7 @@ fn target_ir_intent_value(intent: &TargetIrIntent) -> Result<CanonicalValue, Can
         ("result", core_expr_value(&intent.result)?),
     ];
     if let Some(order) = &intent.execution_order {
-        entries.push((
-            "executionOrder",
-            CanonicalValue::Array(order.iter().map(|id| text(id)).collect()),
-        ));
+        entries.push(("executionOrder", target_ir_order_value(order)?));
     }
     if let Some(basis) = &intent.basis {
         entries.push(("basis", core_expr_value(basis)?));
@@ -774,6 +885,33 @@ fn target_ir_intent_value(intent: &TargetIrIntent) -> Result<CanonicalValue, Can
         ));
     }
     Ok(map(entries))
+}
+
+/// v2 orders encode as an array of instruction ids. v3 trees add `for` and
+/// `branch` maps whose nested arrays use the same entry encoding; the domain
+/// check in `artifact_has_valid_execution_order` keeps maps out of v2.
+fn target_ir_order_value(
+    order: &[crate::target_ir::TargetIrOrderEntry],
+) -> Result<CanonicalValue, CanonicalError> {
+    use crate::target_ir::TargetIrOrderEntry;
+    array_results(order.iter().map(|entry| match entry {
+        TargetIrOrderEntry::Instruction(id) => Ok(text(id)),
+        TargetIrOrderEntry::For(entry) => Ok(map([
+            ("kind", text("for")),
+            ("id", text(&entry.id)),
+            ("binder", local_ref_value(&entry.binder)),
+            ("iterable", core_expr_value(&entry.iterable)?),
+            ("bound", core_bound_value(&entry.bound)),
+            ("body", target_ir_order_value(&entry.body)?),
+        ])),
+        TargetIrOrderEntry::Branch(entry) => Ok(map([
+            ("kind", text("branch")),
+            ("id", text(&entry.id)),
+            ("predicate", core_predicate_value(&entry.predicate)?),
+            ("then", target_ir_order_value(&entry.then_entries)?),
+            ("else", target_ir_order_value(&entry.else_entries)?),
+        ])),
+    }))
 }
 
 fn target_ir_pure_binding_value(

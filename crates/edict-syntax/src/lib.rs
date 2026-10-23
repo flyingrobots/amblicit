@@ -239,11 +239,13 @@ pub use target_intrinsics::{
 };
 pub use target_ir::{
     lower_to_target_ir, TargetEffectLowering, TargetEffectSignatureFact, TargetIrArtifact,
-    TargetIrExternalActionRequest, TargetIrIntent, TargetIrLoweringFacts, TargetIrPureBinding,
-    TargetIrRequireFailure, TargetIrRequirement, TargetIrSemanticClosure, TargetIrStep,
-    TargetLoweringFailure, TargetLoweringFailureKind, TargetLoweringReport, TargetLoweringStatus,
-    TargetPureFunctionFact, ECHO_DPO_TARGET_PROFILE, ECHO_ORDERED_SPAN_IR_DOMAIN,
-    ECHO_SPAN_IR_DOMAIN, GITWARP_COMMIT_REDUCER_IR_DOMAIN, GITWARP_REF_CRDT_TARGET_PROFILE,
+    TargetIrBranchEntry, TargetIrExternalActionRequest, TargetIrForEntry, TargetIrIntent,
+    TargetIrLoweringFacts, TargetIrOrderEntry, TargetIrPureBinding, TargetIrRequireFailure,
+    TargetIrRequirement, TargetIrSemanticClosure, TargetIrStep, TargetLoweringFailure,
+    TargetLoweringFailureKind, TargetLoweringReport, TargetLoweringStatus, TargetPureFunctionFact,
+    ECHO_DPO_TARGET_PROFILE, ECHO_ORDERED_SPAN_IR_DOMAIN, ECHO_SPAN_IR_DOMAIN,
+    ECHO_STRUCTURED_SPAN_IR_DOMAIN, GITWARP_COMMIT_REDUCER_IR_DOMAIN,
+    GITWARP_REF_CRDT_TARGET_PROFILE,
 };
 pub use target_profile::{
     validate_target_profile_manifest, TargetProfileConformanceFailure,

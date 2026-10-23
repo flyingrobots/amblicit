@@ -7,6 +7,7 @@ use edict_syntax::{
     CompilerErrorKind, CoreBudget, CoreExpr, CoreImportKind, CoreModule, CoreNode,
     RequiredPureIntrinsic, ResourceRef, TargetIrLoweringFacts, TargetLoweringFailureKind,
     TargetLoweringStatus, TargetPureIntrinsicFact, TargetPureIntrinsicFailureKind,
+    ECHO_STRUCTURED_SPAN_IR_DOMAIN,
 };
 
 const CATALOG: &str = "echo.dpo@1.intrinsics";
@@ -988,6 +989,57 @@ fn loop_source(call: &str) -> String {
           return {{ warp: input.warp }};
         }}"
     )
+}
+
+/// The admitted catalog with `slotEdgeId` costing nothing at all.
+fn zero_cost_slot_facts() -> Vec<TargetPureIntrinsicFact> {
+    let mut catalog = catalog_value();
+    *field_mut(field_mut(&mut catalog, "intrinsics"), SLOT_EDGE_ID) =
+        pure_entry(SLOT_EDGE_ID, &[ID, ID, ID], 0, &[0, 0, 0]);
+    admit_value(&catalog).expect("a zero-cost cost rule is admitted")
+}
+
+#[test]
+fn target_refuses_zero_cost_intrinsic_calls_inside_v3_loop_bodies() {
+    let admitted = zero_cost_slot_facts();
+    let mut context = CompilerContext::new()
+        .with_operation_profile("p.read", "continuum.profile.read-only/v1")
+        .with_budget(
+            "p.small",
+            CoreBudget {
+                max_steps: 1_000_000,
+                max_allocated_bytes: u64::MAX,
+                max_output_bytes: u64::MAX,
+            },
+        );
+    for fact in admitted.clone() {
+        context = context.with_target_pure_intrinsic(fact);
+    }
+    let facts = TargetIrLoweringFacts {
+        target_ir_domain: ECHO_STRUCTURED_SPAN_IR_DOMAIN.into(),
+        pure_functions: Vec::new(),
+        ..facts()
+    }
+    .with_target_pure_intrinsics(&admitted);
+
+    // Control: the zero-cost call outside the loop lowers under v3.
+    let outside = loop_source("input.warp").replace(
+        "for item in",
+        "let edge0 = echo.slotEdgeId(input.warp, input.warp, input.ty);\n          for item in",
+    );
+    let core = compile_to_core(&parse_module(&outside).unwrap(), &context)
+        .unwrap_or_else(|errors| panic!("control: {errors:?}"));
+    let report = lower_to_target_ir(&core, &facts);
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+
+    for (case, call) in [
+        ("direct", "echo.slotEdgeId(input.warp, item, input.ty)"),
+        ("helper", "slot(input.warp, item, input.ty)"),
+    ] {
+        let core = compile_to_core(&parse_module(&loop_source(call)).unwrap(), &context)
+            .unwrap_or_else(|errors| panic!("{case}: {errors:?}"));
+        refused(&core, &facts, case);
+    }
 }
 
 #[test]

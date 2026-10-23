@@ -3962,3 +3962,5 @@ fn digest_text(hex: char) -> String {
 
 #[path = "target_ir/ordered.rs"]
 mod ordered;
+#[path = "target_ir/structured.rs"]
+mod structured;
