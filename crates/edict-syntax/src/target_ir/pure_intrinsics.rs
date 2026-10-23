@@ -47,6 +47,7 @@ pub(super) fn intent_cost_fits(
         pure_functions,
         functions: BTreeMap::new(),
         visiting: Vec::new(),
+        intrinsic_calls: 0,
     };
     let available = locals(intent.body.locals.iter());
     let constraints = intent
@@ -73,8 +74,12 @@ fn locals<'a>(locals: impl Iterator<Item = &'a LocalRef>) -> BTreeMap<&'a str, &
 struct Meter<'a> {
     core: &'a CoreModule,
     pure_functions: &'a [TargetPureFunctionFact],
-    functions: BTreeMap<&'a str, u64>,
+    /// Per helper: its metered steps and whether it reaches any intrinsic call.
+    functions: BTreeMap<&'a str, (u64, bool)>,
     visiting: Vec<&'a str>,
+    /// Intrinsic calls metered so far, counted whatever their cost, so a
+    /// zero-cost call is still visible to the loop-body refusal.
+    intrinsic_calls: u64,
 }
 
 impl<'a> Meter<'a> {
@@ -139,10 +144,14 @@ impl<'a> Meter<'a> {
                     steps.checked_add(self.expression(value, available, depth + 1)?)
                 })?,
                 // Loop bodies are charged once per iteration bound elsewhere;
-                // an intrinsic inside one is refused rather than undercharged.
+                // an intrinsic inside one is refused rather than undercharged,
+                // judged by presence (including through helpers), not cost.
                 CoreNode::For { iter, body, .. } => {
                     let iter = self.expression(iter, available, depth + 1)?;
-                    if self.block(body, available, depth + 1)? != 0 {
+                    let before = self.intrinsic_calls;
+                    if self.block(body, available, depth + 1)? != 0
+                        || self.intrinsic_calls != before
+                    {
                         return None;
                     }
                     iter
@@ -241,6 +250,7 @@ impl<'a> Meter<'a> {
             let Some(cost) = &fact.intrinsic_cost else {
                 return Some(0);
             };
+            self.intrinsic_calls = self.intrinsic_calls.checked_add(1)?;
             if cost.per_argument_max.len() != args.len() {
                 return None;
             }
@@ -264,8 +274,11 @@ impl<'a> Meter<'a> {
         let Some((name, function)) = self.core.functions.get_key_value(name) else {
             return Some(0);
         };
-        if let Some(steps) = self.functions.get(name.as_str()) {
-            return Some(*steps);
+        if let Some(&(steps, reaches_intrinsic)) = self.functions.get(name.as_str()) {
+            if reaches_intrinsic {
+                self.intrinsic_calls = self.intrinsic_calls.checked_add(1)?;
+            }
+            return Some(steps);
         }
         // Core bounds call height and expression depth separately: a helper's
         // body starts a fresh expression depth, and the call stack has its own
@@ -274,6 +287,7 @@ impl<'a> Meter<'a> {
             return None;
         }
         self.visiting.push(name);
+        let calls_before = self.intrinsic_calls;
         let scope = locals(function.params.iter().chain(&function.body.locals));
         let steps = function
             .body
@@ -287,7 +301,8 @@ impl<'a> Meter<'a> {
             });
         self.visiting.pop();
         let steps = steps?;
-        self.functions.insert(name, steps);
+        self.functions
+            .insert(name, (steps, self.intrinsic_calls != calls_before));
         Some(steps)
     }
 

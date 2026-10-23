@@ -22,7 +22,8 @@ versions still track specification maturity rather than a released product.
   (`empty_predicate_aggregate`) and in the v3 encoder, an obstruction binder
   reusing a visible or claimed identity refuses in v3 lowering, and lowering
   never returns a v3 artifact its encoder refuses (`canonical_nesting_depth`
-  for nesting, otherwise `structured_artifact_unencodable`). **Breaking (Rust
+  for nesting, otherwise `structured_artifact_unencodable`); an intrinsic call
+  in a loop body refuses even when its admitted cost is zero. **Breaking (Rust
   API):** `TargetIrIntent::execution_order` is now
   `Option<Vec<TargetIrOrderEntry>>`; v2 still encodes a flat array of ids with
   unchanged bytes, and v1/v2 keep their `for`/`branch` refusals. A new
