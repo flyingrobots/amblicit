@@ -44,7 +44,7 @@ Each stage is one pull request. Each stage leaves `main` in a working state.
 | Stage | Scope | Posture |
 | --- | --- | --- |
 | 1 | Product prose: the root `README.md`, this note, and one entry in the documentation router that links to this note | Current |
-| 2 | Crate names `amblicit-*`, the facade crate `amblicit` and the CLI binary `amblicit` | Planned |
+| 2 | Package names, the facade library `amblicit` and the CLI binary `amblicit` | Planned |
 | 3 | Source extension `.amblicit`, editor grammars and the scope name `source.amblicit` | Planned |
 | 4 | Wire identifiers `amblicit.*/vN` as new versions | Planned |
 
@@ -68,7 +68,8 @@ code and artifacts:
 
 | Surface | Current name | Planned name | Stage |
 | --- | --- | --- | --- |
-| Crates | `edict`, `edict-cli`, `edict-syntax`, `edict-provider-schema`, `edict-provider-host-wasmtime` | `amblicit`, `amblicit-cli`, `amblicit-syntax`, `amblicit-provider-schema`, `amblicit-provider-host-wasmtime` | 2 |
+| Crates (packages) | `flyingrobots-edict`, `edict-cli`, `edict-syntax`, `edict-provider-schema`, `edict-provider-host-wasmtime` | `flyingrobots-amblicit`, `amblicit-cli`, `amblicit-syntax`, `amblicit-provider-schema`, `amblicit-provider-host-wasmtime` | 2 |
+| Facade library | `edict` (package `flyingrobots-edict`) | `amblicit` | 2 |
 | CLI binary | `edict` | `amblicit` | 2 |
 | Source extension | `.edict` | `.amblicit` | 3 |
 | Editor scope | `source.edict` | `source.amblicit` | 3 |
