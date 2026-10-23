@@ -13,12 +13,14 @@ use edict_provider_schema::{
 use edict_syntax::{
     canonical_target_profile_contract_resources, compile_to_core, decode_canonical_cbor,
     digest_target_profile_contract_resource, encode_core_module, encode_result_projection,
-    encode_target_ir_artifact, parse_module, CanonicalValue, CompilerContext, CoreBudget, CoreExpr,
+    encode_target_ir_artifact, lower_to_target_ir, parse_module, CanonicalValue, CompilerContext, CoreBudget, CoreExpr,
     CoreExternalActionBudget, CoreObstructionReason, CorePredicate, CoreValue, LocalRef,
     ProviderArtifactSchemaValidationErrorKind, ResourceRef, ResultProjection, ResultProjectionExpr,
     ResultProjectionSource, TargetIrArtifact, TargetIrExternalActionRequest, TargetIrIntent,
     TargetIrOrderEntry, TargetIrPureBinding, TargetIrRequireFailure, TargetIrRequirement,
-    TargetIrSemanticClosure, TargetProfileContractResource, WriteClass,
+    TargetEffectLowering, TargetIrLoweringFacts, TargetIrSemanticClosure,
+    TargetProfileContractResource, WriteClass, ECHO_DPO_TARGET_PROFILE,
+    ECHO_STRUCTURED_SPAN_IR_DOMAIN,
     AUTHORITY_FACTS_API_VERSION, CORE_MODULE_DIGEST_DOMAIN, PROVIDER_LAWPACK_ARTIFACT_DOMAIN,
     RESULT_PROJECTION_DIGEST_DOMAIN, TARGET_IR_ARTIFACT_DIGEST_DOMAIN, TARGET_PROFILE_API_VERSION,
 };
@@ -360,6 +362,208 @@ fn structured_target_ir_schema_accepts_nested_order_entries() {
         ("empty nested id", malformed_body),
         ("missing bound", missing_bound),
     ] {
+        assert_eq!(
+            pack.validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &invalid),
+            Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch),
+            "{case}"
+        );
+    }
+}
+
+/// Nested loops, a branch inside a loop and a loop inside a branch.
+const NESTED_STRUCTURED_SOURCE: &str = "package a.b@1;\n\
+    type Leaf = { id: String<max=16>, };\n\
+    type Group = { leaves: List<Leaf, max=2>, };\n\
+    type Input = { id: String<max=16>, leaves: List<Leaf, max=4>, groups: List<Group, max=2>, };\n\
+    type Receipt = { id: String<max=16>, };\n\
+    type Output = { id: String<max=16>, };\n\
+    intent t(input: Input) returns Output\n\
+      profile p.effectful\n\
+      basis none\n\
+      budget <= p.loop {\n\
+      for group in input.groups bounded 2 {\n\
+        for leaf in group.leaves bounded 2 {\n\
+          if leaf.id != \"\" {\n\
+            let receipt: Receipt = target.replace(leaf.id)\n\
+              else { rejected(reason) => domain.WriteRejected };\n\
+          } else {\n\
+            require leaf.id == \"\" else domain.WriteRejected;\n\
+          }\n\
+        }\n\
+      }\n\
+      if input.id != \"\" {\n\
+        for leaf in input.leaves bounded 4 {\n\
+          let observed: String<max=16> = leaf.id;\n\
+        }\n\
+      }\n\
+      return { id: input.id };\n\
+    }";
+
+fn nested_structured_target_ir_value() -> CanonicalValue {
+    let context = CompilerContext::new()
+        .with_operation_profile("p.effectful", "continuum.profile.write/v1")
+        .with_operation_profile_write_classes("p.effectful", [WriteClass::Replace])
+        .with_effect_write_class("target.replace", WriteClass::Replace)
+        .with_budget(
+            "p.loop",
+            CoreBudget {
+                max_steps: 64,
+                max_allocated_bytes: 4096,
+                max_output_bytes: 256,
+            },
+        );
+    let module = parse_module(NESTED_STRUCTURED_SOURCE).expect("nested source parses");
+    let core = compile_to_core(&module, &context).expect("nested source compiles");
+    let facts = TargetIrLoweringFacts {
+        target_profile: ResourceRef {
+            coordinate: ECHO_DPO_TARGET_PROFILE.to_owned(),
+            digest: Some(format!("sha256:{}", "1".repeat(64))),
+        },
+        target_ir_domain: ECHO_STRUCTURED_SPAN_IR_DOMAIN.to_owned(),
+        operation_profiles: vec!["continuum.profile.write/v1".to_owned()],
+        obstruction_coordinates: vec!["rejected".to_owned()],
+        effect_lowerings: vec![TargetEffectLowering {
+            effect: "target.replace".to_owned(),
+            target_intrinsic: "echo.dpo@1.replace".to_owned(),
+            failure_mappings: BTreeMap::new(),
+        }],
+        effect_signatures: Vec::new(),
+        pure_functions: Vec::new(),
+    };
+    let report = lower_to_target_ir(&core, &facts);
+    let artifact = report
+        .artifact
+        .unwrap_or_else(|| panic!("nested source lowers: {:?}", report.failures));
+    encode_target_ir_value(&artifact)
+}
+
+/// Render an encoded order tree: `i` for an instruction id, `for[...]` and
+/// `branch[then|else]` for control entries.
+fn encoded_order_shape(entries: &CanonicalValue) -> String {
+    let CanonicalValue::Array(entries) = entries else {
+        panic!("order array");
+    };
+    entries
+        .iter()
+        .map(|entry| match entry {
+            CanonicalValue::Text(_) => "i".to_owned(),
+            CanonicalValue::Map(fields) => {
+                let field = |name: &str| {
+                    fields
+                        .iter()
+                        .find_map(|(key, value)| (key == &text(name)).then_some(value))
+                        .unwrap_or_else(|| panic!("control field {name}"))
+                };
+                if field("kind") == &text("for") {
+                    format!("for[{}]", encoded_order_shape(field("body")))
+                } else {
+                    format!(
+                        "branch[{}|{}]",
+                        encoded_order_shape(field("then")),
+                        encoded_order_shape(field("else"))
+                    )
+                }
+            }
+            other => panic!("unexpected order entry {other:?}"),
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn nested_order_mut(value: &mut CanonicalValue) -> &mut Vec<CanonicalValue> {
+    let intents = map_value_mut(value, "intents");
+    let CanonicalValue::Array(order) = map_value_mut(map_value_mut(intents, "t"), "executionOrder")
+    else {
+        panic!("order array");
+    };
+    order
+}
+
+/// The branch nested inside both loops.
+fn branch_in_loops_mut(value: &mut CanonicalValue) -> &mut CanonicalValue {
+    let order = nested_order_mut(value);
+    let CanonicalValue::Array(outer) = map_value_mut(&mut order[0], "body") else {
+        panic!("outer body");
+    };
+    let CanonicalValue::Array(inner) = map_value_mut(&mut outer[0], "body") else {
+        panic!("inner body");
+    };
+    &mut inner[0]
+}
+
+/// The loop nested inside the top-level branch.
+fn loop_in_branch_mut(value: &mut CanonicalValue) -> &mut CanonicalValue {
+    let order = nested_order_mut(value);
+    let CanonicalValue::Array(then) = map_value_mut(&mut order[1], "then") else {
+        panic!("then arm");
+    };
+    &mut then[0]
+}
+
+#[test]
+fn encoder_output_with_nested_loops_and_branches_matches_the_current_schema() {
+    let pack = assemble(canonical_target_profile_contract_resources());
+    let value = nested_structured_target_ir_value();
+    assert_eq!(map_value_mut(&mut value.clone(), "domain"), &text("echo.span-ir/v3"));
+    assert_eq!(
+        encoded_order_shape(map_value_mut(
+            map_value_mut(map_value_mut(&mut value.clone(), "intents"), "t"),
+            "executionOrder"
+        )),
+        "for[for[branch[i|i]]],branch[for[i]|]"
+    );
+    pack.validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &value)
+        .expect("nested encoder output satisfies the current schema");
+
+    let mutate = |change: &dyn Fn(&mut CanonicalValue)| {
+        let mut invalid = value.clone();
+        change(&mut invalid);
+        invalid
+    };
+    let cases = [
+        (
+            "empty all predicate",
+            mutate(&|value| {
+                *map_value_mut(branch_in_loops_mut(value), "predicate") =
+                    map(vec![("kind", text("all")), ("values", array(vec![]))]);
+            }),
+        ),
+        (
+            "unknown predicate kind",
+            mutate(&|value| {
+                *map_value_mut(branch_in_loops_mut(value), "predicate") =
+                    map(vec![("kind", text("maybe"))]);
+            }),
+        ),
+        (
+            "non-array then arm",
+            mutate(&|value| {
+                *map_value_mut(branch_in_loops_mut(value), "then") = text("t.step.0");
+            }),
+        ),
+        (
+            "missing else arm",
+            mutate(&|value| remove_map_field(branch_in_loops_mut(value), "else")),
+        ),
+        (
+            "non-text instruction in else arm",
+            mutate(&|value| {
+                *map_value_mut(branch_in_loops_mut(value), "else") =
+                    array(vec![CanonicalValue::Integer(0)]);
+            }),
+        ),
+        (
+            "empty instruction id in then arm",
+            mutate(&|value| {
+                *map_value_mut(branch_in_loops_mut(value), "then") = array(vec![text("")]);
+            }),
+        ),
+        (
+            "loop inside a branch without a body",
+            mutate(&|value| remove_map_field(loop_in_branch_mut(value), "body")),
+        ),
+    ];
+    for (case, invalid) in cases {
         assert_eq!(
             pack.validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &invalid),
             Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch),
