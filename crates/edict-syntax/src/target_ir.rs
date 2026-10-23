@@ -945,7 +945,11 @@ fn validate_pure_binding_graphs(
                 }
                 // The Core schema requires one or more `all`/`any` values; one
                 // check covers every predicate the v3 intent carries.
-                if let Some(node_index) = intent_empty_aggregate(intent) {
+                if let Some(site) = intent_empty_aggregate(intent) {
+                    let node_index = match site {
+                        EmptyAggregateSite::Intent => None,
+                        EmptyAggregateSite::Node(index) => Some(index),
+                    };
                     return Some(invalid_pure_binding(
                         intent_name,
                         node_index,
@@ -2400,10 +2404,17 @@ fn predicate_has_empty_aggregate(predicate: &CorePredicate, depth: usize) -> boo
     }
 }
 
-/// Locate an empty `all`/`any` anywhere in a v3 intent: `Some(None)` for intent
-/// metadata or the result, `Some(Some(i))` for top-level node `i` (including its
-/// nested blocks), and `None` when every aggregate is nonempty.
-fn intent_empty_aggregate(intent: &CoreIntent) -> Option<Option<usize>> {
+/// Where an empty `all`/`any` sits in a v3 intent.
+enum EmptyAggregateSite {
+    /// Intent metadata (basis, input constraints) or the result.
+    Intent,
+    /// A top-level node, including its nested blocks.
+    Node(usize),
+}
+
+/// Locate an empty `all`/`any` anywhere in a v3 intent, or `None` when every
+/// aggregate is nonempty.
+fn intent_empty_aggregate(intent: &CoreIntent) -> Option<EmptyAggregateSite> {
     if intent
         .basis
         .as_ref()
@@ -2413,7 +2424,7 @@ fn intent_empty_aggregate(intent: &CoreIntent) -> Option<Option<usize>> {
             .iter()
             .any(|constraint| predicate_has_empty_aggregate(&constraint.predicate, 0))
     {
-        return Some(None);
+        return Some(EmptyAggregateSite::Intent);
     }
     if let Some(index) = intent
         .body
@@ -2421,9 +2432,9 @@ fn intent_empty_aggregate(intent: &CoreIntent) -> Option<Option<usize>> {
         .iter()
         .position(|node| node_has_empty_aggregate(node, 0))
     {
-        return Some(Some(index));
+        return Some(EmptyAggregateSite::Node(index));
     }
-    expression_has_empty_aggregate(&intent.body.result, 0).then_some(None)
+    expression_has_empty_aggregate(&intent.body.result, 0).then_some(EmptyAggregateSite::Intent)
 }
 
 fn block_has_empty_aggregate(block: &CoreBlock, depth: usize) -> bool {
