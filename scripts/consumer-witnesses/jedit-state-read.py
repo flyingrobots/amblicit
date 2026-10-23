@@ -36,7 +36,7 @@ def main():
     if not Path("/.dockerenv").is_file():
         raise RuntimeError("Use the COPY-based consumer witness Dockerfile")
     producer = Path(os.environ.get("EDICT_SOURCE", "/edict"))
-    binary = os.environ.get("EDICT_BINARY", "/edict/target/debug/edict")
+    binary = os.environ.get("EDICT_BINARY", "/edict/target/debug/amblicit")
     source = Path("/consumer-source/edict/replace-range-probes/state-read")
     provider = Path("/echo-source/schemas/edict-provider/package/v1")
     with tempfile.TemporaryDirectory(prefix="ordered-jim-") as scratch:

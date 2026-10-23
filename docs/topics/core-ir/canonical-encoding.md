@@ -5,7 +5,7 @@ Status: current Core IR byte and digest explanation for
 
 This page explains how Edict turns an in-memory `CoreModule` into reviewed
 canonical bytes and a `sha256:<hex>` digest. The executable source of truth is
-[`canonical.rs`](../../../crates/edict-syntax/src/canonical.rs); this page is the
+[`canonical.rs`](../../../crates/amblicit-syntax/src/canonical.rs); this page is the
 human map for reviewers changing that file.
 
 ## Scope

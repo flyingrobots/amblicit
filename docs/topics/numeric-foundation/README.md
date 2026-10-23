@@ -8,8 +8,8 @@ provides stable failures. [NUMERIC-REQ-001] [NUMERIC-REQ-002]
 
 ## Public boundary
 
-`edict::numeric` exports `Q32_32`, `NumericError`, and `Q32_32_PROFILE`.
-`edict_syntax::numeric` provides the same implementation to compiler consumers.
+`amblicit::numeric` exports `Q32_32`, `NumericError`, and `Q32_32_PROFILE`.
+`amblicit_syntax::numeric` provides the same implementation to compiler consumers.
 The profile value is `bunny.q32_32.checked/v1`; it is Edict's integration label,
 not a new name for Bunny's SDL `q32.32` scalar profile.
 
@@ -24,7 +24,7 @@ not a new name for Bunny's SDL `q32.32` scalar profile.
 The wrapper keeps Bunny's representation private and exposes no saturating
 arithmetic traits or float conversions. Tiny nonzero products and quotients
 may round to zero successfully. Expected raw values in the
-[consumer tests](../../../crates/edict/tests/numeric_foundation.rs) are literal
+[consumer tests](../../../crates/amblicit/tests/numeric_foundation.rs) are literal
 oracles, not values calculated through Bunny. [NUMERIC-REQ-002]
 
 ## Compatibility and implementation limits

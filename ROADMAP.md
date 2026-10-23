@@ -145,7 +145,7 @@ Release labels: `release:front-end`
 
 Scope:
 
-- Phase 1 `edict-syntax` lexer/parser for the landed source-AST subset.
+- Phase 1 `amblicit-syntax` lexer/parser for the landed source-AST subset.
 - Phase 2 source-AST semantic validation through `SEMVAL-REQ-007`.
 - Syntax and semantic-validation topic shelves.
 - Local contract-graph verification through `cargo xtask verify`.

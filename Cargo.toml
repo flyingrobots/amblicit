@@ -1,10 +1,10 @@
 [workspace]
 members = [
-  "crates/edict",
-  "crates/edict-cli",
-  "crates/edict-provider-host-wasmtime",
-  "crates/edict-provider-schema",
-  "crates/edict-syntax",
+  "crates/amblicit",
+  "crates/amblicit-cli",
+  "crates/amblicit-provider-host-wasmtime",
+  "crates/amblicit-provider-schema",
+  "crates/amblicit-syntax",
   "xtask",
 ]
 resolver = "2"
@@ -12,7 +12,7 @@ resolver = "2"
 [workspace.package]
 edition = "2021"
 license = "Apache-2.0"
-repository = "https://github.com/flyingrobots/edict"
+repository = "https://github.com/flyingrobots/amblicit"
 rust-version = "1.96"
 
 # Maximize strictness (flyingrobots house rule): no unsafe, warnings are errors.

@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use edict_syntax::{
+use amblicit_syntax::{
     assemble_contract_bundle, canonical_target_profile_contract_resources, compile_to_core,
     digest_authority_facts_document, digest_core_module, digest_target_ir_artifact,
     encode_authority_facts_cbor, encode_core_module, encode_target_ir_artifact,
@@ -18,7 +18,7 @@ use edict_syntax::{
 
 use crate::util::{dirs, read_to_string, run_cmd};
 
-const CLI_MAX_STDIN_BYTES_ENV: &str = "EDICT_CLI_MAX_STDIN_BYTES";
+const CLI_MAX_STDIN_BYTES_ENV: &str = "AMBLICIT_CLI_MAX_STDIN_BYTES";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AuthorityFactsGoldenMode {
@@ -776,7 +776,7 @@ pub(crate) enum CliGoldenMode {
 }
 
 pub(crate) fn cli_goldens(root: &Path, mode: CliGoldenMode) -> Result<(), String> {
-    run_cmd(root, "cargo", ["build", "-p", "edict-cli"])?;
+    run_cmd(root, "cargo", ["build", "-p", "amblicit-cli"])?;
     let cases = dirs(&root.join("fixtures/cli"))?;
     if cases.is_empty() {
         return Err("fixtures/cli contains no golden cases".into());
@@ -820,7 +820,7 @@ pub(crate) fn cli_binary_path_from_cargo_metadata(metadata: &[u8]) -> Result<Pat
         .ok_or_else(|| "cargo metadata missing string field `target_directory`".to_owned())?;
     Ok(PathBuf::from(target_directory)
         .join("debug")
-        .join(format!("edict{}", std::env::consts::EXE_SUFFIX)))
+        .join(format!("amblicit{}", std::env::consts::EXE_SUFFIX)))
 }
 
 fn check_or_write_cli_golden(
@@ -839,7 +839,7 @@ fn check_or_write_cli_golden(
     let exit_code = output
         .status
         .code()
-        .ok_or_else(|| format!("[{name}] edict terminated without an exit code"))?;
+        .ok_or_else(|| format!("[{name}] amblicit terminated without an exit code"))?;
 
     match mode {
         CliGoldenMode::Check => {

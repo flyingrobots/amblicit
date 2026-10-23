@@ -10,7 +10,7 @@ executing the operation or introducing host-authored application semantics.
 
 ## Current Contract
 
-`edict_syntax::emit_result_projection` accepts one exact Core module, its
+`amblicit_syntax::emit_result_projection` accepts one exact Core module, its
 matching Target IR artifact, and an intent name. The emitter requires:
 
 - the raw Core candidate to pass the authoritative whole-module type-integrity

@@ -10,8 +10,8 @@ be closed before later phases claim stronger coverage.
 
 In scope:
 
-- lexical tokenization exposed through `edict_syntax::lex`;
-- module parsing exposed through `edict_syntax::parse_module`;
+- lexical tokenization exposed through `amblicit_syntax::lex`;
+- module parsing exposed through `amblicit_syntax::parse_module`;
 - source AST shape for the minimal-v1 syntax subset;
 - stable parser error identities through `ParseErrorKind`;
 - deterministic contract metadata linking this plan to tests and fixtures.
@@ -31,7 +31,7 @@ Out of scope:
 
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| SYNTAX-TP-027 | implemented | Source-module import boundary | SYNTAX-REQ-017 | Exact package/digest/alias and full import span survive parsing; missing digest fails with ExpectedKeyword; a standalone compiler cannot discard an unresolved dependency. | source_module_import_highlights_the_contextual_keyword, source_module_import_preserves_exact_package_digest_and_alias, source_module_import_requires_a_digest_clause, unresolved_source_import_cannot_silently_compile_even_when_unused | crates/edict-syntax/tests/source_modules.rs | Closure authentication and linking belong to the compiler-spine plan. |
+| SYNTAX-TP-027 | implemented | Source-module import boundary | SYNTAX-REQ-017 | Exact package/digest/alias and full import span survive parsing; missing digest fails with ExpectedKeyword; a standalone compiler cannot discard an unresolved dependency. | source_module_import_highlights_the_contextual_keyword, source_module_import_preserves_exact_package_digest_and_alias, source_module_import_requires_a_digest_clause, unresolved_source_import_cannot_silently_compile_even_when_unused | crates/amblicit-syntax/tests/source_modules.rs | Closure authentication and linking belong to the compiler-spine plan. |
 
 Byte-literal verification for #249 is recorded below. Source-to-Core literal
 and bound checks belong to the compiler-spine plan.
@@ -42,11 +42,11 @@ and bound checks belong to the compiler-spine plan.
 
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| SYNTAX-TP-026 | implemented | Byte literals and escapes | SYNTAX-REQ-016 | Complete prefix span, literal binary octets, lexical refusals and Unicode string preservation are checked independently. | bytes_prefix_is_one_token_with_the_complete_source_span, source_bytes_literals_lower_to_exact_raw_octets, invalid_byte_spellings_fail_at_the_lexical_boundary | crates/edict-syntax/tests/bytes_literals.rs | Inline literal vectors include empty bytes, CR/LF/TAB/NUL, 0x80 and 0xFF. |
+| SYNTAX-TP-026 | implemented | Byte literals and escapes | SYNTAX-REQ-016 | Complete prefix span, literal binary octets, lexical refusals and Unicode string preservation are checked independently. | bytes_prefix_is_one_token_with_the_complete_source_span, source_bytes_literals_lower_to_exact_raw_octets, invalid_byte_spellings_fail_at_the_lexical_boundary | crates/amblicit-syntax/tests/bytes_literals.rs | Inline literal vectors include empty bytes, CR/LF/TAB/NUL, 0x80 and 0xFF. |
 
 | ID | Status | Requirement | Source |
 | --- | --- | --- | --- |
-| SYNTAX-REQ-001 | implemented | `parse_module` returns source AST only; later phases own semantic validation and lowering. | crates/edict-syntax/src/lib.rs |
+| SYNTAX-REQ-001 | implemented | `parse_module` returns source AST only; later phases own semantic validation and lowering. | crates/amblicit-syntax/src/lib.rs |
 | SYNTAX-REQ-002 | implemented | Module/package/import coordinates parse and preserve source-significant version spelling. | docs/SPEC_edict-language-v1.md |
 | SYNTAX-REQ-003 | implemented | Imports parse supported kinds, including digest-bound external-operation `capability` references, and validate digest literals. | docs/SPEC_edict-language-v1.md |
 | SYNTAX-REQ-004 | implemented | Type declarations parse Phase 1 type surface and reject empty enum declarations. | docs/SPEC_edict-language-v1.md |
@@ -55,7 +55,7 @@ and bound checks belong to the compiler-spine plan.
 | SYNTAX-REQ-007 | implemented | Statement syntax includes external-action requests, effect call positions, guards, control flow, and bounded loops. | docs/SPEC_edict-language-v1.md |
 | SYNTAX-REQ-008 | implemented | Expression syntax includes precedence, records, literals, conditionals, variants, and match. | docs/SPEC_edict-language-v1.md |
 | SYNTAX-REQ-009 | implemented | Reserved keywords reject in bare-name positions while remaining legal after `.`. | docs/SPEC_edict-language-v1.md |
-| SYNTAX-REQ-010 | implemented | Negative tests assert stable error kinds, not diagnostic prose or incidental output. | crates/edict-syntax/src/parser.rs |
+| SYNTAX-REQ-010 | implemented | Negative tests assert stable error kinds, not diagnostic prose or incidental output. | crates/amblicit-syntax/src/parser.rs |
 | SYNTAX-REQ-011 | implemented | Source/surface validation rejects context-free semantic errors while deferring resolution, contextual typing, bound proof, and target/lawpack-dependent checks. | issue #10 |
 | SYNTAX-REQ-012 | planned | Full source lowering emits canonical Core IR with byte-stable golden artifacts. | issue #21, issue #22 |
 | SYNTAX-REQ-013 | implemented | Obstruction-strand source spelling has first-class parser syntax and does not parse as an ordinary obstruction-target function call. | issue #118, docs/topics/obstruction-strands/test-plan.md |
@@ -96,8 +96,8 @@ and bound checks belong to the compiler-spine plan.
 | SYNTAX-TP-020 | implemented | Error handling | SYNTAX-REQ-010 | Negative cases assert stable `ParseErrorKind` identities. | reserved_future_decls_are_rejected_at_top_level, missing_package_is_rejected, bytes_rejects_canonical_policy, unterminated_string_is_rejected | - | No stdout/stderr scraping. |
 | SYNTAX-TP-021 | implemented | Semantic validation | SYNTAX-REQ-011 | The source/surface validator returns stable diagnostic kinds for context-free source errors and accepts unresolved downstream facts. | validate_module_remains_surface_stage_compatibility_alias, surface_validation_defers_import_and_name_resolution, surface_validation_defers_contextual_typing_and_loop_bound_proof, surface_validation_defers_obstruction_exhaustiveness | - | Owned by the semantic-validation shelf. |
 | SYNTAX-TP-022 | planned | Golden artifact | SYNTAX-REQ-012 | Full source lowering emits byte-stable canonical artifacts. | - | - | Initial Core golden artifacts exist in the Core IR shelf; full source-language coverage remains planned. |
-| SYNTAX-TP-023 | implemented | Syntax guard | SYNTAX-REQ-013 | `else continue obstructed { reason: ... }` parses as a distinct require-else arm, while `else continueInObstructedStrand(...)` remains a terminal obstruction target. | continue_obstructed_source_arm_parses, helper_shaped_continue_in_obstructed_strand_is_terminal, stale_basis_obstruction_strand_fixture_parses | crates/edict-syntax/tests/parse_review_regressions.rs, fixtures/obstruction-strands/v0/stale-basis/source.edict | Prevents hidden control-flow semantics in ordinary obstruction constructors. |
-| SYNTAX-TP-024 | implemented | Golden path | SYNTAX-REQ-003, SYNTAX-REQ-007 | A request statement parses its typed binding, single operation call, schemas, authority scope, basis, two budgets, and reconciliation resource before source-to-Core compilation. A non-call request operation rejects with `NonCallExternalActionOperation`, independently of semantic-effect call diagnostics. | workspace_observation_request_compiles_as_non_callable_data, non_call_request_operation_has_a_request_specific_parse_kind | crates/edict-syntax/tests/external_action_requests.rs | Execution and settlement remain outside the parser. |
+| SYNTAX-TP-023 | implemented | Syntax guard | SYNTAX-REQ-013 | `else continue obstructed { reason: ... }` parses as a distinct require-else arm, while `else continueInObstructedStrand(...)` remains a terminal obstruction target. | continue_obstructed_source_arm_parses, helper_shaped_continue_in_obstructed_strand_is_terminal, stale_basis_obstruction_strand_fixture_parses | crates/amblicit-syntax/tests/parse_review_regressions.rs, fixtures/obstruction-strands/v0/stale-basis/source.edict | Prevents hidden control-flow semantics in ordinary obstruction constructors. |
+| SYNTAX-TP-024 | implemented | Golden path | SYNTAX-REQ-003, SYNTAX-REQ-007 | A request statement parses its typed binding, single operation call, schemas, authority scope, basis, two budgets, and reconciliation resource before source-to-Core compilation. A non-call request operation rejects with `NonCallExternalActionOperation`, independently of semantic-effect call diagnostics. | workspace_observation_request_compiles_as_non_callable_data, non_call_request_operation_has_a_request_specific_parse_kind | crates/amblicit-syntax/tests/external_action_requests.rs | Execution and settlement remain outside the parser. |
 
 ## Determinism Obligations
 
@@ -113,7 +113,7 @@ and bound checks belong to the compiler-spine plan.
 
 No fuzz target exists yet. The first useful fuzz target should generate bounded
 token streams for the lexer/parser and minimize failures into permanent
-deterministic regression cases in `crates/edict-syntax/tests/`.
+deterministic regression cases in `crates/amblicit-syntax/tests/`.
 
 ## Open Gaps
 
@@ -140,4 +140,4 @@ deterministic regression cases in `crates/edict-syntax/tests/`.
 
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| SYNTAX-TP-025 | implemented | Source functions | SYNTAX-REQ-015 | Identity and Jim byte-assembly declarations reach actual compiler checking; declaration-only acceptance is insufficient. | source_function_identity_is_not_an_imported_fact, jim_range_assembly_calls_an_authored_function_through_core_and_target | fixtures/lang/functions/range-assembly.edict | crates/edict-syntax/tests/source_functions.rs; Guarded source-function and regression suites pass. |
+| SYNTAX-TP-025 | implemented | Source functions | SYNTAX-REQ-015 | Identity and Jim byte-assembly declarations reach actual compiler checking; declaration-only acceptance is insufficient. | source_function_identity_is_not_an_imported_fact, jim_range_assembly_calls_an_authored_function_through_core_and_target | fixtures/lang/functions/range-assembly.edict | crates/amblicit-syntax/tests/source_functions.rs; Guarded source-function and regression suites pass. |

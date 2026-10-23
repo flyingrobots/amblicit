@@ -4,7 +4,7 @@ Status: current HEAD contract.
 
 The developer-tooling alpha now has these editor-facing surfaces:
 
-- `edict_syntax::highlight_source`, which classifies source spans into stable
+- `amblicit_syntax::highlight_source`, which classifies source spans into stable
   `HighlightRole` values for editor adapters.
 - [Tree-sitter grammar source](../../../grammars/tree-sitter-edict/grammar.js),
   generated parser source, a
@@ -39,7 +39,7 @@ Supported roles are:
 The Tree-sitter grammar is an editor syntax-tree artifact for the current
 accepted source subset. Its corpus covers bounded hello, branch-yield effects,
 read obstruction handling, and enum/variant match syntax, and the corpus source
-examples must keep parsing through `edict_syntax::parse_module`.
+examples must keep parsing through `amblicit_syntax::parse_module`.
 
 The TextMate grammar is a lexical artifact for `.edict` files. It exposes scopes
 for comments, strings, numbers, keywords, type identifiers, operators,

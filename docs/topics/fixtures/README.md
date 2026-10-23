@@ -32,7 +32,7 @@ Current checked-in fixture families are:
   for self-contained CDDL, root bindings, exact schema/resource bytes, raw and
   domain-framed digests, and reviewed provenance;
 - golden CLI cases under [`fixtures/cli/`](../../../fixtures/cli/) replayed
-  end-to-end through the `edict` binary for byte-exact stdout, stderr, and exit
+  end-to-end through the `amblicit` binary for byte-exact stdout, stderr, and exit
   code.
 
 `cargo xtask core-goldens --check` verifies the reviewed Core artifacts against

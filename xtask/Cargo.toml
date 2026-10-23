@@ -11,8 +11,8 @@ publish = false
 workspace = true
 
 [dependencies]
-edict-provider-schema = { path = "../crates/edict-provider-schema" }
-edict-syntax = { path = "../crates/edict-syntax" }
+amblicit-provider-schema = { path = "../crates/amblicit-provider-schema" }
+amblicit-syntax = { path = "../crates/amblicit-syntax" }
 regex = "1"
 serde_json = "1"
 sha2 = "0.10.9"

@@ -6,7 +6,7 @@ developer tooling:
 - `grammar.js`: editor-oriented grammar source for the current accepted Edict
   fixture subset.
 - `queries/highlights.scm`: highlight captures aligned with
-  `edict_syntax::highlight_source` roles.
+  `amblicit_syntax::highlight_source` roles.
 - `test/corpus/current-subset.txt`: corpus examples that stay accepted by
   Edict's reference parser.
 

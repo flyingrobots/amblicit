@@ -2,7 +2,7 @@
 
 `edict.tmLanguage.json` is the TextMate grammar artifact for `.edict` source
 files. It assigns lexical scopes for the same editor-facing token families as
-`edict_syntax::highlight_source`: comments, strings, numbers, keywords, type
+`amblicit_syntax::highlight_source`: comments, strings, numbers, keywords, type
 identifiers, operators, punctuation, and bare identifiers.
 
 This is a grammar artifact, not an editor extension package. VS Code and other

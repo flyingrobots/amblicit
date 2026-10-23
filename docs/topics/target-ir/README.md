@@ -34,7 +34,7 @@ The current target IR implementation is deliberately narrow:
 - selected failure mode: stable structured target-lowering errors before any
   target artifact is emitted.
 
-The `edict_syntax` crate exposes `lower_to_target_ir`,
+The `amblicit_syntax` crate exposes `lower_to_target_ir`,
 `TargetIrLoweringFacts`, `TargetLoweringReport`, `TargetIrArtifact`,
 `TargetIrSemanticClosure`, `TargetEffectSignatureFact`, `TargetIrPureBinding`,
 `TargetIrExternalActionRequest`,

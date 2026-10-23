@@ -9,7 +9,7 @@ Moriarty, profile-diff, transparency-log, or hash-ladder tools.
 
 ## Public Surface
 
-The `edict_syntax` crate exposes contract-bundle types for assurance evidence:
+The `amblicit_syntax` crate exposes contract-bundle types for assurance evidence:
 
 - `AssuranceRole`, covering HOLMES, Watson, and Moriarty;
 - `AssuranceEvidenceRef`, binding an evidence artifact to a bundle subject,
@@ -43,7 +43,7 @@ The following are not implemented:
 - Moriarty mutation matrices or relapse fuzzing;
 - profile diff;
 - transparency-log publication;
-- `edict explain --hash-ladder`;
+- `amblicit explain --hash-ladder`;
 - admission explanations.
 
 Those are platform/tooling milestones outside the current Edict validation

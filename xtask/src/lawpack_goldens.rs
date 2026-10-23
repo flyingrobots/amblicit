@@ -2,7 +2,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
-use edict_syntax::{
+use amblicit_syntax::{
     compile_to_core, decode_lawpack_adapter, decode_lawpack_bundle, digest_canonical_artifact,
     digest_core_module, digest_target_ir_artifact, encode_canonical_cbor, encode_core_module,
     encode_target_ir_artifact, lower_to_target_ir, parse_module, prepare_lawpack_compilation,

@@ -1,8 +1,9 @@
 # Amblicit Name Decision
 
-Status: accepted decision with staged implementation. Stage 1 (product prose)
-is current. Stages 2 to 4 are planned. Until each stage lands, the names it
-replaces remain the current names, and this page lists them.
+Status: accepted decision with staged implementation. Stages 1 (product prose)
+and 2 (package, library and binary names) are current. Stages 3 and 4 are
+planned. Until each stage lands, the names it replaces remain the current names,
+and this page lists them.
 
 ## Decision
 
@@ -44,7 +45,7 @@ Each stage is one pull request. Each stage leaves `main` in a working state.
 | Stage | Scope | Posture |
 | --- | --- | --- |
 | 1 | Product prose: the root `README.md`, this note, and one entry in the documentation router that links to this note | Current |
-| 2 | Package names, the facade library `amblicit` and the CLI binary `amblicit` | Planned |
+| 2 | Package names, the facade library `amblicit` and the CLI binary `amblicit` | Current |
 | 3 | Source extension `.amblicit`, editor grammars and the scope name `source.amblicit` | Planned |
 | 4 | Wire identifiers `amblicit.*/vN` as new versions | Planned |
 
@@ -55,7 +56,7 @@ Rules for the stages:
   produce the same canonical bytes.
 - Stage 4 changes canonical bytes, digests and golden artifacts. Downstream
   consumers, such as Echo and Hello Echo, change after Stage 4 merges.
-- After Stage 1 merges, the GitHub repository will be renamed from
+- After Stage 1 merged, the GitHub repository was renamed from
   `flyingrobots/edict` to `flyingrobots/amblicit`. GitHub redirects the old
   URLs.
 - Other prose, such as the specifications and topic shelves, changes with the
@@ -63,18 +64,19 @@ Rules for the stages:
 
 ## Current names
 
-Until the matching stage lands, these names are current. Use them in commands,
-code and artifacts:
+These names are current. Use them in commands, code and artifacts. A surface
+with a planned name keeps its current name until the matching stage lands:
 
 | Surface | Current name | Planned name | Stage |
 | --- | --- | --- | --- |
-| Crates (packages) | `flyingrobots-edict`, `edict-cli`, `edict-syntax`, `edict-provider-schema`, `edict-provider-host-wasmtime` | `flyingrobots-amblicit`, `amblicit-cli`, `amblicit-syntax`, `amblicit-provider-schema`, `amblicit-provider-host-wasmtime` | 2 |
-| Facade library | `edict` (package `flyingrobots-edict`) | `amblicit` | 2 |
-| CLI binary | `edict` | `amblicit` | 2 |
+| Crates (packages) | `flyingrobots-amblicit`, `amblicit-cli`, `amblicit-syntax`, `amblicit-provider-schema`, `amblicit-provider-host-wasmtime` (previously `flyingrobots-edict`, `edict-cli`, `edict-syntax`, `edict-provider-schema`, `edict-provider-host-wasmtime`) | none, renamed | 2 |
+| Facade library | `amblicit` (package `flyingrobots-amblicit`; previously `edict`) | none, renamed | 2 |
+| CLI binary | `amblicit` (previously `edict`) | none, renamed | 2 |
+| CLI stdin-cap environment variable | `AMBLICIT_CLI_MAX_STDIN_BYTES` (previously `EDICT_CLI_MAX_STDIN_BYTES`) | none, renamed | 2 |
 | Source extension | `.edict` | `.amblicit` | 3 |
 | Editor scope | `source.edict` | `source.amblicit` | 3 |
 | Wire identifiers | `edict.*/vN` | `amblicit.*/vN`, new versions | 4 |
-| Repository | `flyingrobots/edict` | `flyingrobots/amblicit` | after 1 |
+| Repository | `flyingrobots/amblicit` (previously `flyingrobots/edict`; GitHub redirects) | none, renamed | after 1 |
 
 ## Relationships
 

@@ -12,7 +12,7 @@ lowerers or verifiers, validate CDDL instances, or make an admission claim.
 
 ## Public Surface
 
-The `edict_syntax` crate exposes `validate_contract_bundle_manifest` and typed
+The `amblicit_syntax` crate exposes `validate_contract_bundle_manifest` and typed
 contract-bundle data structures for:
 
 - `ContractBundleManifest`, the typed `edict.contract-bundle/v1` manifest value;

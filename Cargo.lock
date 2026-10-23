@@ -47,6 +47,56 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9d4ee0d472d1cd2e28c97dfa124b3d8d992e10eb0a035f33f5d12e3a177ba3b"
 
 [[package]]
+name = "amblicit-cli"
+version = "0.11.0-alpha.1"
+dependencies = [
+ "amblicit-provider-host-wasmtime",
+ "amblicit-provider-schema",
+ "amblicit-syntax",
+ "cap-fs-ext",
+ "cap-std",
+ "glob",
+ "jsonschema",
+ "rustix",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "amblicit-provider-host-wasmtime"
+version = "0.11.0-alpha.1"
+dependencies = [
+ "amblicit-provider-schema",
+ "amblicit-syntax",
+ "sha2",
+ "wasm-encoder 0.251.0",
+ "wasmparser 0.251.0",
+ "wasmtime",
+ "wat",
+]
+
+[[package]]
+name = "amblicit-provider-schema"
+version = "0.11.0-alpha.1"
+dependencies = [
+ "amblicit-syntax",
+ "cddl-cat",
+ "ciborium",
+ "sha2",
+]
+
+[[package]]
+name = "amblicit-syntax"
+version = "0.11.0-alpha.1"
+dependencies = [
+ "bunny-num",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "anyhow"
 version = "1.0.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -456,56 +506,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "edict-cli"
-version = "0.11.0-alpha.1"
-dependencies = [
- "cap-fs-ext",
- "cap-std",
- "edict-provider-host-wasmtime",
- "edict-provider-schema",
- "edict-syntax",
- "glob",
- "jsonschema",
- "rustix",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "edict-provider-host-wasmtime"
-version = "0.11.0-alpha.1"
-dependencies = [
- "edict-provider-schema",
- "edict-syntax",
- "sha2",
- "wasm-encoder 0.251.0",
- "wasmparser 0.251.0",
- "wasmtime",
- "wat",
-]
-
-[[package]]
-name = "edict-provider-schema"
-version = "0.11.0-alpha.1"
-dependencies = [
- "cddl-cat",
- "ciborium",
- "edict-syntax",
- "sha2",
-]
-
-[[package]]
-name = "edict-syntax"
-version = "0.11.0-alpha.1"
-dependencies = [
- "bunny-num",
- "serde",
- "serde_json",
- "sha2",
-]
-
-[[package]]
 name = "either"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -604,10 +604,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "flyingrobots-edict"
+name = "flyingrobots-amblicit"
 version = "0.11.0-alpha.1"
 dependencies = [
- "edict-syntax",
+ "amblicit-syntax",
  "serde_json",
 ]
 
@@ -2309,8 +2309,8 @@ dependencies = [
 name = "xtask"
 version = "0.0.0"
 dependencies = [
- "edict-provider-schema",
- "edict-syntax",
+ "amblicit-provider-schema",
+ "amblicit-syntax",
  "regex",
  "serde_json",
  "sha2",

@@ -10,7 +10,7 @@ operations.
 
 ## Public Surface
 
-The `edict_syntax` crate exposes:
+The `amblicit_syntax` crate exposes:
 
 - `validate_admission_request`, which checks Edict-owned fields of a Continuum
   admission request against a typed `ContractBundleManifest`;

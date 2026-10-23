@@ -1,0 +1,23 @@
+[package]
+name = "flyingrobots-amblicit"
+version = "0.11.0-alpha.1"
+description = "Curated public Rust facade for the Amblicit compiler and canonical artifacts"
+readme = "README.md"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+include = ["src/**", "tests/**", "README.md"]
+
+[lib]
+name = "amblicit"
+
+[dependencies]
+amblicit-syntax = { path = "../amblicit-syntax", version = "=0.11.0-alpha.1" }
+
+[dev-dependencies]
+serde_json = "1"
+
+[lints]
+workspace = true

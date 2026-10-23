@@ -23,7 +23,7 @@ or interpret target-profile runtime semantics. [TPROF-REQ-009]
 
 ## Public Surface
 
-The `edict_syntax` crate exposes `validate_target_profile_manifest` and typed
+The `amblicit_syntax` crate exposes `validate_target_profile_manifest` and typed
 target-profile data structures for:
 
 - `TargetProfileManifest`, the typed `edict.target-profile/v1` manifest value;

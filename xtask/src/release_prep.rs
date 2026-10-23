@@ -67,9 +67,9 @@ pub(crate) fn release_prep(
         Some(value) => format!("{kind:?}: `{value}`"),
         None => format!("{kind:?}"),
     })?;
-    let cli_manifest_path = root.join("crates/edict-cli/Cargo.toml");
-    let facade_manifest_path = root.join("crates/edict/Cargo.toml");
-    let syntax_manifest_path = root.join("crates/edict-syntax/Cargo.toml");
+    let cli_manifest_path = root.join("crates/amblicit-cli/Cargo.toml");
+    let facade_manifest_path = root.join("crates/amblicit/Cargo.toml");
+    let syntax_manifest_path = root.join("crates/amblicit-syntax/Cargo.toml");
     let lockfile_path = root.join("Cargo.lock");
     let changelog_path = root.join("CHANGELOG.md");
     let policy_path = root.join("docs/topics/release-process/policy.toml");
@@ -152,11 +152,11 @@ fn replace_facade_manifest_version(text: &str, package_version: &str) -> Result<
     // The facade declares its exact implementation requirement in an inline
     // dependency table. Reject an absent or ambiguous requirement before writes.
     let pattern = Regex::new(
-        r#"(?m)^([ \t]*edict-syntax[ \t]*=[ \t]*\{[^\r\n}]*\bversion[ \t]*=[ \t]*)"[^"]*""#,
+        r#"(?m)^([ \t]*amblicit-syntax[ \t]*=[ \t]*\{[^\r\n}]*\bversion[ \t]*=[ \t]*)"[^"]*""#,
     )
     .map_err(|error| format!("facade dependency pattern: {error}"))?;
     if pattern.captures_iter(&text).count() != 1 {
-        return Err("facade manifest must declare one inline edict-syntax version".into());
+        return Err("facade manifest must declare one inline amblicit-syntax version".into());
     }
     Ok(pattern
         .replace(&text, |captures: &regex::Captures<'_>| {
@@ -183,7 +183,7 @@ fn replace_lock_package_versions(text: &str, package_version: &str) -> Result<St
         if line.starts_with("version = ")
             && matches!(
                 current_package.as_deref(),
-                Some("edict-cli" | "edict-syntax" | "flyingrobots-edict")
+                Some("amblicit-cli" | "amblicit-syntax" | "flyingrobots-amblicit")
             )
         {
             if let Some(package) = current_package.as_deref() {
@@ -194,7 +194,7 @@ fn replace_lock_package_versions(text: &str, package_version: &str) -> Result<St
         }
         lines.push(line.to_owned());
     }
-    for package in ["edict-cli", "edict-syntax", "flyingrobots-edict"] {
+    for package in ["amblicit-cli", "amblicit-syntax", "flyingrobots-amblicit"] {
         if !replaced.contains(package) {
             return Err(format!("Cargo.lock missing package version for {package}"));
         }

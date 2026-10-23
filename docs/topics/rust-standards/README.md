@@ -76,7 +76,7 @@ coordinates, and requirement identifiers. [RUST-REQ-003]
 ## I/O Boundaries
 
 Core compiler and validation paths stay mostly pure. Allowed I/O is limited to
-explicit file loaders, `xtask`, the `edict` CLI boundary, and tests. Any public
+explicit file loaders, `xtask`, the `amblicit` CLI boundary, and tests. Any public
 function that reads files should say so in its name, such as `load_*_file` or
 `load_*_from_paths`. Hidden directory discovery, registry fetches, writes,
 network calls, and cwd-sensitive behavior do not belong in library compiler

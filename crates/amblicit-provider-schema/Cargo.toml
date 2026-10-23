@@ -1,0 +1,18 @@
+[package]
+name = "amblicit-provider-schema"
+version = "0.11.0-alpha.1"
+description = "Digest-bound immutable provider artifact schema registry for Amblicit"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+cddl-cat = { version = "=0.7.1", default-features = false, features = ["ciborium"] }
+ciborium = "0.2.2"
+amblicit-syntax = { path = "../amblicit-syntax" }
+sha2 = "0.10.9"

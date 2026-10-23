@@ -60,7 +60,7 @@ The current specification set is:
 - [Authority Facts Topic](./topics/authority-facts/): JSON and canonical-CBOR
   compiler context facts with digest-bound source identity, normative CDDL, and
   stable load/decode failures.
-- [CLI Topic](./topics/cli/): JSONL-only `edict` command-line boundary for
+- [CLI Topic](./topics/cli/): JSONL-only `amblicit` command-line boundary for
   stdin request records, structured stdout/stderr events, and compiler settings.
 - [Contract Bundles Topic](./topics/contract-bundles/): typed v1
   participant-neutral bundle and assurance evidence manifest validation.
@@ -91,7 +91,7 @@ The current specification set is:
 - [CLI Info JSON Schema](./schemas/edict.cli-info.v1.schema.json):
   stable JSON Schema artifact for `edict.cli.info/v1` `--help`/`--version` records.
 - [Syntax Topic](./topics/syntax/): current contract and verification matrix for
-  the Phase 1 `edict-syntax` lexer/parser.
+  the Phase 1 `amblicit-syntax` lexer/parser.
 - [SPEC - Edict Language v1](./SPEC_edict-language-v1.md): source syntax, type
   system, effect rules, Core IR, and language-level canonical value semantics.
 - [SPEC - Edict Lawpack ABI v1](./SPEC_edict-lawpack-abi-v1.md): lawpack

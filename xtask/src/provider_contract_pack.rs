@@ -1,8 +1,8 @@
 use std::fs;
 use std::path::Path;
 
-use edict_provider_schema::{assemble_provider_contract_pack, ProviderContractPackInput};
-use edict_syntax::canonical_target_profile_contract_resources;
+use amblicit_provider_schema::{assemble_provider_contract_pack, ProviderContractPackInput};
+use amblicit_syntax::canonical_target_profile_contract_resources;
 
 use crate::goldens::{check_golden_file_with_command, write_golden_file};
 

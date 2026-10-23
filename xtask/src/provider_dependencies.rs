@@ -83,7 +83,7 @@ fn check_metadata(metadata: &Value) -> Result<(), String> {
             }
             let package_name = required_string(package, "name")?;
             declaring_packages.push(package_name.to_owned());
-            if package_name != "edict-provider-host-wasmtime" {
+            if package_name != "amblicit-provider-host-wasmtime" {
                 return Err(format!(
                     "workspace package `{package_name}` must not declare Wasmtime"
                 ));
@@ -112,7 +112,7 @@ fn check_metadata(metadata: &Value) -> Result<(), String> {
             }
         }
     }
-    if declaring_packages != ["edict-provider-host-wasmtime"] {
+    if declaring_packages != ["amblicit-provider-host-wasmtime"] {
         return Err(format!(
             "expected only the provider host to declare Wasmtime, found {declaring_packages:?}"
         ));

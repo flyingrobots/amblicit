@@ -9,7 +9,7 @@ freezer, target lowerer, or admission tool.
 
 ## Public Surface
 
-The public compiler-spine surface lives in `edict_syntax`:
+The public compiler-spine surface lives in `amblicit_syntax`:
 
 - `validate_surface` checks context-free source-AST invariants.
 - `resolve_module` resolves source names that can be resolved from the module
