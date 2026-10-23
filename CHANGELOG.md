@@ -19,8 +19,9 @@ versions still track specification maturity rather than a released product.
   grammar is `amblicit` in `grammars/tree-sitter-amblicit` and exports
   `tree_sitter_amblicit`. The VS Code/Cursor extension is `amblicit-vscode`
   with the language id `amblicit`. To migrate, rename `.edict` files to
-  `.amblicit` (for example, `for f in $(git ls-files '*.edict'); do git mv
-  "$f" "${f%.edict}.amblicit"; done`) and update the source paths in
+  `.amblicit` (for example, in Bash:
+  `git ls-files -z -- '*.edict' | while IFS= read -r -d '' f; do git mv -- "$f" "${f%.edict}.amblicit"; done`,
+  which keeps file names with spaces intact) and update the source paths in
   `edict.application/v1` manifests. A caller that must still check a
   directory of `.edict` files can set `"directoryExtensions": [".edict"]`.
   Uninstall the `flyingrobots.edict-vscode` extension and install
