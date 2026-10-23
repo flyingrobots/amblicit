@@ -24,12 +24,18 @@ that an Amblicit program imports.
    command. It proposes a change, and the destination runtime decides whether
    to admit it. Spec invariants I-014 (assurance is evidence, not authority)
    and I-028 (admission evidence is external) state this rule.
-2. Other projects use the name Edict. On 2026-10-23, the `edict` crate on
-   crates.io was a published entity-component-system library, and the
-   most-starred GitHub repository named `edict` was a multi-agent orchestration
-   system.
+2. Other projects use the name Edict. On 2026-10-23, the
+   [`edict` crate](https://crates.io/crates/edict) on crates.io was a published
+   entity-component-system library, and the most-starred GitHub repository
+   named `edict` was
+   [`cft0808/edict`](https://github.com/cft0808/edict), a multi-agent
+   orchestration system.
 3. On 2026-10-23, `amblicit` and `amblicit-lang` were not registered on
-   crates.io, and no GitHub repository had the name.
+   crates.io: the crates.io API returned HTTP 404 for
+   `https://crates.io/api/v1/crates/amblicit` and
+   `https://crates.io/api/v1/crates/amblicit-lang`. A
+   [GitHub repository search for `amblicit`](https://github.com/search?q=amblicit&type=repositories)
+   returned no repositories.
 
 ## Stages
 
