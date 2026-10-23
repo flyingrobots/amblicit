@@ -555,7 +555,10 @@ fn nested_control_core(levels: usize, loops: bool) -> CoreModule {
     let mut core = loop_core(REQUIREMENT_IN_LOOP);
     let nodes = &mut core.intents.get_mut("t").expect("intent").body.nodes;
     let CoreNode::For {
-        binder, iter, bound, ..
+        binder,
+        iter,
+        bound,
+        ..
     } = nodes[1].clone()
     else {
         panic!("Core for expected");
@@ -605,7 +608,10 @@ fn structured_nesting_refuses_at_lowering_beyond_the_canonical_depth() {
             "{deepest} {kind}: {report:?}"
         );
         let artifact = report.artifact.expect("deepest artifact");
-        assert!(artifact.semantic_closure.is_none(), "{kind} stay closure-free");
+        assert!(
+            artifact.semantic_closure.is_none(),
+            "{kind} stay closure-free"
+        );
         encode_target_ir_artifact(&artifact)
             .unwrap_or_else(|error| panic!("{deepest} {kind} encode: {error:?}"));
 
@@ -1109,7 +1115,11 @@ fn coordinate_loop_bounds_refuse_without_authenticated_constant_values() {
     let compiled = coordinate_bound_core();
     let forged = |coordinate: &str| {
         let mut core = coordinate_bound_core();
-        with_loop(&mut core, None, CoreBound::Coordinate(coordinate.to_owned()));
+        with_loop(
+            &mut core,
+            None,
+            CoreBound::Coordinate(coordinate.to_owned()),
+        );
         core
     };
     // A loop nested inside a branch is checked as well.
@@ -1125,7 +1135,10 @@ fn coordinate_loop_bounds_refuse_without_authenticated_constant_values() {
     *bound = CoreBound::Coordinate("example.bounds@1.maxItems".to_owned());
 
     for (case, core) in [
-        ("compiled in-namespace constant covering the maximum", compiled),
+        (
+            "compiled in-namespace constant covering the maximum",
+            compiled,
+        ),
         (
             "in-namespace constant the compiler never checked",
             forged("example.bounds@1.fewItems"),

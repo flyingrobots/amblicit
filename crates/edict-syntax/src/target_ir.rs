@@ -30,10 +30,10 @@ use crate::core_ir::{
     MAX_CORE_GRAPH_DEPTH, MAX_CORE_TYPE_DEPTH,
 };
 use crate::digest_core_module;
-use crate::MAX_CANONICAL_NESTING_DEPTH;
 use crate::lowerability::{LowerabilityEffectStatus, LowerabilityReport, LowerabilityStatus};
 use crate::result_projection::emit_result_projection_with_closure;
 use crate::target_intrinsics::TargetPureIntrinsicFact;
+use crate::MAX_CANONICAL_NESTING_DEPTH;
 use crate::{ResultProjectionArtifact, ResultProjectionFailure};
 
 pub const ECHO_DPO_TARGET_PROFILE: &str = "echo.dpo@1";

@@ -13,16 +13,16 @@ use edict_provider_schema::{
 use edict_syntax::{
     canonical_target_profile_contract_resources, compile_to_core, decode_canonical_cbor,
     digest_target_profile_contract_resource, encode_core_module, encode_result_projection,
-    encode_target_ir_artifact, lower_to_target_ir, parse_module, CanonicalValue, CompilerContext, CoreBudget, CoreExpr,
-    CoreExternalActionBudget, CoreObstructionReason, CorePredicate, CoreValue, LocalRef,
-    ProviderArtifactSchemaValidationErrorKind, ResourceRef, ResultProjection, ResultProjectionExpr,
-    ResultProjectionSource, TargetIrArtifact, TargetIrExternalActionRequest, TargetIrIntent,
-    TargetIrOrderEntry, TargetIrPureBinding, TargetIrRequireFailure, TargetIrRequirement,
-    TargetEffectLowering, TargetIrLoweringFacts, TargetIrSemanticClosure,
-    TargetProfileContractResource, WriteClass, ECHO_DPO_TARGET_PROFILE,
-    ECHO_STRUCTURED_SPAN_IR_DOMAIN,
-    AUTHORITY_FACTS_API_VERSION, CORE_MODULE_DIGEST_DOMAIN, PROVIDER_LAWPACK_ARTIFACT_DOMAIN,
-    RESULT_PROJECTION_DIGEST_DOMAIN, TARGET_IR_ARTIFACT_DIGEST_DOMAIN, TARGET_PROFILE_API_VERSION,
+    encode_target_ir_artifact, lower_to_target_ir, parse_module, CanonicalValue, CompilerContext,
+    CoreBudget, CoreExpr, CoreExternalActionBudget, CoreObstructionReason, CorePredicate,
+    CoreValue, LocalRef, ProviderArtifactSchemaValidationErrorKind, ResourceRef, ResultProjection,
+    ResultProjectionExpr, ResultProjectionSource, TargetEffectLowering, TargetIrArtifact,
+    TargetIrExternalActionRequest, TargetIrIntent, TargetIrLoweringFacts, TargetIrOrderEntry,
+    TargetIrPureBinding, TargetIrRequireFailure, TargetIrRequirement, TargetIrSemanticClosure,
+    TargetProfileContractResource, WriteClass, AUTHORITY_FACTS_API_VERSION,
+    CORE_MODULE_DIGEST_DOMAIN, ECHO_DPO_TARGET_PROFILE, ECHO_STRUCTURED_SPAN_IR_DOMAIN,
+    PROVIDER_LAWPACK_ARTIFACT_DOMAIN, RESULT_PROJECTION_DIGEST_DOMAIN,
+    TARGET_IR_ARTIFACT_DIGEST_DOMAIN, TARGET_PROFILE_API_VERSION,
 };
 use sha2::{Digest, Sha256};
 
@@ -504,7 +504,10 @@ fn loop_in_branch_mut(value: &mut CanonicalValue) -> &mut CanonicalValue {
 fn encoder_output_with_nested_loops_and_branches_matches_the_current_schema() {
     let pack = assemble(canonical_target_profile_contract_resources());
     let value = nested_structured_target_ir_value();
-    assert_eq!(map_value_mut(&mut value.clone(), "domain"), &text("echo.span-ir/v3"));
+    assert_eq!(
+        map_value_mut(&mut value.clone(), "domain"),
+        &text("echo.span-ir/v3")
+    );
     assert_eq!(
         encoded_order_shape(map_value_mut(
             map_value_mut(map_value_mut(&mut value.clone(), "intents"), "t"),
