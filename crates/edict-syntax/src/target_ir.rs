@@ -605,6 +605,9 @@ pub fn lower_to_target_ir(
             semantic_closure,
             intents,
         };
+        if let Some(failure) = structured_wire_depth_failure(&artifact) {
+            return unsupported(vec![failure]);
+        }
         let (result_projections, result_projection_failures) =
             if let Some(expected_semantic_closure) = artifact.semantic_closure.as_ref() {
                 lower_result_projections(core, &artifact, expected_semantic_closure)
@@ -621,6 +624,34 @@ pub fn lower_to_target_ir(
     } else {
         unsupported(failures)
     }
+}
+
+/// Each v3 control level adds a map and an array of canonical nesting on top of
+/// its Core values, so a structured artifact whose Core blocks validated can
+/// still exceed `MAX_CANONICAL_NESTING_DEPTH`. Refuse it here, naming the first
+/// such intent, rather than return an artifact the encoder cannot represent.
+/// Other encoder refusals keep their existing encoder-time behavior.
+fn structured_wire_depth_failure(artifact: &TargetIrArtifact) -> Option<TargetLoweringFailure> {
+    let too_deep = |candidate: &TargetIrArtifact| {
+        crate::encode_target_ir_artifact(candidate)
+            .is_err_and(|error| error.kind() == crate::CanonicalErrorKind::NestingLimitExceeded)
+    };
+    if artifact.domain != ECHO_STRUCTURED_SPAN_IR_DOMAIN || !too_deep(artifact) {
+        return None;
+    }
+    let intent = artifact.intents.iter().find_map(|(name, intent)| {
+        let single = TargetIrArtifact {
+            intents: BTreeMap::from([(name.clone(), intent.clone())]),
+            ..artifact.clone()
+        };
+        too_deep(&single).then(|| name.clone())
+    });
+    Some(TargetLoweringFailure {
+        kind: TargetLoweringFailureKind::UnsupportedCoreNode,
+        intent,
+        node_index: None,
+        detail: "canonical_nesting_depth".to_owned(),
+    })
 }
 
 fn lower_result_projections(

@@ -221,12 +221,23 @@ has its own scope. Obstruction-arm binders stay scoped to their arm, as in v2.
 Core-to-Target validation covers nested blocks under v3: types, closed
 authority, block local tables, unique identities across the intent, binder
 identity, iterable shape (a list whose items fit the binder, with a literal
-bound no smaller than its maximum), totality and intrinsic cost. The canonical encoder
-independently requires every table instruction exactly once in the whole tree,
-nonempty unique control ids disjoint from instruction ids, binders that reuse
-no produced or visible identity, scoped producer-before-consumer references,
-and the canonical nesting depth. Failures are `InvalidCoreIdentity` or
-`CanonicalErrorKind::UnsupportedValue` with no artifact. A branch predicate
+bound no smaller than its maximum), totality and intrinsic cost. Failures are
+`InvalidCoreIdentity` with no artifact. The canonical encoder independently
+requires every table instruction exactly once in the whole tree, nonempty
+unique control ids disjoint from instruction ids, binders that reuse no
+produced or visible identity, and scoped producer-before-consumer references;
+it refuses with `CanonicalErrorKind::UnsupportedValue`. [TIR-REQ-060]
+
+Each control level adds a map and an array of canonical nesting, so the wire
+limit `MAX_CANONICAL_NESTING_DEPTH` (128) is reached long before the Core graph
+depth. Lowering encodes a v3 artifact before returning it and refuses one that
+exceeds the canonical nesting depth with `UnsupportedCoreNode` detail
+`canonical_nesting_depth`, naming the first such intent, with no artifact. For
+a closure-free intent whose innermost block is empty, 62 nested statement
+branches with a `true` predicate or 61 nested loops over a field of the input
+are the deepest that lower. When a semantic closure requires the Core module
+digest, a Core module too deep to encode refuses earlier, with
+`InvalidCoreIdentity`. A branch predicate
 containing an `all` or `any` with no values, at any depth including inside an
 `if` expression operand, violates the Core schema: lowering refuses it with
 `InvalidCoreIdentity` detail `empty_predicate_aggregate`, and the encoder
@@ -239,9 +250,9 @@ with `control_block_result`; external-action requests refuse with
 coordinate refuses with `coordinate_loop_bound` at any nesting depth: Target
 has no authenticated constant values, so it cannot prove that the coordinate's
 value covers the iterable maximum and fails closed until such evidence exists.
-Literal bounds are unaffected. v1 and v2 still refuse `For`
-and `Branch` with details `for` and `branch`, keep their exact bytes, and the
-v2 encoder refuses control entries. [TIR-REQ-060]
+Literal bounds are unaffected. v1 and v2 still refuse `For` and `Branch` with
+details `for` and `branch`, keep their exact bytes, and the v2 encoder refuses
+control entries. [TIR-REQ-060]
 
 Selection is explicit through the same paths as v2. The current provider
 contract publication adds the v3 schema root, and its phased

@@ -549,6 +549,80 @@ fn branch_predicate_mut(artifact: &mut TargetIrArtifact, in_loop: bool) -> &mut 
     &mut branch_entry_mut(entry).predicate
 }
 
+/// Replace the loop in `REQUIREMENT_IN_LOOP` (after its top-level effect) with
+/// `levels` nested statement branches or loops whose innermost block is empty.
+fn nested_control_core(levels: usize, loops: bool) -> CoreModule {
+    let mut core = loop_core(REQUIREMENT_IN_LOOP);
+    let nodes = &mut core.intents.get_mut("t").expect("intent").body.nodes;
+    let CoreNode::For {
+        binder, iter, bound, ..
+    } = nodes[1].clone()
+    else {
+        panic!("Core for expected");
+    };
+    let empty = || CoreBlock {
+        locals: Vec::new(),
+        nodes: Vec::new(),
+        result: CoreExpr::Const(CoreValue::Null),
+    };
+    let mut block = empty();
+    for level in (0..levels).rev() {
+        let node = if loops {
+            let binder = LocalRef {
+                id: format!("local.nest.{level}"),
+                alpha_name: format!("$nest{level}"),
+                ty: binder.ty.clone(),
+            };
+            block.locals.push(binder.clone());
+            CoreNode::For {
+                binder,
+                iter: iter.clone(),
+                bound: bound.clone(),
+                body: block,
+            }
+        } else {
+            CoreNode::Branch {
+                binding: None,
+                predicate: CorePredicate::True,
+                then_block: block,
+                else_block: empty(),
+            }
+        };
+        block = empty();
+        block.nodes.push(node);
+    }
+    nodes[1] = block.nodes.pop().expect("outermost control");
+    core
+}
+
+#[test]
+fn structured_nesting_refuses_at_lowering_beyond_the_canonical_depth() {
+    for (kind, loops, deepest) in [("branches", false, 62), ("loops", true, 61)] {
+        let report = lower_to_target_ir(&nested_control_core(deepest, loops), &structured_facts());
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Lowered,
+            "{deepest} {kind}: {report:?}"
+        );
+        let artifact = report.artifact.expect("deepest artifact");
+        assert!(artifact.semantic_closure.is_none(), "{kind} stay closure-free");
+        encode_target_ir_artifact(&artifact)
+            .unwrap_or_else(|error| panic!("{deepest} {kind} encode: {error:?}"));
+
+        let report = lower_to_target_ir(
+            &nested_control_core(deepest + 1, loops),
+            &structured_facts(),
+        );
+        assert_refused(
+            &report,
+            TargetLoweringFailureKind::UnsupportedCoreNode,
+            Some("canonical_nesting_depth"),
+            &format!("{} {kind}", deepest + 1),
+        );
+        assert_eq!(report.failures[0].intent.as_deref(), Some("t"), "{kind}");
+    }
+}
+
 #[test]
 fn requirement_inside_loop_stays_in_the_loop_body() {
     let artifact = structured_artifact(REQUIREMENT_IN_LOOP);
