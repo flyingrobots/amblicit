@@ -8,6 +8,13 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Rename the project to **Amblicit** (slogan: *Use only as declared.*). This is
+  stage 1 of a staged rename: the root `README.md` and the documentation router
+  use the new name. Crate names, the `edict` CLI, `.edict` source files and
+  `edict.*` wire identifiers do not change in this stage. The
+  [name decision](docs/design/amblicit-name.md) lists the stages and the
+  current and planned names.
+
 - Admit target-catalog pure intrinsics: `admit_target_pure_intrinsics` accepts
   exactly the required contracts, at exact versions, from catalog bytes that
   match a trusted pin, and refuses unknown, effectful, incomplete or mismatched
