@@ -8,6 +8,13 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Rename the project to **Amblicit** (slogan: *Use only as declared.*). This is
+  stage 1 of a staged rename: the root `README.md` uses the new name, and the
+  documentation router links to the name decision. Crate names, the `edict` CLI, `.edict` source files and
+  `edict.*` wire identifiers do not change in this stage. The
+  [name decision](docs/design/amblicit-name.md) lists the stages and the
+  current and planned names.
+
 - Add explicitly selected `echo.span-ir/v3` structured Target IR (#267). Bounded
   `for` over `List` and statement `if` lower to `for`/`branch` entries in a
   nested `executionOrder` that references the existing instruction tables by
