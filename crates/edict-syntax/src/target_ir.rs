@@ -1275,7 +1275,7 @@ fn validate_structured_instruction<'a>(
             if available.contains_key(arm.binder.id.as_str())
                 || !claimed.insert(arm.binder.id.as_str())
             {
-                return invalid("obstruction binder reuses a visible or claimed identity");
+                return invalid("obstruction_binder_not_fresh");
             }
         }
     }

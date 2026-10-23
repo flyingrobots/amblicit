@@ -836,38 +836,78 @@ fn obstruction_binders_must_be_fresh_under_v3() {
     assert_refused(
         &report,
         TargetLoweringFailureKind::InvalidCoreIdentity,
-        None,
+        Some("obstruction_binder_not_fresh"),
         "loop binder reused as an obstruction binder",
     );
+}
 
-    // An obstruction binder reusing the application input.
-    let mut input_arm = fresh;
-    let input_local = input_arm.intents["t"]
+#[test]
+fn obstruction_binder_reusing_the_application_input_refuses_under_v3() {
+    // Type-correct application-input reuse: the input is `Unit`, like the
+    // obstruction binder, so only the binder's identity differs.
+    let control = unit_input_core(None);
+    let report = lower_to_target_ir(&control, &structured_facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+    encode_target_ir_artifact(&report.artifact.expect("artifact"))
+        .expect("Unit-input control encodes");
+    let report = lower_to_target_ir(&unit_input_core(Some("arg.0")), &structured_facts());
+    assert_refused(
+        &report,
+        TargetLoweringFailureKind::InvalidCoreIdentity,
+        Some("obstruction_binder_not_fresh"),
+        "obstruction binder reusing the application input",
+    );
+}
+
+/// The `[null]` loop with a `Unit` application input, a constant effect input
+/// and result, and a `Unit` obstruction binder whose identity is `arm_id`
+/// when given (otherwise its own fresh identity).
+fn unit_input_core(arm_id: Option<&str>) -> CoreModule {
+    let mut core = loop_with_binder(|arm| LocalRef {
+        id: "local.fresh".to_owned(),
+        alpha_name: "$fresh".to_owned(),
+        ty: arm.ty.clone(),
+    });
+    let intent = core.intents.get_mut("t").expect("intent");
+    "Unit".clone_into(&mut intent.input);
+    let input = intent
         .body
         .locals
-        .iter()
+        .iter_mut()
         .find(|local| local.id == "arg.0")
-        .expect("input local")
-        .clone();
-    let (_, _, body) = core_loop(&mut input_arm, 0);
+        .expect("input local");
+    "Unit".clone_into(&mut input.ty);
+    let input = input.clone();
+    intent.body.result = CoreExpr::Record {
+        fields: BTreeMap::from([(
+            "id".to_owned(),
+            CoreExpr::Const(CoreValue::String("x".to_owned())),
+        )]),
+    };
+    let (_, _, body) = core_loop(&mut core, 0);
     let CoreNode::Effect {
-        obstruction_map, ..
+        input: effect_input,
+        obstruction_map,
+        ..
     } = &mut body.nodes[0]
     else {
         panic!("Core effect expected");
     };
-    let arm = obstruction_map.values_mut().next().expect("arm");
-    let old = arm.binder.id.clone();
-    arm.binder = input_local.clone();
-    body.locals.retain(|local| local.id != old);
-    body.locals.push(input_local);
-    let report = lower_to_target_ir(&input_arm, &structured_facts());
-    assert_refused(
-        &report,
-        TargetLoweringFailureKind::InvalidCoreIdentity,
-        None,
-        "obstruction binder reusing the application input",
-    );
+    *effect_input = CoreExpr::Const(CoreValue::String("x".to_owned()));
+    if let Some(id) = arm_id {
+        let arm = obstruction_map.values_mut().next().expect("arm");
+        assert_eq!(arm.binder.ty, input.ty, "only the identity changes");
+        let old = arm.binder.id.clone();
+        arm.binder = LocalRef {
+            id: id.to_owned(),
+            alpha_name: input.alpha_name.clone(),
+            ty: arm.binder.ty.clone(),
+        };
+        let binder = arm.binder.clone();
+        body.locals.retain(|local| local.id != old);
+        body.locals.push(binder);
+    }
+    core
 }
 
 const SIBLING_ARM_EFFECTS: &str = "  if input.id != \"\" {\n\
