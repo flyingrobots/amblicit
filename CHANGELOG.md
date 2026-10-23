@@ -19,9 +19,10 @@ versions still track specification maturity rather than a released product.
   schema also refuse them) and external requests refuse under v3; an empty
   `all`/`any` anywhere in a v3 intent (branch or requirement predicate, loop
   iterable or other expression) refuses in v3 lowering
-  (`empty_predicate_aggregate`) and in the v3 encoder, and an artifact deeper
-  than the canonical nesting limit refuses at lowering
-  (`canonical_nesting_depth`) rather than in the encoder. **Breaking (Rust
+  (`empty_predicate_aggregate`) and in the v3 encoder, an obstruction binder
+  reusing a visible or claimed identity refuses in v3 lowering, and lowering
+  never returns a v3 artifact its encoder refuses (`canonical_nesting_depth`
+  for nesting, otherwise `structured_artifact_unencodable`). **Breaking (Rust
   API):** `TargetIrIntent::execution_order` is now
   `Option<Vec<TargetIrOrderEntry>>`; v2 still encodes a flat array of ids with
   unchanged bytes, and v1/v2 keep their `for`/`branch` refusals. A new

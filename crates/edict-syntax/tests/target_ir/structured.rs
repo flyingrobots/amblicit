@@ -776,6 +776,98 @@ fn loop_iterables_with_empty_aggregates_refuse_under_v3() {
     }
 }
 
+/// `ENSURE_EACH_LEAF` rewritten as a raw-Core loop over `[null]` whose binder is
+/// `binder`; the effect reads `input.id` instead of the loop item.
+fn loop_with_binder(binder: impl FnOnce(&LocalRef) -> LocalRef) -> CoreModule {
+    let mut core = loop_core(ENSURE_EACH_LEAF);
+    let (old_binder, iter, body) = core_loop(&mut core, 0);
+    let CoreExpr::Field { base: input, .. } = iter.clone() else {
+        panic!("field iterable expected");
+    };
+    *iter = CoreExpr::List {
+        values: vec![CoreExpr::Const(CoreValue::Null)],
+    };
+    let CoreNode::Effect {
+        input: effect_input,
+        obstruction_map,
+        ..
+    } = &mut body.nodes[0]
+    else {
+        panic!("Core effect expected");
+    };
+    *effect_input = CoreExpr::Field {
+        base: input,
+        field: "id".to_owned(),
+    };
+    let arm_binder = obstruction_map
+        .values()
+        .next()
+        .expect("obstruction arm")
+        .binder
+        .clone();
+    assert_eq!(arm_binder.ty, "Unit", "the arm binder is a Unit local");
+    let new_binder = binder(&arm_binder);
+    let old_id = old_binder.id.clone();
+    body.locals.retain(|local| local.id != old_id);
+    if !body.locals.contains(&new_binder) {
+        body.locals.push(new_binder.clone());
+    }
+    *old_binder = new_binder;
+    core
+}
+
+#[test]
+fn obstruction_binders_must_be_fresh_under_v3() {
+    // Control: a fresh Unit binder over `[null]` lowers and encodes.
+    let fresh = loop_with_binder(|arm| LocalRef {
+        id: "local.fresh".to_owned(),
+        alpha_name: "$fresh".to_owned(),
+        ty: arm.ty.clone(),
+    });
+    let report = lower_to_target_ir(&fresh, &structured_facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+    encode_target_ir_artifact(&report.artifact.expect("artifact")).expect("fresh binder encodes");
+
+    // The loop binder is also the nested effect's obstruction binder.
+    let shared = loop_with_binder(Clone::clone);
+    let report = lower_to_target_ir(&shared, &structured_facts());
+    assert_refused(
+        &report,
+        TargetLoweringFailureKind::InvalidCoreIdentity,
+        None,
+        "loop binder reused as an obstruction binder",
+    );
+
+    // An obstruction binder reusing the application input.
+    let mut input_arm = fresh;
+    let input_local = input_arm.intents["t"]
+        .body
+        .locals
+        .iter()
+        .find(|local| local.id == "arg.0")
+        .expect("input local")
+        .clone();
+    let (_, _, body) = core_loop(&mut input_arm, 0);
+    let CoreNode::Effect {
+        obstruction_map, ..
+    } = &mut body.nodes[0]
+    else {
+        panic!("Core effect expected");
+    };
+    let arm = obstruction_map.values_mut().next().expect("arm");
+    let old = arm.binder.id.clone();
+    arm.binder = input_local.clone();
+    body.locals.retain(|local| local.id != old);
+    body.locals.push(input_local);
+    let report = lower_to_target_ir(&input_arm, &structured_facts());
+    assert_refused(
+        &report,
+        TargetLoweringFailureKind::InvalidCoreIdentity,
+        None,
+        "obstruction binder reusing the application input",
+    );
+}
+
 #[test]
 fn requirement_inside_loop_stays_in_the_loop_body() {
     let artifact = structured_artifact(REQUIREMENT_IN_LOOP);

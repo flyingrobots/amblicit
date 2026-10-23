@@ -605,7 +605,7 @@ pub fn lower_to_target_ir(
             semantic_closure,
             intents,
         };
-        if let Some(failure) = structured_wire_depth_failure(&artifact) {
+        if let Some(failure) = structured_encoding_failure(&artifact) {
             return unsupported(vec![failure]);
         }
         let (result_projections, result_projection_failures) =
@@ -626,31 +626,42 @@ pub fn lower_to_target_ir(
     }
 }
 
-/// Each v3 control level adds a map and an array of canonical nesting on top of
-/// its Core values, so a structured artifact whose Core blocks validated can
-/// still exceed `MAX_CANONICAL_NESTING_DEPTH`. Refuse it here, naming the first
-/// such intent, rather than return an artifact the encoder cannot represent.
-/// Other encoder refusals keep their existing encoder-time behavior.
-fn structured_wire_depth_failure(artifact: &TargetIrArtifact) -> Option<TargetLoweringFailure> {
-    let too_deep = |candidate: &TargetIrArtifact| {
-        crate::encode_target_ir_artifact(candidate)
-            .is_err_and(|error| error.kind() == crate::CanonicalErrorKind::NestingLimitExceeded)
-    };
-    if artifact.domain != ECHO_STRUCTURED_SPAN_IR_DOMAIN || !too_deep(artifact) {
+/// Lowering never returns a v3 artifact its own encoder refuses. Each control
+/// level adds a map and an array of canonical nesting on top of its Core
+/// values, so an artifact whose Core blocks validated can still exceed
+/// `MAX_CANONICAL_NESTING_DEPTH` (`canonical_nesting_depth`); any other encoder
+/// refusal is a validation gap and refuses as `structured_artifact_unencodable`.
+/// The first refused intent is named.
+fn structured_encoding_failure(artifact: &TargetIrArtifact) -> Option<TargetLoweringFailure> {
+    if artifact.domain != ECHO_STRUCTURED_SPAN_IR_DOMAIN {
         return None;
     }
+    let error = crate::encode_target_ir_artifact(artifact).err()?;
     let intent = artifact.intents.iter().find_map(|(name, intent)| {
         let single = TargetIrArtifact {
             intents: BTreeMap::from([(name.clone(), intent.clone())]),
             ..artifact.clone()
         };
-        too_deep(&single).then(|| name.clone())
+        crate::encode_target_ir_artifact(&single)
+            .is_err_and(|single_error| single_error.kind() == error.kind())
+            .then(|| name.clone())
     });
+    let (kind, detail) = if error.kind() == crate::CanonicalErrorKind::NestingLimitExceeded {
+        (
+            TargetLoweringFailureKind::UnsupportedCoreNode,
+            "canonical_nesting_depth",
+        )
+    } else {
+        (
+            TargetLoweringFailureKind::InvalidCoreIdentity,
+            "structured_artifact_unencodable",
+        )
+    };
     Some(TargetLoweringFailure {
-        kind: TargetLoweringFailureKind::UnsupportedCoreNode,
+        kind,
         intent,
         node_index: None,
-        detail: "canonical_nesting_depth".to_owned(),
+        detail: detail.to_owned(),
     })
 }
 
@@ -1235,6 +1246,19 @@ fn validate_structured_instruction<'a>(
         available,
     ) {
         return invalid("Core node contains an invalid or unauthorized expression");
+    }
+    // Obstruction binders are scoped to their arm, but like every other
+    // introduced identity they may not reuse a visible or claimed one.
+    if let CoreNode::Effect {
+        obstruction_map, ..
+    } = node
+    {
+        if obstruction_map.values().any(|arm| {
+            available.contains_key(arm.binder.id.as_str())
+                || claimed.contains(arm.binder.id.as_str())
+        }) {
+            return invalid("obstruction binder reuses a visible or claimed identity");
+        }
     }
     if let Some(binding) = binding {
         if locals.get(binding.id.as_str()).copied() != Some(binding)
@@ -3342,8 +3366,69 @@ fn unsupported(failures: Vec<TargetLoweringFailure>) -> TargetLoweringReport {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::authenticated_named_type_closure_matches;
-    use crate::core_ir::{CoreModule, CoreType, ResourceRef, CORE_API_VERSION};
+    use super::{
+        authenticated_named_type_closure_matches, structured_encoding_failure, TargetIrArtifact,
+        TargetIrIntent, TargetIrOrderEntry, TargetLoweringFailureKind, ECHO_DPO_TARGET_PROFILE,
+        ECHO_STRUCTURED_SPAN_IR_DOMAIN,
+    };
+    use crate::core_ir::{
+        CoreBudget, CoreExpr, CoreModule, CoreType, CoreValue, ResourceRef, CORE_API_VERSION,
+    };
+
+    fn structured_artifact(order: Vec<TargetIrOrderEntry>) -> TargetIrArtifact {
+        TargetIrArtifact {
+            domain: ECHO_STRUCTURED_SPAN_IR_DOMAIN.to_owned(),
+            target_profile: ResourceRef {
+                coordinate: ECHO_DPO_TARGET_PROFILE.to_owned(),
+                digest: Some(format!("sha256:{}", "1".repeat(64))),
+            },
+            source_core_coordinate: "examples.guard@1".to_owned(),
+            semantic_closure: None,
+            intents: BTreeMap::from([(
+                "t".to_owned(),
+                TargetIrIntent {
+                    operation_profile: "continuum.profile.write/v1".to_owned(),
+                    execution_order: Some(order),
+                    basis: None,
+                    input_constraints: Vec::new(),
+                    core_evaluation_budget: CoreBudget {
+                        max_steps: 8,
+                        max_allocated_bytes: 1024,
+                        max_output_bytes: 256,
+                    },
+                    pure_bindings: Vec::new(),
+                    requirements: Vec::new(),
+                    steps: Vec::new(),
+                    external_action_requests: Vec::new(),
+                    result: CoreExpr::Const(CoreValue::Null),
+                },
+            )]),
+        }
+    }
+
+    /// Lowering must never return `Lowered` for a v3 artifact its own encoder
+    /// refuses, whatever the encoder's reason.
+    #[test]
+    fn structured_encoding_guard_refuses_every_encoder_refusal() {
+        let encodable = structured_artifact(Vec::new());
+        crate::encode_target_ir_artifact(&encodable).expect("control artifact encodes");
+        assert_eq!(structured_encoding_failure(&encodable), None);
+
+        // An order entry that names no table instruction.
+        let unencodable =
+            structured_artifact(vec![TargetIrOrderEntry::Instruction("t.step.9".to_owned())]);
+        assert_eq!(
+            crate::encode_target_ir_artifact(&unencodable)
+                .expect_err("dangling id")
+                .kind(),
+            crate::CanonicalErrorKind::UnsupportedValue
+        );
+        let failure =
+            structured_encoding_failure(&unencodable).expect("guard refuses the artifact");
+        assert_eq!(failure.kind, TargetLoweringFailureKind::InvalidCoreIdentity);
+        assert_eq!(failure.detail, "structured_artifact_unencodable");
+        assert_eq!(failure.intent.as_deref(), Some("t"));
+    }
 
     #[test]
     fn authenticated_named_type_closure_rejects_unrelated_extra_entry() {

@@ -231,7 +231,9 @@ has its own scope. Obstruction-arm binders stay scoped to their arm, as in v2.
 
 Core-to-Target validation covers nested blocks under v3: types, closed
 authority, block local tables, unique identities across the intent, binder
-identity, iterable shape (a list whose items fit the binder, with a literal
+identity, obstruction-binder freshness (an arm binder may not reuse the input,
+a visible local, a loop binder or any identity already introduced in the
+intent), iterable shape (a list whose items fit the binder, with a literal
 bound no smaller than its maximum), totality and intrinsic cost. Failures are
 `InvalidCoreIdentity` with no artifact. The canonical encoder independently
 requires every table instruction exactly once in the whole tree, nonempty
@@ -239,11 +241,14 @@ unique control ids disjoint from instruction ids, binders that reuse no
 produced or visible identity, and scoped producer-before-consumer references;
 it refuses with `CanonicalErrorKind::UnsupportedValue`. [TIR-REQ-060]
 
-Each control level adds a map and an array of canonical nesting, so the wire
-limit `MAX_CANONICAL_NESTING_DEPTH` (128) is reached long before the Core graph
-depth. Lowering encodes a v3 artifact before returning it and refuses one that
-exceeds the canonical nesting depth with `UnsupportedCoreNode` detail
-`canonical_nesting_depth`, naming the first such intent, with no artifact. For
+Lowering encodes a v3 artifact before returning it and never reports
+`Lowered` for one its own encoder refuses. Each control level adds a map and an
+array of canonical nesting, so the wire limit `MAX_CANONICAL_NESTING_DEPTH`
+(128) is reached long before the Core graph depth; that refusal is
+`UnsupportedCoreNode` detail `canonical_nesting_depth`. Any other encoder
+refusal would be a validation gap and refuses as `InvalidCoreIdentity` detail
+`structured_artifact_unencodable`. Both name the first such intent and return
+no artifact. For
 a closure-free intent whose innermost block is empty, 62 nested statement
 branches with a `true` predicate or 61 nested loops over a field of the input
 are the deepest that lower. When a semantic closure requires the Core module
