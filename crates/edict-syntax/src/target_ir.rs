@@ -637,10 +637,17 @@ fn structured_encoding_failure(artifact: &TargetIrArtifact) -> Option<TargetLowe
         return None;
     }
     let error = crate::encode_target_ir_artifact(artifact).err()?;
+    // Each candidate is the artifact header plus only its own intent, so
+    // isolating the refused intent is linear in the intent count.
     let intent = artifact.intents.iter().find_map(|(name, intent)| {
+        #[cfg(test)]
+        candidate_intent_clones::add(1);
         let single = TargetIrArtifact {
+            domain: artifact.domain.clone(),
+            target_profile: artifact.target_profile.clone(),
+            source_core_coordinate: artifact.source_core_coordinate.clone(),
+            semantic_closure: artifact.semantic_closure.clone(),
             intents: BTreeMap::from([(name.clone(), intent.clone())]),
-            ..artifact.clone()
         };
         crate::encode_target_ir_artifact(&single)
             .is_err_and(|single_error| single_error.kind() == error.kind())
@@ -663,6 +670,23 @@ fn structured_encoding_failure(artifact: &TargetIrArtifact) -> Option<TargetLowe
         node_index: None,
         detail: detail.to_owned(),
     })
+}
+
+/// Test-only count of intents cloned while isolating an unencodable intent, so
+/// the isolation's work bound is asserted deterministically.
+#[cfg(test)]
+mod candidate_intent_clones {
+    use std::cell::Cell;
+
+    thread_local!(static CLONES: Cell<usize> = const { Cell::new(0) });
+
+    pub(super) fn add(count: usize) {
+        CLONES.with(|clones| clones.set(clones.get() + count));
+    }
+
+    pub(super) fn take() -> usize {
+        CLONES.with(|clones| clones.replace(0))
+    }
 }
 
 fn lower_result_projections(
@@ -3441,6 +3465,38 @@ mod tests {
         assert_eq!(failure.kind, TargetLoweringFailureKind::InvalidCoreIdentity);
         assert_eq!(failure.detail, "structured_artifact_unencodable");
         assert_eq!(failure.intent.as_deref(), Some("t"));
+    }
+
+    /// Isolating the refused intent among many clones each intent at most once.
+    #[test]
+    fn encoder_refusal_isolation_is_linear_in_the_intent_count() {
+        const INTENTS: usize = 64;
+        let template = structured_artifact(Vec::new());
+        let valid = template.intents["t"].clone();
+        let mut dangling = valid.clone();
+        dangling.execution_order =
+            Some(vec![TargetIrOrderEntry::Instruction("t.step.9".to_owned())]);
+        for failing in [0, INTENTS / 2, INTENTS - 1] {
+            let mut artifact = template.clone();
+            artifact.intents = (0..INTENTS)
+                .map(|index| {
+                    let intent = if index == failing {
+                        dangling.clone()
+                    } else {
+                        valid.clone()
+                    };
+                    (format!("intent{index:03}"), intent)
+                })
+                .collect();
+            super::candidate_intent_clones::take();
+            let failure = structured_encoding_failure(&artifact).expect("guard refuses");
+            let expected = format!("intent{failing:03}");
+            assert_eq!(failure.intent.as_deref(), Some(expected.as_str()));
+            assert!(
+                super::candidate_intent_clones::take() <= failing + 1,
+                "isolating intent {failing} clones at most one intent per candidate"
+            );
+        }
     }
 
     #[test]
