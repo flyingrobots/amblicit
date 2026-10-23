@@ -671,29 +671,35 @@ pub(crate) fn check_target_ir_intent(
 }
 
 /// Test-only counts of the real Target IR encoding work: bytes of the shared
-/// source Core coordinate copied into header values, and intent values built.
+/// source Core coordinate copied into header values, and the number of values
+/// built for each intent (keyed by the intent's address during one call).
 #[cfg(test)]
 pub(crate) mod target_ir_work {
-    use std::cell::Cell;
+    use std::cell::{Cell, RefCell};
+    use std::collections::BTreeMap;
+
+    use crate::target_ir::TargetIrIntent;
 
     thread_local! {
         static HEADER_BYTES: Cell<usize> = const { Cell::new(0) };
-        static INTENT_VALUES: Cell<usize> = const { Cell::new(0) };
+        static INTENT_VALUES: RefCell<BTreeMap<usize, usize>> =
+            const { RefCell::new(BTreeMap::new()) };
     }
 
     pub(crate) fn add_header_bytes(count: usize) {
         HEADER_BYTES.with(|bytes| bytes.set(bytes.get() + count));
     }
 
-    pub(crate) fn add_intent_value() {
-        INTENT_VALUES.with(|values| values.set(values.get() + 1));
+    pub(crate) fn add_intent_value(intent: &TargetIrIntent) {
+        let key = std::ptr::from_ref(intent) as usize;
+        INTENT_VALUES.with(|values| *values.borrow_mut().entry(key).or_default() += 1);
     }
 
-    /// Return and reset `(header bytes, intent values)`.
-    pub(crate) fn take() -> (usize, usize) {
+    /// Return and reset `(header bytes, values built per intent)`.
+    pub(crate) fn take() -> (usize, BTreeMap<usize, usize>) {
         (
             HEADER_BYTES.with(|bytes| bytes.replace(0)),
-            INTENT_VALUES.with(|values| values.replace(0)),
+            INTENT_VALUES.with(|values| std::mem::take(&mut *values.borrow_mut())),
         )
     }
 }
@@ -828,7 +834,7 @@ fn validate_target_ir_intent_identities(intent: &TargetIrIntent) -> Result<(), C
 
 fn target_ir_intent_value(intent: &TargetIrIntent) -> Result<CanonicalValue, CanonicalError> {
     #[cfg(test)]
-    target_ir_work::add_intent_value();
+    target_ir_work::add_intent_value(intent);
     validate_target_ir_intent_identities(intent)?;
     let mut entries = vec![
         ("operationProfile", text(&intent.operation_profile)),

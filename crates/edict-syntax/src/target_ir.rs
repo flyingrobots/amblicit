@@ -3796,8 +3796,13 @@ mod tests {
                 "failing intent {failing}: the shared coordinate was copied {header_bytes} bytes"
             );
             assert!(
-                intent_values <= 2 * INTENTS,
-                "failing intent {failing}: {intent_values} intent values built"
+                intent_values.len() <= INTENTS,
+                "only artifact intents are built"
+            );
+            assert!(
+                intent_values.values().all(|&builds| builds <= 2),
+                "failing intent {failing}: per-intent value builds {:?}",
+                intent_values.values().collect::<Vec<_>>()
             );
         }
     }
