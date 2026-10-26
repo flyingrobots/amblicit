@@ -141,3 +141,13 @@ deterministic regression cases in `crates/amblicit-syntax/tests/`.
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | SYNTAX-TP-025 | implemented | Source functions | SYNTAX-REQ-015 | Identity and Jim byte-assembly declarations reach actual compiler checking; declaration-only acceptance is insufficient. | source_function_identity_is_not_an_imported_fact, jim_range_assembly_calls_an_authored_function_through_core_and_target | fixtures/lang/functions/range-assembly.amblicit | crates/amblicit-syntax/tests/source_functions.rs; Guarded source-function and regression suites pass. |
+
+## Source nesting limit
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| SYNTAX-REQ-018 | implemented | Parsing refuses source nesting past `MAX_SOURCE_NESTING_DEPTH`, counting recursion and built tree height, with the stable `NestingTooDeep` kind and without exhausting the parser's stack. | issue #277 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| SYNTAX-TP-028 | implemented | Resource bound | SYNTAX-REQ-018 | Binary, field and call chains have an exact height boundary; nested chains count their combined height; every recursive shape is refused one level past the limit; ordinary nesting at half the limit parses; a 64 Ki-operator chain is refused on a default test thread without being built. | chains_built_without_recursion_have_an_exact_height_boundary, chain_height_includes_nested_chains, recursion_past_the_limit_is_refused, ordinary_nesting_still_parses, a_huge_chain_is_refused_without_building_it | crates/amblicit-syntax/tests/parse_nesting.rs | Boundary witnesses run on a 64 MiB thread because a debug build spends more stack per level than a default test thread has. |

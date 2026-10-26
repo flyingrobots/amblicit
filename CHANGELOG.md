@@ -8,6 +8,14 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- The parser now refuses source nesting deeper than the public
+  `MAX_SOURCE_NESTING_DEPTH` (256) with the new parse diagnostic kind
+  `NestingTooDeep`. Before, a source of a few hundred nested parentheses, or
+  a long chain such as `a || b || ...`, could overflow the stack and abort
+  `amblicit` with no output, losing the response for every input in the
+  request (#277). Callers that match on `ParseErrorKind` exhaustively must add
+  the new variant.
+
 - **Breaking:** stage 3 of the Amblicit rename renames the source extension
   and the editor grammars. Source files use `.amblicit` in place of `.edict`.
   A CLI directory input now selects only `.amblicit` files by default: the
