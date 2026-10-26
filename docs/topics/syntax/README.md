@@ -74,6 +74,16 @@ programs, prove bounds, or itself lower to Core IR. [SYNTAX-REQ-001]
   names. [SYNTAX-REQ-009] [EDICT-LANG-RECORD-SHORTHAND-001]
 - Negative coverage asserts stable `ParseErrorKind` values rather than message
   prose or stdout/stderr. [SYNTAX-REQ-010]
+- Source nesting is bounded by the public `MAX_SOURCE_NESTING_DEPTH` (256).
+  The parser counts both its own recursion (parentheses, unary operators,
+  calls, list and record literals, `match`, ternaries, statements, `else if`
+  and types) and the height of the tree it builds, including operator, field
+  and call chains that it parses with a loop. Past either bound, parsing stops
+  with `NestingTooDeep` instead of exhausting the thread stack. The limit sits
+  above the Core graph depth of 128, so sources between the two still reach
+  the compiler's `InvalidBound` diagnostic. The parser's stack use up to the
+  limit depends on the build profile: a debug build needs several MiB, more
+  than a default 2 MiB spawned thread provides. [SYNTAX-REQ-018]
 
 ## Deferred
 
