@@ -889,6 +889,22 @@ fn validate_core_module(
     if !floating_imports.is_empty() {
         return floating_imports;
     }
+    if core
+        .types
+        .values()
+        .any(|ty| matches!(ty, CoreType::Variant { .. }))
+        && !core
+            .required_core_capabilities
+            .iter()
+            .any(|capability| capability == "core.variant/v1")
+    {
+        return vec![TargetLoweringFailure {
+            kind: TargetLoweringFailureKind::InvalidCoreIdentity,
+            intent: None,
+            node_index: None,
+            detail: "required_core_capabilities.core.variant/v1".to_owned(),
+        }];
+    }
     let capability_failures = core
         .required_core_capabilities
         .iter()

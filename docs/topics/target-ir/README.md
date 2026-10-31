@@ -706,6 +706,7 @@ This is native Target IR validation and lowering. Provider acceptance, runtime
 variant values, matching, recursion and variant-valued external result encoding
 are separate implementation gates.
 
-Target admits the named `core.variant/v1` capability while preserving refusal
-of unknown capability names and versions. The Core capability metadata remains
-hash-significant.
+Target requires `core.variant/v1` whenever the Core type table contains a variant,
+including unused declarations. Missing capability metadata refuses as
+`InvalidCoreIdentity`; unknown names and versions refuse as
+`UnsupportedCoreCapability`. The capability list remains hash-significant.

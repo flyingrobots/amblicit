@@ -8,6 +8,9 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Require `core.variant/v1` in variant-bearing untrusted Core before Target
+  lowering; removing the metadata now refuses with `InvalidCoreIdentity`.
+
 - Classify unsupported variant-valued intent outputs before helper-frame
   accounting, preserving `UnsupportedSourceShape` with or without helpers.
 

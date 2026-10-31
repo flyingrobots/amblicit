@@ -426,3 +426,35 @@ fn target_admits_only_the_known_variant_capability() {
             && failure.detail == capability));
     }
 }
+
+#[test]
+fn target_requires_variant_capability_for_helpers_and_direct_constructors() {
+    use amblicit_syntax::{TargetLoweringFailureKind, TargetLoweringStatus};
+    for (helper, expression) in [
+        (
+            "fn make(value: U8) -> Choice { return Choice::Data(value); }",
+            "make(input.marker)",
+        ),
+        ("", "Choice::Data(input.marker)"),
+    ] {
+        let mut core = operation(helper, expression, "");
+        assert_eq!(
+            amblicit_syntax::lower_to_target_ir(&core, &facts()).status,
+            TargetLoweringStatus::Lowered
+        );
+        core.required_core_capabilities.clear();
+        let report = amblicit_syntax::lower_to_target_ir(&core, &facts());
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Unsupported,
+            "{report:?}"
+        );
+        assert!(report.artifact.is_none());
+        assert!(
+            report.failures.iter().any(|failure| failure.kind
+                == TargetLoweringFailureKind::InvalidCoreIdentity
+                && failure.detail == "required_core_capabilities.core.variant/v1"),
+            "{report:?}"
+        );
+    }
+}
