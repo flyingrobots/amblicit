@@ -72,4 +72,4 @@ Out of scope:
 
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| DEVTOOLS-TP-014 | implemented | Byte literal suffix | DEVTOOLS-REQ-003, DEVTOOLS-REQ-004 | TextMate scopes the entire `255u8` literal to the same Number span as the reference lexer; Tree-sitter parses the authored U8 corpus without errors. | textmate_grammar_scopes_unsigned_byte_suffix, tree_sitter_corpus_examples_match_reference_parser, tree-sitter test | grammars/tree-sitter-amblicit/test/corpus/current-subset.txt | No runtime authority follows from highlighting. |
+| DEVTOOLS-TP-014 | implemented | Byte literal suffix | DEVTOOLS-REQ-003, DEVTOOLS-REQ-004 | TextMate scopes the entire `255u8` literal to the same Number span as the reference lexer; Tree-sitter parses the authored U8 corpus without errors. | textmate_grammar_scopes_unsigned_byte_suffix, tree_sitter_corpus_examples_match_reference_parser | grammars/tree-sitter-amblicit/test/corpus/current-subset.txt | The separate `tree-sitter test` command checks the generated parser. No runtime authority follows from highlighting. |
