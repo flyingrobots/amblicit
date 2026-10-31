@@ -5895,6 +5895,7 @@ fn builtin_integer_width(name: &str) -> Option<&'static str> {
     match name {
         "I32" => Some("I32"),
         "I64" => Some("I64"),
+        "U8" => Some("U8"),
         "U32" => Some("U32"),
         "U64" => Some("U64"),
         _ => None,
@@ -5905,6 +5906,7 @@ const fn integer_suffix_width(suffix: IntSuffix) -> &'static str {
     match suffix {
         IntSuffix::I32 => "I32",
         IntSuffix::I64 => "I64",
+        IntSuffix::U8 => "U8",
         IntSuffix::U32 => "U32",
         IntSuffix::U64 => "U64",
     }

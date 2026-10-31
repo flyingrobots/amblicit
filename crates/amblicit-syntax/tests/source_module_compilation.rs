@@ -561,3 +561,37 @@ fn count_over_an_imported_byte_alias_keeps_its_bound_in_source_and_target() {
     );
     assert_eq!(target.status, TargetLoweringStatus::Lowered, "{target:?}");
 }
+
+#[test]
+fn linked_unsigned_byte_helpers_preserve_builtin_types_and_literal_width() {
+    for body in ["return value;", "return 255u8;"] {
+        let library = format!(
+            "package library.bytes@1; type Byte = U8; fn retain(value: Byte) -> Byte {{ {body} }}"
+        );
+        let source = root(
+            &import("library.bytes@1", &library, "bytes"),
+            "",
+            "bytes.retain(input.value)",
+        )
+        .replace("U64", "U8");
+        let core = compile(&source, &[&library]);
+        let CoreType::Record { fields } = &core.types["Input"] else {
+            panic!("input record");
+        };
+        assert_eq!(fields["value"], "U8");
+        let callee = result_call(&core);
+        let function = &core.functions[callee.strip_prefix("app.example@1.").unwrap()];
+        assert_eq!(function.return_type, "U8");
+        if body == "return 255u8;" {
+            assert_eq!(
+                function.body.result,
+                CoreExpr::Const(amblicit_syntax::CoreValue::Int {
+                    width: "U8".into(),
+                    value: "255".into(),
+                })
+            );
+        } else {
+            assert!(matches!(function.body.result, CoreExpr::Local { .. }));
+        }
+    }
+}

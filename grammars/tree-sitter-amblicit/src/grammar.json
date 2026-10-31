@@ -2898,6 +2898,10 @@
                   },
                   {
                     "type": "STRING",
+                    "value": "u8"
+                  },
+                  {
+                    "type": "STRING",
                     "value": "u32"
                   },
                   {
