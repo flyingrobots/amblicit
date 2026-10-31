@@ -32,7 +32,7 @@ Each body has a fresh lexical environment. Parameters and earlier local bindings
 are visible; caller locals, later bindings and another function's locals are
 not. Duplicate names and shadowing of module or prelude names reject. All
 bodies are checked even if no intent calls them. Effects, requests, reads,
-loops, statement conditionals, `require`, `guarantee`, assertions, statements
+`for` statements, statement conditionals, `require`, `guarantee`, assertions, statements
 after return and missing returns reject. Assertions are not silently erased:
 this profile has no function-body proof-node lowering.
 Unsupported and post-return statement diagnostics identify the offending
@@ -58,7 +58,9 @@ structurally compatible, while distinct nominal variants cannot substitute.
 An initial value may have a tighter bound than the step state: for
 example, `b""` fits `Bytes<max=8>`. The step parameter and return coordinates
 still must be identical; the initial value does not narrow later iterations.
-N is a `U64` literal; runtime-supplied bounds refuse.
+N must be a U64-suffixed literal such as `3u64`; runtime values, named constants
+and lawpack-bound coordinates refuse. `fold` is reserved: functions, parameters
+and locals cannot declare that name.
 
 ```amblicit
 package iteration.state@1;
@@ -74,14 +76,15 @@ state, but the step's signature, authority and acyclic dependency graph still
 must be valid. The compiler charges repeated step work and transitive calls
 with overflow-checked multiplication, including per-iteration overhead.
 
-A terminal state is an authored case whose step returns itself; it does not
-remove remaining iteration charges. Pure source helpers cannot read state or
+There is no early exit. A step that returns its input unchanged still runs
+for all N iterations. Pure source helpers cannot read state or
 emit effects, including inside this form. Effect-emitting `for` remains a
 separate mechanism. The existing recursive-call prohibition includes step
 references even at zero bounds.
 
 Native Target checking independently validates the initial value, source helper
-and state identity. The current Echo provider/runtime does not yet support
+and state compatibility. A native `Lowered` result does not establish complete
+independent work admission. The current Echo provider/runtime does not yet support
 `core.fold/v1`; compiler support alone does not establish public package
 acceptance or runtime execution. The Jim persistent-rope and its oracle suite
 remain downstream work.

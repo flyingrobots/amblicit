@@ -8,6 +8,12 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Reserve `fold` as a prelude name. The new `CoreExpr::Fold` variant and
+  `TypedModule::required_core_capabilities` field require downstream exhaustive
+  Rust consumers to update. Initial values keep the language's existing
+  structural-record and nominal-variant compatibility rules. Provider/runtime
+  execution and complete independent fold-work admission remain separate gates.
+
 - Publish the fold-capable provider contract pack separately from existing
   digest-pinned packs. Preserve the earlier publication bytes and reproduce them
   with the frozen pre-fold Core schema. Schema acceptance is not runtime support.

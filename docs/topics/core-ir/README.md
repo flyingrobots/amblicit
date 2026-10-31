@@ -211,3 +211,12 @@ and includes all arms in call-graph validation. These structural checks do not
 establish exhaustive coverage or payload/result type compatibility; native
 Target performs those separate judgments. Binder IDs may repeat in sibling
 arms, but must resolve within their lexical arm. [COREIR-REQ-032]
+
+## Bounded state fold
+
+Core encodes `fold` with `initial`, the source helper coordinate `step`, a
+literal `bound`, and `stateType`, under `core.fold/v1`. Integrity validation
+checks the capability and invariant helper signature and includes the helper
+in cycle checks even at zero bound. Initial-value structural integrity is
+separate from Target's value-to-state compatibility check. These are compilation
+contracts, not evidence that a provider executes fold. [COREIR-REQ-033]

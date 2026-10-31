@@ -753,3 +753,16 @@ all sibling fields to be comparison operands. A scalar field remains available
 when a matched record also contains an unrelated empty or nonempty list literal.
 Direct list-match comparisons remain outside the comparison language.
 [TIR-REQ-063]
+
+## Bounded fold validation
+
+Native Target recognizes `core.fold/v1` and checks a source step with matching
+parameter/return coordinates and an initial value compatible with that state.
+A wrong initial value can pass shared Core structural integrity and still fail
+Target with `InvalidCoreIdentity`. [TIR-REQ-064]
+
+`Lowered` describes native structural/type validation, not provider execution.
+Independent reconstruction of complete fold work is still a known gap: the
+existing Target meter charges imported intrinsic work, but does not charge
+ordinary step/helper work or iteration overhead. A forged large bound can pass
+that meter. [TIR-REQ-065]

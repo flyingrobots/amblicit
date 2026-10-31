@@ -2077,7 +2077,7 @@ effects. There is no other narrowing in v1.
 
 ## Loops
 
-`for x in collection bounded N` is the only loop form in v1
+`for x in collection bounded N` is the collection-loop form in v1
 (`EDICT-LANG-LOOP-001`):
 
 - v1 iterates `List<T, max=M>` only. `Map` iteration is deferred to a later
@@ -2121,8 +2121,8 @@ state validation/copy costs and per-iteration overhead. Arithmetic overflow in a
 static bound refuses. Runtime ceilings may refuse before completion; a partial
 accumulator is not a successful result.
 
-A terminal state is represented in S and its authored step returns the same
-state without reads or effects. Remaining iteration overhead is still charged.
+There is no early exit. A terminal state is represented in S and its authored
+step returns the same state without reads or effects; all N iterations still count.
 Pure source helper rules already prohibit reads and effects, and `fold` does
 not relax them. This is distinct from effect-emitting `for` over a list that
 already exists. Generic provider/runtime execution of `core.fold/v1` remains a
@@ -2131,6 +2131,10 @@ separate implementation gate; this source/Core contract is not execution proof.
 ## Standard Functions
 
 The Edict Core prelude is intentionally small:
+
+- `fold(initial, step, N)` is the reserved first-order state-iteration form
+  described above. It is not a function value. Source declarations, parameters
+  and locals cannot shadow the prelude name `fold`.
 
 - `hash(label: StringLiteral, value...) -> Digest`
 - `canonicalEncode<T>(value: T) -> Bytes<max=CanonicalEncodedMax<T>>` (the

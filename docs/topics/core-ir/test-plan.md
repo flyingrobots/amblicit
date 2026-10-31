@@ -190,3 +190,13 @@ Out of scope:
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | COREIR-TP-042 | implemented | Match identity | COREIR-REQ-032 | Canonical arms retain their binder references, renamed source binders preserve bytes and recursive calls hidden in arms refuse. | variant_matches_preserve_scrutinee_and_arm_local_payloads, variant_matches_are_alpha_stable, match_arms_cannot_hide_recursive_calls | crates/amblicit-syntax/tests/variant_matches.rs | Does not prove every malformed caller-owned Core boundary. |
 | COREIR-TP-043 | planned | Match integrity negatives | COREIR-REQ-032 | Empty and duplicate arms, malformed case names, invalid binder types and empty identities fail at the Core integrity boundary; valid structural mutations reach Target typing. | - | - | Separate Core rejection from Target-only rejection. |
+
+## Bounded state fold
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| COREIR-REQ-033 | implemented | Fold canonical identity retains initial, helper, bound and state type; capability/signature/cycle validation is independent of source compilation. | docs/abi/edict-core.cddl |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COREIR-TP-044 | implemented | Fold identity and authority | COREIR-REQ-033 | All fold fields survive encoding; missing capability or invalid helper/state metadata fails InvalidDefinition at the fold result; a zero bound does not hide recursion. | bounded_fold_preserves_initial_state_static_step_and_iteration_bound, fold_core_requires_capability_and_declared_step_state, zero_bound_does_not_hide_recursive_step_authority | crates/amblicit-syntax/tests/bounded_state_fold.rs | Initial value typing is checked by Target separately. |

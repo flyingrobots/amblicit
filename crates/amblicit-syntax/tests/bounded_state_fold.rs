@@ -34,6 +34,10 @@ fn run(initial: State) -> State { return fold(initial, step, 3u64); }
     assert_eq!(field(result, "kind"), &CanonicalValue::Text("fold".into()));
     assert_eq!(field(result, "bound"), &CanonicalValue::Integer(3));
     assert_eq!(
+        field(result, "stateType"),
+        &CanonicalValue::Text("iteration.state@1.State".into())
+    );
+    assert_eq!(
         field(result, "step"),
         &CanonicalValue::Text("iteration.state@1.step".into())
     );
@@ -311,4 +315,20 @@ fn fold_initial_state_uses_existing_record_and_variant_compatibility() {
             .any(|error| error.kind == amblicit_syntax::CompilerErrorKind::TypeMismatch),
         "{errors:?}"
     );
+}
+
+#[test]
+fn fold_name_cannot_be_shadowed_by_parameters_or_locals() {
+    for source in [
+        "fn run(fold: Bool) -> Bool { return fold; }",
+        "fn run(s: Bool) -> Bool { let fold = s; return fold; }",
+    ] {
+        let errors = compile_source(source).expect_err("fold is a protected prelude name");
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.kind == amblicit_syntax::CompilerErrorKind::SurfaceValidation),
+            "{errors:?}"
+        );
+    }
 }

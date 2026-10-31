@@ -392,3 +392,15 @@ it does not treat compiler Target IR as proof of runtime support.
 | TIR-TP-123 | implemented | Match metadata result types | TIR-REQ-063 | A valid uniform Boolean match in basis lowers; a structurally valid Boolean/U8 arm mismatch refuses InvalidCoreIdentity before producing Target. | target_rejects_incompatible_match_results_in_basis, target_preserves_empty_and_nested_list_match_metadata | crates/amblicit-syntax/tests/variant_matches.rs | Automatic review finding, independently tested. |
 | TIR-TP-124 | implemented | Match intrinsic cost | TIR-REQ-063 | A costed intrinsic receiving empty/nonempty list match arms accepts the largest-arm bound and rejects one step below it. | target_bounds_a_match_list_by_its_largest_arm | crates/amblicit-syntax/tests/target_pure_intrinsic.rs | Independent intrinsic cost, not compiler dispatch/storage budgeting. |
 | TIR-TP-125 | implemented | Match field recovery | TIR-REQ-063 | Scalar field projection from matched records remains valid with unrelated empty/nonempty list fields; direct list-match comparison remains refused. | target_projects_match_record_fields_with_unrelated_list_literals, target_keeps_list_match_comparisons_outside_the_comparison_language | crates/amblicit-syntax/tests/variant_matches.rs | Value shape recovery is separate from comparison admissibility. |
+
+## Bounded fold authority and independent work
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| TIR-REQ-064 | implemented | Native Target checks fold initial-value compatibility and the static source helper/state contract independently of source compilation. | issue #268 |
+| TIR-REQ-065 | planned | Target reconstructs bounded fold work from validated Core and imported cost authority, including initial evaluation, every step and transitive call, state validation/storage and iteration overhead, with checked arithmetic and budget refusal. | issue #268 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-126 | implemented | Fold typing boundary | TIR-REQ-064 | A valid fold lowers; initial-value corruption passes Core structure but refuses InvalidCoreIdentity in Target; helper/state corruption refuses at shared Core integrity. | target_rechecks_fold_initial_state_and_static_helper, fold_accepts_initial_bytes_within_state_bound | crates/amblicit-syntax/tests/bounded_state_fold.rs | This does not witness independent work admission. |
+| TIR-TP-127 | planned | Fold work admission | TIR-REQ-065 | Forged bounds and transitive/nested work cannot bypass step or allocation ceilings, with no intrinsic facts as well as with authenticated imported costs; exact ceilings pass and one-under ceilings refuse with a stable failure. | - | - | An arbitrary maximum-bound blacklist or iteration-only check does not establish this contract. |
