@@ -1749,6 +1749,13 @@ fn core_expr_review(expr: &CoreExpr) -> Value {
             "kind": "const",
             "value": core_value_review(value),
         }),
+        CoreExpr::Variant { ty, case, payload } => {
+            let mut value = json!({"kind": "variant", "type": ty, "case": case});
+            if let Some(payload) = payload {
+                value["payload"] = core_expr_review(payload);
+            }
+            value
+        }
         CoreExpr::Record { fields } => json!({
             "kind": "record",
             "fields": fields
@@ -2495,7 +2502,7 @@ fn default_directory_extensions() -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{core_type_review, CoreType};
+    use super::{core_expr_review, core_type_review, CoreType};
 
     #[test]
     fn core_type_review_is_total_for_unit() {
@@ -2503,5 +2510,25 @@ mod tests {
             core_type_review(&CoreType::Unit),
             serde_json::json!({ "kind": "unit" })
         );
+    }
+
+    #[test]
+    fn core_expression_review_preserves_compiled_variant_payload_presence() -> Result<(), String> {
+        let source = "package review.example@1; type Choice = variant { Empty, Data(U8) }; fn empty() -> Choice { return Choice::Empty; } fn data(value: U8) -> Choice { return Choice::Data(value); }";
+        let parsed = amblicit_syntax::parse_module(source).map_err(|error| error.to_string())?;
+        let core =
+            amblicit_syntax::compile_to_core(&parsed, &amblicit_syntax::CompilerContext::new())
+                .map_err(|errors| format!("{errors:?}"))?;
+        let empty = core_expr_review(&core.functions["empty"].body.result);
+        assert_eq!(
+            empty,
+            serde_json::json!({"kind":"variant","type":"review.example@1.Choice","case":"Empty"})
+        );
+        let data = core_expr_review(&core.functions["data"].body.result);
+        assert_eq!(data["type"], "review.example@1.Choice");
+        assert_eq!(data["case"], "Data");
+        assert_eq!(data["payload"]["kind"], "local");
+        assert_eq!(data["payload"]["reference"]["ty"], "U8");
+        Ok(())
     }
 }

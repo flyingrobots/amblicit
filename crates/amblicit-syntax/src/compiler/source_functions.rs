@@ -9,6 +9,10 @@ use super::{
 };
 
 const VALUE_CELL_BYTES: u64 = 64;
+// Container plus type/case values and their keys, and one payload key.
+const VARIANT_METADATA_CELLS: u64 = 6;
+// The UTF-8 bytes of the type, case, and payload field names.
+const VARIANT_METADATA_KEY_BYTES: u64 = 15;
 
 #[derive(Debug, Clone)]
 pub(super) struct Signature {
@@ -348,15 +352,6 @@ impl TypeChecker<'_> {
             ));
             return None;
         }
-        if contains_variant(shape) {
-            self.errors.push(error(
-                CompilerStage::TypeCheck,
-                CompilerErrorKind::UnsupportedSourceShape,
-                "variant-bearing values are not supported by source function accounting",
-                span,
-            ));
-            return None;
-        }
         value_bound(shape).or_else(|| self.function_bound_failure(span))
     }
 
@@ -586,22 +581,7 @@ fn contains_external_action_request(shape: &TypeShape) -> bool {
     }
 }
 
-fn contains_variant(shape: &TypeShape) -> bool {
-    match &shape.kind {
-        TypeKind::Variant(_) => true,
-        TypeKind::Nominal { representation, .. } => contains_variant(representation),
-        TypeKind::List { item, .. } => contains_variant(item),
-        TypeKind::Record(fields) => fields.values().any(contains_variant),
-        TypeKind::ExternalActionRequest { settlement } => contains_variant(settlement),
-        TypeKind::Bool
-        | TypeKind::Int { .. }
-        | TypeKind::Bytes { .. }
-        | TypeKind::String { .. } => false,
-    }
-}
-
-// Portable conservative value-storage accounting: one 64-byte value cell,
-// plus bounded payload and child cells. It does not use host pointer widths.
+/// Portable conservative value-storage accounting, independent of host pointer widths.
 fn value_bound(shape: &TypeShape) -> Option<(u64, u64)> {
     match &shape.kind {
         TypeKind::Bool | TypeKind::Int { .. } => Some((1, VALUE_CELL_BYTES)),
@@ -630,7 +610,31 @@ fn value_bound(shape: &TypeShape) -> Option<(u64, u64)> {
                 ))
             },
         ),
-        TypeKind::ExternalActionRequest { .. } | TypeKind::Variant(_) => None,
+        TypeKind::Variant(cases) => {
+            let mut cells = 1;
+            let mut bytes = VALUE_CELL_BYTES;
+            let mut label = 0;
+            for (name, payload) in cases {
+                let (child_cells, child_bytes) = match payload {
+                    Some(payload) => value_bound(payload)?,
+                    None => (1, VALUE_CELL_BYTES),
+                };
+                cells = cells.max(child_cells);
+                bytes = bytes.max(child_bytes);
+                label = label.max(u64::try_from(name.len()).ok()?);
+            }
+            // Conservative record-shaped storage: container, type/case values
+            // and their keys, plus a payload key and maximum payload (or null).
+            Some((
+                cells.checked_add(VARIANT_METADATA_CELLS)?,
+                bytes
+                    .checked_add(VARIANT_METADATA_CELLS * VALUE_CELL_BYTES)?
+                    .checked_add(VARIANT_METADATA_KEY_BYTES)?
+                    .checked_add(u64::try_from(shape.coord.len()).ok()?)?
+                    .checked_add(label)?,
+            ))
+        }
+        TypeKind::ExternalActionRequest { .. } => None,
     }
 }
 

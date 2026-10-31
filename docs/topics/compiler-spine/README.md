@@ -131,21 +131,20 @@ unresolved payload at its case span and never emits a partial variant type. The
 source linker retains its single-error API, as for records. Variant payloads consume structural depth just as
 record fields do. [CSPINE-REQ-061]
 
-This is type-declaration support. Variant construction and `match` expressions
-still refuse. Variant-valued function storage and canonical result-size bounds
-refuse as `UnsupportedSourceShape` rather than assuming a wire representation.
-Variant inputs in modules with source functions also refuse at storage accounting;
-genuine size overflow remains `InvalidBound`. Enum declarations,
-recursive variants, provider acceptance and runtime execution are separate gates.
-[CSPINE-REQ-061]
+Constructors such as `Choice::Empty` and `Choice::Data(value)` preserve exact
+variant identity, case and optional payload through Core. Payload types, widths,
+bounds and nominal identities are checked. Variant helper storage uses checked,
+conservative bounds; genuine size overflow remains `InvalidBound`. Matching,
+enums, recursive variants and variant-valued intent result sizing remain
+unsupported. Provider acceptance and runtime execution are separate gates.
+[CSPINE-REQ-062]
 
 Every variant declaration in the finished Core type table adds the hash-significant
 `core.variant/v1` capability, including unused or source-linked declarations.
-Current Target lowering refuses that module with `UnsupportedCoreCapability` and
-no artifact. A function-free intent may therefore accept a variant-typed input
-into Core, but cannot produce a Target artifact. This module-wide gate deliberately
-keeps Core-only declaration libraries usable without asserting executable variant
-support. [CSPINE-REQ-061]
+Target requires this capability for variant type tables and independently checks
+constructor identity, payload types, scope and totality. Missing metadata refuses
+with `InvalidCoreIdentity`; unknown capabilities still refuse without an artifact. Other Target restrictions still apply, including result projection.
+[CSPINE-REQ-061, CSPINE-REQ-062]
 
 Source `type Alias = Target;` declarations are transparent spellings for
 currently lowerable targets. They introduce no new nominal authority or Core

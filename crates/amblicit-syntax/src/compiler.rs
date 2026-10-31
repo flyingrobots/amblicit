@@ -1481,6 +1481,9 @@ impl<'a> TypeChecker<'a> {
             let input =
                 self.type_ref_shape(&intent.source.params[0].ty, intent.source.params[0].span)?;
             let output = self.type_ref_shape(&intent.source.returns, intent.source.span)?;
+            // Classify unsupported intent results before helper accounting's
+            // conservative encoded bound can conflate them with overflow.
+            self.check_return_budget(intent, &output)?;
             let frame = self.source_intent_frame_cost(&input, &output, intent.source.span)?;
             cost = self.checked_helper_cost_add(cost, frame, intent.source.span)?;
         }
@@ -4202,6 +4205,19 @@ impl<'a> TypeChecker<'a> {
             Expr::Record { entries, span } => self.check_record(entries, env, expected, *span),
             Expr::List { items, span } => self.check_list_literal(items, env, expected, *span),
             Expr::Call { .. } => self.check_call_expression(expr, env, expectation),
+            Expr::VariantLit {
+                ty_path,
+                case,
+                payload,
+                span,
+            } => self.check_variant_constructor(
+                ty_path,
+                case,
+                payload.as_deref(),
+                env,
+                expected,
+                *span,
+            ),
             Expr::If {
                 cond,
                 then,
@@ -4224,7 +4240,6 @@ impl<'a> TypeChecker<'a> {
             Expr::Binary { .. }
             | Expr::Digest { .. }
             | Expr::IfYield { .. }
-            | Expr::VariantLit { .. }
             | Expr::Match { .. } => {
                 self.errors.push(error(
                     CompilerStage::TypeCheck,

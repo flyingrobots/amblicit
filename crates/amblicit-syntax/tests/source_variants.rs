@@ -167,30 +167,18 @@ fn payloadless_variant_cases_consume_the_source_work_budget() {
 }
 
 #[test]
-fn variant_construction_and_matching_remain_explicitly_unsupported() {
-    for (function, expression) in [
-        (
-            "fn make() -> Choice { return Choice::Empty; }",
-            "Choice::Empty",
+fn variant_matching_remains_explicitly_unsupported() {
+    let source = "package choices.example@1; type Choice = variant { Empty }; fn inspect(value: Choice) -> U64 { return match value { Empty => 0u64 }; }";
+    let errors =
+        compile_to_core(&parse_module(source).unwrap(), &CompilerContext::new()).unwrap_err();
+    let start = source.find("match value").unwrap();
+    assert!(
+        errors.iter().any(
+            |error| error.kind == CompilerErrorKind::UnsupportedSourceShape
+                && error.span.start == start
         ),
-        (
-            "fn inspect(value: Choice) -> U64 { return match value { Empty => 0u64 }; }",
-            "match value",
-        ),
-    ] {
-        let source =
-            format!("package choices.example@1; type Choice = variant {{ Empty }}; {function}");
-        let errors =
-            compile_to_core(&parse_module(&source).unwrap(), &CompilerContext::new()).unwrap_err();
-        let start = source.find(expression).unwrap();
-        assert!(
-            errors.iter().any(
-                |error| error.kind == CompilerErrorKind::UnsupportedSourceShape
-                    && error.span.start == start
-            ),
-            "{errors:?}"
-        );
-    }
+        "{errors:?}"
+    );
 }
 
 fn execution_context() -> CompilerContext {
@@ -210,7 +198,7 @@ fn execution_context() -> CompilerContext {
 fn source_variants_require_a_core_capability_before_target_lowering() {
     use amblicit_syntax::{
         lower_to_target_ir, ResourceRef, TargetIrLoweringFacts, TargetLoweringFailureKind,
-        TargetLoweringStatus, ECHO_DPO_TARGET_PROFILE, ECHO_SPAN_IR_DOMAIN,
+        ECHO_DPO_TARGET_PROFILE, ECHO_SPAN_IR_DOMAIN,
     };
     let facts = TargetIrLoweringFacts {
         target_profile: ResourceRef {
@@ -238,57 +226,45 @@ fn source_variants_require_a_core_capability_before_target_lowering() {
         };
         assert_eq!(core.required_core_capabilities, expected);
         let report = lower_to_target_ir(&core, &facts);
-        if needs_variant {
-            assert_eq!(report.status, TargetLoweringStatus::Unsupported);
-            assert!(report.artifact.is_none());
-            assert_eq!(report.failures.len(), 1);
-            assert_eq!(
-                report.failures[0].kind,
-                TargetLoweringFailureKind::UnsupportedCoreCapability
-            );
-        } else {
-            assert!(report.failures.iter().all(
-                |failure| failure.kind != TargetLoweringFailureKind::UnsupportedCoreCapability
-            ));
-        }
+        assert_eq!(
+            report.status,
+            amblicit_syntax::TargetLoweringStatus::Unsupported
+        );
+        assert!(report.artifact.is_none());
+        assert_eq!(report.failures.len(), 1);
+        assert_eq!(
+            report.failures[0].kind,
+            TargetLoweringFailureKind::NoTargetSteps
+        );
     }
 }
 
 #[test]
-fn variant_function_storage_refuses_as_unsupported_without_retagging_overflow() {
+fn variant_function_storage_is_bounded_without_retagging_overflow() {
     let declarations = "type Choice = variant { Empty }; type Envelope = { choice: Choice, }; type Alias = Choice;";
     for ty in ["Choice", "Envelope", "Alias", "List<Choice,max=1>"] {
         let source = format!("package choices.example@1; {declarations} fn identity(input: {ty}) -> {ty} {{ return input; }}");
-        let errors =
-            compile_to_core(&parse_module(&source).unwrap(), &CompilerContext::new()).unwrap_err();
-        assert_ne!(errors, [] as [amblicit_syntax::CompilerError; 0]);
-        assert!(
-            errors
-                .iter()
-                .all(|error| error.kind == CompilerErrorKind::UnsupportedSourceShape),
-            "{ty}: {errors:?}"
-        );
+        let core = compile_to_core(&parse_module(&source).unwrap(), &CompilerContext::new())
+            .expect("bounded variant helper storage");
+        assert_eq!(core.required_core_capabilities, vec!["core.variant/v1"]);
     }
     refusal("fn identity(input: List<U64,max=18446744073709551615>) -> List<U64,max=18446744073709551615> { return input; }", CompilerErrorKind::InvalidBound);
 }
 
 #[test]
 fn variant_intent_storage_and_result_boundaries_are_explicit() {
-    for (helper, output, body) in [
-        ("fn unused() -> U64 { return 0u64; }", "U64", "return 0u64;"),
-        ("", "Choice", "return input;"),
-    ] {
-        let source = format!("package choices.example@1; type Choice = variant {{ Empty }}; {helper} intent run(input: Choice) returns {output} profile p.read basis none budget <= p.small {{ {body} }}");
-        let errors =
-            compile_to_core(&parse_module(&source).unwrap(), &execution_context()).unwrap_err();
-        assert_ne!(errors, [] as [amblicit_syntax::CompilerError; 0]);
-        assert!(
-            errors
-                .iter()
-                .all(|error| error.kind == CompilerErrorKind::UnsupportedSourceShape),
-            "{errors:?}"
-        );
-    }
+    let source = "package choices.example@1; type Choice = variant { Empty }; fn unused() -> U64 { return 0u64; } intent run(input: Choice) returns U64 profile p.read basis none budget <= p.small { return 0u64; }";
+    let core = compile_to_core(&parse_module(source).unwrap(), &execution_context()).unwrap();
+    assert_eq!(core.required_core_capabilities, vec!["core.variant/v1"]);
+    let source = "package choices.example@1; type Choice = variant { Empty }; intent run(input: Choice) returns Choice profile p.read basis none budget <= p.small { return input; }";
+    let errors = compile_to_core(&parse_module(source).unwrap(), &execution_context()).unwrap_err();
+    assert_ne!(errors, [] as [amblicit_syntax::CompilerError; 0]);
+    assert!(
+        errors
+            .iter()
+            .all(|error| error.kind == CompilerErrorKind::UnsupportedSourceShape),
+        "{errors:?}"
+    );
 }
 
 #[test]
@@ -420,6 +396,23 @@ fn variant_case_and_repeated_payload_expansion_boundaries_are_exact() {
                 cases(1000)
             ),
             accepted,
+        );
+    }
+}
+
+#[test]
+fn variant_intent_output_with_helpers_is_unsupported_not_overflow() {
+    let declarations = "type Choice = variant { Empty }; type Envelope = { choice: Choice, }; type Alias = Choice; fn unused() -> U64 { return 0u64; }";
+    for ty in ["Choice", "Envelope", "Alias", "List<Choice,max=1>"] {
+        let source = format!("package choices.example@1; {declarations} intent run(input: {ty}) returns {ty} profile p.read basis none budget <= p.small {{ return input; }}");
+        let errors =
+            compile_to_core(&parse_module(&source).unwrap(), &execution_context()).unwrap_err();
+        assert_ne!(errors, [] as [amblicit_syntax::CompilerError; 0]);
+        assert!(
+            errors
+                .iter()
+                .all(|error| error.kind == CompilerErrorKind::UnsupportedSourceShape),
+            "{ty}: {errors:?}"
         );
     }
 }

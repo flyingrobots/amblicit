@@ -240,6 +240,9 @@ fn expression_is_total_at_depth(
     }
     match expression {
         CoreExpr::Local { .. } | CoreExpr::Const(_) => true,
+        CoreExpr::Variant { payload, .. } => payload.as_ref().is_none_or(|payload| {
+            expression_is_total_at_depth(core, payload, constraints, depth + 1)
+        }),
         CoreExpr::Field { base, .. } => {
             expression_is_total_at_depth(core, base, constraints, depth + 1)
         }

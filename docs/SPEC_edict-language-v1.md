@@ -1716,8 +1716,8 @@ The current compiler resolves acyclic source aliases, record and variant depende
 before checking function signatures or intent bodies. Declaration ordering does
 not change the resulting canonical Core. Alias targets must already belong to
 the currently lowerable type subset. Variant declarations preserve named cases
-and payload references in Core; generic and recursive types, variant construction
-and matching remain outside this source subset.
+and payload references in Core. Checked constructors preserve the named case and
+optional payload. Generic and recursive types and matching remain outside this source subset.
 
 Source type dependency paths have a ceiling of 128 declarations. Fully expanded
 structural height, including inline constructors, cached alias targets and
@@ -3200,9 +3200,12 @@ contains a variant declaration. This is a module-wide requirement, including
 unused declarations and declarations linked from source modules. The conservative
 scope avoids presenting a type graph as supported merely because its current
 intent bodies do not inspect that type. It does not claim a variant value ABI.
-Current Target lowering rejects this capability as `UnsupportedCoreCapability`
-without an artifact. Core-only library compilation remains available; executable
-variant support requires a later target/provider/runtime capability implementation.
+Current Target lowering requires this capability for variant type tables and
+independently checks constructor identities and payload types. Missing capability
+metadata refuses as `InvalidCoreIdentity` before unknown capabilities are checked.
+After that check, unknown capabilities refuse as `UnsupportedCoreCapability`
+without an artifact. Provider and runtime variant
+support and variant-valued external results remain separate implementation gates.
 
 ## Implementation Plan
 

@@ -160,3 +160,14 @@ contract.
 
 The executable verification matrix is tracked in
 [test-plan.md](./test-plan.md).
+
+## Variant-valued outputs
+
+A source leaf can preserve a value's type without establishing its result encoding.
+For otherwise projectable source leaves, emission and independent verification
+reject output graphs containing variants with `OutputShapeMismatch`, including a
+whole record or list projected from one source. A constructor expression itself
+refuses earlier with `UnsupportedExpression`. Internal variant bindings can still lower to native Target IR;
+the lowerer reports the missing result projection separately. The executable
+witnesses cover direct, record and list outputs with scalar-output controls.
+[RESULT-PROJ-REQ-013]

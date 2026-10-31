@@ -1493,6 +1493,17 @@ fn core_expr_value(expr: &CoreExpr) -> Result<CanonicalValue, CanonicalError> {
             map([("kind", text("local")), ("ref", local_ref_value(reference))])
         }
         CoreExpr::Const(value) => map([("kind", text("const")), ("value", core_value(value)?)]),
+        CoreExpr::Variant { ty, case, payload } => {
+            let mut fields = vec![
+                ("kind", text("variant")),
+                ("type", text(ty)),
+                ("case", text(case)),
+            ];
+            if let Some(payload) = payload {
+                fields.push(("payload", core_expr_value(payload)?));
+            }
+            map(fields)
+        }
         CoreExpr::Record { fields } => map([
             ("kind", text("record")),
             (

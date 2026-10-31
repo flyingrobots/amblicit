@@ -8,7 +8,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use crate::core_ir::{
-    core_type_fits, validate_core_module_type_integrity, CORE_APPLICATION_INPUT_LOCAL_ID,
+    core_type_fits, resolved_core_type, validate_core_module_type_integrity,
+    CORE_APPLICATION_INPUT_LOCAL_ID,
 };
 use crate::{
     decode_canonical_cbor, digest_canonical_artifact, encode_canonical_cbor, CanonicalValue,
@@ -222,6 +223,7 @@ pub(crate) fn emit_result_projection_with_closure(
     let semantics =
         ProjectionSemantics::new(core, target_ir, intent_name, expected_semantic_closure)?;
     let expression = project_core_expression(&semantics, &semantics.core_intent.body.result)?;
+    validate_projection_output_type(core, &semantics.core_intent.output)?;
     validate_output_shape(&semantics, &expression, &semantics.core_intent.output)?;
     let projection = ResultProjection {
         api_version: RESULT_PROJECTION_API_VERSION.to_owned(),
@@ -322,6 +324,7 @@ pub fn verify_result_projection(
             intent_name,
         ));
     }
+    validate_projection_output_type(core, &semantics.core_intent.output)?;
     validate_output_shape(
         &semantics,
         &projection.expression,
@@ -725,7 +728,8 @@ fn project_core_expression(
             };
             Ok(ResultProjectionExpr::Source { source, path })
         }
-        CoreExpr::Const(_)
+        CoreExpr::Variant { .. }
+        | CoreExpr::Const(_)
         | CoreExpr::List { .. }
         | CoreExpr::Call { .. }
         | CoreExpr::If { .. } => Err(failure(
@@ -745,7 +749,8 @@ fn source_path(expression: &CoreExpr) -> Result<(&LocalRef, Vec<String>), Result
     path.reverse();
     match current {
         CoreExpr::Local { reference } => Ok((reference, path)),
-        CoreExpr::Const(_)
+        CoreExpr::Variant { .. }
+        | CoreExpr::Const(_)
         | CoreExpr::Record { .. }
         | CoreExpr::List { .. }
         | CoreExpr::Call { .. }
@@ -801,6 +806,49 @@ fn reconstruct_core_expression(
             Ok(expression)
         }
     }
+}
+
+// Variant values currently have no application-result encoding contract.
+// Walk the reachable output graph once, including structural references, so
+// projecting a whole aggregate cannot hide a nested variant from either gate.
+fn validate_projection_output_type(
+    core: &CoreModule,
+    output: &str,
+) -> Result<(), ResultProjectionFailure> {
+    let mut pending = vec![output.to_owned()];
+    let mut seen = BTreeSet::new();
+    while let Some(coordinate) = pending.pop() {
+        if !seen.insert(coordinate.clone()) {
+            continue;
+        }
+        let ty = resolved_core_type(core, &coordinate).ok_or_else(|| {
+            failure(
+                ResultProjectionFailureKind::OutputShapeMismatch,
+                &coordinate,
+            )
+        })?;
+        match ty {
+            CoreType::Variant { .. } => {
+                return Err(failure(
+                    ResultProjectionFailureKind::OutputShapeMismatch,
+                    output,
+                ));
+            }
+            CoreType::Record { fields } => pending.extend(fields.into_values()),
+            CoreType::Nominal { representation, .. } => pending.push(representation),
+            CoreType::Option { item }
+            | CoreType::List { item, .. }
+            | CoreType::CapabilityRef { item } => pending.push(item),
+            CoreType::Map { key, value, .. } => pending.extend([key, value]),
+            CoreType::ExternalActionRequest { settlement } => pending.push(settlement),
+            CoreType::Bool
+            | CoreType::Unit
+            | CoreType::Int { .. }
+            | CoreType::String { .. }
+            | CoreType::Bytes { .. } => {}
+        }
+    }
+    Ok(())
 }
 
 fn validate_output_shape(

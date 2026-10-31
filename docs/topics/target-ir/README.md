@@ -690,3 +690,38 @@ Statement-level and branch-yield `CoreNode::Branch` forms, and `require`, do not
 extend the proof facts. The supported expression is `if ... then ... else ...`.
 Provider admission, input enforcement and runtime execution remain separate gates.
 [TIR-REQ-061]
+
+## Checked variant construction
+
+Variant expressions are checked against the exact resolved union identity,
+selected case and required payload. Target rechecks payload expression types,
+integer widths, bounds, nominal contracts and available locals from untrusted
+Core. The same identity rule applies through helper calls and local references,
+so a structurally identical union cannot substitute for the declared one.
+Executable witnesses cover payload scope/cycle checks, graph depth, byte-lookup
+totality and exact helper-call argument/return identity. Dedicated payload
+mutation witnesses for intrinsic-cost, operator-admissibility and execution-order
+traversals remain planned in TIR-TP-118. [TIR-REQ-062]
+
+This is native Target IR validation and lowering. Provider acceptance, runtime
+variant values, matching, recursion and variant-valued external result encoding
+are separate implementation gates.
+
+Target requires `core.variant/v1` whenever the Core type table contains a variant,
+including unused declarations. Missing capability metadata refuses as
+`InvalidCoreIdentity` before unknown capabilities are checked; after that check,
+unknown names and versions refuse as `UnsupportedCoreCapability`. The capability list remains hash-significant.
+
+Native Target lowering can retain internal variant bindings, but result-projection
+emission and independent verification reject variant-bearing output graphs of
+otherwise projectable source leaves with `OutputShapeMismatch`. Constructor
+expressions themselves refuse earlier with `UnsupportedExpression`. This includes projecting an entire aggregate containing a
+variant. Direct, record and list outputs have executable refusal witnesses;
+scalar-output controls still project. A refusal is recorded separately in
+`result_projection_failures`, so the native Target artifact may remain available.
+A module with no target-owned steps still refuses as `NoTargetSteps`, regardless
+of whether its input is variant-typed. [TIR-REQ-062]
+
+A variant-typed input can flow through a source helper while a scalar output
+retains its result projection. This native Target witness does not establish
+provider admission or runtime input decoding. [TIR-REQ-062]

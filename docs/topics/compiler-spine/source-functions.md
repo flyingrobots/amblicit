@@ -21,10 +21,10 @@ The compiler resolves all function signatures before checking bodies, so a
 function can call one declared later. Zero parameters are allowed. Calls are
 first-order and nongeneric: functions cannot be passed as values or instantiate
 type arguments. Supported parameter/result types are the compiler's bounded
-scalar, record, list and authenticated nominal families; this adds `Bool` as an
+scalar, record, list, variant and authenticated nominal families; this adds `Bool` as an
 explicit type reference as well as Boolean value and predicate composition.
-It does not add variant/match or Option lowering, list literals, recursive
-functions, general checked arithmetic or byte-literal escapes.
+Matching, Option lowering and recursive functions remain unsupported. Arithmetic
+and byte operations retain their separately documented bounded subsets.
 
 Each body has a fresh lexical environment. Parameters and earlier local bindings
 are visible; caller locals, later bindings and another function's locals are
@@ -100,6 +100,14 @@ units, not host pointer widths or a proof of physical backend allocation.
 These are conservative compiler accounting units, not a claim about any
 backend's physical allocator or an exact instruction count.
 
+Variant temporaries reserve a conservative record-shaped value: six metadata
+cells (the container, type/case values and keys, and a payload key), the 15 bytes
+of metadata keys, the exact type coordinate, the longest case name, and the
+maximum payload cells and bytes across all cases. An absent payload reserves
+one null cell conservatively. All arithmetic is checked. This is an accounting
+model, not a new wire representation. Variant-valued intent result encoding is
+still unsupported. [CSPINE-REQ-062]
+
 Sequential costs add; mutually exclusive branches use component-wise maxima
 of their complete costs; bounded loops multiply body work. Both operands of a
 short-circuit Boolean connective contribute to its worst-case estimate without
@@ -109,7 +117,7 @@ cost evidence or exceeding a declared operation budget returns `InvalidBound`
 or the existing missing-fact diagnostic before Core is emitted.
 
 The source-function accounting profile cannot bound `ExternalActionRequest`
-values, including requests nested in nominal types, records or lists. Such
+values, including requests nested in nominal types, records, lists or variants. Such
 shapes return `UnsupportedSourceShape` in parameters, results, expressions and
 intent inputs/outputs when a module contains source functions. Even adding an
 unused function can expose this limitation. Function-free request-bearing

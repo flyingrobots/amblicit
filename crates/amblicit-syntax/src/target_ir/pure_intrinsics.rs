@@ -207,6 +207,10 @@ impl<'a> Meter<'a> {
         }
         let children = match expression {
             CoreExpr::Local { .. } | CoreExpr::Const(_) => Some(0),
+            CoreExpr::Variant { payload, .. } => match payload {
+                Some(payload) => self.expression(payload, available, depth + 1),
+                None => Some(0),
+            },
             CoreExpr::Field { base, .. } => self.expression(base, available, depth + 1),
             CoreExpr::Record { fields } => fields.values().try_fold(0_u64, |steps, value| {
                 steps.checked_add(self.expression(value, available, depth + 1)?)
