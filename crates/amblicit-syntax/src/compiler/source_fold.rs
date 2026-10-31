@@ -49,9 +49,7 @@ impl TypeChecker<'_> {
         }
         let bound = self.fold_bound(&args[2], span)?;
         let initial = self.check_expr_with_expected(&args[0], env, Some(&signature.result))?;
-        if !compatible(&signature.result, &initial.ty)
-            || !compatible(&initial.ty, &signature.result)
-        {
+        if !compatible(&signature.result, &initial.ty) {
             return self.fold_failure(
                 CompilerErrorKind::TypeMismatch,
                 "fold initial value must have the step state type",

@@ -54,7 +54,10 @@ values in predicate position compare with `true`.
 names a source helper with exactly one parameter and the same declared return
 type. It is a compile-time helper reference, not a function value or closure.
 The initial state must fit that bounded state type without changing nominal
-identity. N is a `U64` literal; runtime-supplied bounds refuse.
+identity. An initial value may have a tighter bound than the step state: for
+example, `b""` fits `Bytes<max=8>`. The step parameter and return coordinates
+still must be identical; the initial value does not narrow later iterations.
+N is a `U64` literal; runtime-supplied bounds refuse.
 
 ```amblicit
 package iteration.state@1;

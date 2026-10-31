@@ -132,18 +132,7 @@ fn operation(
 
 #[test]
 fn target_rechecks_fold_initial_state_and_static_helper() {
-    let facts = amblicit_syntax::TargetIrLoweringFacts {
-        target_profile: amblicit_syntax::ResourceRef {
-            coordinate: "echo.dpo@1".into(),
-            digest: Some(format!("sha256:{}", "1".repeat(64))),
-        },
-        target_ir_domain: "echo.span-ir/v1".into(),
-        operation_profiles: vec!["continuum.profile.read-only/v1".into()],
-        obstruction_coordinates: vec![],
-        effect_lowerings: vec![],
-        effect_signatures: vec![],
-        pure_functions: vec![],
-    };
+    let facts = lowering_facts();
     let original = operation(3, 65_536).expect("fold operation");
     let valid = amblicit_syntax::lower_to_target_ir(&original, &facts);
     assert_eq!(
@@ -203,6 +192,67 @@ fn fold_name_cannot_be_redefined_as_a_source_helper() {
         errors
             .iter()
             .any(|e| e.kind == amblicit_syntax::CompilerErrorKind::SurfaceValidation),
+        "{errors:?}"
+    );
+}
+
+fn lowering_facts() -> amblicit_syntax::TargetIrLoweringFacts {
+    amblicit_syntax::TargetIrLoweringFacts {
+        target_profile: amblicit_syntax::ResourceRef {
+            coordinate: "echo.dpo@1".into(),
+            digest: Some(format!("sha256:{}", "1".repeat(64))),
+        },
+        target_ir_domain: "echo.span-ir/v1".into(),
+        operation_profiles: vec!["continuum.profile.read-only/v1".into()],
+        obstruction_coordinates: vec![],
+        effect_lowerings: vec![],
+        effect_signatures: vec![],
+        pure_functions: vec![],
+    }
+}
+
+#[test]
+fn fold_accepts_initial_bytes_within_state_bound() {
+    use amblicit_syntax::{CoreBudget, CoreExpr, TargetLoweringStatus};
+    let context = CompilerContext::new()
+        .with_operation_profile("p.read", "continuum.profile.read-only/v1")
+        .with_budget(
+            "p.small",
+            CoreBudget {
+                max_steps: 65_536,
+                max_allocated_bytes: 1_048_576,
+                max_output_bytes: 65_536,
+            },
+        );
+    for initial in ["", "12345678"] {
+        let source = format!(
+            r#"
+package iteration.state@1;
+type State = {{ value: Bytes<max=8> }};
+fn step(s: Bytes<max=8>) -> Bytes<max=8> {{ return s; }}
+fn run() -> Bytes<max=8> {{ return fold(b"{initial}", step, 2u64); }}
+intent runIntent(input: State) returns State profile p.read basis none budget <= p.small {{
+    let result = run();
+    return {{ value: result }};
+}}
+"#
+        );
+        let core = compile_to_core(&parse_module(&source).unwrap(), &context)
+            .expect("initial bytes within the state bound must compile");
+        encode_core_module(&core).expect("accepted fold must encode");
+        let CoreExpr::Fold { state_type, .. } = &core.functions["run"].body.result else {
+            panic!("explicit fold required");
+        };
+        assert_eq!(state_type, &core.functions["step"].return_type);
+        let report = amblicit_syntax::lower_to_target_ir(&core, &lowering_facts());
+        assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+    }
+    let errors = compile_source(r#"fn step(s: Bytes<max=8>) -> Bytes<max=8> { return s; } fn run() -> Bytes<max=8> { return fold(b"123456789", step, 2u64); }"#)
+        .expect_err("initial bytes larger than the state bound must refuse");
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.kind == amblicit_syntax::CompilerErrorKind::TypeMismatch),
         "{errors:?}"
     );
 }

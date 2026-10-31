@@ -8,6 +8,11 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Accept fold initial values whose bounds fit the declared step state, including
+  empty bytes for a bounded byte accumulator. The step parameter and return type
+  remain invariant, and oversized initial values still refuse. Native Target
+  validation is distinct from provider/runtime execution.
+
 - Add exhaustive nonrecursive variant matching to source/Core and native Target
   validation, including arm-local payloads and direct-match dispatch budgets.
   Bare integer arms infer their width from typed peers in either arm order.
