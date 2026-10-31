@@ -253,3 +253,40 @@ fn source_variants_require_a_core_capability_before_target_lowering() {
         }
     }
 }
+
+#[test]
+fn variant_function_storage_refuses_as_unsupported_without_retagging_overflow() {
+    let declarations = "type Choice = variant { Empty }; type Envelope = { choice: Choice, }; type Alias = Choice;";
+    for ty in ["Choice", "Envelope", "Alias", "List<Choice,max=1>"] {
+        let source = format!("package choices.example@1; {declarations} fn identity(input: {ty}) -> {ty} {{ return input; }}");
+        let errors =
+            compile_to_core(&parse_module(&source).unwrap(), &CompilerContext::new()).unwrap_err();
+        assert!(!errors.is_empty());
+        assert!(
+            errors
+                .iter()
+                .all(|error| error.kind == CompilerErrorKind::UnsupportedSourceShape),
+            "{ty}: {errors:?}"
+        );
+    }
+    refusal("fn identity(input: List<U64,max=18446744073709551615>) -> List<U64,max=18446744073709551615> { return input; }", CompilerErrorKind::InvalidBound);
+}
+
+#[test]
+fn variant_intent_storage_and_result_boundaries_are_explicit() {
+    for (helper, output, body) in [
+        ("fn unused() -> U64 { return 0u64; }", "U64", "return 0u64;"),
+        ("", "Choice", "return input;"),
+    ] {
+        let source = format!("package choices.example@1; type Choice = variant {{ Empty }}; {helper} intent run(input: Choice) returns {output} profile p.read basis none budget <= p.small {{ {body} }}");
+        let errors =
+            compile_to_core(&parse_module(&source).unwrap(), &execution_context()).unwrap_err();
+        assert!(!errors.is_empty());
+        assert!(
+            errors
+                .iter()
+                .all(|error| error.kind == CompilerErrorKind::UnsupportedSourceShape),
+            "{errors:?}"
+        );
+    }
+}

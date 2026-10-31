@@ -131,7 +131,9 @@ record fields do. [CSPINE-REQ-061]
 
 This is type-declaration support. Variant construction and `match` expressions
 still refuse. Variant-valued function storage and canonical result-size bounds
-remain unsupported rather than assuming a wire representation. Enum declarations,
+refuse as `UnsupportedSourceShape` rather than assuming a wire representation.
+Variant inputs in modules with source functions also refuse at storage accounting;
+genuine size overflow remains `InvalidBound`. Enum declarations,
 recursive variants, provider acceptance and runtime execution are separate gates.
 [CSPINE-REQ-061]
 

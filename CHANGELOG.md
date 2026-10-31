@@ -14,6 +14,8 @@ versions still track specification maturity rather than a released product.
   cycles and depth/work excess refuse; payloadless cases also consume work.
   Emitted variant graphs require `core.variant/v1`, including unused declarations;
   current Target lowering refuses that capability without an artifact.
+  Variant helper storage refuses as `UnsupportedSourceShape`, including nested
+  shapes; real size overflow continues to report `InvalidBound`.
   Construction, matching, executable value bounds and recursive variants remain
   separate gates.
 
