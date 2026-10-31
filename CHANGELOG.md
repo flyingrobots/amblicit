@@ -8,18 +8,20 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Check source variant constructors, optional payloads and conservative helper storage through canonical Core and native Target IR. Recognize `core.variant/v1` while refusing unknown capabilities; independently validate constructor identities, payloads and totality. Render constructors in the CLI. Matching, recursive variants, provider/runtime admission and variant-valued external results remain unsupported.
+
 - Acyclic source variant declarations preserve exact cases and optional payload
   references in the existing Core type graph, including aliases and authenticated
   source-module coordinates. Duplicate labels and zero-case sets, missing payload types,
   cycles and depth/work excess refuse; payloadless cases also consume work.
   Emitted variant graphs require `core.variant/v1`, including unused declarations;
-  current Target lowering refuses that capability without an artifact.
-  Variant helper storage refuses as `UnsupportedSourceShape`, including nested
+  Target recognizes this capability and independently validates constructors; unknown capabilities refuse without an artifact.
+  Variant helper storage uses checked conservative bounds, including nested
   shapes; real size overflow continues to report `InvalidBound`. Public staged
   resolution/type checking rejects duplicate case labels before map insertion.
   Compiler type checking reports independent unresolved variant payloads together
   without emitting a partial type.
-  Construction, matching, executable value bounds and recursive variants remain
+  Matching, variant-valued external results and recursive variants remain
   separate gates.
 
 - Add `at(bytes, index) -> U8` with a strict proof that the U64 index is below

@@ -373,3 +373,9 @@ The verification matrix is tracked in [test-plan.md](./test-plan.md).
 Application build diagnostics include optional `signatureMismatch` context on a compiler `TypeMismatch` at the `typeCheck` stage. It contains `effect`, `position` (`input` or `receipt`), `path`, `expectedType`, and `actualType`. Field segments carry a separate name; list-item and settlement segments carry only their kind. Exactly absent fields use JSON null for the corresponding type. Other errors omit this property. Existing source spans, source locations, summaries, status counts, and failed-output publication rules are preserved.
 
 The diagnostic and projection schemas admit this optional context. Consumers pinned to an older strict schema must update that schema before accepting the new property. Records without the property remain valid. The projection formatter preserves supplied compiler detail; current public projection inputs do not load a lawpack signature closure. No new projection transport or capability is introduced.
+
+
+Core expression review retains variant constructors as an explicit `kind: variant`
+record with the exact `type`, `case` and optional `payload`; absent payload is
+omitted. The payload's own review shape is preserved. This is display/projection
+of compiler-built Core, not a runtime value codec. [CLI-REQ-013]

@@ -102,6 +102,14 @@ outside the schema under `fixtures/core/canonical/`. [COREIR-REQ-007]
 - Core expressions and predicates are separate schema families. Expressions
   compute values; predicates express boolean obligations and input constraints.
   [COREIR-REQ-003]
+- `CoreExpr::Variant` carries the existing schema's exact `type`, `case` and
+  optional `payload`. Canonical encoding omits an absent payload. The Core
+  reference-integrity judgment checks the named variant, case membership,
+  payload presence and all payload references; function scope/cycle and graph
+  depth checks descend into that payload. Target independently checks payload
+  expression typing and available scope. Named variant references fit only the
+  same resolved type identity, including through helper calls and locals; equal
+  case shapes do not erase the explicit type discriminator. [COREIR-REQ-031]
 - Core blocks contain explicit locals, ordered nodes, and a result expression.
   Nodes cover local binding, semantic effects, guards, branches, bounded loops,
   match blocks, and proof obligations. A branch may carry one optional result

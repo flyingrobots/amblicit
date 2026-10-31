@@ -168,3 +168,14 @@ Out of scope:
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | COREIR-TP-039 | implemented | Function identity | COREIR-REQ-030 | Alpha-renamed parameters/locals encode identically; body changes and added unused definitions move identity; function-free Core has no new map. | source_function_local_alpha_renaming_preserves_semantic_identity, source_function_body_and_unused_definition_change_identity, function_free_core_omits_the_new_table | crates/amblicit-syntax/tests/source_functions.rs | Malformed public Core cases also run in this suite; existing golden fixtures remain unchanged. |
 | COREIR-TP-040 | implemented | Public function graph integrity | COREIR-REQ-030 | Forged captures, forward local references and recursive functions refuse canonical encoding or Target admission. | public_core_function_scope_and_cycle_checks_do_not_trust_the_compiler | crates/amblicit-syntax/tests/source_functions.rs | Tests mutate compiler-produced Core. |
+
+
+## Variant expressions
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| COREIR-REQ-031 | implemented | Variant expressions carry an exact type reference, case and optional payload under the existing Core schema. Integrity checks reject unknown/nonvariant types, invalid cases and wrong payload presence; all expression walkers descend into payloads under existing scope/depth budgets. | docs/abi/edict-core.cddl |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COREIR-TP-041 | implemented | Variant expressions | COREIR-REQ-031 | Invalid constructor metadata cannot canonicalize; Target independently checks payload types and scope; nested payloads do not hide helper calls or graph-depth violations. | raw_constructor_metadata_is_checked_before_canonical_encoding, variant_payloads_cannot_hide_capture_cycle_or_graph_depth, target_rechecks_constructor_payload_types_and_exact_union_identity, target_rejects_union_identity_substitution_through_helper_calls, target_totality_checks_reach_guarded_lookups_in_variant_payloads | crates/amblicit-syntax/tests/variant_constructors.rs | Core reference integrity and Target expression typing remain distinct judgments. |

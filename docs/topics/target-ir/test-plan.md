@@ -362,3 +362,13 @@ it does not treat compiler Target IR as proof of runtime support.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TIR-TP-112 | implemented | Conditional proof scope | TIR-REQ-061 | Source and Target accept proven positive arms; source refuses the opposite arm and Target independently refuses swapped caller-built Core arms. | conditional_proof_covers_unsigned_subtraction_without_leaking, conditional_proof_covers_unsigned_addition_without_leaking, conditional_proof_covers_byte_slice_without_leaking, target_rechecks_conditional_helper_dominance | crates/amblicit-syntax/tests/byte_at.rs | Provider/runtime support remains a separate gate. Statement-if, branch-yield and require proof exclusions are source-inspected limitations without dedicated refusal tests in this row. |
 | TIR-TP-113 | implemented | Malformed lookup Core | TIR-REQ-061 | Reordered lazy predicates, changed All/Any kind, and a forged byte coordinate claiming an operand minimum refuse with no artifact; valid controls lower. | target_rechecks_lazy_lookup_order_and_boolean_kind, target_rechecks_byte_at_signature_and_strict_totality | crates/amblicit-syntax/tests/byte_at.rs | Independent Target refusal witnesses, not source-only rejection. |
+
+## Variant constructor validation
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| TIR-REQ-062 | implemented | Variant construction retains exact named union identity and checked case/payload typing through all existing scope, cost, order and totality traversals; same-shaped distinct unions cannot substitute through helper calls or locals. | docs/abi/edict-core.cddl |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-114 | implemented | Variant construction | TIR-REQ-062 | Valid constructors lower; wrong payload type/width, a different same-shaped union directly or through a helper, and a lookup whose guard was removed refuse with no artifact. | target_rechecks_constructor_payload_types_and_exact_union_identity, target_rejects_union_identity_substitution_through_helper_calls, target_totality_checks_reach_guarded_lookups_in_variant_payloads, target_admits_only_the_known_variant_capability | crates/amblicit-syntax/tests/variant_constructors.rs | Core metadata/scope/depth tests separately exercise payload traversal; runtime values are not proved here. |

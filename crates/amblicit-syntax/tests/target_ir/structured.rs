@@ -257,6 +257,11 @@ fn field<'a>(value: &'a CanonicalValue, key: &str) -> &'a CanonicalValue {
 
 fn rename_expr(expr: &mut CoreExpr, from: &str, to: &LocalRef) {
     match expr {
+        CoreExpr::Variant { payload, .. } => {
+            if let Some(payload) = payload {
+                rename_expr(payload, from, to);
+            }
+        }
         CoreExpr::Local { reference } if reference.id == from => *reference = to.clone(),
         CoreExpr::Local { .. } | CoreExpr::Const(_) => {}
         CoreExpr::Record { fields } => fields

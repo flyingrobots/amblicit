@@ -1,9 +1,90 @@
 //! Source alternatives retain named Core identities without inventing a value ABI.
-use super::{error, CompilerErrorKind, CompilerStage, Span, TypeChecker, TypeKind, TypeShape};
+use super::{
+    compatible, error, CompilerErrorKind, CompilerStage, CoreExpr, Expr, LocalEnvironment, Span,
+    TypeChecker, TypeKind, TypeRef, TypeShape, TypedValue,
+};
 use crate::ast::VariantCase;
 use std::collections::{BTreeMap, BTreeSet};
 
 impl TypeChecker<'_> {
+    pub(super) fn check_variant_constructor(
+        &mut self,
+        path: &[String],
+        case: &str,
+        payload: Option<&Expr>,
+        env: &LocalEnvironment,
+        expected: Option<&TypeShape>,
+        span: Span,
+    ) -> Option<TypedValue> {
+        let ty = self.type_ref_shape(
+            &TypeRef::Named {
+                path: path.to_vec(),
+                args: Vec::new(),
+            },
+            span,
+        )?;
+        let TypeKind::Variant(cases) = &ty.kind else {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::TypeMismatch,
+                "constructor requires a variant type",
+                span,
+            ));
+            return None;
+        };
+        let Some(declared) = cases.get(case) else {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::UnknownField,
+                format!("unknown variant case `{case}`"),
+                span,
+            ));
+            return None;
+        };
+        if expected.is_some_and(|expected| !compatible(expected, &ty)) {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::TypeMismatch,
+                "constructor type does not match its use",
+                span,
+            ));
+            return None;
+        }
+        let value = match (declared, payload) {
+            (None, None) => None,
+            (Some(declared), Some(payload)) => {
+                let value = self.check_expr_with_expected(payload, env, Some(declared))?;
+                if !compatible(declared, &value.ty) {
+                    self.errors.push(error(
+                        CompilerStage::TypeCheck,
+                        CompilerErrorKind::TypeMismatch,
+                        "variant payload does not match its declared type",
+                        span,
+                    ));
+                    return None;
+                }
+                Some(Box::new(value.expr))
+            }
+            _ => {
+                self.errors.push(error(
+                    CompilerStage::TypeCheck,
+                    CompilerErrorKind::TypeMismatch,
+                    "variant payload presence does not match its case",
+                    span,
+                ));
+                return None;
+            }
+        };
+        Some(TypedValue {
+            expr: CoreExpr::Variant {
+                ty: ty.value_type_coord(),
+                case: case.to_owned(),
+                payload: value,
+            },
+            ty,
+        })
+    }
+
     pub(super) fn variant_shape(
         &mut self,
         coordinate: &str,

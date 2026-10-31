@@ -690,3 +690,22 @@ Statement-level and branch-yield `CoreNode::Branch` forms, and `require`, do not
 extend the proof facts. The supported expression is `if ... then ... else ...`.
 Provider admission, input enforcement and runtime execution remain separate gates.
 [TIR-REQ-061]
+
+## Checked variant construction
+
+Variant expressions are checked against the exact resolved union identity,
+selected case and required payload. Target rechecks payload expression types,
+integer widths, bounds, nominal contracts and available locals from untrusted
+Core. The same identity rule applies through helper calls and local references,
+so a structurally identical union cannot substitute for the declared one.
+Constructor payloads remain visible to function scope/cycle checks, graph-depth
+checks, intrinsic-cost traversal, operator-admissibility checks, execution-order
+validation and byte-lookup totality proofs. [TIR-REQ-062]
+
+This is native Target IR validation and lowering. Provider acceptance, runtime
+variant values, matching, recursion and variant-valued external result encoding
+are separate implementation gates.
+
+Target admits the named `core.variant/v1` capability while preserving refusal
+of unknown capability names and versions. The Core capability metadata remains
+hash-significant.

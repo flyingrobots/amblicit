@@ -10,7 +10,9 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 mod source_functions;
+mod variant_expressions;
 pub(crate) use source_functions::validate_function_graph;
+pub(crate) use variant_expressions::{core_variant_case, core_variant_identity_matches};
 
 /// The Core ABI identifier emitted by this crate.
 pub const CORE_API_VERSION: &str = "edict.core/v1";
@@ -643,7 +645,8 @@ fn core_type_fits_at_depth(core: &CoreModule, source: &str, target: &str, depth:
                 })
         }
         (CoreType::Variant { cases: left }, CoreType::Variant { cases: right }) => {
-            left.keys().eq(right.keys())
+            core_variant_identity_matches(core, source, target)
+                && left.keys().eq(right.keys())
                 && left.iter().all(|(case, left_payload)| {
                     match (
                         left_payload,
@@ -1548,6 +1551,9 @@ fn validate_core_expression_types(
             validate_core_local_type(module, state, reference, &format!("{path}.local.type"))
         }
         CoreExpr::Const(_) => Ok(()),
+        CoreExpr::Variant { ty, case, payload } => {
+            variant_expressions::validate(module, state, ty, case, payload.as_deref(), path, depth)
+        }
         CoreExpr::Record { fields } => {
             for (field, value) in fields {
                 validate_core_expression_types(
@@ -1746,6 +1752,12 @@ pub enum CoreExpr {
         reference: LocalRef,
     },
     Const(CoreValue),
+    /// A checked tagged value under the existing variant-expression schema.
+    Variant {
+        ty: String,
+        case: String,
+        payload: Option<Box<CoreExpr>>,
+    },
     Record {
         fields: BTreeMap<String, CoreExpr>,
     },

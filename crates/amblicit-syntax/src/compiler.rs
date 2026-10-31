@@ -4202,6 +4202,19 @@ impl<'a> TypeChecker<'a> {
             Expr::Record { entries, span } => self.check_record(entries, env, expected, *span),
             Expr::List { items, span } => self.check_list_literal(items, env, expected, *span),
             Expr::Call { .. } => self.check_call_expression(expr, env, expectation),
+            Expr::VariantLit {
+                ty_path,
+                case,
+                payload,
+                span,
+            } => self.check_variant_constructor(
+                ty_path,
+                case,
+                payload.as_deref(),
+                env,
+                expected,
+                *span,
+            ),
             Expr::If {
                 cond,
                 then,
@@ -4224,7 +4237,6 @@ impl<'a> TypeChecker<'a> {
             Expr::Binary { .. }
             | Expr::Digest { .. }
             | Expr::IfYield { .. }
-            | Expr::VariantLit { .. }
             | Expr::Match { .. } => {
                 self.errors.push(error(
                     CompilerStage::TypeCheck,

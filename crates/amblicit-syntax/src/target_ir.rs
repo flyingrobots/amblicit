@@ -15,6 +15,7 @@ mod pure_intrinsics;
 mod totality;
 mod unsigned_addition;
 mod unsigned_subtraction;
+mod variant_constructors;
 
 mod unsigned_arithmetic {
     pub(super) use super::unsigned_subtraction::type_coordinate;
@@ -891,6 +892,8 @@ fn validate_core_module(
     let capability_failures = core
         .required_core_capabilities
         .iter()
+        // Constructor identities and payloads are independently checked below.
+        .filter(|capability| capability.as_str() != "core.variant/v1")
         .map(|capability| TargetLoweringFailure {
             kind: TargetLoweringFailureKind::UnsupportedCoreCapability,
             intent: None,
@@ -1711,6 +1714,12 @@ fn expression_has_closed_authority(
         return false;
     }
     match expression {
+        CoreExpr::Variant { ty, payload, .. } => {
+            variant_constructors::fits(core, pure_functions, expression, ty, available)
+                && payload.as_ref().is_none_or(|value| {
+                    expression_has_closed_authority(core, pure_functions, value, available)
+                })
+        }
         CoreExpr::Local { reference } => resolved_core_type(core, &reference.ty).is_some(),
         CoreExpr::Const(CoreValue::Int { width, value }) => {
             crate::core_ir::parse_core_integer(width, value).is_some()
@@ -1860,6 +1869,9 @@ fn expression_fits_declared_type(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> bool {
     match expression {
+        CoreExpr::Variant { .. } => {
+            variant_constructors::fits(core, pure_functions, expression, expected, available)
+        }
         CoreExpr::Local { reference } => {
             available.get(reference.id.as_str()).copied() == Some(reference)
                 && core_type_fits(core, &reference.ty, expected)
@@ -2177,7 +2189,8 @@ fn expression_string_shape(
             CoreValue::Null | CoreValue::Bool(_) | CoreValue::Int { .. } | CoreValue::Bytes(_),
         )
         | CoreExpr::Record { .. }
-        | CoreExpr::List { .. } => None,
+        | CoreExpr::List { .. }
+        | CoreExpr::Variant { .. } => None,
     }
 }
 
@@ -2190,6 +2203,10 @@ fn expression_type_coordinate(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<String> {
     match expression {
+        CoreExpr::Variant { ty, .. } => {
+            variant_constructors::fits(core, pure_functions, expression, ty, available)
+                .then(|| ty.clone())
+        }
         CoreExpr::Local { reference }
             if available.get(reference.id.as_str()).copied() == Some(reference)
                 && resolved_core_type(core, &reference.ty).is_some() =>
@@ -2351,6 +2368,9 @@ fn expression_references_are_available(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> bool {
     match expression {
+        CoreExpr::Variant { payload, .. } => payload
+            .as_ref()
+            .is_none_or(|value| expression_references_are_available(value, available)),
         CoreExpr::Local { reference } => {
             available.get(reference.id.as_str()).copied() == Some(reference)
         }
@@ -2498,6 +2518,9 @@ fn expression_has_empty_aggregate(expression: &CoreExpr, depth: usize) -> bool {
         return false;
     }
     match expression {
+        CoreExpr::Variant { payload, .. } => payload
+            .as_ref()
+            .is_some_and(|value| expression_has_empty_aggregate(value, depth + 1)),
         CoreExpr::Local { .. } | CoreExpr::Const(_) => false,
         CoreExpr::Record { fields } => fields
             .values()
@@ -2595,6 +2618,7 @@ fn expression_comparisons_admissible(
         expression_comparisons_admissible(core, pure_functions, value, available, depth + 1)
     };
     match expression {
+        CoreExpr::Variant { payload, .. } => payload.as_deref().is_none_or(child),
         CoreExpr::Local { .. } | CoreExpr::Const(_) => true,
         CoreExpr::Record { fields } => fields.values().all(child),
         CoreExpr::List { values } | CoreExpr::Call { args: values, .. } => values.iter().all(child),
@@ -3417,6 +3441,9 @@ fn predicate_references_step_output(
 
 fn expr_references_step_output(expr: &CoreExpr, step_outputs: &BTreeSet<String>) -> bool {
     match expr {
+        CoreExpr::Variant { payload, .. } => payload
+            .as_ref()
+            .is_some_and(|value| expr_references_step_output(value, step_outputs)),
         CoreExpr::Local { reference } => step_outputs.contains(&reference.id),
         CoreExpr::Const(_) => false,
         CoreExpr::Record { fields } => fields

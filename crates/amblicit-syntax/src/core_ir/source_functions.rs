@@ -125,6 +125,12 @@ fn walk(
     check(expression)?;
     match expression {
         CoreExpr::Const(_) | CoreExpr::Local { .. } => Ok(()),
+        CoreExpr::Variant { payload, .. } => {
+            if let Some(payload) = payload {
+                walk(payload, depth + 1, check)?;
+            }
+            Ok(())
+        }
         CoreExpr::Field { base, .. } => walk(base, depth + 1, check),
         CoreExpr::Record { fields } => {
             for value in fields.values() {
