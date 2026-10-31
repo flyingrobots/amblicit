@@ -8,6 +8,9 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Report structured compiler errors for malformed direct intent folds during
+  cost preflight instead of silently omitting the invalid intent.
+
 - Independently bound Core evaluation steps and storage in fold-capable modules.
   Native Target counts ordinary/transitive helpers, nested folds, state validation
   and iteration overhead, rejects arithmetic overflow and exact-budget overruns,

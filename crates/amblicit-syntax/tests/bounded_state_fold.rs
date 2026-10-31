@@ -504,3 +504,32 @@ fn target_fold_allocation_overflow_refuses_even_when_steps_fit() {
     assert_eq!(report.failures[0].intent.as_deref(), Some("runIntent"));
     assert!(report.artifact.is_none());
 }
+
+#[test]
+fn malformed_direct_fold_cannot_silently_remove_an_intent() {
+    use amblicit_syntax::CompilerErrorKind as K;
+    let context = CompilerContext::new()
+        .with_operation_profile("p.read", "continuum.profile.read-only/v1")
+        .with_budget(
+            "p.small",
+            amblicit_syntax::CoreBudget {
+                max_steps: 65_536,
+                max_allocated_bytes: 1_048_576,
+                max_output_bytes: 65_536,
+            },
+        );
+    for (call, expected) in [
+        ("fold(input.value, 1u64, 3u64)", K::UnsupportedSourceShape),
+        ("fold(input.value, missing, 3u64)", K::UnresolvedFunction),
+        ("fold(input.value)", K::TypeMismatch),
+    ] {
+        let source = format!("package iteration.direct@1; type Input = {{ value: Bool }}; intent runIntent(input: Input) returns Input profile p.read basis none budget <= p.small {{ return {{ value: {call} }}; }}");
+        let errors = compile_to_core(&parse_module(&source).unwrap(), &context).expect_err(
+            "malformed fold must produce a diagnostic, never an empty successful module",
+        );
+        assert!(
+            errors.iter().any(|error| error.kind == expected),
+            "{call}: {errors:?}"
+        );
+    }
+}

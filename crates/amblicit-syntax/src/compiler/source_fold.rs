@@ -92,12 +92,29 @@ impl TypeChecker<'_> {
         args: &[Expr],
         span: Span,
     ) -> Option<HelperCost> {
-        let [initial, Expr::Ident { name, .. }, bound] = args else {
-            return None;
+        let [initial, step, bound] = args else {
+            return self.fold_failure(
+                CompilerErrorKind::TypeMismatch,
+                "fold requires initial state, a source step and a static bound",
+                span,
+            );
+        };
+        let Expr::Ident { name, .. } = step else {
+            return self.fold_failure(
+                CompilerErrorKind::UnsupportedSourceShape,
+                "fold step must name a source helper",
+                span,
+            );
         };
         let count = self.fold_bound(bound, span)?;
         let initial_cost = self.helper_cost_for_expr(initial)?;
-        let step = *self.function_costs.get(name)?;
+        let Some(step) = self.function_costs.get(name).copied() else {
+            return self.fold_failure(
+                CompilerErrorKind::UnresolvedFunction,
+                "fold step must have an established source helper cost",
+                span,
+            );
+        };
         let step = self.checked_helper_cost_add(
             step,
             HelperCost {
