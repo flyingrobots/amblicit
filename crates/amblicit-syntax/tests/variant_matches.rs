@@ -374,3 +374,81 @@ fn variant_match_without_a_typed_peer_keeps_integer_width_ambiguous() {
         .iter()
         .any(|e| e.kind == CompilerErrorKind::TypeMismatch));
 }
+
+#[test]
+fn target_rejects_incompatible_match_results_in_basis() {
+    use amblicit_syntax::{CoreExpr, CoreValue, TargetLoweringStatus};
+    let mut core = operation();
+    let mut matched = core.functions["unwrap"].body.result.clone();
+    let CoreExpr::Match { scrutinee, arms } = &mut matched else {
+        panic!("match")
+    };
+    let ty = core.functions["unwrap"].params[0].ty.clone();
+    **scrutinee = CoreExpr::Variant {
+        ty,
+        case: "Empty".into(),
+        payload: None,
+    };
+    for arm in arms.iter_mut() {
+        arm.body = CoreExpr::Const(CoreValue::Bool(true));
+    }
+    core.intents.get_mut("run").unwrap().basis = Some(matched.clone());
+    let control = amblicit_syntax::lower_to_target_ir(&core, &facts());
+    assert_eq!(control.status, TargetLoweringStatus::Lowered, "{control:?}");
+    let CoreExpr::Match { arms, .. } = &mut matched else {
+        unreachable!()
+    };
+    arms[1].body = CoreExpr::Const(CoreValue::Int {
+        width: "U8".into(),
+        value: "1".into(),
+    });
+    core.intents.get_mut("run").unwrap().basis = Some(matched);
+    amblicit_syntax::validate_core_module_type_integrity(&core).expect("structural Core is valid");
+    let report = amblicit_syntax::lower_to_target_ir(&core, &facts());
+    assert_eq!(
+        report.status,
+        TargetLoweringStatus::Unsupported,
+        "{report:?}"
+    );
+    assert!(report.artifact.is_none());
+    assert!(report
+        .failures
+        .iter()
+        .any(|failure| failure.kind
+            == amblicit_syntax::TargetLoweringFailureKind::InvalidCoreIdentity));
+}
+
+#[test]
+fn target_preserves_empty_and_nested_list_match_metadata() {
+    use amblicit_syntax::{CoreExpr, CoreValue, TargetLoweringStatus};
+    for nested in [false, true] {
+        let mut core = operation();
+        let mut matched = core.functions["unwrap"].body.result.clone();
+        let CoreExpr::Match { scrutinee, arms } = &mut matched else {
+            panic!("match")
+        };
+        **scrutinee = CoreExpr::Variant {
+            ty: core.functions["unwrap"].params[0].ty.clone(),
+            case: "Empty".into(),
+            payload: None,
+        };
+        for (index, arm) in arms.iter_mut().enumerate() {
+            let mut value = CoreExpr::List {
+                values: if index == 0 {
+                    vec![]
+                } else {
+                    vec![CoreExpr::Const(CoreValue::Bool(true))]
+                },
+            };
+            if nested {
+                value = CoreExpr::Record {
+                    fields: std::collections::BTreeMap::from([("items".into(), value)]),
+                };
+            }
+            arm.body = value;
+        }
+        core.intents.get_mut("run").unwrap().basis = Some(matched);
+        let report = amblicit_syntax::lower_to_target_ir(&core, &facts());
+        assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+    }
+}

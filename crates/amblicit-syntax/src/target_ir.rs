@@ -1731,14 +1731,20 @@ fn expression_has_closed_authority(
         return false;
     }
     match expression {
-        CoreExpr::Match { scrutinee, arms } => variant_matches::every(
-            core,
-            pure_functions,
-            scrutinee,
-            arms,
-            available,
-            |body, scope| expression_has_closed_authority(core, pure_functions, body, scope),
-        ),
+        CoreExpr::Match { scrutinee, arms } => {
+            variant_matches::result_shape(core, pure_functions, scrutinee, arms, available)
+                .is_some()
+                && variant_matches::every(
+                    core,
+                    pure_functions,
+                    scrutinee,
+                    arms,
+                    available,
+                    |body, scope| {
+                        expression_has_closed_authority(core, pure_functions, body, scope)
+                    },
+                )
+        }
         CoreExpr::Variant { ty, payload, .. } => {
             variant_constructors::fits(core, pure_functions, expression, ty, available)
                 && payload.as_ref().is_none_or(|value| {
@@ -2873,6 +2879,8 @@ fn predicate_operands_are_comparable(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ComparisonOperandShape {
+    // Result inference only; an empty literal has no element type yet.
+    EmptyList,
     Coordinate(String),
     Record(BTreeMap<String, ComparisonOperandShape>),
     List {
@@ -2888,7 +2896,7 @@ impl ComparisonOperandShape {
             Self::List { item, max } => {
                 Some(format!("List<{},max={max}>", item.type_coordinate()?))
             }
-            Self::Record(_) => None,
+            Self::Record(_) | Self::EmptyList => None,
         }
     }
 }
@@ -2954,6 +2962,15 @@ fn join_conditional_shapes(
 ) -> Option<ComparisonOperandShape> {
     if depth > MAX_CORE_TYPE_DEPTH {
         return None;
+    }
+    match (left, right) {
+        (ComparisonOperandShape::EmptyList, ComparisonOperandShape::EmptyList) => {
+            return Some(ComparisonOperandShape::EmptyList)
+        }
+        (ComparisonOperandShape::EmptyList, other) | (other, ComparisonOperandShape::EmptyList) => {
+            return comparison_list_shape(core, other).map(|_| other.clone());
+        }
+        _ => {}
     }
     match (
         comparison_record_fields(core, left),
@@ -3064,7 +3081,7 @@ fn comparison_record_fields(
 ) -> Option<BTreeMap<String, ComparisonOperandShape>> {
     match shape {
         ComparisonOperandShape::Record(fields) => Some(fields.clone()),
-        ComparisonOperandShape::List { .. } => None,
+        ComparisonOperandShape::List { .. } | ComparisonOperandShape::EmptyList => None,
         ComparisonOperandShape::Coordinate(coordinate) => {
             let CoreType::Record { fields } = resolved_core_type(core, coordinate)? else {
                 return None;
@@ -3087,7 +3104,7 @@ fn comparison_list_shape(
 ) -> Option<(ComparisonOperandShape, u64)> {
     match shape {
         ComparisonOperandShape::List { item, max } => Some((item.as_ref().clone(), *max)),
-        ComparisonOperandShape::Record(_) => None,
+        ComparisonOperandShape::Record(_) | ComparisonOperandShape::EmptyList => None,
         ComparisonOperandShape::Coordinate(coordinate) => {
             let CoreType::List { item, max } = resolved_core_type(core, coordinate)? else {
                 return None;

@@ -57,6 +57,27 @@ pub(super) fn shape(
     arms: &[CoreMatchArm],
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<super::ComparisonOperandShape> {
+    joined_shape(core, functions, scrutinee, arms, available, false)
+}
+
+pub(super) fn result_shape(
+    core: &CoreModule,
+    functions: &[TargetPureFunctionFact],
+    scrutinee: &CoreExpr,
+    arms: &[CoreMatchArm],
+    available: &BTreeMap<&str, &LocalRef>,
+) -> Option<super::ComparisonOperandShape> {
+    joined_shape(core, functions, scrutinee, arms, available, true)
+}
+
+fn joined_shape(
+    core: &CoreModule,
+    functions: &[TargetPureFunctionFact],
+    scrutinee: &CoreExpr,
+    arms: &[CoreMatchArm],
+    available: &BTreeMap<&str, &LocalRef>,
+    results: bool,
+) -> Option<super::ComparisonOperandShape> {
     let mut result: Option<super::ComparisonOperandShape> = None;
     let valid = every(
         core,
@@ -65,7 +86,12 @@ pub(super) fn shape(
         arms,
         available,
         |body, scope| {
-            let Some(ty) = super::comparison_operand_shape(core, functions, body, scope) else {
+            let ty = if results {
+                result_body_shape(core, functions, body, scope)
+            } else {
+                super::comparison_operand_shape(core, functions, body, scope)
+            };
+            let Some(ty) = ty else {
                 return false;
             };
             result = match &result {
@@ -79,6 +105,60 @@ pub(super) fn shape(
         result
     } else {
         None
+    }
+}
+
+fn result_body_shape(
+    core: &CoreModule,
+    functions: &[TargetPureFunctionFact],
+    body: &CoreExpr,
+    scope: &BTreeMap<&str, &LocalRef>,
+) -> Option<super::ComparisonOperandShape> {
+    use super::ComparisonOperandShape as Shape;
+    match body {
+        CoreExpr::List { values } => {
+            let mut item = None;
+            for value in values {
+                let next = result_body_shape(core, functions, value, scope)?;
+                item = Some(match item {
+                    None => next,
+                    Some(prior) => super::join_conditional_shapes(core, &prior, &next, 0)?,
+                });
+            }
+            Some(item.map_or(Shape::EmptyList, |item| Shape::List {
+                item: Box::new(item),
+                max: values.len() as u64,
+            }))
+        }
+        CoreExpr::Record { fields } => fields
+            .iter()
+            .map(|(name, value)| {
+                Some((
+                    name.clone(),
+                    result_body_shape(core, functions, value, scope)?,
+                ))
+            })
+            .collect::<Option<BTreeMap<_, _>>>()
+            .map(Shape::Record),
+        CoreExpr::If {
+            predicate,
+            then_value,
+            else_value,
+        } => {
+            if !super::predicate_fits_core_types(core, functions, predicate, scope) {
+                return None;
+            }
+            super::join_conditional_shapes(
+                core,
+                &result_body_shape(core, functions, then_value, scope)?,
+                &result_body_shape(core, functions, else_value, scope)?,
+                0,
+            )
+        }
+        CoreExpr::Match { scrutinee, arms } => {
+            result_shape(core, functions, scrutinee, arms, scope)
+        }
+        _ => super::comparison_operand_shape(core, functions, body, scope),
     }
 }
 

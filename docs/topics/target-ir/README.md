@@ -736,3 +736,9 @@ bounds take the maximum alternative after the single scrutinee cost. The
 canonical wire form was already reserved in `edict-core.cddl`; `core.variant/v1`
 continues to identify the variant type inventory. This does not establish that
 an older provider accepts matching. [TIR-REQ-063]
+
+Match expressions in basis and reason payloads must have compatible result
+shapes even though those metadata positions do not supply an expected type.
+This independent judgment includes lists and records containing lists; empty
+list literals take their element shape from nonempty peers. It does not extend
+the comparison language. [TIR-REQ-063]

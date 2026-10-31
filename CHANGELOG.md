@@ -11,6 +11,8 @@ versions still track specification maturity rather than a released product.
 - Add exhaustive nonrecursive variant matching to source/Core and native Target
   validation, including arm-local payloads and direct-match dispatch budgets.
   Bare integer arms infer their width from typed peers in either arm order.
+  Native Target rejects incompatible match results in untyped metadata while
+  preserving compatible empty/nonempty list and record alternatives.
   Provider/runtime matching remains separate.
 
 - Add acyclic source variant declarations and checked constructors with exact
