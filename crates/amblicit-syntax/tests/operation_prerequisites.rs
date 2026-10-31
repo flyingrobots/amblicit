@@ -698,3 +698,63 @@ fn explicit_basis_target_ir_cannot_drop_its_semantic_closure() {
         CanonicalErrorKind::UnsupportedValue
     );
 }
+
+#[test]
+fn u8_comparisons_preserve_every_declared_operator() {
+    use amblicit_syntax::core_ir::CompareOp;
+
+    for (operator, expected) in [
+        ("==", CompareOp::Eq),
+        ("!=", CompareOp::Ne),
+        ("<", CompareOp::Lt),
+        ("<=", CompareOp::Le),
+        (">", CompareOp::Gt),
+        (">=", CompareOp::Ge),
+    ] {
+        let source = OPERATION_SOURCE.replace("U64", "U8").replace(
+            "input.start <= 18446744073709551615u64",
+            &format!("input.start {operator} 255u8"),
+        );
+        let core = compile_operation(&source);
+        let CorePredicate::Compare { op, right, .. } =
+            &core.intents["splice"].input_constraints[0].predicate
+        else {
+            panic!("expected a comparison");
+        };
+        assert_eq!(*op, expected);
+        assert_eq!(
+            right,
+            &CoreExpr::Const(CoreValue::Int {
+                width: "U8".into(),
+                value: "255".into(),
+            })
+        );
+    }
+}
+
+#[test]
+fn u8_helpers_refuse_cross_width_results_and_arithmetic() {
+    for (expression, expected) in [
+        ("1u32", CompilerErrorKind::TypeMismatch),
+        ("1u64", CompilerErrorKind::TypeMismatch),
+        ("value + 0u8", CompilerErrorKind::UnsupportedSourceShape),
+        ("value - 0u8", CompilerErrorKind::UnsupportedSourceShape),
+        ("value * 1u8", CompilerErrorKind::UnsupportedSourceShape),
+        ("value / 1u8", CompilerErrorKind::UnsupportedSourceShape),
+        ("value % 1u8", CompilerErrorKind::UnsupportedSourceShape),
+    ] {
+        let source = OPERATION_SOURCE.replace(
+            "intent splice",
+            &format!("fn byteMarker(value: U8) -> U8 {{ return {expression}; }}\nintent splice"),
+        );
+        let module = parse_module(&source).expect("U8 helper source syntax");
+        let errors = compile_to_core(&module, &operation_context())
+            .expect_err("cross-width results and U8 arithmetic must refuse");
+        assert!(
+            errors
+                .iter()
+                .any(|error| { error.stage == CompilerStage::TypeCheck && error.kind == expected }),
+            "{expression}: {errors:?}"
+        );
+    }
+}
