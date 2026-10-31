@@ -742,3 +742,8 @@ shapes even though those metadata positions do not supply an expected type.
 This independent judgment includes lists and records containing lists; empty
 list literals take their element shape from nonempty peers. It does not extend
 the comparison language. [TIR-REQ-063]
+
+For costed intrinsic arguments, a match establishes its byte/list bound from
+its largest arm, with payload references resolved in that arm's scope. Empty
+list literals contribute zero. This retains the intrinsic meter's existing
+conditional-bound rule for match alternatives. [TIR-REQ-063]

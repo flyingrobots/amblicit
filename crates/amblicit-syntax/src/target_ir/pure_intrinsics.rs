@@ -344,6 +344,24 @@ impl<'a> Meter<'a> {
             return None;
         }
         match argument {
+            CoreExpr::Match { scrutinee, arms } => {
+                let mut largest = 0;
+                let valid = super::variant_matches::every(
+                    self.core,
+                    self.pure_functions,
+                    scrutinee,
+                    arms,
+                    available,
+                    |body, scope| {
+                        let Some(bound) = self.established_max_at(body, scope, depth + 1) else {
+                            return false;
+                        };
+                        largest = largest.max(bound);
+                        true
+                    },
+                );
+                valid.then_some(largest)
+            }
             CoreExpr::List { values } => u64::try_from(values.len()).ok(),
             CoreExpr::Const(CoreValue::Bytes(bytes)) => u64::try_from(bytes.len()).ok(),
             CoreExpr::If {
