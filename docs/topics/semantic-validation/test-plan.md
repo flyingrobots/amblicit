@@ -86,7 +86,7 @@ Out of scope for this first slice:
 
 | ID | Status | Requirement | Source |
 | --- | --- | --- | --- |
-| SEMVAL-REQ-011 | implemented | Duplicate variant case labels report DuplicateName at the repeated case span before Core construction. | source variant declarations |
+| SEMVAL-REQ-011 | implemented | Duplicate variant case labels report DuplicateName at the repeated case span before Core construction. | crates/amblicit-syntax/src/semantic.rs |
 
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |

@@ -87,6 +87,30 @@ fn variant_payloads_must_resolve_even_when_unused() {
 }
 
 #[test]
+fn variant_payloads_preserve_authenticated_nominal_contracts() {
+    let pin = format!("sha256:{}", "1".repeat(64));
+    let context = CompilerContext::new().with_type_shape(amblicit_syntax::TypeShapeFact {
+        lawpack: amblicit_syntax::ResourceRef {
+            coordinate: "example.identities@1".into(),
+            digest: Some(pin.clone()),
+        },
+        coordinate: "example.identities@1.Key".into(),
+        definition: "Nominal<Bytes<exact=32>>".into(),
+    });
+    let source = format!("package choices.example@1; use lawpack example.identities@1 digest \"{pin}\" as identities; type Choice = variant {{ Empty, Key(identities.Key) }};");
+    let core = compile_to_core(&parse_module(&source).unwrap(), &context).unwrap();
+    let CoreType::Variant { cases } = &core.types["Choice"] else {
+        panic!("variant")
+    };
+    assert_eq!(cases["Key"].as_deref(), Some("example.identities@1.Key"));
+    assert!(
+        matches!(&core.types["example.identities@1.Key"], CoreType::Nominal { contract, representation }
+        if contract == "example.identities@1.Key" && representation == "Bytes<exact=32>")
+    );
+    digest_core_module(&core).unwrap();
+}
+
+#[test]
 fn variant_empty_and_duplicate_case_sets_refuse() {
     refusal(
         "type Choice = variant {};",
