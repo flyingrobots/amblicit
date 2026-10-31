@@ -199,7 +199,9 @@ The verification matrix is tracked in [test-plan.md](./test-plan.md).
 
 The public Rust API exports `CoreMatchArm` alongside `CoreExpr::Match` through
 `amblicit_syntax` and the `amblicit` facade. A match carries one scrutinee and
-ordered arms, each with a case, optional `LocalRef` binder and body. Canonical
+ordered arms, each with a case, optional `LocalRef` binder and body. Permuting
+source arms changes canonical bytes and the module digest; alpha-renaming a
+payload binder does not. Canonical
 encoding uses the pre-existing CDDL `match-expr` and `match-arm` shapes.
 
 Core integrity rejects empty or duplicate arm lists, malformed case names and

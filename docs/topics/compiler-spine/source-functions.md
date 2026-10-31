@@ -63,7 +63,7 @@ Binder identities are positional within their lexical scope. Sibling arms can
 reuse `match.0` and `$match0`; consumers must resolve these identities within the
 arm environment, rather than treating them as module-global symbol keys.
 
-Compiler acceptance does not establish provider support. Against the Echo #941
+Compiler acceptance does not establish provider support. In the 2026-10-31 witness against the Echo #941
 provider, the public compiler witness's source-function control compiles, while
 adding a match-bearing function refuses with `ProviderLowererRefused`, detail
 `UnsupportedSemantics`, subject `core.source-functions`. That subject does not
