@@ -317,3 +317,43 @@ fn staged_type_checking_rejects_duplicate_variant_labels_at_the_repeated_span() 
     );
     compile("type Choice = variant { First(U64), Second(Bool) };");
 }
+
+#[test]
+fn variant_payload_diagnostics_cover_each_invalid_case_without_a_partial_type() {
+    let source =
+        "package choices.example@1; type Choice = variant { First(Unknown), Second(AlsoUnknown) };";
+    let parsed = parse_module(source).unwrap();
+    for errors in [
+        compile_to_core(&parsed, &CompilerContext::new()).unwrap_err(),
+        amblicit_syntax::type_check(
+            &amblicit_syntax::resolve_module(&parsed, &CompilerContext::new()).unwrap(),
+        )
+        .unwrap_err(),
+    ] {
+        let spans: std::collections::BTreeSet<_> = errors
+            .iter()
+            .filter(|error| error.kind == CompilerErrorKind::UnresolvedType)
+            .map(|error| &source[error.span.start..error.span.end])
+            .collect();
+        assert_eq!(
+            spans,
+            ["First(Unknown)", "Second(AlsoUnknown)"]
+                .into_iter()
+                .collect()
+        );
+    }
+    let duplicated =
+        "package choices.example@1; type Choice = variant { Same(Unknown), Same(Bool) };";
+    let parsed = parse_module(duplicated).unwrap();
+    let errors = amblicit_syntax::type_check(
+        &amblicit_syntax::resolve_module(&parsed, &CompilerContext::new()).unwrap(),
+    )
+    .unwrap_err();
+    assert!(errors
+        .iter()
+        .any(|error| error.kind == CompilerErrorKind::UnresolvedType));
+    assert!(errors
+        .iter()
+        .any(|error| error.kind == CompilerErrorKind::SurfaceValidation
+            && error.span.start == duplicated.rfind("Same").unwrap()));
+}

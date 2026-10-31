@@ -1,7 +1,7 @@
 //! Source alternatives retain named Core identities without inventing a value ABI.
 use super::{error, CompilerErrorKind, CompilerStage, Span, TypeChecker, TypeKind, TypeShape};
 use crate::ast::VariantCase;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 impl TypeChecker<'_> {
     pub(super) fn variant_shape(
@@ -20,23 +20,32 @@ impl TypeChecker<'_> {
             return None;
         }
         let mut alternatives = BTreeMap::new();
+        let mut names = BTreeSet::new();
+        let mut complete = true;
         for case in cases {
-            if alternatives.contains_key(&case.name) {
+            if !names.insert(&case.name) {
                 self.errors.push(error(
                     CompilerStage::TypeCheck,
                     CompilerErrorKind::SurfaceValidation,
                     format!("duplicate variant case `{}`", case.name),
                     case.span,
                 ));
-                return None;
+                complete = false;
+                continue;
             }
             let payload = match &case.payload {
-                Some(reference) => Some(self.type_ref_shape(reference, case.span)?),
+                Some(reference) => {
+                    let Some(payload) = self.type_ref_shape(reference, case.span) else {
+                        complete = false;
+                        continue;
+                    };
+                    Some(payload)
+                }
                 None => None,
             };
             alternatives.insert(case.name.clone(), payload);
         }
-        Some(TypeShape {
+        complete.then(|| TypeShape {
             coord: coordinate.to_owned(),
             kind: TypeKind::Variant(alternatives),
             preserve_named_identity: true,

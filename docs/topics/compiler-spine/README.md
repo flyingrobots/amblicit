@@ -126,7 +126,9 @@ retain their exact named identity, including original coordinates after source
 module linking. Case/declaration order does not change canonical Core meaning;
 aliases remain transparent. Zero-case variants (`variant {}`), duplicate case names, unresolved
 payloads, cycles and expansion excess refuse. Every case consumes source work,
-including payloadless cases. Variant payloads consume structural depth just as
+including payloadless cases. Compiler type checking reports each independent
+unresolved payload at its case span and never emits a partial variant type. The
+source linker retains its single-error API, as for records. Variant payloads consume structural depth just as
 record fields do. [CSPINE-REQ-061]
 
 This is type-declaration support. Variant construction and `match` expressions

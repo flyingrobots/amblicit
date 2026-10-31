@@ -17,6 +17,8 @@ versions still track specification maturity rather than a released product.
   Variant helper storage refuses as `UnsupportedSourceShape`, including nested
   shapes; real size overflow continues to report `InvalidBound`. Public staged
   resolution/type checking rejects duplicate case labels before map insertion.
+  Compiler type checking reports independent unresolved variant payloads together
+  without emitting a partial type.
   Construction, matching, executable value bounds and recursive variants remain
   separate gates.
 
