@@ -56,7 +56,7 @@ impl TypeChecker<'_> {
                 span,
             );
         }
-        self.uses_fold = true;
+        self.core_capabilities.insert("core.fold/v1".into());
         Some(TypedValue {
             expr: CoreExpr::Fold {
                 initial: Box::new(initial.expr),

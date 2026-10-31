@@ -1031,7 +1031,7 @@ struct EffectBindingProfile {
 
 #[derive(Debug, Clone)]
 struct TypeChecker<'a> {
-    uses_fold: bool,
+    core_capabilities: BTreeSet<String>,
     match_depth: usize,
     match_in_intent: bool,
     resolved: &'a ResolvedModule,
@@ -1062,7 +1062,7 @@ impl<'a> TypeChecker<'a> {
     fn new(resolved: &'a ResolvedModule) -> Self {
         Self {
             resolved,
-            uses_fold: false,
+            core_capabilities: BTreeSet::new(),
             match_depth: 0,
             match_in_intent: false,
             function_signatures: BTreeMap::new(),
@@ -1098,11 +1098,7 @@ impl<'a> TypeChecker<'a> {
             }
         }
         let module = TypedModule {
-            required_core_capabilities: if self.uses_fold {
-                vec!["core.fold/v1".into()]
-            } else {
-                Vec::new()
-            },
+            required_core_capabilities: self.core_capabilities.into_iter().collect(),
             coordinate: self.resolved.coordinate.clone(),
             imports: self.resolved.imports.clone(),
             types: self.core_types,

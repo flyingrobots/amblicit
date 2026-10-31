@@ -2172,9 +2172,6 @@ fn expression_string_shape(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<(u64, String)> {
     match expression {
-        CoreExpr::Fold { .. } => {
-            state_fold::string_shape(core, pure_functions, expression, available)
-        }
         CoreExpr::Match { scrutinee, arms } => {
             let mut shape: Option<(u64, String)> = None;
             let valid = variant_matches::every(
@@ -2210,7 +2207,7 @@ fn expression_string_shape(
             u64::try_from(value.chars().count()).ok()?,
             "raw-utf8".to_owned(),
         )),
-        CoreExpr::Local { .. } | CoreExpr::Field { .. } => {
+        CoreExpr::Fold { .. } | CoreExpr::Local { .. } | CoreExpr::Field { .. } => {
             let coordinate =
                 expression_type_coordinate(core, pure_functions, expression, available)?;
             let CoreType::String { max, canonical } = resolved_core_type(core, &coordinate)? else {

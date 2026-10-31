@@ -1590,28 +1590,7 @@ fn validate_core_expression_types(
             step,
             state_type,
             ..
-        } => {
-            let function = step
-                .strip_prefix(&format!("{}.", module.coordinate))
-                .and_then(|name| module.functions.get(name));
-            if !module
-                .required_core_capabilities
-                .iter()
-                .any(|c| c == "core.fold/v1")
-                || !function.is_some_and(|f| {
-                    f.params.len() == 1
-                        && f.params[0].ty == *state_type
-                        && f.return_type == *state_type
-                })
-            {
-                return Err(CoreTypeIntegrityFailure::new(
-                    CoreTypeIntegrityFailureKind::InvalidDefinition,
-                    path,
-                ));
-            }
-            validate_core_type_reference(module, state, state_type, path, 0)?;
-            validate_core_expression_types(module, state, initial, path, depth + 1)
-        }
+        } => validate_core_fold_types(module, state, initial, step, state_type, path, depth),
         CoreExpr::Match { scrutinee, arms } => {
             validate_core_match_types(module, state, scrutinee, arms, path, depth)
         }
@@ -1697,6 +1676,35 @@ fn validate_core_expression_types(
             )
         }
     }
+}
+
+fn validate_core_fold_types(
+    module: &CoreModule,
+    state: &mut CoreTypeIntegrityState,
+    initial: &CoreExpr,
+    step: &str,
+    state_type: &str,
+    path: &str,
+    depth: usize,
+) -> Result<(), CoreTypeIntegrityFailure> {
+    let function = step
+        .strip_prefix(&format!("{}.", module.coordinate))
+        .and_then(|name| module.functions.get(name));
+    if !module
+        .required_core_capabilities
+        .iter()
+        .any(|c| c == "core.fold/v1")
+        || !function.is_some_and(|f| {
+            f.params.len() == 1 && f.params[0].ty == state_type && f.return_type == state_type
+        })
+    {
+        return Err(CoreTypeIntegrityFailure::new(
+            CoreTypeIntegrityFailureKind::InvalidDefinition,
+            path,
+        ));
+    }
+    validate_core_type_reference(module, state, state_type, path, 0)?;
+    validate_core_expression_types(module, state, initial, path, depth + 1)
 }
 
 fn validate_core_predicate_types(

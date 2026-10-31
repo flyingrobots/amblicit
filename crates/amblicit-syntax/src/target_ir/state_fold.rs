@@ -1,7 +1,7 @@
 //! Independent first-order fold authority and invariant-state judgment.
 use super::{
-    core_type_fits, expression_fits_declared_type, resolved_core_type, CoreExpr, CoreModule,
-    CoreType, LocalRef, TargetPureFunctionFact,
+    core_type_fits, expression_fits_declared_type, CoreExpr, CoreModule, LocalRef,
+    TargetPureFunctionFact,
 };
 use std::collections::BTreeMap;
 
@@ -41,17 +41,4 @@ pub(super) fn state<'a>(
         return None;
     }
     Some(state_type)
-}
-
-pub(super) fn string_shape(
-    core: &CoreModule,
-    imported: &[TargetPureFunctionFact],
-    expression: &CoreExpr,
-    available: &BTreeMap<&str, &LocalRef>,
-) -> Option<(u64, String)> {
-    let ty = state(core, imported, expression, available)?;
-    match resolved_core_type(core, ty)? {
-        CoreType::String { max, canonical } => Some((max, canonical)),
-        _ => None,
-    }
 }

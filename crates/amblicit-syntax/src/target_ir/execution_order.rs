@@ -366,7 +366,6 @@ fn provably_non_integer(expression: &CoreExpr, depth: usize) -> bool {
     }
     match expression {
         CoreExpr::Const(value) => !matches!(value, CoreValue::Int { .. }),
-        CoreExpr::Fold { .. } => false,
         CoreExpr::Match { arms, .. } => arms
             .iter()
             .any(|arm| provably_non_integer(&arm.body, depth + 1)),
@@ -387,7 +386,7 @@ fn provably_non_integer(expression: &CoreExpr, depth: usize) -> bool {
             provably_non_integer(then_value, depth + 1)
                 || provably_non_integer(else_value, depth + 1)
         }
-        CoreExpr::Field { .. } | CoreExpr::Call { .. } => false,
+        CoreExpr::Fold { .. } | CoreExpr::Field { .. } | CoreExpr::Call { .. } => false,
     }
 }
 

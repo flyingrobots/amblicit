@@ -16,12 +16,12 @@ fn field<'a>(value: &'a CanonicalValue, key: &str) -> &'a CanonicalValue {
 
 #[test]
 fn bounded_fold_preserves_initial_state_static_step_and_iteration_bound() {
-    let source = r#"
+    let source = r"
 package iteration.state@1;
 type State = { done: Bool };
 fn step(state: State) -> State { return { done: !state.done }; }
 fn run(initial: State) -> State { return fold(initial, step, 3u64); }
-"#;
+";
     let module = parse_module(source).expect("ordinary first-order call syntax");
     let core = compile_to_core(&module, &CompilerContext::new())
         .expect("a statically bounded state fold must compile");
@@ -153,9 +153,8 @@ fn target_rechecks_fold_initial_state_and_static_helper() {
         };
         match mutation {
             0 => {
-                *initial = Box::new(amblicit_syntax::CoreExpr::Const(
-                    amblicit_syntax::CoreValue::Bool(false),
-                ))
+                **initial =
+                    amblicit_syntax::CoreExpr::Const(amblicit_syntax::CoreValue::Bool(false));
             }
             1 => *step = "untrusted.step".into(),
             _ => *state_type = "Bool".into(),
