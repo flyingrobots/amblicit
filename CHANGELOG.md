@@ -8,6 +8,9 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Classify unsupported variant-valued intent outputs before helper-frame
+  accounting, preserving `UnsupportedSourceShape` with or without helpers.
+
 - Check source variant constructors, optional payloads and conservative helper storage through canonical Core and native Target IR. Recognize `core.variant/v1` while refusing unknown capabilities; independently validate constructor identities, payloads and totality. Render constructors in the CLI. Matching, recursive variants, provider/runtime admission and variant-valued external results remain unsupported.
 
 - Acyclic source variant declarations preserve exact cases and optional payload

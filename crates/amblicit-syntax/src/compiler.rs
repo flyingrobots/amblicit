@@ -1481,6 +1481,9 @@ impl<'a> TypeChecker<'a> {
             let input =
                 self.type_ref_shape(&intent.source.params[0].ty, intent.source.params[0].span)?;
             let output = self.type_ref_shape(&intent.source.returns, intent.source.span)?;
+            // Classify unsupported intent results before helper accounting's
+            // conservative encoded bound can conflate them with overflow.
+            self.check_return_budget(intent, &output)?;
             let frame = self.source_intent_frame_cost(&input, &output, intent.source.span)?;
             cost = self.checked_helper_cost_add(cost, frame, intent.source.span)?;
         }

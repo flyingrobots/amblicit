@@ -393,3 +393,20 @@ fn variant_case_and_repeated_payload_expansion_boundaries_are_exact() {
         );
     }
 }
+
+#[test]
+fn variant_intent_output_with_helpers_is_unsupported_not_overflow() {
+    let declarations = "type Choice = variant { Empty }; type Envelope = { choice: Choice, }; type Alias = Choice; fn unused() -> U64 { return 0u64; }";
+    for ty in ["Choice", "Envelope", "Alias", "List<Choice,max=1>"] {
+        let source = format!("package choices.example@1; {declarations} intent run(input: {ty}) returns {ty} profile p.read basis none budget <= p.small {{ return input; }}");
+        let errors =
+            compile_to_core(&parse_module(&source).unwrap(), &execution_context()).unwrap_err();
+        assert_ne!(errors, [] as [amblicit_syntax::CompilerError; 0]);
+        assert!(
+            errors
+                .iter()
+                .all(|error| error.kind == CompilerErrorKind::UnsupportedSourceShape),
+            "{ty}: {errors:?}"
+        );
+    }
+}
