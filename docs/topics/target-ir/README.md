@@ -709,12 +709,13 @@ are separate implementation gates.
 
 Target requires `core.variant/v1` whenever the Core type table contains a variant,
 including unused declarations. Missing capability metadata refuses as
-`InvalidCoreIdentity`; unknown names and versions refuse as
-`UnsupportedCoreCapability`. The capability list remains hash-significant.
+`InvalidCoreIdentity` before unknown capabilities are checked; after that check,
+unknown names and versions refuse as `UnsupportedCoreCapability`. The capability list remains hash-significant.
 
 Native Target lowering can retain internal variant bindings, but result-projection
-emission and independent verification reject variant-bearing output graphs with
-`OutputShapeMismatch`. This includes projecting an entire aggregate containing a
+emission and independent verification reject variant-bearing output graphs of
+otherwise projectable source leaves with `OutputShapeMismatch`. Constructor
+expressions themselves refuse earlier with `UnsupportedExpression`. This includes projecting an entire aggregate containing a
 variant. Direct, record and list outputs have executable refusal witnesses;
 scalar-output controls still project. A refusal is recorded separately in
 `result_projection_failures`, so the native Target artifact may remain available.

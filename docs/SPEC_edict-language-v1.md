@@ -3200,9 +3200,11 @@ contains a variant declaration. This is a module-wide requirement, including
 unused declarations and declarations linked from source modules. The conservative
 scope avoids presenting a type graph as supported merely because its current
 intent bodies do not inspect that type. It does not claim a variant value ABI.
-Current Target lowering recognizes this capability and independently checks
-constructor identities and payload types. Unknown capabilities still refuse as
-`UnsupportedCoreCapability` without an artifact. Provider and runtime variant
+Current Target lowering requires this capability for variant type tables and
+independently checks constructor identities and payload types. Missing capability
+metadata refuses as `InvalidCoreIdentity` before unknown capabilities are checked.
+After that check, unknown capabilities refuse as `UnsupportedCoreCapability`
+without an artifact. Provider and runtime variant
 support and variant-valued external results remain separate implementation gates.
 
 ## Implementation Plan

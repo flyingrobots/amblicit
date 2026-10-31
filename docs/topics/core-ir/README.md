@@ -107,7 +107,8 @@ outside the schema under `fixtures/core/canonical/`. [COREIR-REQ-007]
   reference-integrity judgment checks the named variant, case membership,
   payload presence and all payload references; function scope/cycle and graph
   depth checks descend into that payload. Target independently checks payload
-  expression typing and available scope. Named variant references fit only the
+  expression typing against the available locals. The forged-capture witness
+  exercises the earlier Core integrity boundary, not an isolated Target refusal. Named variant references fit only the
   same resolved type identity, including through helper calls and locals; equal
   case shapes do not erase the explicit type discriminator. [COREIR-REQ-031]
 - Core blocks contain explicit locals, ordered nodes, and a result expression.

@@ -141,9 +141,9 @@ unsupported. Provider acceptance and runtime execution are separate gates.
 
 Every variant declaration in the finished Core type table adds the hash-significant
 `core.variant/v1` capability, including unused or source-linked declarations.
-Target recognizes this capability and independently checks constructor identity,
-payload types, scope and totality. Unknown capabilities still refuse without an
-artifact. Other Target restrictions still apply, including result projection.
+Target requires this capability for variant type tables and independently checks
+constructor identity, payload types, scope and totality. Missing metadata refuses
+with `InvalidCoreIdentity`; unknown capabilities still refuse without an artifact. Other Target restrictions still apply, including result projection.
 [CSPINE-REQ-061, CSPINE-REQ-062]
 
 Source `type Alias = Target;` declarations are transparent spellings for
