@@ -1092,6 +1092,9 @@ fn target_intrinsic_accepts_a_fold_with_validated_bounded_bytes_state() {
         .expect("bounded fold intrinsic argument compiles");
     let report = lower_to_target_ir(&core, &facts());
     assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
-    assert!(report.failures.is_empty());
+    assert_eq!(
+        report.failures,
+        Vec::<amblicit_syntax::TargetLoweringFailure>::new()
+    );
     assert!(report.artifact.is_some());
 }
