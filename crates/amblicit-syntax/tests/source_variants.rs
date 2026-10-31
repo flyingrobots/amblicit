@@ -290,3 +290,30 @@ fn variant_intent_storage_and_result_boundaries_are_explicit() {
         );
     }
 }
+
+#[test]
+fn staged_type_checking_rejects_duplicate_variant_labels_at_the_repeated_span() {
+    let source = "package choices.example@1; type Choice = variant { Same(U64), Same(Bool) };";
+    let parsed = parse_module(source).unwrap();
+    let resolved = amblicit_syntax::resolve_module(&parsed, &CompilerContext::new()).unwrap();
+    let errors = amblicit_syntax::type_check(&resolved).unwrap_err();
+    let duplicate = errors
+        .iter()
+        .find(|error| error.kind == CompilerErrorKind::SurfaceValidation)
+        .unwrap();
+    assert_eq!(duplicate.span.start, source.rfind("Same").unwrap());
+    assert_eq!(
+        &source[duplicate.span.start..duplicate.span.end],
+        "Same(Bool)"
+    );
+    let surface = amblicit_syntax::validate_surface(&parsed).unwrap_err();
+    let duplicate = surface
+        .iter()
+        .find(|error| error.kind == amblicit_syntax::SemanticErrorKind::DuplicateName)
+        .unwrap();
+    assert_eq!(
+        &source[duplicate.span.start..duplicate.span.end],
+        "Same(Bool)"
+    );
+    compile("type Choice = variant { First(U64), Second(Bool) };");
+}

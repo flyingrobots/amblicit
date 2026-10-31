@@ -21,6 +21,15 @@ impl TypeChecker<'_> {
         }
         let mut alternatives = BTreeMap::new();
         for case in cases {
+            if alternatives.contains_key(&case.name) {
+                self.errors.push(error(
+                    CompilerStage::TypeCheck,
+                    CompilerErrorKind::SurfaceValidation,
+                    format!("duplicate variant case `{}`", case.name),
+                    case.span,
+                ));
+                return None;
+            }
             let payload = match &case.payload {
                 Some(reference) => Some(self.type_ref_shape(reference, case.span)?),
                 None => None,

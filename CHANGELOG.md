@@ -15,7 +15,8 @@ versions still track specification maturity rather than a released product.
   Emitted variant graphs require `core.variant/v1`, including unused declarations;
   current Target lowering refuses that capability without an artifact.
   Variant helper storage refuses as `UnsupportedSourceShape`, including nested
-  shapes; real size overflow continues to report `InvalidBound`.
+  shapes; real size overflow continues to report `InvalidBound`. Public staged
+  resolution/type checking rejects duplicate case labels before map insertion.
   Construction, matching, executable value bounds and recursive variants remain
   separate gates.
 
