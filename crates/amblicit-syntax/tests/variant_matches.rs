@@ -83,10 +83,9 @@ fn variant_matches_reject_invalid_coverage_payloads_and_results() {
         ))
         .expect_err("invalid match");
         assert!(
-            errors.iter().any(|e| matches!(
-                e.kind,
-                CompilerErrorKind::TypeMismatch | CompilerErrorKind::UnknownField
-            )),
+            errors
+                .iter()
+                .any(|e| e.kind == CompilerErrorKind::TypeMismatch),
             "{expression}: {errors:?}"
         );
     }
@@ -156,6 +155,10 @@ fn target_independently_validates_exhaustive_match_arms() {
             }
             2 => {
                 arms[1].binder.as_mut().unwrap().ty = "Bool".into();
+                let amblicit_syntax::CoreExpr::Local { reference } = &mut arms[1].body else {
+                    panic!("payload reference")
+                };
+                reference.ty = "Bool".into();
             }
             3 => {
                 arms[1].body =
@@ -165,6 +168,17 @@ fn target_independently_validates_exhaustive_match_arms() {
                 arms[0].body = arms[1].body.clone();
             }
             _ => unreachable!(),
+        }
+        let integrity = amblicit_syntax::validate_core_module_type_integrity(&core);
+        if mutation == 4 {
+            assert_eq!(
+                integrity
+                    .expect_err("escaped payload is refused by Core")
+                    .kind(),
+                amblicit_syntax::CoreTypeIntegrityFailureKind::InvalidDefinition
+            );
+        } else {
+            integrity.expect("structurally valid mutation must reach independent Target typing");
         }
         let report = amblicit_syntax::lower_to_target_ir(&core, &facts());
         assert_eq!(
