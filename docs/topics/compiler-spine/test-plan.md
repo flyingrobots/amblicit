@@ -617,7 +617,7 @@ execution and public compiler-to-runtime evidence are downstream gates.
 
 | Requirement | Status | Contract | Owner |
 | --- | --- | --- | --- |
-| CSPINE-REQ-064 | planned | First-order bounded state fold preserves state identity, ordering, static bounds, authority and conservative cost. | #268 |
+| CSPINE-REQ-064 | planned | First-order bounded state fold preserves state identity, ordering, static bounds, authority and conservative cost. | issue #268 |
 
 | Case ID | Status | Case | Requirement | Oracle | Evidence | Fixture | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
