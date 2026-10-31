@@ -1311,7 +1311,7 @@ digest-lit    = '"' , "sha256:" , 64 * hex , '"' ;
 string-lit    = '"' , { string-char | escape } , '"' ;
 bytes-lit     = "b" , string-lit ;
 int-lit       = digit , { digit | "_" } , int-suffix? ;
-int-suffix    = "i32" | "i64" | "u32" | "u64" ;
+int-suffix    = "i32" | "i64" | "u8" | "u32" | "u64" ;
 bool-lit      = "true" | "false" ;
 comment       = "//" , { not-newline } | "/*" , { not-end-comment } , "*/" ;
 ```
@@ -1336,7 +1336,7 @@ Lexical conformance fixtures must pin these details before parser freeze:
 - Integer underscores may appear only between digits, never at the beginning,
   end, or adjacent to another underscore.
 - Integer width and signedness are hash-significant, so every integer value
-  must resolve to exactly one of `I32`, `I64`, `U32`, `U64`. A literal resolves
+  must resolve to exactly one of `I32`, `I64`, `U8`, `U32`, `U64`. A literal resolves
   by explicit suffix (`1u64`, `64_000i64`) or by an unambiguous expected type
   propagated from its context. Expected-type propagation reaches: record fields,
   variant payloads, `Option` constructors, `List`/`Map` literal elements,
@@ -1741,11 +1741,16 @@ canonicalization refuses as `UnsupportedSourceShape`, including unused aliases.
 
 - `Bool`
 - `I32`, `I64`
-- `U32`, `U64`
+- `U8`, `U32`, `U64`
 - `String`
 - `Bytes`
 - `Digest`
 - `Unit`
+
+`U8` is the exact unsigned domain 0 through 255. Source accepts decimal `u8`
+literals and context-typed values without cross-width coercion. The implemented
+unsigned arithmetic subset remains U32/U64; recognizing U8 values does not add
+U8 arithmetic or byte lookup.
 
 `Float` is not a core v1 type. A target or lawpack may define canonical
 floating-point semantics, but the core language does not assume them.
@@ -1841,7 +1846,7 @@ The adopted rules are:
   out-of-range input using Bunny's validated conversion policy; its rounding
   and failure behavior require separate conformance evidence.
 
-This does not reinterpret `I32`, `I64`, `U32` or `U64` as fixed-point values.
+This does not reinterpret `I32`, `I64`, `U8`, `U32` or `U64` as fixed-point values.
 Their exact domains, canonical identity, range proofs and signed division's
 truncation-toward-zero rule remain unchanged. There is no implicit conversion
 between an integer and this fixed-point domain.
@@ -2103,7 +2108,7 @@ The Edict Core prelude is intentionally small:
   `CanonicalEncodedMax<T>` is a compiler-derived type-level bound: the maximum
   `edict.canonical-cbor/v1` encoded byte length of any value of type `T`,
   computed structurally (`EDICT-LANG-ENCODEMAX-001`):
-  - scalars: the fixed canonical-CBOR width for `Bool`/`I32`/`I64`/`U32`/`U64`/
+  - scalars: the fixed canonical-CBOR width for `Bool`/`I32`/`I64`/`U8`/`U32`/`U64`/
     `Digest`/`Unit`;
   - `String<max=N[,canonical=...]>`: CBOR text-header bytes + the maximum UTF-8
     byte length of `N` Unicode scalar values **after** the declared
@@ -2177,6 +2182,9 @@ Integer (I32/I64/U32/U64):
   checkedAdd, checkedSub, checkedMul, checkedDiv, checkedRem -> Option<T>
   no bitwise operators in v1
   signed / and % truncate toward zero; remainder takes the dividend's sign
+U8:
+  == != < <= > >=
+  # Value and comparison support; arithmetic is not implemented for U8.
 String:
   +                       # bounded concatenation (see Refined Scalar Types)
   == !=                   # over the exact canonical scalar sequence

@@ -179,6 +179,7 @@ fn fixed_width_integer_types_and_suffixes_preserve_exact_domains() {
     for (width, suffix, maximum) in [
         ("I32", "i32", "2147483647"),
         ("I64", "i64", "9223372036854775807"),
+        ("U8", "u8", "255"),
         ("U32", "u32", "4294967295"),
         ("U64", "u64", "18446744073709551615"),
     ] {
@@ -208,6 +209,77 @@ fn fixed_width_integer_types_and_suffixes_preserve_exact_domains() {
             })
         );
     }
+}
+
+#[test]
+fn u8_context_and_width_preserve_canonical_identity() {
+    let source = OPERATION_SOURCE
+        .replace("U64", "U8")
+        .replace("18446744073709551615u64", "255");
+    let core = compile_operation(&source);
+    let CorePredicate::Compare { right, .. } =
+        &core.intents["splice"].input_constraints[0].predicate
+    else {
+        panic!("expected a comparison");
+    };
+    assert_eq!(
+        right,
+        &CoreExpr::Const(CoreValue::Int {
+            width: "U8".into(),
+            value: "255".into(),
+        })
+    );
+    let wider = compile_operation(&source.replace("U8", "U32"));
+    assert_ne!(
+        digest_core_module(&core).unwrap(),
+        digest_core_module(&wider).unwrap()
+    );
+    let report = lower_to_target_ir(&core, &target_facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered);
+}
+
+#[test]
+fn u8_literals_refuse_out_of_range_and_cross_width_values() {
+    for literal in ["256u8", "-1u8", "256", "-1", "1u32"] {
+        let source = OPERATION_SOURCE
+            .replace("U64", "U8")
+            .replace("18446744073709551615u64", literal);
+        let module = parse_module(&source).expect("U8 source syntax");
+        let errors = compile_to_core(&module, &operation_context()).expect_err("invalid U8 domain");
+        assert_eq!(
+            errors
+                .iter()
+                .map(|error| (error.stage, error.kind))
+                .collect::<Vec<_>>(),
+            vec![(CompilerStage::TypeCheck, CompilerErrorKind::TypeMismatch)],
+            "{literal}"
+        );
+    }
+}
+
+#[test]
+fn u8_source_helper_preserves_its_result_width() {
+    let source = OPERATION_SOURCE.replace(
+        "intent splice",
+        "fn byteMarker() -> U8 { return 255u8; }\nintent splice",
+    );
+    let context = operation_context().with_budget(
+        "sequence.small",
+        CoreBudget {
+            max_steps: 4096,
+            max_allocated_bytes: 65536,
+            max_output_bytes: 4096,
+        },
+    );
+    let core = compile_to_core(&parse_module(&source).expect("U8 helper syntax"), &context)
+        .expect("U8 helper with sufficient whole-operation budget");
+    assert_eq!(
+        core.functions["byteMarker"].body.result,
+        CoreExpr::Const(CoreValue::Int {
+            width: "U8".into(),
+            value: "255".into(),
+        })
+    );
 }
 
 #[test]

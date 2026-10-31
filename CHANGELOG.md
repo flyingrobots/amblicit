@@ -8,6 +8,12 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Authored `U8` scalar values and `u8` literals now preserve the existing Core
+  unsigned-byte domain, including context-typed values and source-helper
+  results. Out-of-range, negative and cross-width values refuse before Core.
+  TextMate and Tree-sitter recognize the suffix as one numeric token. Byte
+  lookup, U8 arithmetic and participant runtime support remain separate.
+
 - **Breaking:** stage 3 of the Amblicit rename renames the source extension
   and the editor grammars. Source files use `.amblicit` in place of `.edict`.
   A CLI directory input now selects only `.amblicit` files by default: the

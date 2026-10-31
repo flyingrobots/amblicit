@@ -271,7 +271,7 @@ input-constraint enforcement, or runtime byte-copy charging.
   within the operation step budget.
   [CSPINE-REQ-006] [CSPINE-REQ-011] [CSPINE-REQ-017] [CSPINE-REQ-023]
   [CSPINE-REQ-025] [CSPINE-REQ-026]
-- The fixed-width source scalar set is `I32`, `I64`, `U32`, and `U64`.
+- The fixed-width source scalar set is `I32`, `I64`, `U8`, `U32`, and `U64`.
   Explicitly suffixed literals retain their exact width and signedness;
   bare literals inherit an unambiguous expected width from supported comparison,
   annotation, and record-return contexts. Unconstrained bare literals, overflow,
@@ -285,7 +285,12 @@ input-constraint enforcement, or runtime byte-copy charging.
   | `Bytes<exact=N>` | Closed interval `min=N,max=N` | Structural byte type |
   | Digest-bound imported lawpack alias | Bounds supplied by the exported definition | Nominal exported coordinate |
 
-  [CSPINE-REQ-019] [CSPINE-REQ-021] [CSPINE-REQ-033]
+  `U8` preserves the exact 0 through 255 domain in source types, contextual
+  literals and `u8` suffixes, including source-helper results. Negative,
+  overflowing and cross-width values refuse before Core. Byte lookup and U8
+  arithmetic remain separate work.
+
+  [CSPINE-REQ-019] [CSPINE-REQ-021] [CSPINE-REQ-033] [CSPINE-REQ-059]
 - Same-width `U32`/`U64` addition lowers to `core.integer.add<T>(left, right)`
   when literal bounds, zero identity, or dominating input constraints establish
   that the sum fits its width. Conjunctions contribute upper bounds; disjunctions

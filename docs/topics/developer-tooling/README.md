@@ -25,6 +25,10 @@ lower to Core, or evaluate admission policy. It keeps comments visible to
 editors even though the parser treats comments as trivia and excludes them from
 semantic identity.
 
+Authored unsigned-byte literals such as `255u8` are one Number span in the
+reference highlighter and TextMate grammar. The Tree-sitter corpus includes a
+U8 declaration and suffixed literal, parsed without an error node.
+
 Supported roles are:
 
 - `Comment`
