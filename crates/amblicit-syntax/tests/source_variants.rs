@@ -192,3 +192,64 @@ fn variant_construction_and_matching_remain_explicitly_unsupported() {
         );
     }
 }
+
+fn execution_context() -> CompilerContext {
+    CompilerContext::new()
+        .with_operation_profile("p.read", "continuum.profile.read-only/v1")
+        .with_budget(
+            "p.small",
+            amblicit_syntax::CoreBudget {
+                max_steps: 4096,
+                max_allocated_bytes: 1_048_576,
+                max_output_bytes: 64,
+            },
+        )
+}
+
+#[test]
+fn source_variants_require_a_core_capability_before_target_lowering() {
+    use amblicit_syntax::{
+        lower_to_target_ir, ResourceRef, TargetIrLoweringFacts, TargetLoweringFailureKind,
+        TargetLoweringStatus, ECHO_DPO_TARGET_PROFILE, ECHO_SPAN_IR_DOMAIN,
+    };
+    let facts = TargetIrLoweringFacts {
+        target_profile: ResourceRef {
+            coordinate: ECHO_DPO_TARGET_PROFILE.to_owned(),
+            digest: Some(format!("sha256:{}", "1".repeat(64))),
+        },
+        target_ir_domain: ECHO_SPAN_IR_DOMAIN.to_owned(),
+        operation_profiles: vec!["continuum.profile.read-only/v1".to_owned()],
+        obstruction_coordinates: Vec::new(),
+        effect_lowerings: Vec::new(),
+        effect_signatures: Vec::new(),
+        pure_functions: Vec::new(),
+    };
+    for (declaration, input, needs_variant) in [
+        ("", "U64", false),
+        ("type Choice = variant { Empty };", "U64", true),
+        ("type Choice = variant { Empty };", "Choice", true),
+    ] {
+        let source = format!("package choices.example@1; {declaration} intent run(input: {input}) returns U64 profile p.read basis none budget <= p.small {{ return 0u64; }}");
+        let core = compile_to_core(&parse_module(&source).unwrap(), &execution_context()).unwrap();
+        let expected: Vec<String> = if needs_variant {
+            vec!["core.variant/v1".to_owned()]
+        } else {
+            Vec::new()
+        };
+        assert_eq!(core.required_core_capabilities, expected);
+        let report = lower_to_target_ir(&core, &facts);
+        if needs_variant {
+            assert_eq!(report.status, TargetLoweringStatus::Unsupported);
+            assert!(report.artifact.is_none());
+            assert_eq!(report.failures.len(), 1);
+            assert_eq!(
+                report.failures[0].kind,
+                TargetLoweringFailureKind::UnsupportedCoreCapability
+            );
+        } else {
+            assert!(report.failures.iter().all(
+                |failure| failure.kind != TargetLoweringFailureKind::UnsupportedCoreCapability
+            ));
+        }
+    }
+}

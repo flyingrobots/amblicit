@@ -185,7 +185,7 @@ Out of scope:
 
 - Full target/lawpack/shape artifact loading beyond authority-facts documents
   belongs to later lowerability and lawpack work.
-- Bare effect statements, matches, variants, and effect obstruction payloads
+- Bare effect statements, matches, variant construction, and effect obstruction payloads
   remain outside the lowerable subset.
 
 ## Bounded byte concatenation
@@ -567,3 +567,5 @@ CSPINE-REQ-054 remains planned. The implemented rows establish their named fixtu
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | CSPINE-TP-187 | implemented | Source variants | CSPINE-REQ-061 | Exact named cases/payloads and canonical identity survive source lowering; invalid or over-budget graphs refuse. | variant_cases_and_payloads_keep_exact_named_core_identity, variant_aliases_and_reordered_declarations_preserve_canonical_meaning, linked_variant_payloads_keep_their_original_module_coordinates, variant_payloads_must_resolve_even_when_unused, variant_payloads_preserve_authenticated_nominal_contracts, variant_empty_and_duplicate_case_sets_refuse, recursive_variant_payload_graphs_remain_rejected, variant_payload_depth_is_bounded, payloadless_variant_cases_consume_the_source_work_budget, variant_construction_and_matching_remain_explicitly_unsupported | crates/amblicit-syntax/tests/source_variants.rs | Type declarations only; constructors, matching and runtime support remain separate gates. |
+
+| CSPINE-TP-188 | implemented | Variant capability boundary | CSPINE-REQ-061 | Every emitted variant graph requires core.variant/v1; current Target refuses without artifact even for unused declarations or function-free variant input, while scalar-only control has no capability refusal. | source_variants_require_a_core_capability_before_target_lowering | crates/amblicit-syntax/tests/source_variants.rs | Core declaration support does not imply executable Target support. |

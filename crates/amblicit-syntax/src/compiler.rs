@@ -526,7 +526,15 @@ pub fn lower_core(typed: &TypedModule) -> Result<CoreModule, Vec<CompilerError>>
         types: typed.types.clone(),
         functions: typed.functions.clone(),
         intents,
-        required_core_capabilities: Vec::new(),
+        required_core_capabilities: if typed
+            .types
+            .values()
+            .any(|ty| matches!(ty, CoreType::Variant { .. }))
+        {
+            vec!["core.variant/v1".to_owned()]
+        } else {
+            Vec::new()
+        },
     };
     match validate_core_module_type_integrity(&core) {
         Ok(_) => Ok(core),

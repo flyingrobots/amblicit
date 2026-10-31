@@ -124,7 +124,7 @@ Acyclic source `type Choice = variant { Empty, Data(Payload) };` declarations
 enter the existing Core variant graph. Case names and optional payload references
 retain their exact named identity, including original coordinates after source
 module linking. Case/declaration order does not change canonical Core meaning;
-aliases remain transparent. Empty alternatives, duplicate case names, unresolved
+aliases remain transparent. Zero-case variants (`variant {}`), duplicate case names, unresolved
 payloads, cycles and expansion excess refuse. Every case consumes source work,
 including payloadless cases. Variant payloads consume structural depth just as
 record fields do. [CSPINE-REQ-061]
@@ -134,6 +134,14 @@ still refuse. Variant-valued function storage and canonical result-size bounds
 remain unsupported rather than assuming a wire representation. Enum declarations,
 recursive variants, provider acceptance and runtime execution are separate gates.
 [CSPINE-REQ-061]
+
+Every variant declaration in the finished Core type table adds the hash-significant
+`core.variant/v1` capability, including unused or source-linked declarations.
+Current Target lowering refuses that module with `UnsupportedCoreCapability` and
+no artifact. A function-free intent may therefore accept a variant-typed input
+into Core, but cannot produce a Target artifact. This module-wide gate deliberately
+keeps Core-only declaration libraries usable without asserting executable variant
+support. [CSPINE-REQ-061]
 
 Source `type Alias = Target;` declarations are transparent spellings for
 currently lowerable targets. They introduce no new nominal authority or Core
@@ -276,7 +284,7 @@ without its consumer evaluator implementing that call. Successful packaging or
 an accepted verifier report therefore does not establish slice execution,
 input-constraint enforcement, or runtime byte-copy charging.
 
-- The lowerable subset is deliberately narrow: local record type declarations and transparent aliases,
+- The lowerable subset is deliberately narrow: local record and acyclic variant type declarations and transparent aliases,
   first-order nongeneric source functions, one-parameter intents, `profile`, `basis none` or one input-derived explicit
   basis, `budget <=`, `where` predicates, pure `let` bindings, one annotated
   effectful `let ... else` shape, lowerable `require ... else` obstruction

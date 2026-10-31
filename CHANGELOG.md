@@ -10,8 +10,10 @@ versions still track specification maturity rather than a released product.
 
 - Acyclic source variant declarations preserve exact cases and optional payload
   references in the existing Core type graph, including aliases and authenticated
-  source-module coordinates. Duplicate/empty cases, missing payload types,
+  source-module coordinates. Duplicate labels and zero-case sets, missing payload types,
   cycles and depth/work excess refuse; payloadless cases also consume work.
+  Emitted variant graphs require `core.variant/v1`, including unused declarations;
+  current Target lowering refuses that capability without an artifact.
   Construction, matching, executable value bounds and recursive variants remain
   separate gates.
 
