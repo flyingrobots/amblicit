@@ -8,6 +8,12 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Add first-order bounded state iteration `fold(initial, step, N)` through source
+  closures, explicit Core and native Target validation. Provider/runtime execution
+  remains downstream. The reserved name, new Core variant and new TypedModule
+  capability field require consumers to update; the fold-capable schema is a
+  separate digest-selected publication.
+
 - Preserve folds through authenticated source-closure compilation. Resolve local
   and imported source step helpers with hygienic function identity while retaining
   callback and dynamic-bound refusals.

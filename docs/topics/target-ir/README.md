@@ -770,6 +770,12 @@ All addition and multiplication are checked; unknown work or an exceeded ceiling
 refuses `InvalidCoreIdentity` without an artifact. Imported helper budgets come
 from the exact validated lawpack adapter, not estimates in Core. [TIR-REQ-065]
 
+A fold-capable module declares `core.fold/v1`; every intent in that module uses
+this native accounting model, even if an individual intent does not reach a fold.
+A portable value cell is an accounting unit of 64 bytes, not a measurement of
+host allocator usage. Runtime soundness must be established against the eventual
+executing consumer separately.
+
 Portable accounting uses 64-byte value cells, bounded byte/text/list storage,
 record keys, variant metadata and maximum branch work. Payload-bound matches
 include surrounding-frame storage. Fold-capable modules currently refuse types

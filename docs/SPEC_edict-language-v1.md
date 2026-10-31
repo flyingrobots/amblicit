@@ -2107,8 +2107,10 @@ nor function values. `step` must statically name a source-owned pure helper with
 signature `S -> S`; parameter and return type coordinates must be identical.
 S is a bounded scalar or aggregate type. The initial value follows ordinary
 argument compatibility: records are structural, variants retain nominal identity,
-and narrower value bounds may fit S. N is a statically supplied `U64` literal
-in the current compiler profile. The initial state is evaluated exactly once, then the helper is invoked
+and narrower value bounds may fit S. N must be a `U64`-suffixed literal in the
+current compiler profile; named constants and lawpack coordinates refuse. Source
+closure linking resolves local and imported step helpers hygienically. The
+initial state is evaluated exactly once, then the helper is invoked
 in order N times. N equal to zero returns the initial state but does not exempt
 the helper from type checking, authority checks or cycle rejection.
 
@@ -2117,8 +2119,8 @@ state type in a `fold` expression requiring `core.fold/v1`. Consumers must
 validate the capability and state-preserving signature independently. Missing
 support is a refusal, never an unrolling fallback or silent zero-iteration
 execution. Costs include the initial expression, every step's transitive work,
-state validation/copy costs and per-iteration overhead. Arithmetic overflow in a
-static bound refuses. Runtime ceilings may refuse before completion; a partial
+state validation/copy costs and per-iteration overhead. Overflow while
+accumulating costs or multiplying the step cost by N refuses. Runtime ceilings may refuse before completion; a partial
 accumulator is not a successful result.
 
 There is no early exit. A terminal state is represented in S and its authored
