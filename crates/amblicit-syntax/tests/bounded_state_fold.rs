@@ -337,7 +337,10 @@ fn fold_name_cannot_be_shadowed_by_parameters_or_locals() {
 fn target_rejects_forged_fold_work_without_intrinsic_facts() {
     use amblicit_syntax::{CoreExpr, TargetLoweringFailureKind, TargetLoweringStatus};
     let facts = lowering_facts();
-    assert!(facts.pure_functions.is_empty());
+    assert_eq!(
+        facts.pure_functions,
+        Vec::<amblicit_syntax::TargetPureFunctionFact>::new()
+    );
     let original = operation(3, 65_536).expect("valid bounded operation");
     assert_eq!(
         amblicit_syntax::lower_to_target_ir(&original, &facts).status,
