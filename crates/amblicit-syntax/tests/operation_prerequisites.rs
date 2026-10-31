@@ -229,7 +229,18 @@ fn u8_context_and_width_preserve_canonical_identity() {
             value: "255".into(),
         })
     );
-    let wider = compile_operation(&source.replace("U8", "U32"));
+    // Change only the literal width: changing declared types too would let
+    // their canonical encoding hide a missing literal-width binding.
+    let mut wider = core.clone();
+    let CorePredicate::Compare { right, .. } =
+        &mut wider.intents.get_mut("splice").unwrap().input_constraints[0].predicate
+    else {
+        panic!("expected a comparison");
+    };
+    let CoreExpr::Const(CoreValue::Int { width, .. }) = right else {
+        panic!("expected an integer literal");
+    };
+    *width = "U32".into();
     assert_ne!(
         digest_core_module(&core).unwrap(),
         digest_core_module(&wider).unwrap()
