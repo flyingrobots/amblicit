@@ -668,3 +668,95 @@ fn variant_typed_input_can_flow_through_a_helper_to_a_scalar_result_projection()
     assert!(report.result_projections.contains_key("run"));
     assert!(report.result_projection_failures.is_empty());
 }
+
+#[test]
+fn every_target_domain_encodes_core_admitted_variant_binding_depth() {
+    use amblicit_syntax::{CoreExpr, CoreNode, CoreType, TargetLoweringStatus};
+    for domain in ["echo.span-ir/v1", "echo.span-ir/v2", "echo.span-ir/v3"] {
+        let mut accepted = 0;
+        let mut core_refused = 0;
+        for depth in 1..=128 {
+            let mut core = operation("", "Choice::Empty", "");
+            let mut ty = "choices.example@1.Choice".to_owned();
+            let mut value = CoreExpr::Variant {
+                ty: ty.clone(),
+                case: "Empty".to_owned(),
+                payload: None,
+            };
+            for level in 0..depth {
+                let next = format!("choices.example@1.Layer{level}");
+                core.types.insert(
+                    next.clone(),
+                    CoreType::Variant {
+                        cases: std::collections::BTreeMap::from([("Item".to_owned(), Some(ty))]),
+                    },
+                );
+                value = CoreExpr::Variant {
+                    ty: next.clone(),
+                    case: "Item".to_owned(),
+                    payload: Some(Box::new(value)),
+                };
+                ty = next;
+            }
+            let binding = core
+                .intents
+                .get_mut("run")
+                .unwrap()
+                .body
+                .nodes
+                .iter_mut()
+                .find(|node| matches!(node, CoreNode::Let { .. }))
+                .unwrap();
+            let CoreNode::Let {
+                binding,
+                value: expression,
+            } = binding
+            else {
+                unreachable!()
+            };
+            binding.ty = ty.clone();
+            let binding_id = binding.id.clone();
+            *expression = value;
+            core.intents
+                .get_mut("run")
+                .unwrap()
+                .body
+                .locals
+                .iter_mut()
+                .find(|local| local.id == binding_id)
+                .unwrap()
+                .ty = ty;
+            if let Err(error) = encode_core_module(&core) {
+                assert!(
+                    matches!(
+                        error.kind(),
+                        amblicit_syntax::CanonicalErrorKind::NestingLimitExceeded
+                            | amblicit_syntax::CanonicalErrorKind::UnsupportedValue
+                    ),
+                    "depth {depth}: {error:?}"
+                );
+                core_refused += 1;
+                continue;
+            }
+            let mut facts = facts();
+            facts.target_ir_domain = domain.to_owned();
+            let report = amblicit_syntax::lower_to_target_ir(&core, &facts);
+            assert_eq!(
+                report.status,
+                TargetLoweringStatus::Lowered,
+                "{domain} depth {depth}: {report:?}"
+            );
+            let artifact = report.artifact.expect("lowered artifact");
+            amblicit_syntax::encode_target_ir_artifact(&artifact).unwrap_or_else(|error| {
+                panic!("{domain} depth {depth}: accepted an unencodable artifact: {error:?}")
+            });
+            accepted += 1;
+        }
+        assert!(accepted > 0, "{domain}: positive control");
+        assert!(
+            core_refused > 0,
+            "{domain}: exercise the Core depth boundary"
+        );
+        eprintln!("{domain}: {accepted} encodable and {core_refused} refused by Core");
+    }
+}
