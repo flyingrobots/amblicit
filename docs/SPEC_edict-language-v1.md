@@ -3204,7 +3204,6 @@ Current Target lowering rejects this capability as `UnsupportedCoreCapability`
 without an artifact. Core-only library compilation remains available; executable
 variant support requires a later target/provider/runtime capability implementation.
 
-
 ## Implementation Plan
 
 ### Phase 0: Spec And Fixtures

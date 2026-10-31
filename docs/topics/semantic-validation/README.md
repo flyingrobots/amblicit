@@ -58,7 +58,7 @@ error ordering is not part of the Phase 2 contract. Tests assert structured
   [SEMVAL-REQ-007]
 - A variant declaration rejects duplicate case labels as `DuplicateName` at
   the repeated case span. Direct `resolve_module` then `type_check` also rejects
-  repeated labels as `SurfaceValidation`, preserving the earlier payload.
+  repeated labels as `SurfaceValidation`, without overwriting a payload.
   Payload type bounds are still checked in every case.
   [SEMVAL-REQ-011]
 - Source binders reject shadowing of visible module/prelude names, parameters,

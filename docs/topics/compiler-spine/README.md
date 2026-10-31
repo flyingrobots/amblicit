@@ -288,7 +288,7 @@ without its consumer evaluator implementing that call. Successful packaging or
 an accepted verifier report therefore does not establish slice execution,
 input-constraint enforcement, or runtime byte-copy charging.
 
-- The lowerable subset is deliberately narrow: local record and acyclic variant type declarations and transparent aliases,
+- The subset lowerable to Core is deliberately narrow: local record and acyclic variant type declarations and transparent aliases,
   first-order nongeneric source functions, one-parameter intents, `profile`, `basis none` or one input-derived explicit
   basis, `budget <=`, `where` predicates, pure `let` bindings, one annotated
   effectful `let ... else` shape, lowerable `require ... else` obstruction

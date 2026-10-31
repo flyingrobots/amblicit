@@ -90,5 +90,4 @@ Out of scope for this first slice:
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | SEMVAL-TP-013 | implemented | Variant names | SEMVAL-REQ-011 | Repeated labels fail validate_surface and compile_to_core with stable structured error kinds. | variant_empty_and_duplicate_case_sets_refuse | crates/amblicit-syntax/tests/source_variants.rs | Payload bound checking remains part of surface traversal. |
-
 | SEMVAL-TP-014 | implemented | Staged variant names | SEMVAL-REQ-011 | Direct resolve_module followed by type_check refuses repeated case labels as SurfaceValidation at the repeated case; surface validation uses DuplicateName at the same span; distinct-label control compiles. | staged_type_checking_rejects_duplicate_variant_labels_at_the_repeated_span | crates/amblicit-syntax/tests/source_variants.rs | Public staged compilation cannot overwrite an earlier payload. |
