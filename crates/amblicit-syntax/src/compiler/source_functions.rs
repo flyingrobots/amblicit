@@ -396,6 +396,8 @@ impl TypeChecker<'_> {
             allocated_bytes: bytes,
             output_bytes: 0,
         };
+        let matching = self.match_storage_cost(expr, span)?;
+        own = self.checked_helper_cost_add(own, matching, span)?;
         let arguments: Vec<&Expr> = match expr {
             Expr::Binary {
                 op: BinOp::Add | BinOp::Sub,
@@ -481,6 +483,33 @@ impl TypeChecker<'_> {
         Some(())
     }
 
+    fn match_storage_cost(&mut self, expr: &Expr, span: Span) -> Option<HelperCost> {
+        if let Expr::Match {
+            scrutinee, arms, ..
+        } = expr
+        {
+            // Reserve the entire bounded scrutinee for selected payload storage;
+            // this safely includes metadata even when the payload is smaller.
+            let (cells, bytes) = *self
+                .source_value_bounds
+                .get(&expression_identity(scrutinee))?;
+            let dispatch = u64::try_from(arms.len()).ok()?;
+            let extra = HelperCost {
+                steps: cells
+                    .checked_add(dispatch)
+                    .or_else(|| self.function_bound_failure(span))?,
+                allocated_bytes: if arms.iter().any(|arm| arm.binder.is_some()) {
+                    bytes
+                } else {
+                    0
+                },
+                output_bytes: 0,
+            };
+            return Some(extra);
+        }
+        Some(HelperCost::default())
+    }
+
     pub(super) fn record_source_predicate_cost(&mut self, expr: &Expr) -> Option<()> {
         let span = expr_span(expr);
         let mut steps = 1_u64;
@@ -504,7 +533,11 @@ impl TypeChecker<'_> {
             }
         } else if matches!(
             expr,
-            Expr::Ident { .. } | Expr::Field { .. } | Expr::Call { .. } | Expr::If { .. }
+            Expr::Ident { .. }
+                | Expr::Field { .. }
+                | Expr::Call { .. }
+                | Expr::If { .. }
+                | Expr::Match { .. }
         ) {
             steps += 2; // The Boolean equality's synthetic true operand.
             allocated_bytes = VALUE_CELL_BYTES;

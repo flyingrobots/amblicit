@@ -141,9 +141,9 @@ pub use contract_bundle::{
 };
 pub use core_ir::{
     validate_core_module_type_integrity, CompareOp, CoreBlock, CoreBound, CoreBudget, CoreExpr,
-    CoreExternalActionBudget, CoreFunction, CoreImport, CoreImportKind, CoreIntent, CoreModule,
-    CoreNode, CoreObstructionArm, CoreObstructionReason, CorePredicate, CorePureBinding,
-    CorePureBlock, CoreRequireFailureArm, CoreType, CoreTypeIntegrityFailure,
+    CoreExternalActionBudget, CoreFunction, CoreImport, CoreImportKind, CoreIntent, CoreMatchArm,
+    CoreModule, CoreNode, CoreObstructionArm, CoreObstructionReason, CorePredicate,
+    CorePureBinding, CorePureBlock, CoreRequireFailureArm, CoreType, CoreTypeIntegrityFailure,
     CoreTypeIntegrityFailureKind, CoreValue, InputConstraint, InputConstraintSource, LocalRef,
     ResourceRef, ValidatedCoreModule, CORE_API_VERSION,
 };

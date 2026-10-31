@@ -704,7 +704,7 @@ mutation witnesses for intrinsic-cost, operator-admissibility and execution-orde
 traversals remain planned in TIR-TP-118. [TIR-REQ-062]
 
 This is native Target IR validation and lowering. Provider acceptance, runtime
-variant values, matching, recursion and variant-valued external result encoding
+variant values, runtime matching, recursion and variant-valued external result encoding
 are separate implementation gates.
 
 Target requires `core.variant/v1` whenever the Core type table contains a variant,
@@ -725,3 +725,14 @@ of whether its input is variant-typed. [TIR-REQ-062]
 A variant-typed input can flow through a source helper while a scalar output
 retains its result projection. This native Target witness does not establish
 provider admission or runtime input decoding. [TIR-REQ-062]
+
+### Exhaustive match expressions
+
+Native Target independently checks the scrutinee's variant identity, exact case
+coverage, payload binder types, lexical scope and each arm's result type.
+Record-valued matches retain their field shapes. Type, authority, totality,
+intrinsic-cost and execution-order traversals enter each arm's scope; cost
+bounds take the maximum alternative after the single scrutinee cost. The
+canonical wire form was already reserved in `edict-core.cddl`; `core.variant/v1`
+continues to identify the variant type inventory. This does not establish that
+an older provider accepts matching. [TIR-REQ-063]

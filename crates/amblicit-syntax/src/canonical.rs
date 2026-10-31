@@ -1504,6 +1504,23 @@ fn core_expr_value(expr: &CoreExpr) -> Result<CanonicalValue, CanonicalError> {
             }
             map(fields)
         }
+        CoreExpr::Match { scrutinee, arms } => map([
+            ("kind", text("match")),
+            ("scrutinee", core_expr_value(scrutinee)?),
+            (
+                "arms",
+                array_results(arms.iter().map(|arm| {
+                    let mut fields = vec![
+                        ("case", text(&arm.case)),
+                        ("body", core_expr_value(&arm.body)?),
+                    ];
+                    if let Some(binder) = &arm.binder {
+                        fields.push(("binder", local_ref_value(binder)));
+                    }
+                    Ok(map(fields))
+                }))?,
+            ),
+        ]),
         CoreExpr::Record { fields } => map([
             ("kind", text("record")),
             (

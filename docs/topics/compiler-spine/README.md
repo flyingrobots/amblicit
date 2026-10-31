@@ -134,10 +134,20 @@ record fields do. [CSPINE-REQ-061]
 Constructors such as `Choice::Empty` and `Choice::Data(value)` preserve exact
 variant identity, case and optional payload through Core. Payload types, widths,
 bounds and nominal identities are checked. Variant helper storage uses checked,
-conservative bounds; genuine size overflow remains `InvalidBound`. Matching,
-enums, recursive variants and variant-valued intent result sizing remain
+conservative bounds; genuine size overflow remains `InvalidBound`.
+Enums, recursive variants and variant-valued intent result sizing remain
 unsupported. Provider acceptance and runtime execution are separate gates.
 [CSPINE-REQ-062]
+
+Exhaustive `match value { Empty => fallback, Data(payload) => payload }`
+expressions lower to the existing Core match form. Every declared case must
+appear exactly once. Optional payload bindings are lexical to their own arm;
+payloadless cases cannot introduce one. Arm results must have compatible types.
+Canonical references are independent of source binder spelling. Scrutinee work
+is counted once and alternative work uses the largest arm bound. Dispatch and
+selected-payload storage are charged even without helper declarations. Recursive
+calls hidden in arms remain invalid. These are compiler and native Target
+contracts; they do not establish provider or runtime execution. [CSPINE-REQ-063]
 
 Every variant declaration in the finished Core type table adds the hash-significant
 `core.variant/v1` capability, including unused or source-linked declarations.

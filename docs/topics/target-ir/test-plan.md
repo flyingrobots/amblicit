@@ -377,3 +377,15 @@ it does not treat compiler Target IR as proof of runtime support.
 | TIR-TP-117 | implemented | Variant input and call-site identity | TIR-REQ-062 | A variant-typed input flows through a helper while the scalar output projects; replacing a Choice argument producer with a distinct Other producer refuses InvalidCoreIdentity. | variant_typed_input_can_flow_through_a_helper_to_a_scalar_result_projection, target_rejects_distinct_variant_identity_at_the_helper_argument_site | crates/amblicit-syntax/tests/variant_constructors.rs | Characterization of existing constructor validation; no runtime admission witness. |
 | TIR-TP-118 | planned | Dedicated payload traversal witnesses | TIR-REQ-062 | Mutating payload traversal in intrinsic-cost, operator-admissibility and execution-order checks is detected by dedicated variant-payload tests. | - | - | Traversal arms are implemented and source-inspected; these independent per-arm mutation witnesses are not yet retained. |
 | TIR-TP-119 | implemented | Variant binding depth characterization | TIR-REQ-062 | For nested named-variant binding depths 1 through 128, each of v1/v2/v3 encodes every artifact produced from Core-encodable input; the sweep includes both admitted and Core-refused depths. | every_target_domain_encodes_core_admitted_variant_binding_depth | crates/amblicit-syntax/tests/variant_constructors.rs | Characterizes the pure-binding path, not all possible Target envelope shapes. |
+
+## Exhaustive match validation
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| TIR-REQ-063 | implemented | Native Target checks exhaustive cases, exact payload types and lexical arm references independently of source checking. | issue #261 |
+
+| ID | Status | Kind | Requirements | Scenario | Evidence | Location | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-120 | implemented | Independent match judgment | TIR-REQ-063 | Valid helpers lower, while malformed coverage, binder type, result type and escaping payloads refuse. Record-valued match fields retain their shape. | target_independently_validates_exhaustive_match_arms, target_checks_fields_of_record_valued_matches | crates/amblicit-syntax/tests/variant_matches.rs | Native Core/Target evidence, not provider/runtime execution. |
+| TIR-TP-121 | planned | Adversarial traversal coverage | TIR-REQ-063 | Dedicated mutations challenge intrinsic-cost, comparison and execution-order traversal of arm bodies. | - | - | Implemented traversals need dedicated mutation witnesses. |
+| TIR-TP-122 | implemented | Structured encoding | TIR-REQ-063 | Integer-valued matches remain valid ordered-comparison operands and encode through the structured Target domain. | structured_target_encodes_integer_match_comparisons | crates/amblicit-syntax/tests/variant_matches.rs | Actual public lowering and encoding; non-integer alternatives remain classified separately. |

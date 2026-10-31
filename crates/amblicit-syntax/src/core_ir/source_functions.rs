@@ -106,14 +106,97 @@ fn validate_scope(
     scope: &BTreeMap<&str, &LocalRef>,
     path: &str,
 ) -> Result<(), CoreTypeIntegrityFailure> {
-    walk(expression, 0, &mut |expression| {
-        if let CoreExpr::Local { reference } = expression {
-            if scope.get(reference.id.as_str()).copied() != Some(reference) {
-                return Err(invalid(path));
-            }
+    walk_scope(expression, 0, scope, path)
+}
+
+fn walk_scope(
+    expression: &CoreExpr,
+    depth: usize,
+    scope: &BTreeMap<&str, &LocalRef>,
+    path: &str,
+) -> Result<(), CoreTypeIntegrityFailure> {
+    validate_core_graph_depth(depth, "functions.expression")?;
+    if let CoreExpr::Local { reference } = expression {
+        if scope.get(reference.id.as_str()).copied() != Some(reference) {
+            return Err(invalid(path));
         }
-        Ok(())
-    })
+    }
+    match expression {
+        CoreExpr::Match { scrutinee, arms } => {
+            walk_scope(scrutinee, depth + 1, scope, path)?;
+            for arm in arms {
+                let mut inner = scope.clone();
+                if let Some(binder) = &arm.binder {
+                    if binder.id.is_empty()
+                        || binder.alpha_name.is_empty()
+                        || inner.insert(binder.id.as_str(), binder).is_some()
+                    {
+                        return Err(invalid(path));
+                    }
+                }
+                walk_scope(&arm.body, depth + 1, &inner, path)?;
+            }
+            Ok(())
+        }
+        CoreExpr::Const(_) | CoreExpr::Local { .. } => Ok(()),
+        CoreExpr::Variant { payload, .. } => {
+            if let Some(payload) = payload {
+                walk_scope(payload, depth + 1, scope, path)?;
+            }
+            Ok(())
+        }
+        CoreExpr::Field { base, .. } => walk_scope(base, depth + 1, scope, path),
+        CoreExpr::Record { fields } => {
+            for value in fields.values() {
+                walk_scope(value, depth + 1, scope, path)?;
+            }
+            Ok(())
+        }
+        CoreExpr::List { values } => {
+            for value in values {
+                walk_scope(value, depth + 1, scope, path)?;
+            }
+            Ok(())
+        }
+        CoreExpr::Call { args, .. } => {
+            for value in args {
+                walk_scope(value, depth + 1, scope, path)?;
+            }
+            Ok(())
+        }
+        CoreExpr::If {
+            predicate,
+            then_value,
+            else_value,
+        } => {
+            scope_predicate(predicate, depth + 1, scope, path)?;
+            walk_scope(then_value, depth + 1, scope, path)?;
+            walk_scope(else_value, depth + 1, scope, path)
+        }
+    }
+}
+
+fn scope_predicate(
+    predicate: &CorePredicate,
+    depth: usize,
+    scope: &BTreeMap<&str, &LocalRef>,
+    path: &str,
+) -> Result<(), CoreTypeIntegrityFailure> {
+    validate_core_graph_depth(depth, "functions.predicate")?;
+    match predicate {
+        CorePredicate::True | CorePredicate::False => Ok(()),
+        CorePredicate::Not(inner) => scope_predicate(inner, depth + 1, scope, path),
+        CorePredicate::All(items) | CorePredicate::Any(items) => {
+            for item in items {
+                scope_predicate(item, depth + 1, scope, path)?;
+            }
+            Ok(())
+        }
+        CorePredicate::Compare { left, right, .. } => {
+            walk_scope(left, depth + 1, scope, path)?;
+            walk_scope(right, depth + 1, scope, path)
+        }
+    }
 }
 
 fn walk(
@@ -124,6 +207,13 @@ fn walk(
     validate_core_graph_depth(depth, "functions.expression")?;
     check(expression)?;
     match expression {
+        CoreExpr::Match { scrutinee, arms } => {
+            walk(scrutinee, depth + 1, check)?;
+            for arm in arms {
+                walk(&arm.body, depth + 1, check)?;
+            }
+            Ok(())
+        }
         CoreExpr::Const(_) | CoreExpr::Local { .. } => Ok(()),
         CoreExpr::Variant { payload, .. } => {
             if let Some(payload) = payload {

@@ -1717,7 +1717,8 @@ before checking function signatures or intent bodies. Declaration ordering does
 not change the resulting canonical Core. Alias targets must already belong to
 the currently lowerable type subset. Variant declarations preserve named cases
 and payload references in Core. Checked constructors preserve the named case and
-optional payload. Generic and recursive types and matching remain outside this source subset.
+optional payload. Exhaustive matching lowers to Core with arm-local optional payload binders.
+Generic and recursive types remain outside this source subset.
 
 Source type dependency paths have a ceiling of 128 declarations. Fully expanded
 structural height, including inline constructors, cached alias targets and

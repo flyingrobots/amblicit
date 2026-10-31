@@ -728,7 +728,8 @@ fn project_core_expression(
             };
             Ok(ResultProjectionExpr::Source { source, path })
         }
-        CoreExpr::Variant { .. }
+        CoreExpr::Match { .. }
+        | CoreExpr::Variant { .. }
         | CoreExpr::Const(_)
         | CoreExpr::List { .. }
         | CoreExpr::Call { .. }
@@ -749,7 +750,8 @@ fn source_path(expression: &CoreExpr) -> Result<(&LocalRef, Vec<String>), Result
     path.reverse();
     match current {
         CoreExpr::Local { reference } => Ok((reference, path)),
-        CoreExpr::Variant { .. }
+        CoreExpr::Match { .. }
+        | CoreExpr::Variant { .. }
         | CoreExpr::Const(_)
         | CoreExpr::Record { .. }
         | CoreExpr::List { .. }

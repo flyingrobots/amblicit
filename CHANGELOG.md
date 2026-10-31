@@ -1,5 +1,6 @@
 # Changelog
 
+
 All notable changes to the Edict specifications are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
@@ -7,6 +8,10 @@ Edict now has executable Rust implementation slices alongside the design specs;
 versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
+
+- Add exhaustive nonrecursive variant matching to source/Core and native Target
+  validation, including arm-local payloads and direct-match dispatch budgets.
+  Provider/runtime matching remains separate.
 
 - Add acyclic source variant declarations and checked constructors with exact
   case and optional-payload identity through canonical Core and native Target IR.

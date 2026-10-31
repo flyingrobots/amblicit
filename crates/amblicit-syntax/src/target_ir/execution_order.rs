@@ -284,6 +284,21 @@ impl<'a> LocalAvailability<'a> {
         match expression {
             CoreExpr::Local { reference } => self.reference(reference),
             CoreExpr::Const(_) => true,
+            CoreExpr::Match { scrutinee, arms } => {
+                if !self.expression(scrutinee, depth + 1) {
+                    return false;
+                }
+                arms.iter().all(|arm| {
+                    let saved = self.producers.clone();
+                    let valid = arm
+                        .binder
+                        .as_ref()
+                        .is_none_or(|binder| self.introduce(binder))
+                        && self.expression(&arm.body, depth + 1);
+                    self.producers = saved;
+                    valid
+                })
+            }
             CoreExpr::Variant { payload, .. } => payload
                 .as_ref()
                 .is_none_or(|value| self.expression(value, depth + 1)),
@@ -350,6 +365,9 @@ fn provably_non_integer(expression: &CoreExpr, depth: usize) -> bool {
     }
     match expression {
         CoreExpr::Const(value) => !matches!(value, CoreValue::Int { .. }),
+        CoreExpr::Match { arms, .. } => arms
+            .iter()
+            .any(|arm| provably_non_integer(&arm.body, depth + 1)),
         CoreExpr::Record { .. } | CoreExpr::List { .. } | CoreExpr::Variant { .. } => true,
         CoreExpr::Local { reference } => {
             let ty = reference.ty.as_str();
