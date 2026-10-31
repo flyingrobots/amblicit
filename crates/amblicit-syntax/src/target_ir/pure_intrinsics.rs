@@ -207,6 +207,17 @@ impl<'a> Meter<'a> {
         }
         let children = match expression {
             CoreExpr::Local { .. } | CoreExpr::Const(_) => Some(0),
+            CoreExpr::Fold {
+                initial,
+                step,
+                bound,
+                ..
+            } => {
+                let before = self.expression(initial, available, depth + 1)?;
+                let step_cost =
+                    self.call(step, std::slice::from_ref(initial.as_ref()), available)?;
+                before.checked_add(step_cost.checked_mul(*bound)?)
+            }
             CoreExpr::Match { scrutinee, arms } => {
                 let before = self.expression(scrutinee, available, depth + 1)?;
                 let mut largest = 0;

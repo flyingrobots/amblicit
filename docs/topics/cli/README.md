@@ -386,3 +386,10 @@ rendered `scrutinee`, and an `arms` array. Each arm has `case` and `body`; a
 payload-binding arm also has `binder` in the existing local-reference review
 shape. This is inspection data, not a runtime execution or provider-acceptance
 claim. [CLI-REQ-013]
+
+## Fold review data
+
+Core review JSON renders `kind: "fold"`, recursively rendered `initial`,
+`step`, `bound`, and `stateType`. These fields describe compiler-built Core;
+this display does not prove provider execution or independent work admission.
+A dedicated CLI projection fixture remains planned. [CLI-REQ-013]

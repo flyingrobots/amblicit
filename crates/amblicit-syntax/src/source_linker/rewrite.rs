@@ -492,12 +492,19 @@ impl<'a> Rewrite<'a> {
                 args,
                 ..
             } => {
+                let is_fold = matches!(callee.as_ref(), Expr::Ident { name, .. } if name == "fold");
                 self.callee(callee, env)?;
                 for ty in type_args {
                     self.ty(ty, span)?;
                 }
-                for arg in args {
-                    self.expr(arg, env)?;
+                for (index, arg) in args.iter_mut().enumerate() {
+                    if is_fold && index == 1 {
+                        // The step is a static function reference, not a value.
+                        // Resolve it with the same hygiene as ordinary callees.
+                        self.callee(arg, env)?;
+                    } else {
+                        self.expr(arg, env)?;
+                    }
                 }
             }
             Expr::Binary { lhs, rhs, .. } => {
@@ -625,7 +632,16 @@ impl<'a> Rewrite<'a> {
                 Some(definition.linked.clone())
             } else if matches!(
                 head.as_str(),
-                "len" | "slice" | "isUtf8" | "count" | "at" | "hash" | "digest" | "some" | "none"
+                "len"
+                    | "slice"
+                    | "isUtf8"
+                    | "count"
+                    | "at"
+                    | "hash"
+                    | "digest"
+                    | "some"
+                    | "none"
+                    | "fold"
             ) {
                 None
             } else {

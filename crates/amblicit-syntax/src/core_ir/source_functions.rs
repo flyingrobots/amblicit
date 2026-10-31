@@ -122,6 +122,7 @@ fn walk_scope(
         }
     }
     match expression {
+        CoreExpr::Fold { initial, .. } => walk_scope(initial, depth + 1, scope, path),
         CoreExpr::Match { scrutinee, arms } => {
             walk_scope(scrutinee, depth + 1, scope, path)?;
             for arm in arms {
@@ -207,6 +208,7 @@ fn walk(
     validate_core_graph_depth(depth, "functions.expression")?;
     check(expression)?;
     match expression {
+        CoreExpr::Fold { initial, .. } => walk(initial, depth + 1, check),
         CoreExpr::Match { scrutinee, arms } => {
             walk(scrutinee, depth + 1, check)?;
             for arm in arms {
@@ -338,6 +340,13 @@ fn function_edges(
                 "functions.work",
             )
         })?;
+        if let CoreExpr::Fold { step, .. } = expression {
+            let target = step
+                .strip_prefix(prefix)
+                .filter(|name| functions.contains_key(*name))
+                .ok_or_else(|| invalid(&format!("functions.{name}.fold.step")))?;
+            edges.insert(target.to_owned());
+        }
         if let CoreExpr::Call {
             callee,
             args,

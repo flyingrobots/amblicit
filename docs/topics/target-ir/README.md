@@ -753,3 +753,38 @@ all sibling fields to be comparison operands. A scalar field remains available
 when a matched record also contains an unrelated empty or nonempty list literal.
 Direct list-match comparisons remain outside the comparison language.
 [TIR-REQ-063]
+
+## Bounded fold validation
+
+Native Target recognizes `core.fold/v1` and checks a source step with matching
+parameter/return coordinates and an initial value compatible with that state.
+A wrong initial value can pass shared Core structural integrity and still fail
+Target with `InvalidCoreIdentity`. [TIR-REQ-064]
+
+For modules requiring `core.fold/v1`, native Target independently reconstructs
+conservative Core evaluation steps and allocated bytes for each intent. It
+charges initial evaluation, transitive source calls, parameter/result validation,
+every iteration (including a done/terminal state), nested folds and value storage.
+Sized intrinsic operands derive fold maxima from the validated state type.
+All addition and multiplication are checked; unknown work or an exceeded ceiling
+refuses `InvalidCoreIdentity` without an artifact. Imported helper budgets come
+from the exact validated lawpack adapter, not estimates in Core. [TIR-REQ-065]
+
+A fold-capable module declares `core.fold/v1`; every intent in that module uses
+this native accounting model, even if an individual intent does not reach a fold.
+A portable value cell is an accounting unit of 64 bytes, not a measurement of
+host allocator usage. Runtime soundness must be established against the eventual
+executing consumer separately.
+
+Portable accounting uses 64-byte value cells, bounded byte/text/list storage,
+record keys, variant metadata and maximum branch work. Payload-bound matches
+include surrounding-frame storage. Fold-capable modules currently refuse types
+outside this accounting subset (option/map/capability/request values), symbolic
+collection-loop bounds and external-action request nodes. Modules without the
+fold capability retain their existing cost checks. Native bounds are conservative
+and can reject a compiler-accepted operation near its budget ceiling.
+
+`Lowered` remains a native compiler result. Provider/runtime execution, independent
+provider verification, effect execution costs, output encoding limits and runtime
+admission retain their separate authorities; this meter does not establish the
+full #268 runtime contract or the authored rope cutover.

@@ -2077,7 +2077,7 @@ effects. There is no other narrowing in v1.
 
 ## Loops
 
-`for x in collection bounded N` is the only loop form in v1
+`for x in collection bounded N` is the collection-loop form in v1
 (`EDICT-LANG-LOOP-001`):
 
 - v1 iterates `List<T, max=M>` only. `Map` iteration is deferred to a later
@@ -2099,9 +2099,44 @@ effects. There is no other narrowing in v1.
 - Loop bodies obey normal A-normal effect rules; per-iteration effects retain
   ordering and the static maximum cardinality in Core IR (I-016).
 
+### First-order bounded state fold
+
+`fold(initial, step, N)` carries bounded state through a fixed number of pure
+steps (`EDICT-LANG-FOLD-001`). This expression introduces neither mutable locals
+nor function values. `step` must statically name a source-owned pure helper with
+signature `S -> S`; parameter and return type coordinates must be identical.
+S is a bounded scalar or aggregate type. The initial value follows ordinary
+argument compatibility: records are structural, variants retain nominal identity,
+and narrower value bounds may fit S. N must be a `U64`-suffixed literal in the
+current compiler profile; named constants and lawpack coordinates refuse. Source
+closure linking resolves local and imported step helpers hygienically. The
+initial state is evaluated exactly once, then the helper is invoked
+in order N times. N equal to zero returns the initial state but does not exempt
+the helper from type checking, authority checks or cycle rejection.
+
+Core binds the initial expression, static step coordinate, iteration bound and
+state type in a `fold` expression requiring `core.fold/v1`. Consumers must
+validate the capability and state-preserving signature independently. Missing
+support is a refusal, never an unrolling fallback or silent zero-iteration
+execution. Costs include the initial expression, every step's transitive work,
+state validation/copy costs and per-iteration overhead. Overflow while
+accumulating costs or multiplying the step cost by N refuses. Runtime ceilings may refuse before completion; a partial
+accumulator is not a successful result.
+
+There is no early exit. A terminal state is represented in S and its authored
+step returns the same state without reads or effects; all N iterations still count.
+Pure source helper rules already prohibit reads and effects, and `fold` does
+not relax them. This is distinct from effect-emitting `for` over a list that
+already exists. Generic provider/runtime execution of `core.fold/v1` remains a
+separate implementation gate; this source/Core contract is not execution proof.
+
 ## Standard Functions
 
 The Edict Core prelude is intentionally small:
+
+- `fold(initial, step, N)` is the reserved first-order state-iteration form
+  described above. It is not a function value. Source declarations, parameters
+  and locals cannot shadow the prelude name `fold`.
 
 - `hash(label: StringLiteral, value...) -> Digest`
 - `canonicalEncode<T>(value: T) -> Bytes<max=CanonicalEncodedMax<T>>` (the

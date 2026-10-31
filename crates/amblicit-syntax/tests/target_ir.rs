@@ -398,6 +398,7 @@ fn assert_invalid_core_identity(report: &amblicit_syntax::TargetLoweringReport, 
 
 fn mutate_first_local_reference_type(expression: &mut CoreExpr, ty: &str) -> bool {
     match expression {
+        CoreExpr::Fold { initial, .. } => mutate_first_local_reference_type(initial, ty),
         CoreExpr::Match { scrutinee, arms } => {
             mutate_first_local_reference_type(scrutinee, ty)
                 || arms

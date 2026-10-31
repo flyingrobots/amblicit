@@ -29,6 +29,7 @@ mod byte_utf8;
 mod list_literal;
 mod return_budget;
 mod signature_diagnostic;
+mod source_fold;
 mod source_functions;
 mod source_matches;
 mod source_types;
@@ -365,6 +366,8 @@ pub struct ResolvedIntent {
 /// Module after type checking and Core-ready local normalization.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypedModule {
+    /// Explicit capabilities discovered during source checking.
+    pub required_core_capabilities: Vec<String>,
     pub coordinate: String,
     pub imports: Vec<CoreImport>,
     pub types: BTreeMap<String, CoreType>,
@@ -532,9 +535,11 @@ pub fn lower_core(typed: &TypedModule) -> Result<CoreModule, Vec<CompilerError>>
             .values()
             .any(|ty| matches!(ty, CoreType::Variant { .. }))
         {
-            vec!["core.variant/v1".to_owned()]
+            let mut capabilities = typed.required_core_capabilities.clone();
+            capabilities.push("core.variant/v1".to_owned());
+            capabilities
         } else {
-            Vec::new()
+            typed.required_core_capabilities.clone()
         },
     };
     match validate_core_module_type_integrity(&core) {
@@ -1026,6 +1031,7 @@ struct EffectBindingProfile {
 
 #[derive(Debug, Clone)]
 struct TypeChecker<'a> {
+    core_capabilities: BTreeSet<String>,
     match_depth: usize,
     match_in_intent: bool,
     resolved: &'a ResolvedModule,
@@ -1056,6 +1062,7 @@ impl<'a> TypeChecker<'a> {
     fn new(resolved: &'a ResolvedModule) -> Self {
         Self {
             resolved,
+            core_capabilities: BTreeSet::new(),
             match_depth: 0,
             match_in_intent: false,
             function_signatures: BTreeMap::new(),
@@ -1091,6 +1098,7 @@ impl<'a> TypeChecker<'a> {
             }
         }
         let module = TypedModule {
+            required_core_capabilities: self.core_capabilities.into_iter().collect(),
             coordinate: self.resolved.coordinate.clone(),
             imports: self.resolved.imports.clone(),
             types: self.core_types,
@@ -1638,6 +1646,14 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn helper_cost_for_expr(&mut self, expr: &Expr) -> Option<HelperCost> {
+        if let Expr::Call {
+            callee, args, span, ..
+        } = expr
+        {
+            if matches!(callee.as_ref(), Expr::Ident { name, .. } if name == "fold") {
+                return self.fold_cost(expr, args, *span);
+            }
+        }
         let children = match expr {
             Expr::Ident { .. }
             | Expr::Int { .. }
@@ -4292,6 +4308,9 @@ impl<'a> TypeChecker<'a> {
             return None;
         };
         match callee.as_ref() {
+            Expr::Ident { name, .. } if name == "fold" => {
+                self.check_fold(type_args, args, env, *span)
+            }
             Expr::Ident { name, .. } if name == "len" => {
                 self.check_byte_length(type_args, args, env, *span)
             }

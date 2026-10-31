@@ -32,7 +32,7 @@ Each body has a fresh lexical environment. Parameters and earlier local bindings
 are visible; caller locals, later bindings and another function's locals are
 not. Duplicate names and shadowing of module or prelude names reject. All
 bodies are checked even if no intent calls them. Effects, requests, reads,
-loops, statement conditionals, `require`, `guarantee`, assertions, statements
+`for` statements, statement conditionals, `require`, `guarantee`, assertions, statements
 after return and missing returns reject. Assertions are not silently erased:
 this profile has no function-body proof-node lowering.
 Unsupported and post-return statement diagnostics identify the offending
@@ -47,6 +47,55 @@ must evaluate arguments left to right exactly once before entering the fresh
 callee frame. `if` and ordered `All`/`Any` predicates retain lazy evaluation.
 Boolean-valued expressions use existing Core `If` and predicate forms; Boolean
 values in predicate position compare with `true`.
+
+## Bounded state fold
+
+`fold(initial, step, N)` is a special first-order prelude expression. `step`
+names a source helper with exactly one parameter and the same declared return
+type. It is a compile-time helper reference, not a function value or closure.
+The initial state uses ordinary argument compatibility: record fields are
+structurally compatible, while distinct nominal variants cannot substitute.
+An initial value may have a tighter bound than the step state: for
+example, `b""` fits `Bytes<max=8>`. The step parameter and return coordinates
+still must be identical; the initial value does not narrow later iterations.
+N must be a U64-suffixed literal such as `3u64`; runtime values, named constants
+and lawpack-bound coordinates refuse. `fold` is reserved: functions, parameters
+and locals cannot declare that name.
+
+```amblicit
+package iteration.state@1;
+type State = { done: Bool };
+fn step(state: State) -> State { return { done: !state.done }; }
+fn run(initial: State) -> State { return fold(initial, step, 3u64); }
+```
+
+Core retains one initial expression, the source step coordinate, the bound and
+state type under `core.fold/v1`. Initial state is evaluated once, followed by
+exactly N ordered applications. With zero iterations the result is the initial
+state, but the step's signature, authority and acyclic dependency graph still
+must be valid. The compiler charges repeated step work and transitive calls
+with overflow-checked multiplication, including per-iteration overhead.
+
+Authenticated source-closure linking recognizes `fold` and resolves its static
+step through the same hygienic function-name mapping as an ordinary call. The
+step may be local or imported from another source module; linking does not turn
+callback values or runtime bounds into valid fold arguments.
+
+There is no early exit. A step that returns its input unchanged still runs
+for all N iterations. Pure source helpers cannot read state or
+emit effects, including inside this form. Effect-emitting `for` remains a
+separate mechanism. The existing recursive-call prohibition includes step
+references even at zero bounds.
+
+Native Target checking independently validates the initial value, source helper
+and state compatibility. For fold-capable modules it also reconstructs conservative
+Core step and allocation bounds from Core types and authenticated imported costs,
+including transitive calls and checked nested iteration arithmetic. A native
+`Lowered` result does not establish runtime admission. The current Echo
+provider/runtime does not yet support
+`core.fold/v1`; compiler support alone does not establish public package
+acceptance or runtime execution. The Jim persistent-rope and its oracle suite
+remain downstream work.
 
 ## Variant match expressions
 

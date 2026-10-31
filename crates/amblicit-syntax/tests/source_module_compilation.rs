@@ -619,3 +619,103 @@ fn linker_preserves_at_prelude_inside_an_imported_source_helper() {
     );
     assert_eq!(target.status, TargetLoweringStatus::Lowered, "{target:?}");
 }
+
+#[test]
+fn linked_folds_resolve_local_and_imported_steps_with_hygienic_identity() {
+    let library = "package library.steps@1; fn retain(value: U64) -> U64 { return 1u64; } fn run(value: U64) -> U64 { return fold(value, retain, 3u64); }";
+    let local = "fn retain(value: U64) -> U64 { return 2u64; }";
+    let imports = import("library.steps@1", library, "steps");
+    for (source, dependencies, expected) in [
+        (
+            root("", local, "fold(input.value, retain, 3u64)"),
+            vec![],
+            "2",
+        ),
+        (
+            root(&imports, local, "fold(input.value, steps.retain, 3u64)"),
+            vec![library],
+            "1",
+        ),
+        (
+            root(&imports, local, "steps.run(input.value)"),
+            vec![library],
+            "1",
+        ),
+    ] {
+        let core = compile(&source, &dependencies);
+        let CoreNode::Let { value, .. } = &core.intents["evaluate"].body.nodes[0] else {
+            panic!("fold result binding")
+        };
+        let expression = match value {
+            CoreExpr::Call { callee, .. } => {
+                &core.functions[callee.strip_prefix("app.example@1.").unwrap()]
+                    .body
+                    .result
+            }
+            value => value,
+        };
+        let CoreExpr::Fold { step, bound, .. } = expression else {
+            panic!("explicit fold")
+        };
+        assert_eq!(*bound, 3);
+        let function = &core.functions[step.strip_prefix("app.example@1.").unwrap()];
+        assert_eq!(
+            function.body.result,
+            CoreExpr::Const(amblicit_syntax::CoreValue::Int {
+                width: "U64".into(),
+                value: expected.into()
+            })
+        );
+        assert!(core
+            .required_core_capabilities
+            .iter()
+            .any(|capability| capability == "core.fold/v1"));
+        let facts = TargetIrLoweringFacts {
+            target_profile: ResourceRef {
+                coordinate: "echo.dpo@1".into(),
+                digest: Some(format!("sha256:{}", "1".repeat(64))),
+            },
+            target_ir_domain: "echo.span-ir/v1".into(),
+            operation_profiles: vec!["continuum.profile.read-only/v1".into()],
+            obstruction_coordinates: vec![],
+            effect_lowerings: vec![],
+            effect_signatures: vec![],
+            pure_functions: vec![],
+        };
+        let report = lower_to_target_ir(&core, &facts);
+        assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+        assert_eq!(
+            digest_core_module(&core).unwrap(),
+            digest_core_module(&compile(&source, &dependencies)).unwrap()
+        );
+    }
+}
+
+#[test]
+fn linked_fold_keeps_callback_and_dynamic_bound_refusals() {
+    for (expression, kind) in [
+        (
+            "fold(input.value, input.value, 3u64)",
+            CompilerErrorKind::UnsupportedSourceShape,
+        ),
+        (
+            "fold(input.value, retain, input.value)",
+            CompilerErrorKind::InvalidBound,
+        ),
+    ] {
+        let source = root(
+            "",
+            "fn retain(value: U64) -> U64 { return value; }",
+            expression,
+        );
+        let closure = resolve_source_closure(&source, &[], SourceClosureLimits::default()).unwrap();
+        let linked = link_source_closure(&closure).expect("linking preserves typed fold refusal");
+        let errors = linked
+            .compile(&context())
+            .expect_err("invalid fold refuses after linking");
+        assert!(
+            errors.iter().any(|failure| failure.error.kind == kind),
+            "{errors:?}"
+        );
+    }
+}

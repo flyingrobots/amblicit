@@ -284,6 +284,7 @@ impl<'a> LocalAvailability<'a> {
         match expression {
             CoreExpr::Local { reference } => self.reference(reference),
             CoreExpr::Const(_) => true,
+            CoreExpr::Fold { initial, .. } => self.expression(initial, depth + 1),
             CoreExpr::Match { scrutinee, arms } => {
                 if !self.expression(scrutinee, depth + 1) {
                     return false;
@@ -385,7 +386,7 @@ fn provably_non_integer(expression: &CoreExpr, depth: usize) -> bool {
             provably_non_integer(then_value, depth + 1)
                 || provably_non_integer(else_value, depth + 1)
         }
-        CoreExpr::Field { .. } | CoreExpr::Call { .. } => false,
+        CoreExpr::Fold { .. } | CoreExpr::Field { .. } | CoreExpr::Call { .. } => false,
     }
 }
 

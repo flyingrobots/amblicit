@@ -3,9 +3,10 @@
 This publication adds the `echo.span-ir/v3` variant of the `target-ir-artifact`
 root to the [source-module publication](../source-modules-v1/README.md). Its
 `executionOrder` is a tree: instruction ids as text, plus `for` and `branch`
-maps whose nested arrays use the same entry rule. The current pair is generated
-by `cargo xtask provider-contract-pack --write` and checked by `--check` and
-`cargo xtask verify`.
+maps whose nested arrays use the same entry rule. This CDDL/manifest pair is now
+frozen. The generator writes the separate
+[bounded-state-fold publication](../bounded-state-fold-v1/README.md); tests
+reproduce this pair from the pre-fold Core schema.
 
 The source-module, source-function and v1 pairs remain byte-identical. Their
 Target IR schema bytes are preserved in

@@ -3,7 +3,7 @@
 This publication adds the optional nonempty Core `functions` table. Its
 `edict-provider-contracts.cddl` and `manifest.json` are preserved together as
 an exact publication. The current generator writes the separate
-[source-module publication](../source-modules-v1/README.md). Assembly without
+[bounded-state-fold publication](../bounded-state-fold-v1/README.md). Assembly without
 the optional source-closure fragment still reproduces this pair exactly.
 
 Consumers select these exact explicit bytes and verify the manifest's schema

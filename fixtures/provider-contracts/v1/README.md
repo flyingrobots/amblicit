@@ -27,6 +27,6 @@ explicit inputs. The provenance paths are review evidence, not discovery or
 filesystem lookup handles.
 
 The current owner generator writes and checks the separately selected
-[source-functions-v1 publication](../source-functions-v1/README.md). These
+[bounded-state-fold publication](../bounded-state-fold-v1/README.md). These
 prior CDDL/manifest bytes are retained unchanged; selecting the new publication
 requires an explicit downstream contract/digest update.

@@ -8,6 +8,45 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Add first-order bounded state iteration `fold(initial, step, N)` through source
+  closures, explicit Core and native Target validation. Provider/runtime execution
+  remains downstream. The reserved name, new Core variant and new TypedModule
+  capability field require consumers to update; the fold-capable schema is a
+  separate digest-selected publication.
+
+- Preserve folds through authenticated source-closure compilation. Resolve local
+  and imported source step helpers with hygienic function identity while retaining
+  callback and dynamic-bound refusals.
+
+- Derive sized target-intrinsic operand bounds from the independently validated
+  fold state, so a bounded byte accumulator can be passed directly to a costed
+  intrinsic instead of being refused as unestablished work.
+
+- Report structured compiler errors for malformed direct intent folds during
+  cost preflight instead of silently omitting the invalid intent.
+
+- Independently bound Core evaluation steps and storage in fold-capable modules.
+  Native Target counts ordinary/transitive helpers, nested folds, state validation
+  and iteration overhead, rejects arithmetic overflow and exact-budget overruns,
+  and uses only validated adapter budgets for imported helper work. Unsupported
+  accounting shapes refuse instead of contributing zero. Provider/runtime
+  execution and effect admission remain separate.
+
+- Reserve `fold` as a prelude name. The new `CoreExpr::Fold` variant and
+  `TypedModule::required_core_capabilities` field require downstream exhaustive
+  Rust consumers to update. Initial values keep the language's existing
+  structural-record and nominal-variant compatibility rules. Provider/runtime
+  execution and runtime admission remain separate gates.
+
+- Publish the fold-capable provider contract pack separately from existing
+  digest-pinned packs. Preserve the earlier publication bytes and reproduce them
+  with the frozen pre-fold Core schema. Schema acceptance is not runtime support.
+
+- Accept fold initial values whose bounds fit the declared step state, including
+  empty bytes for a bounded byte accumulator. The step parameter and return type
+  remain invariant, and oversized initial values still refuse. Native Target
+  validation is distinct from provider/runtime execution.
+
 - Add exhaustive nonrecursive variant matching to source/Core and native Target
   validation, including arm-local payloads and direct-match dispatch budgets.
   Bare integer arms infer their width from typed peers in either arm order.
