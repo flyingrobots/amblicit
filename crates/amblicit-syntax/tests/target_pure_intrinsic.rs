@@ -1080,3 +1080,18 @@ fn target_bounds_a_match_list_by_its_largest_arm() {
         .max_steps = node_cost(4096) - 1;
     refused(&core, &facts(), "budget below the largest match arm");
 }
+
+#[test]
+fn target_intrinsic_accepts_a_fold_with_validated_bounded_bytes_state() {
+    let expression = NODE.replace("input.text", "fold(input.text, retain, 2u64)");
+    let authored = source("Bytes<max=8>", &expression).replace(
+        "type Input =",
+        "fn retain(value: Bytes<max=8>) -> Bytes<max=8> { return value; } type Input =",
+    );
+    let core = compile_to_core(&parse_module(&authored).unwrap(), &context(65_536))
+        .expect("bounded fold intrinsic argument compiles");
+    let report = lower_to_target_ir(&core, &facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+    assert!(report.failures.is_empty());
+    assert!(report.artifact.is_some());
+}

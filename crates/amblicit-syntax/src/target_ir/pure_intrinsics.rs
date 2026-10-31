@@ -355,7 +355,6 @@ impl<'a> Meter<'a> {
             return None;
         }
         match argument {
-            CoreExpr::Fold { .. } => None,
             CoreExpr::Match { scrutinee, arms } => {
                 let mut largest = 0;
                 let valid = super::variant_matches::every(

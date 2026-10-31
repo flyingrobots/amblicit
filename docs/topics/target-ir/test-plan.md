@@ -412,3 +412,7 @@ parameter/result validation and iteration overhead with checked arithmetic.
 The authored compiler's cost tables are not an authority at this boundary.
 The first regression mutates valid emitted Core to 65,537 and u64::MAX iterations
 without any intrinsic facts, retaining positive and structural-encoding controls.
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-128 | implemented | Fold intrinsic operand bound | TIR-REQ-065 | A bounded-byte fold used as a sized intrinsic argument lowers with sufficient budget. | target_intrinsic_accepts_a_fold_with_validated_bounded_bytes_state | crates/amblicit-syntax/tests/target_pure_intrinsic.rs | State type supplies an independently validated maximum. |

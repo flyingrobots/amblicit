@@ -765,6 +765,7 @@ For modules requiring `core.fold/v1`, native Target independently reconstructs
 conservative Core evaluation steps and allocated bytes for each intent. It
 charges initial evaluation, transitive source calls, parameter/result validation,
 every iteration (including a done/terminal state), nested folds and value storage.
+Sized intrinsic operands derive fold maxima from the validated state type.
 All addition and multiplication are checked; unknown work or an exceeded ceiling
 refuses `InvalidCoreIdentity` without an artifact. Imported helper budgets come
 from the exact validated lawpack adapter, not estimates in Core. [TIR-REQ-065]

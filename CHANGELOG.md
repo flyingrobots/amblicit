@@ -8,6 +8,10 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Derive sized target-intrinsic operand bounds from the independently validated
+  fold state, so a bounded byte accumulator can be passed directly to a costed
+  intrinsic instead of being refused as unestablished work.
+
 - Report structured compiler errors for malformed direct intent folds during
   cost preflight instead of silently omitting the invalid intent.
 
