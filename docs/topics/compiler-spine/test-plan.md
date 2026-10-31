@@ -562,7 +562,7 @@ CSPINE-REQ-054 remains planned. The implemented rows establish their named fixtu
 
 | ID | Status | Requirement | Source |
 | --- | --- | --- | --- |
-| CSPINE-REQ-061 | implemented | Acyclic source variants enter the existing Core variant type graph with exact named cases, optional payload references, source-module identities, and bounded expansion. Empty/duplicate cases, unresolved payloads, cycles and depth/work excess refuse. Construction, matching and runtime representation remain separate gates. | issue #261 |
+| CSPINE-REQ-061 | implemented | Acyclic source variants enter the existing Core variant type graph with exact named cases, optional payload references, source-module identities, and bounded expansion. Empty/duplicate cases, unresolved payloads, cycles and depth/work excess refuse. Every emitted variant type graph requires core.variant/v1, which current Target rejects without artifacts. Variant helper storage and result sizing refuse UnsupportedSourceShape. Construction, matching and runtime representation remain separate gates. | issue #261 |
 
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |

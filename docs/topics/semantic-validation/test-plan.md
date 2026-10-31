@@ -81,12 +81,11 @@ Out of scope for this first slice:
 - Clause-level diagnostic spans; duplicate singleton diagnostics currently report
   at the enclosing intent span because intent clauses do not retain spans.
 
-
 ## Variant case identity
 
 | ID | Status | Requirement | Source |
 | --- | --- | --- | --- |
-| SEMVAL-REQ-011 | implemented | Duplicate variant case labels report DuplicateName at the repeated case span before Core construction. | crates/amblicit-syntax/src/semantic.rs |
+| SEMVAL-REQ-011 | implemented | Duplicate variant case labels report DuplicateName at the repeated case span before Core construction; staged resolution/type checking reports SurfaceValidation at that same case. | crates/amblicit-syntax/src/semantic.rs |
 
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
