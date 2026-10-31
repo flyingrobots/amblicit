@@ -284,3 +284,31 @@ intent runIntent(input: State) returns State profile p.read basis none budget <=
         "{errors:?}"
     );
 }
+
+#[test]
+fn fold_initial_state_uses_existing_record_and_variant_compatibility() {
+    let core = compile_source("type A = { done: Bool }; type B = { done: Bool }; fn step(s: A) -> A { return s; } fn run(s: B) -> A { return fold(s, step, 3u64); }")
+        .expect("same-shaped named records retain structural compatibility");
+    encode_core_module(&core).expect("structurally compatible record entry encodes");
+    let amblicit_syntax::CoreExpr::Fold {
+        state_type,
+        initial,
+        ..
+    } = &core.functions["run"].body.result
+    else {
+        panic!("fold");
+    };
+    assert_eq!(state_type, "iteration.state@1.A");
+    let amblicit_syntax::CoreExpr::Local { reference } = initial.as_ref() else {
+        panic!("initial local");
+    };
+    assert_eq!(reference.ty, "iteration.state@1.B");
+    let errors = compile_source("type A = variant { Done }; type B = variant { Done }; fn step(s: A) -> A { return s; } fn run(s: B) -> A { return fold(s, step, 3u64); }")
+        .expect_err("distinct nominal variants must not substitute at fold entry");
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.kind == amblicit_syntax::CompilerErrorKind::TypeMismatch),
+        "{errors:?}"
+    );
+}

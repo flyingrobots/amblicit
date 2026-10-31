@@ -2104,9 +2104,11 @@ effects. There is no other narrowing in v1.
 `fold(initial, step, N)` carries bounded state through a fixed number of pure
 steps (`EDICT-LANG-FOLD-001`). This expression introduces neither mutable locals
 nor function values. `step` must statically name a source-owned pure helper with
-signature `S -> S`; S is a bounded scalar or aggregate type and retains nominal
-identity. N is a statically supplied `U64` literal in the current compiler
-profile. The initial state is evaluated exactly once, then the helper is invoked
+signature `S -> S`; parameter and return type coordinates must be identical.
+S is a bounded scalar or aggregate type. The initial value follows ordinary
+argument compatibility: records are structural, variants retain nominal identity,
+and narrower value bounds may fit S. N is a statically supplied `U64` literal
+in the current compiler profile. The initial state is evaluated exactly once, then the helper is invoked
 in order N times. N equal to zero returns the initial state but does not exempt
 the helper from type checking, authority checks or cycle rejection.
 

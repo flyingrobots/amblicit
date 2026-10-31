@@ -602,7 +602,9 @@ CSPINE-REQ-054 remains planned. The implemented rows establish their named fixtu
 Planned first-order contract: `fold(initial, step, N)` evaluates initial once,
 then applies the statically named source helper `step: S -> S` exactly N times
 in order. N is a statically known unsigned bound; state type S is bounded and
-must remain identical, including nominal identity. No function values, captures,
+has identical step parameter/return coordinates. Initial values follow ordinary
+argument compatibility: records are structural, variants retain nominal identity,
+and narrower value bounds may fit the state. No function values, captures,
 mutable locals or recursion are introduced. A terminal state remains an authored
 step case that returns itself; remaining iteration overhead is still charged.
 Pure steps cannot perform reads or effects. This does not replace effect-emitting
@@ -626,3 +628,4 @@ execution and public compiler-to-runtime evidence are downstream gates.
 | CSPINE-TP-202 | planned | Independent Target and resource validation | CSPINE-REQ-064 | Mutated Core helper, bound, state or capability refuses independently; exact/one-under budgets and terminal-state work are checked. | - | - | Native Target evidence is distinct from provider/runtime evidence. |
 | CSPINE-TP-203 | implemented | Narrow initial value fits invariant fold state | CSPINE-REQ-064 | Empty and maximum-sized byte initial values compile and lower under the declared state bound; an oversized initial value refuses TypeMismatch. | fold_accepts_initial_bytes_within_state_bound | crates/amblicit-syntax/tests/bounded_state_fold.rs | Regression for PR #285 F2; does not establish runtime execution or independent total-work admission. |
 | CSPINE-TP-204 | implemented | Structured fold authority refusals | CSPINE-REQ-064 | Capability/helper/state mutations reject InvalidDefinition at the fold result path and UnsupportedValue at encoding; an invalid initial value passes shared Core integrity but native Target rejects InvalidCoreIdentity. | fold_core_requires_capability_and_declared_step_state, target_rechecks_fold_initial_state_and_static_helper | crates/amblicit-syntax/tests/bounded_state_fold.rs | Positive controls distinguish shared Core rejection from Target-local initial-value checking; no independent bound/cost claim. |
+| CSPINE-TP-205 | implemented | Existing record and variant compatibility at fold entry | CSPINE-REQ-064 | Distinct same-shaped named records may initialize the declared state, but distinct same-shaped nominal variants refuse TypeMismatch. | fold_initial_state_uses_existing_record_and_variant_compatibility | crates/amblicit-syntax/tests/bounded_state_fold.rs | Preserves existing language compatibility instead of introducing nominal records. |
