@@ -566,6 +566,10 @@ fn contains_external_action_request(shape: &TypeShape) -> bool {
         }
         TypeKind::List { item, .. } => contains_external_action_request(item),
         TypeKind::Record(fields) => fields.values().any(contains_external_action_request),
+        TypeKind::Variant(cases) => cases
+            .values()
+            .flatten()
+            .any(contains_external_action_request),
         TypeKind::Bool
         | TypeKind::Int { .. }
         | TypeKind::Bytes { .. }
@@ -603,7 +607,7 @@ fn value_bound(shape: &TypeShape) -> Option<(u64, u64)> {
                 ))
             },
         ),
-        TypeKind::ExternalActionRequest { .. } => None,
+        TypeKind::ExternalActionRequest { .. } | TypeKind::Variant(_) => None,
     }
 }
 
@@ -621,7 +625,7 @@ fn encoded_bound(shape: &TypeShape) -> Option<u64> {
                 .checked_add(u64::try_from(name.len()).ok()?)?
                 .checked_add(encoded_bound(shape)?)
         }),
-        TypeKind::ExternalActionRequest { .. } => None,
+        TypeKind::ExternalActionRequest { .. } | TypeKind::Variant(_) => None,
     }
 }
 

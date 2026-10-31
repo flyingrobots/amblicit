@@ -8,6 +8,13 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Acyclic source variant declarations preserve exact cases and optional payload
+  references in the existing Core type graph, including aliases and authenticated
+  source-module coordinates. Duplicate/empty cases, missing payload types,
+  cycles and depth/work excess refuse; payloadless cases also consume work.
+  Construction, matching, executable value bounds and recursive variants remain
+  separate gates.
+
 - Add `at(bytes, index) -> U8` with a strict proof that the U64 index is below
   the exact operand's length. Conditional and short-circuit guards stay scoped
   to the expressions they dominate; Target independently rechecks untrusted

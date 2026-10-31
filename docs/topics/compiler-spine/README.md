@@ -120,6 +120,21 @@ import owned by that same source module. These checks grant no runtime
 authority. Public application/provider closure
 consumption remains a separate requirement. [CSPINE-REQ-051]
 
+Acyclic source `type Choice = variant { Empty, Data(Payload) };` declarations
+enter the existing Core variant graph. Case names and optional payload references
+retain their exact named identity, including original coordinates after source
+module linking. Case/declaration order does not change canonical Core meaning;
+aliases remain transparent. Empty alternatives, duplicate case names, unresolved
+payloads, cycles and expansion excess refuse. Every case consumes source work,
+including payloadless cases. Variant payloads consume structural depth just as
+record fields do. [CSPINE-REQ-061]
+
+This is type-declaration support. Variant construction and `match` expressions
+still refuse. Variant-valued function storage and canonical result-size bounds
+remain unsupported rather than assuming a wire representation. Enum declarations,
+recursive variants, provider acceptance and runtime execution are separate gates.
+[CSPINE-REQ-061]
+
 Source `type Alias = Target;` declarations are transparent spellings for
 currently lowerable targets. They introduce no new nominal authority or Core
 type table entry. Aliases retain bounded representations and the exact owning
@@ -137,6 +152,7 @@ accepted and 129 refuses as `InvalidBound`. Staged `resolve_module` then
 cumulative source-defined declaration expansion each have a 65,536-unit ceiling.
 A scalar or opaque imported reference costs one expansion unit; list/map/option
 constructors add one plus their children; a record adds one plus its fields.
+A variant adds one plus every case and the expansion weight of each payload.
 References to source-defined types use their complete expansion weight on every
 occurrence. This bounds source-defined DAG expansion before shape construction;
 it is not a physical allocator metric or a replacement for imported-type and

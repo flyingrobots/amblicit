@@ -80,3 +80,14 @@ Out of scope for this first slice:
   shelves after full Core lowering and canonical artifacts exist.
 - Clause-level diagnostic spans; duplicate singleton diagnostics currently report
   at the enclosing intent span because intent clauses do not retain spans.
+
+
+## Variant case identity
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| SEMVAL-REQ-011 | implemented | Duplicate variant case labels report DuplicateName at the repeated case span before Core construction. | source variant declarations |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| SEMVAL-TP-013 | implemented | Variant names | SEMVAL-REQ-011 | Repeated labels fail validate_surface and compile_to_core with stable structured error kinds. | variant_empty_and_duplicate_case_sets_refuse | crates/amblicit-syntax/tests/source_variants.rs | Payload bound checking remains part of surface traversal. |
