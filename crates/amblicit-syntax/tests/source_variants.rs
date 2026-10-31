@@ -261,7 +261,7 @@ fn variant_function_storage_refuses_as_unsupported_without_retagging_overflow() 
         let source = format!("package choices.example@1; {declarations} fn identity(input: {ty}) -> {ty} {{ return input; }}");
         let errors =
             compile_to_core(&parse_module(&source).unwrap(), &CompilerContext::new()).unwrap_err();
-        assert!(!errors.is_empty());
+        assert_ne!(errors, [] as [amblicit_syntax::CompilerError; 0]);
         assert!(
             errors
                 .iter()
@@ -281,7 +281,7 @@ fn variant_intent_storage_and_result_boundaries_are_explicit() {
         let source = format!("package choices.example@1; type Choice = variant {{ Empty }}; {helper} intent run(input: Choice) returns {output} profile p.read basis none budget <= p.small {{ {body} }}");
         let errors =
             compile_to_core(&parse_module(&source).unwrap(), &execution_context()).unwrap_err();
-        assert!(!errors.is_empty());
+        assert_ne!(errors, [] as [amblicit_syntax::CompilerError; 0]);
         assert!(
             errors
                 .iter()
