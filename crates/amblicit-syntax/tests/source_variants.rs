@@ -357,3 +357,69 @@ fn variant_payload_diagnostics_cover_each_invalid_case_without_a_partial_type() 
         .any(|error| error.kind == CompilerErrorKind::SurfaceValidation
             && error.span.start == duplicated.rfind("Same").unwrap()));
 }
+
+fn bounded_variant_result(declarations: &str, accepted: bool) {
+    let source = format!("package choices.example@1; {declarations}");
+    let result = compile_to_core(&parse_module(&source).unwrap(), &CompilerContext::new());
+    match (accepted, result) {
+        (true, Ok(_)) => {}
+        (false, Err(errors)) => assert!(
+            errors
+                .iter()
+                .any(|error| error.kind == CompilerErrorKind::InvalidBound),
+            "{errors:?}"
+        ),
+        (true, Err(errors)) => panic!("boundary should compile: {errors:?}"),
+        (false, Ok(_)) => panic!("oversized variant graph unexpectedly compiled"),
+    }
+}
+
+#[test]
+fn variant_structural_depth_composes_across_short_dependency_paths() {
+    let lists = |depth, leaf| format!("{}{leaf}{}", "List<".repeat(depth), ",max=1>".repeat(depth));
+    for (outer_depth, accepted) in [(63, true), (64, false)] {
+        // Each variant adds one edge: (1 + 63) + (1 + outer_depth).
+        // Both individual references and the two-declaration path are shallow.
+        bounded_variant_result(
+            &format!(
+                "type Child = variant {{ Data({}) }}; type Parent = variant {{ Data({}) }};",
+                lists(63, "U8"),
+                lists(outer_depth, "Child")
+            ),
+            accepted,
+        );
+    }
+}
+
+#[test]
+fn variant_case_and_repeated_payload_expansion_boundaries_are_exact() {
+    let cases = |count| {
+        let mut output = String::new();
+        for index in 0..count {
+            write!(output, "Case{index},").unwrap();
+        }
+        output
+    };
+    for (count, accepted) in [(65_535, true), (65_536, false)] {
+        // One declaration plus one unit per payloadless case.
+        bounded_variant_result(
+            &format!("type Choice = variant {{ {} }};", cases(count)),
+            accepted,
+        );
+    }
+    for (fields, accepted) in [(64, true), (65, false)] {
+        // Large costs 1001; each reference repeats that cost. Aggregate costs
+        // are 1001 + 1 + 64*1001 = 65066 and 1001 + 1 + 65*1001 = 66067.
+        let mut field_source = String::new();
+        for index in 0..fields {
+            write!(field_source, "field{index}: Large,").unwrap();
+        }
+        bounded_variant_result(
+            &format!(
+                "type Large = variant {{ {} }}; type Envelope = {{ {field_source} }};",
+                cases(1000)
+            ),
+            accepted,
+        );
+    }
+}
