@@ -12,7 +12,8 @@ execute a runtime, admit a bundle, or mutate participant state.
 Unsigned `core.integer.add<U32/U64>` requires independently checked operand
 types and an upper-bound proof that its sum fits the declared width. Literal
 and nested sums compose bounds; dominating conjunctive comparisons contribute
-limits in either direction. Missing or disjunctive proof refuses raw Core with
+limits in either direction, including positive expression-level conditional arms.
+Missing or disjunctive proof refuses raw Core with
 `InvalidCoreIdentity` and no Target artifact. Source compilation is not proof
 at this boundary. Provider and runtime support remain separate. [TIR-REQ-056]
 
@@ -685,6 +686,7 @@ negated and disjunctive facts do not establish their bounds. Byte lookup also
 recognizes strict inequalities implied by a false predicate and the false prefix
 of lazy `Any`. Facts are scoped to the evaluated arm or lazy operand.
 
-Statement-level `CoreNode::Branch` and `require` do not extend the proof facts.
+Statement-level and branch-yield `CoreNode::Branch` forms, and `require`, do not
+extend the proof facts. The supported expression is `if ... then ... else ...`.
 Provider admission, input enforcement and runtime execution remain separate gates.
 [TIR-REQ-061]

@@ -2165,8 +2165,9 @@ The Edict Core prelude is intentionally small:
   actual length, established by a dominating comparison or, for a constant
   index, a declared minimum length. A maximum, `index <= len(bytes)`, an
   unrelated operand's length, or a later guard cannot establish this proof.
-  Expression-level `if` arms add their own predicate truth to enclosing proof
-  facts. Statement-level `if` and `require` do not establish lookup proofs.
+  The `if ... then ... else ...` expression adds its selected arm predicate
+  truth to enclosing proof facts. Statement-level `if`, branch-yield blocks and
+  `require` do not establish lookup proofs.
   A later `&&` operand sees
   earlier operands as true; a later `||` operand sees earlier operands as false.
   No such fact escapes the arm or lazy operand. Target independently rechecks
