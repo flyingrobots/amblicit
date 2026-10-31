@@ -698,9 +698,10 @@ selected case and required payload. Target rechecks payload expression types,
 integer widths, bounds, nominal contracts and available locals from untrusted
 Core. The same identity rule applies through helper calls and local references,
 so a structurally identical union cannot substitute for the declared one.
-Constructor payloads remain visible to function scope/cycle checks, graph-depth
-checks, intrinsic-cost traversal, operator-admissibility checks, execution-order
-validation and byte-lookup totality proofs. [TIR-REQ-062]
+Executable witnesses cover payload scope/cycle checks, graph depth, byte-lookup
+totality and exact helper-call argument/return identity. Dedicated payload
+mutation witnesses for intrinsic-cost, operator-admissibility and execution-order
+traversals remain planned in TIR-TP-118. [TIR-REQ-062]
 
 This is native Target IR validation and lowering. Provider acceptance, runtime
 variant values, matching, recursion and variant-valued external result encoding
@@ -719,3 +720,7 @@ scalar-output controls still project. A refusal is recorded separately in
 `result_projection_failures`, so the native Target artifact may remain available.
 A module with no target-owned steps still refuses as `NoTargetSteps`, regardless
 of whether its input is variant-typed. [TIR-REQ-062]
+
+A variant-typed input can flow through a source helper while a scalar output
+retains its result projection. This native Target witness does not establish
+provider admission or runtime input decoding. [TIR-REQ-062]

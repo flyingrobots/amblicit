@@ -374,7 +374,6 @@ Application build diagnostics include optional `signatureMismatch` context on a 
 
 The diagnostic and projection schemas admit this optional context. Consumers pinned to an older strict schema must update that schema before accepting the new property. Records without the property remain valid. The projection formatter preserves supplied compiler detail; current public projection inputs do not load a lawpack signature closure. No new projection transport or capability is introduced.
 
-
 Core expression review retains variant constructors as an explicit `kind: variant`
 record with the exact `type`, `case` and optional `payload`; absent payload is
 omitted. The payload's own review shape is preserved. This is display/projection

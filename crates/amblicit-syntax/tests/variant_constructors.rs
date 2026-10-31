@@ -314,6 +314,11 @@ fn target_rejects_union_identity_substitution_through_helper_calls() {
     let report = amblicit_syntax::lower_to_target_ir(&mutant, &facts());
     assert_eq!(report.status, Status::Unsupported, "{report:?}");
     assert!(report.artifact.is_none());
+    assert!(report
+        .failures
+        .iter()
+        .any(|failure| failure.kind
+            == amblicit_syntax::TargetLoweringFailureKind::InvalidCoreIdentity));
 }
 
 #[test]
@@ -558,4 +563,108 @@ fn variant_valued_result_projection_verifier_refuses_caller_encoded_candidates()
             "{ty}: {failure:?}"
         );
     }
+}
+
+#[test]
+fn variant_helper_storage_obeys_exact_allocation_and_step_budgets() {
+    // A call and its constructor each reserve the maximum variant value.
+    // The U8 input/output frame and record return reserve 522 bytes in total.
+    // Empty: 64 + 6*64 + 15 + 24 coordinate bytes + 5 label bytes = 492.
+    // A Bytes<max=10> payload adds 10; a two-field payload reserves 339 bytes.
+    for (extra, cases, allocated, steps) in [
+        ("", "Empty", 1506, 45),
+        ("", "Empty, Data(Bytes<max=10>)", 1526, 45),
+        (
+            "type Payload = { first: U8, last: Bytes<max=10>, };",
+            "Empty, Data(Payload)",
+            2056,
+            61,
+        ),
+    ] {
+        let source=format!("package choices.example@1; {extra} type Choice = variant {{ {cases} }}; fn make() -> Choice {{ return Choice::Empty; }} type Output = {{ value: U8, }}; intent run(input: U8) returns Output profile p.read basis none budget <= p.small {{ let value: Choice = make(); return {{ value: input }}; }}");
+        let parsed = parse_module(&source).unwrap();
+        for (max_allocated_bytes, max_steps, accepted) in [
+            (allocated, steps, true),
+            (allocated - 1, steps, false),
+            (allocated, steps - 1, false),
+        ] {
+            let context = context().with_budget(
+                "p.small",
+                amblicit_syntax::CoreBudget {
+                    max_steps,
+                    max_allocated_bytes,
+                    max_output_bytes: 65536,
+                },
+            );
+            let result = compile_to_core(&parsed, &context);
+            if accepted {
+                result.expect("exact conservative compiler budget");
+            } else {
+                let errors = result.unwrap_err();
+                assert_ne!(errors, [] as [amblicit_syntax::CompilerError; 0]);
+                assert!(
+                    errors
+                        .iter()
+                        .all(|error| error.kind == CompilerErrorKind::InvalidBound),
+                    "{errors:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn target_rejects_distinct_variant_identity_at_the_helper_argument_site() {
+    use amblicit_syntax::{CoreExpr, CoreNode, TargetLoweringFailureKind, TargetLoweringStatus};
+    let mut core=operation("fn make(value: U8) -> Choice { return Choice::Data(value); } fn alternate(value: U8) -> Other { return Other::Data(value); } fn accept(value: Choice) -> Choice { return value; }","accept(make(input.marker))","");
+    assert_eq!(
+        amblicit_syntax::lower_to_target_ir(&core, &facts()).status,
+        TargetLoweringStatus::Lowered
+    );
+    let value = core
+        .intents
+        .get_mut("run")
+        .unwrap()
+        .body
+        .nodes
+        .iter_mut()
+        .find_map(|node| match node {
+            CoreNode::Let { value, .. } => Some(value),
+            _ => None,
+        })
+        .unwrap();
+    let CoreExpr::Call { args, .. } = value else {
+        panic!("accept call")
+    };
+    let CoreExpr::Call { callee, .. } = &mut args[0] else {
+        panic!("constructor helper")
+    };
+    *callee = "choices.example@1.alternate".to_owned();
+    let report = amblicit_syntax::lower_to_target_ir(&core, &facts());
+    assert_eq!(
+        report.status,
+        TargetLoweringStatus::Unsupported,
+        "{report:?}"
+    );
+    assert!(report.artifact.is_none());
+    assert!(report
+        .failures
+        .iter()
+        .any(|failure| failure.kind == TargetLoweringFailureKind::InvalidCoreIdentity));
+}
+
+#[test]
+fn variant_typed_input_can_flow_through_a_helper_to_a_scalar_result_projection() {
+    let source="package choices.example@1; type Choice = variant { Empty, Data(U8) }; type Input = { choice: Choice, marker: U8, }; type Output = { value: U8, }; fn identity(value: Choice) -> Choice { return value; } intent run(input: Input) returns Output profile p.read basis none budget <= p.small { let value: Choice = identity(input.choice); return { value: input.marker }; }";
+    let core = compile_to_core(&parse_module(source).unwrap(), &context()).unwrap();
+    assert_eq!(core.required_core_capabilities, vec!["core.variant/v1"]);
+    let report = amblicit_syntax::lower_to_target_ir(&core, &facts());
+    assert_eq!(
+        report.status,
+        amblicit_syntax::TargetLoweringStatus::Lowered,
+        "{report:?}"
+    );
+    assert!(report.artifact.is_some());
+    assert!(report.result_projections.contains_key("run"));
+    assert!(report.result_projection_failures.is_empty());
 }

@@ -226,10 +226,16 @@ fn source_variants_require_a_core_capability_before_target_lowering() {
         };
         assert_eq!(core.required_core_capabilities, expected);
         let report = lower_to_target_ir(&core, &facts);
-        assert!(report
-            .failures
-            .iter()
-            .all(|failure| failure.kind != TargetLoweringFailureKind::UnsupportedCoreCapability));
+        assert_eq!(
+            report.status,
+            amblicit_syntax::TargetLoweringStatus::Unsupported
+        );
+        assert!(report.artifact.is_none());
+        assert_eq!(report.failures.len(), 1);
+        assert_eq!(
+            report.failures[0].kind,
+            TargetLoweringFailureKind::NoTargetSteps
+        );
     }
 }
 

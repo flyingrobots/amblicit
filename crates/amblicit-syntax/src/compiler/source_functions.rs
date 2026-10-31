@@ -581,6 +581,7 @@ fn contains_external_action_request(shape: &TypeShape) -> bool {
     }
 }
 
+/// Portable conservative value-storage accounting, independent of host pointer widths.
 fn value_bound(shape: &TypeShape) -> Option<(u64, u64)> {
     match &shape.kind {
         TypeKind::Bool | TypeKind::Int { .. } => Some((1, VALUE_CELL_BYTES)),

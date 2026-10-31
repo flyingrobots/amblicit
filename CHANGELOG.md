@@ -8,31 +8,26 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
-- Refuse variant-bearing application-result projections in both emission and
-  independent verification until a result encoding contract exists; internal
-  variant computation can still lower to native Target IR.
-
-- Require `core.variant/v1` in variant-bearing untrusted Core before Target
-  lowering; removing the metadata now refuses with `InvalidCoreIdentity`.
-
-- Classify unsupported variant-valued intent outputs before helper-frame
-  accounting, preserving `UnsupportedSourceShape` with or without helpers.
-
-- Check source variant constructors, optional payloads and conservative helper storage through canonical Core and native Target IR. Recognize `core.variant/v1` while refusing unknown capabilities; independently validate constructor identities, payloads and totality. Render constructors in the CLI. Matching, recursive variants, provider/runtime admission and variant-valued external results remain unsupported.
-
-- Acyclic source variant declarations preserve exact cases and optional payload
-  references in the existing Core type graph, including aliases and authenticated
-  source-module coordinates. Duplicate labels and zero-case sets, missing payload types,
-  cycles and depth/work excess refuse; payloadless cases also consume work.
-  Emitted variant graphs require `core.variant/v1`, including unused declarations;
-  Target recognizes this capability and independently validates constructors; unknown capabilities refuse without an artifact.
-  Variant helper storage uses checked conservative bounds, including nested
-  shapes; real size overflow continues to report `InvalidBound`. Public staged
-  resolution/type checking rejects duplicate case labels before map insertion.
-  Compiler type checking reports independent unresolved variant payloads together
-  without emitting a partial type.
-  Matching, variant-valued external results and recursive variants remain
-  separate gates.
+- Add acyclic source variant declarations and checked constructors with exact
+  case and optional-payload identity through canonical Core and native Target IR.
+  Aliases and source-module coordinates retain their original type identity;
+  distinct same-shaped variants cannot substitute at helper arguments or returns.
+  Duplicate/zero-case sets, unresolved payloads, cycles and excessive expansion
+  refuse. Staged checking preserves duplicate diagnostics and reports independent
+  unresolved payloads without emitting partial types.
+- Bound variant helper storage conservatively, including metadata and the largest
+  payload. Exact allocation/step boundaries are tested. Variant-valued intent
+  outputs refuse `UnsupportedSourceShape` with or without helpers; genuine
+  arithmetic overflow remains `InvalidBound`.
+- Require the hash-significant `core.variant/v1` capability for variant-bearing
+  Core, including unused declarations. Target independently rejects missing
+  metadata as `InvalidCoreIdentity` and unknown capabilities as
+  `UnsupportedCoreCapability`.
+- Refuse variant-bearing application-result projections during emission and
+  independent verification. Internal variant computation can still lower to
+  native Target IR. The CLI displays constructor type, case and optional payload.
+  Matching, recursive variants, provider/runtime support and variant-valued
+  application-result encoding remain separate implementation work.
 
 - Add `at(bytes, index) -> U8` with a strict proof that the U64 index is below
   the exact operand's length. Conditional and short-circuit guards stay scoped
