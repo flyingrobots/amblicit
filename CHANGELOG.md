@@ -13,7 +13,10 @@ versions still track specification maturity rather than a released product.
   to the expressions they dominate; Target independently rechecks untrusted
   Core, including forged bounds and helper guards. `at` survives source-module
   linking and is now a protected prelude name. Provider/runtime
-  execution remains a separate gate.
+  execution remains a separate gate. The shared expression-level conditional
+  proof scope also admits proven positive-arm subtraction, addition and slicing;
+  their opposite arms remain unproven. Statement branches and `require` do not
+  contribute new proof facts.
 
 - Authored `U8` scalar values and `u8` literals now preserve the existing Core
   unsigned-byte domain, including context-typed values and source-helper

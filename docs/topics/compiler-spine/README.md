@@ -173,7 +173,10 @@ Boolean `&&` and `||` predicates lower to ordered Core `All` and `Any` forms
 where predicate checking is used: input constraints, statement conditionals,
 requirements, branch-yield conditions, and pure conditionals. This preserves
 predicate structure at source-to-Core; it does not claim target execution
-support. Only conjunction supplies input-domain proof evidence.
+support. Conjunction supplies positive input-domain proof evidence. Within an
+expression-level `if`, the selected arm also receives its predicate truth.
+Byte lookup additionally recognizes the false prefix of lazy `||`; subtraction,
+addition and slicing do not derive bounds from negated or disjunctive facts.
 [CSPINE-REQ-039]
 
 The prelude call `len(value)` lowers for bounded structural `Bytes`, including
@@ -227,7 +230,9 @@ Operand type failures point to the wrong byte or endpoint expression; two wrong
 endpoints receive separate `TypeMismatch` diagnostics. [CSPINE-REQ-042]
 The compiler requires exact evidence of `start <= end <= len(bytes)` from
 conjunctive input constraints or unconditional equal/zero relationships. It
-does not infer aliases, transitive orders, or branch-local facts. Within an
+does not infer aliases or transitive orders. Positive expression-level `if` arms
+also supply comparison facts, scoped to that arm; statement-level branches and
+`require` do not. Within an
 ordered `&&` predicate, checked left predicates may establish the domain of
 later predicates. Separate input constraints remain a canonical set and cannot
 justify one another or the earlier basis. Conjunction proof facts do not escape
@@ -295,7 +300,8 @@ input-constraint enforcement, or runtime byte-copy charging.
   Its `U64` index needs a strict bound on the exact byte operand: `index <
   len(bytes)` (or the reversed comparison), or a constant below a declared
   minimum length. A byte maximum alone never proves a byte exists. Conditional
-  arms and short-circuit operands carry only their dominating predicate truths;
+  expression arms and short-circuit operands add their dominating predicate truths
+  to the enclosing constraints;
   a proof for another operand, index or arm cannot authorize the lookup. Target
   independently rechecks signature and totality on untrusted Core. Source-module
   linking preserves U8 and the `at` prelude, whose name cannot be shadowed.
@@ -303,7 +309,8 @@ input-constraint enforcement, or runtime byte-copy charging.
   [CSPINE-REQ-060]
 - Same-width `U32`/`U64` addition lowers to `core.integer.add<T>(left, right)`
   when literal bounds, zero identity, or dominating input constraints establish
-  that the sum fits its width. Conjunctions contribute upper bounds; disjunctions
+  that the sum fits its width. Positive expression-level `if` arm predicates also
+  contribute bounds within that arm. Conjunctions contribute upper bounds; disjunctions
   and negations do not. Nested sums compose those bounds. Unproved overflow
   refuses instead of wrapping. Signed and mixed-width sums are outside this
   subset. Bounded string and byte concatenation keep their existing meaning.
@@ -312,7 +319,8 @@ input-constraint enforcement, or runtime byte-copy charging.
 - Same-width `U32`/`U64` subtraction lowers to
   `core.integer.subtract<T>(left, right)` when the operands are identical,
   the subtrahend is zero, literal operands are ordered, or a checked input
-  constraint directly establishes the required order. Conjunctions supply
+  constraint directly establishes the required order. Positive expression-level
+  `if` arms also supply the required order within that arm. Conjunctions supply
   evidence; disjunctions and negations do not. Within `&&`, the checked left
   predicate can prove the right operand's domain. These temporary facts are
   restored afterward; completed input constraints also justify the intent body.

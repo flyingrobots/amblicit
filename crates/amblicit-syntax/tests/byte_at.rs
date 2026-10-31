@@ -382,3 +382,86 @@ fn byte_at_short_circuit_guards_cover_only_evaluated_operands() {
         );
     }
 }
+
+fn conditional_partial_operation(output: &str, guard: &str, operation: &str, fallback: &str) {
+    let source = |then_value: &str, else_value: &str| {
+        format!(
+            "package proof.scope@1;
+             type Input = {{ bytes: Bytes<max=32>, start: U64, end: U64,
+                             left: U64, right: U64, }};
+             intent evaluate(input: Input) returns {output}
+               profile p.read basis none budget <= p.small {{
+               let value: {output} = if {guard} then {then_value} else {else_value};
+               return value;
+             }}"
+        )
+    };
+    let core = compile_to_core(
+        &parse_module(&source(operation, fallback)).unwrap(),
+        &context(),
+    )
+    .expect("the positive conditional arm supplies the proof");
+    let report = lower_to_target_ir(&core, &facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+
+    let errors = compile_to_core(
+        &parse_module(&source(fallback, operation)).unwrap(),
+        &context(),
+    )
+    .unwrap_err();
+    assert!(errors
+        .iter()
+        .any(|error| error.kind == CompilerErrorKind::UnsupportedSourceShape));
+
+    let mut forged = core;
+    let CoreNode::Let {
+        value:
+            CoreExpr::If {
+                then_value,
+                else_value,
+                ..
+            },
+        ..
+    } = &mut forged.intents.get_mut("evaluate").unwrap().body.nodes[0]
+    else {
+        panic!("conditional binding")
+    };
+    std::mem::swap(then_value, else_value);
+    let report = lower_to_target_ir(&forged, &facts());
+    assert_eq!(
+        report.status,
+        TargetLoweringStatus::Unsupported,
+        "{report:?}"
+    );
+    assert!(report.artifact.is_none());
+}
+
+#[test]
+fn conditional_proof_covers_unsigned_subtraction_without_leaking() {
+    conditional_partial_operation(
+        "U64",
+        "input.left >= input.right",
+        "input.left - input.right",
+        "0u64",
+    );
+}
+
+#[test]
+fn conditional_proof_covers_unsigned_addition_without_leaking() {
+    conditional_partial_operation(
+        "U64",
+        "input.left <= 10u64 && input.right <= 20u64",
+        "input.left + input.right",
+        "0u64",
+    );
+}
+
+#[test]
+fn conditional_proof_covers_byte_slice_without_leaking() {
+    conditional_partial_operation(
+        "Bytes<max=32>",
+        "input.start <= input.end && input.end <= len(input.bytes)",
+        "slice(input.bytes, input.start, input.end)",
+        "b\"\"",
+    );
+}

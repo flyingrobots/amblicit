@@ -572,7 +572,8 @@ each operand once per inference call and independently checks local authority,
 endpoint widths and the conservative result bound.
 
 A separate Target-owned totality walk requires `start <= end <= len(bytes)`
-from exact conjunctive input evidence or unconditional equal/zero relations.
+from exact conjunctive input evidence, positive expression-level conditional
+arm comparisons, or unconditional equal/zero relations.
 Within an ordered `All`, each child must be total before its predicate becomes
 proof for later children. The walker retains borrowed predicate references,
 not cloned Core trees. Reordering a partial expression before its proof refuses
@@ -629,7 +630,8 @@ support for the preserved call.
 The target lowerer recognizes `core.integer.subtract<U32/U64>` with exactly two
 same-width operands. A target-owned Core walk independently checks that each
 subtraction is total from identical operands, zero, ordered constants, or exact
-operand order in conjunctive input predicates. It does not invoke the source
+operand order in conjunctive input predicates or a positive expression-level
+conditional arm. It does not invoke the source
 compiler's proof routine. Basis and input predicates are checked without using
 those predicates as already-established evidence. Disjunctive and negated
 predicates do not authorize subtraction.
@@ -666,3 +668,23 @@ the exact complete Core digest, even for a require-only intent without imports
 or a basis. Existing `NoTargetSteps` and result-projection restrictions remain.
 Provider schema admission and pure/read runtime function execution require the
 consumer to select and implement the new published contract explicitly.
+
+## Byte lookup and expression-level conditional proofs
+
+`core.bytes.at<OperandType>(bytes, index)` requires the same byte operand
+coordinate, a U64 index and a U8 result. Target independently proves strict
+`index < len(bytes)` for the same operand, or a constant index below its declared
+minimum length. A maximum alone cannot prove presence. The proof is reconstructed
+from caller-supplied Core; source acceptance is not trusted.
+
+Expression-level `CoreExpr::If` arms extend enclosing facts with their selected
+predicate truth. Positive arm comparisons also prove the domains of subtraction,
+addition and slicing; swapping their arms must refuse independently of the source
+compiler. These operations retain their existing conservative proof rules:
+negated and disjunctive facts do not establish their bounds. Byte lookup also
+recognizes strict inequalities implied by a false predicate and the false prefix
+of lazy `Any`. Facts are scoped to the evaluated arm or lazy operand.
+
+Statement-level `CoreNode::Branch` and `require` do not extend the proof facts.
+Provider admission, input enforcement and runtime execution remain separate gates.
+[TIR-REQ-061]
