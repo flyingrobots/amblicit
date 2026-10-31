@@ -185,7 +185,7 @@ Out of scope:
 
 - Full target/lawpack/shape artifact loading beyond authority-facts documents
   belongs to later lowerability and lawpack work.
-- Bare effect statements, matches, variants, and effect obstruction payloads
+- Bare effect statements, matches, variant construction, and effect obstruction payloads
   remain outside the lowerable subset.
 
 ## Bounded byte concatenation
@@ -323,7 +323,6 @@ Out of scope:
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | CSPINE-TP-089 | implemented | Exact call span | CSPINE-REQ-048 | Both input and receipt mismatches identify exactly the call expression byte range, excluding the binding annotation, failure handler and semicolon. | input_signature_error_identifies_first_incompatible_field, receipt_signature_error_identifies_first_incompatible_field | crates/amblicit-syntax/tests/effect_signature_diagnostics.rs | Containment is insufficient evidence. |
-
 | CSPINE-TP-095 | implemented | Conjunctive proof scope | CSPINE-REQ-038, CSPINE-REQ-041 | A checked conjunction prefix proves later bounded slices/subtraction; self, future, disjunctive, basis, separate-constraint and cross-intent evidence still refuse. | conjunctive_prefix_guards_prove_later_slices_and_unsigned_differences | crates/amblicit-syntax/tests/byte_slice.rs | Separate input constraints remain canonical sets; only ordered conjunction children carry prefix proof. |
 
 ## Bounded byte UTF-8 predicate
@@ -335,7 +334,6 @@ Out of scope:
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | CSPINE-TP-096 | implemented | UTF-8 primitive typing | CSPINE-REQ-053 | Bytes/exact/empty operands lower with Boolean projections; wrong signatures, foreign operands and unproven slices refuse. | byte_utf8_call_retains_operand_identity_and_boolean_projection, byte_utf8_rejects_wrong_operands_signatures_and_result_type, byte_utf8_target_refuses_forged_signature_or_operand_authority, byte_utf8_predicate_accepts_proven_prefix_and_rejects_unproven_slice, byte_utf8_prelude_name_cannot_be_shadowed, byte_utf8_source_function_budget_includes_bounded_scan, linker_preserves_utf8_prelude_with_an_imported_byte_alias | crates/amblicit-syntax/tests/byte_utf8.rs, crates/amblicit-syntax/tests/source_module_compilation.rs | Runtime byte validation is separate evidence. |
-
 | CSPINE-TP-097 | implemented | Direct UTF-8 scan cost | CSPINE-REQ-053 | Direct intent body/guard scans reject insufficient step ceilings, lazy branches use a maximum, repeated calls sum, and a source-helper scan is not charged twice at its call site. | direct_utf8_scans_are_bounded_in_bodies_guards_and_lazy_branches, utf8_helper_scan_is_not_charged_twice_at_its_call_site | crates/amblicit-syntax/tests/byte_utf8.rs | Allocation and output are unrestricted to isolate execution steps. |
 
 ## Effect Result Field Selection
@@ -557,3 +555,17 @@ CSPINE-REQ-054 remains planned. The implemented rows establish their named fixtu
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | CSPINE-TP-185 | implemented | Strict lookup bounds | CSPINE-REQ-060 | Exact operand identity and U8 result survive lowering; non-strict, absent, unrelated and disjunctive bounds, wrong signatures and widths refuse. Conditional proof applies only to its arm; mutated Core cannot borrow another operand's proof or forge the return type. | byte_at_preserves_exact_operand_and_u8_result, byte_at_rejects_unsafe_domains_and_signatures, byte_at_helper_guard_is_scoped_to_its_arm, target_rechecks_byte_at_signature_and_strict_totality, byte_at_uses_minimum_length_never_maximum_as_presence, target_rechecks_conditional_helper_dominance, target_rechecks_lazy_lookup_order_and_boolean_kind, byte_at_prelude_cannot_be_shadowed, byte_at_short_circuit_guards_cover_only_evaluated_operands, linker_preserves_at_prelude_inside_an_imported_source_helper | crates/amblicit-syntax/tests/byte_at.rs, crates/amblicit-syntax/tests/source_module_compilation.rs | Public provider and runtime support are separate gates. |
 | CSPINE-TP-186 | implemented | Conditional proof scope | CSPINE-REQ-060, CSPINE-REQ-038, CSPINE-REQ-041, CSPINE-REQ-055 | Positive expression-if arms prove subtraction, addition and slice; opposite-arm source and forged Core refuse without artifacts. | conditional_proof_covers_unsigned_subtraction_without_leaking, conditional_proof_covers_unsigned_addition_without_leaking, conditional_proof_covers_byte_slice_without_leaking | crates/amblicit-syntax/tests/byte_at.rs | Shared proof handling; no runtime acceptance claim. |
+
+## Source variant declaration graph
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| CSPINE-REQ-061 | implemented | Acyclic source variants enter the existing Core variant type graph with exact named cases, optional payload references, source-module identities, and bounded expansion. Zero-case sets, duplicate labels, unresolved payloads, cycles and depth/work excess refuse. Every emitted variant type graph requires core.variant/v1, which current Target rejects without artifacts. Variant helper storage and result sizing refuse UnsupportedSourceShape. Construction, matching and runtime representation remain separate gates. | issue #261 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-187 | implemented | Source variants | CSPINE-REQ-061 | Exact named cases/payloads and canonical identity survive source lowering; invalid or over-budget graphs refuse. | variant_cases_and_payloads_keep_exact_named_core_identity, variant_aliases_and_reordered_declarations_preserve_canonical_meaning, linked_variant_payloads_keep_their_original_module_coordinates, variant_payloads_must_resolve_even_when_unused, variant_payloads_preserve_authenticated_nominal_contracts, variant_empty_and_duplicate_case_sets_refuse, recursive_variant_payload_graphs_remain_rejected, variant_payload_depth_is_bounded, payloadless_variant_cases_consume_the_source_work_budget, variant_construction_and_matching_remain_explicitly_unsupported | crates/amblicit-syntax/tests/source_variants.rs | Type declarations only; constructors, matching and runtime support remain separate gates. |
+| CSPINE-TP-188 | implemented | Variant capability boundary | CSPINE-REQ-061 | Every emitted variant graph requires core.variant/v1; current Target refuses without artifact even for unused declarations or function-free variant input, while scalar-only control has no capability refusal. | source_variants_require_a_core_capability_before_target_lowering | crates/amblicit-syntax/tests/source_variants.rs | Core declaration support does not imply executable Target support. |
+| CSPINE-TP-189 | implemented | Variant executable storage | CSPINE-REQ-061 | Direct and nested variant helper values, helper-bearing intent input and variant intent output refuse UnsupportedSourceShape; genuine helper size overflow remains InvalidBound. | variant_function_storage_refuses_as_unsupported_without_retagging_overflow, variant_intent_storage_and_result_boundaries_are_explicit | crates/amblicit-syntax/tests/source_variants.rs | Function-free variant input enters flagged Core only (TP-188); output refusal is characterization, not new behavior. |
+| CSPINE-TP-190 | implemented | Variant payload diagnostics | CSPINE-REQ-061 | Independent unresolved payloads are each diagnosed at their case span without a partial type; staged duplicate labels remain diagnosed even after an unresolved earlier payload. | variant_payload_diagnostics_cover_each_invalid_case_without_a_partial_type | crates/amblicit-syntax/tests/source_variants.rs | Compiler diagnostics are plural; source linker retains its single-error public API. |
+| CSPINE-TP-191 | implemented | Composed variant depth and expansion | CSPINE-REQ-061 | Two-declaration variant/List height 128 accepts and 129 refuses; 65535 payloadless cases accept and 65536 refuse; repeated payload expansion accepts 65066 units and refuses 66067. | variant_structural_depth_composes_across_short_dependency_paths, variant_case_and_repeated_payload_expansion_boundaries_are_exact | crates/amblicit-syntax/tests/source_variants.rs | Characterization of existing bounds; mutations distinguish structural traversal and declaration expansion from earlier guards. |

@@ -319,7 +319,15 @@ fn validate_type_expr(expr: &TypeExpr, span: Span, errors: &mut Vec<SemanticErro
             }
         }
         TypeExpr::Variant(cases) => {
+            let mut names = BTreeSet::new();
             for case in cases {
+                if !names.insert(&case.name) {
+                    errors.push(error(
+                        SemanticErrorKind::DuplicateName,
+                        format!("duplicate variant case `{}`", case.name),
+                        case.span,
+                    ));
+                }
                 if let Some(payload) = &case.payload {
                     validate_type_ref(payload, case.span, errors);
                 }

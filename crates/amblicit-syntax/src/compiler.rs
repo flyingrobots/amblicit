@@ -31,6 +31,7 @@ mod return_budget;
 mod signature_diagnostic;
 mod source_functions;
 mod source_types;
+mod source_variants;
 mod target_pure_intrinsic;
 pub use signature_diagnostic::{
     EffectSignatureMismatch, SignatureMismatchPosition, SignaturePathSegment,
@@ -525,7 +526,15 @@ pub fn lower_core(typed: &TypedModule) -> Result<CoreModule, Vec<CompilerError>>
         types: typed.types.clone(),
         functions: typed.functions.clone(),
         intents,
-        required_core_capabilities: Vec::new(),
+        required_core_capabilities: if typed
+            .types
+            .values()
+            .any(|ty| matches!(ty, CoreType::Variant { .. }))
+        {
+            vec!["core.variant/v1".to_owned()]
+        } else {
+            Vec::new()
+        },
     };
     match validate_core_module_type_integrity(&core) {
         Ok(_) => Ok(core),
@@ -712,6 +721,7 @@ enum TypeKind {
         max: u64,
     },
     Record(BTreeMap<String, TypeShape>),
+    Variant(BTreeMap<String, Option<TypeShape>>),
     ExternalActionRequest {
         settlement: Box<TypeShape>,
     },
@@ -747,6 +757,17 @@ impl TypeShape {
                 fields: fields
                     .iter()
                     .map(|(name, shape)| (name.clone(), shape.value_type_coord()))
+                    .collect(),
+            },
+            TypeKind::Variant(cases) => CoreType::Variant {
+                cases: cases
+                    .iter()
+                    .map(|(name, payload)| {
+                        (
+                            name.clone(),
+                            payload.as_ref().map(TypeShape::value_type_coord),
+                        )
+                    })
                     .collect(),
             },
             TypeKind::ExternalActionRequest { settlement } => CoreType::ExternalActionRequest {
@@ -1086,15 +1107,7 @@ impl<'a> TypeChecker<'a> {
         match &decl.body {
             TypeExpr::Record(fields) => self.record_shape(&coord, fields, decl.span),
             TypeExpr::Ref(ty) => self.type_ref_shape(ty, decl.span),
-            TypeExpr::Variant(_) => {
-                self.errors.push(error(
-                    CompilerStage::TypeCheck,
-                    CompilerErrorKind::UnsupportedSourceShape,
-                    "variant type declarations are outside the current lowerable subset",
-                    decl.span,
-                ));
-                None
-            }
+            TypeExpr::Variant(cases) => self.variant_shape(&coord, cases, decl.span),
         }
     }
 
@@ -5862,6 +5875,11 @@ fn collect_imported_type_shape_closure(
         TypeKind::Record(fields) => {
             for field in fields.values() {
                 collect_imported_type_shape_closure(field, type_shapes, closure);
+            }
+        }
+        TypeKind::Variant(cases) => {
+            for payload in cases.values().flatten() {
+                collect_imported_type_shape_closure(payload, type_shapes, closure);
             }
         }
         TypeKind::Nominal { representation, .. }

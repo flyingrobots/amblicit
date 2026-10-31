@@ -1712,11 +1712,12 @@ additional nominal contract or Core type table entry. In particular, an alias
 of a digest-bound imported nominal type preserves that exact contract and does
 not permit substitution of its raw storage representation.
 
-The current compiler resolves acyclic source aliases and record dependencies
+The current compiler resolves acyclic source aliases, record and variant dependencies
 before checking function signatures or intent bodies. Declaration ordering does
 not change the resulting canonical Core. Alias targets must already belong to
-the currently lowerable type subset; this does not introduce generic,
-recursive or variant lowering.
+the currently lowerable type subset. Variant declarations preserve named cases
+and payload references in Core; generic and recursive types, variant construction
+and matching remain outside this source subset.
 
 Source type dependency paths have a ceiling of 128 declarations. Fully expanded
 structural height, including inline constructors, cached alias targets and
@@ -3193,6 +3194,15 @@ but that index is not a second authority: source capabilities are authoritative
 in the source profile and Core capabilities are authoritative in the Core
 module. Capability flags never change Core IR hash semantics for features that
 are present.
+
+The current compiler emits `core.variant/v1` whenever the finished Core type table
+contains a variant declaration. This is a module-wide requirement, including
+unused declarations and declarations linked from source modules. The conservative
+scope avoids presenting a type graph as supported merely because its current
+intent bodies do not inspect that type. It does not claim a variant value ABI.
+Current Target lowering rejects this capability as `UnsupportedCoreCapability`
+without an artifact. Core-only library compilation remains available; executable
+variant support requires a later target/provider/runtime capability implementation.
 
 ## Implementation Plan
 

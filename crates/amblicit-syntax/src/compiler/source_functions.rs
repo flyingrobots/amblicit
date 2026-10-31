@@ -348,6 +348,15 @@ impl TypeChecker<'_> {
             ));
             return None;
         }
+        if contains_variant(shape) {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::UnsupportedSourceShape,
+                "variant-bearing values are not supported by source function accounting",
+                span,
+            ));
+            return None;
+        }
         value_bound(shape).or_else(|| self.function_bound_failure(span))
     }
 
@@ -566,6 +575,24 @@ fn contains_external_action_request(shape: &TypeShape) -> bool {
         }
         TypeKind::List { item, .. } => contains_external_action_request(item),
         TypeKind::Record(fields) => fields.values().any(contains_external_action_request),
+        TypeKind::Variant(cases) => cases
+            .values()
+            .flatten()
+            .any(contains_external_action_request),
+        TypeKind::Bool
+        | TypeKind::Int { .. }
+        | TypeKind::Bytes { .. }
+        | TypeKind::String { .. } => false,
+    }
+}
+
+fn contains_variant(shape: &TypeShape) -> bool {
+    match &shape.kind {
+        TypeKind::Variant(_) => true,
+        TypeKind::Nominal { representation, .. } => contains_variant(representation),
+        TypeKind::List { item, .. } => contains_variant(item),
+        TypeKind::Record(fields) => fields.values().any(contains_variant),
+        TypeKind::ExternalActionRequest { settlement } => contains_variant(settlement),
         TypeKind::Bool
         | TypeKind::Int { .. }
         | TypeKind::Bytes { .. }
@@ -603,7 +630,7 @@ fn value_bound(shape: &TypeShape) -> Option<(u64, u64)> {
                 ))
             },
         ),
-        TypeKind::ExternalActionRequest { .. } => None,
+        TypeKind::ExternalActionRequest { .. } | TypeKind::Variant(_) => None,
     }
 }
 
@@ -621,7 +648,7 @@ fn encoded_bound(shape: &TypeShape) -> Option<u64> {
                 .checked_add(u64::try_from(name.len()).ok()?)?
                 .checked_add(encoded_bound(shape)?)
         }),
-        TypeKind::ExternalActionRequest { .. } => None,
+        TypeKind::ExternalActionRequest { .. } | TypeKind::Variant(_) => None,
     }
 }
 

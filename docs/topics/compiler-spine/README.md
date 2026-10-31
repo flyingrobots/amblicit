@@ -120,6 +120,33 @@ import owned by that same source module. These checks grant no runtime
 authority. Public application/provider closure
 consumption remains a separate requirement. [CSPINE-REQ-051]
 
+Acyclic source `type Choice = variant { Empty, Data(Payload) };` declarations
+enter the existing Core variant graph. Case names and optional payload references
+retain their exact named identity, including original coordinates after source
+module linking. Case/declaration order does not change canonical Core meaning;
+aliases remain transparent. Zero-case variants (`variant {}`), duplicate case names, unresolved
+payloads, cycles and expansion excess refuse. Every case consumes source work,
+including payloadless cases. Compiler type checking reports each independent
+unresolved payload at its case span and never emits a partial variant type. The
+source linker retains its single-error API, as for records. Variant payloads consume structural depth just as
+record fields do. [CSPINE-REQ-061]
+
+This is type-declaration support. Variant construction and `match` expressions
+still refuse. Variant-valued function storage and canonical result-size bounds
+refuse as `UnsupportedSourceShape` rather than assuming a wire representation.
+Variant inputs in modules with source functions also refuse at storage accounting;
+genuine size overflow remains `InvalidBound`. Enum declarations,
+recursive variants, provider acceptance and runtime execution are separate gates.
+[CSPINE-REQ-061]
+
+Every variant declaration in the finished Core type table adds the hash-significant
+`core.variant/v1` capability, including unused or source-linked declarations.
+Current Target lowering refuses that module with `UnsupportedCoreCapability` and
+no artifact. A function-free intent may therefore accept a variant-typed input
+into Core, but cannot produce a Target artifact. This module-wide gate deliberately
+keeps Core-only declaration libraries usable without asserting executable variant
+support. [CSPINE-REQ-061]
+
 Source `type Alias = Target;` declarations are transparent spellings for
 currently lowerable targets. They introduce no new nominal authority or Core
 type table entry. Aliases retain bounded representations and the exact owning
@@ -137,6 +164,7 @@ accepted and 129 refuses as `InvalidBound`. Staged `resolve_module` then
 cumulative source-defined declaration expansion each have a 65,536-unit ceiling.
 A scalar or opaque imported reference costs one expansion unit; list/map/option
 constructors add one plus their children; a record adds one plus its fields.
+A variant adds one plus every case and the expansion weight of each payload.
 References to source-defined types use their complete expansion weight on every
 occurrence. This bounds source-defined DAG expansion before shape construction;
 it is not a physical allocator metric or a replacement for imported-type and
@@ -260,7 +288,7 @@ without its consumer evaluator implementing that call. Successful packaging or
 an accepted verifier report therefore does not establish slice execution,
 input-constraint enforcement, or runtime byte-copy charging.
 
-- The lowerable subset is deliberately narrow: local record type declarations and transparent aliases,
+- The subset lowerable to Core is deliberately narrow: local record and acyclic variant type declarations and transparent aliases,
   first-order nongeneric source functions, one-parameter intents, `profile`, `basis none` or one input-derived explicit
   basis, `budget <=`, `where` predicates, pure `let` bindings, one annotated
   effectful `let ... else` shape, lowerable `require ... else` obstruction

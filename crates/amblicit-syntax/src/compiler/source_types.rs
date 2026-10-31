@@ -128,6 +128,11 @@ fn declaration_order(resolved: &ResolvedModule) -> Result<Vec<usize>, Box<Compil
 }
 
 fn references(decl: &TypeDecl, work: &mut u64) -> Result<BTreeSet<String>, Box<CompilerError>> {
+    if let TypeExpr::Variant(cases) = &decl.body {
+        *work = work
+            .checked_sub(u64::try_from(cases.len()).unwrap_or(u64::MAX))
+            .ok_or_else(|| bound_failure(decl.span, "source variant case work exceeded"))?;
+    }
     let root_depth = usize::from(!matches!(decl.body, TypeExpr::Ref(_)));
     let mut pending = roots(&decl.body)
         .into_iter()
@@ -215,6 +220,9 @@ fn visit(
 }
 fn declaration_weight(decl: &TypeDecl, weights: &BTreeMap<String, u64>) -> Option<u64> {
     let mut total = u64::from(!matches!(decl.body, TypeExpr::Ref(_)));
+    if let TypeExpr::Variant(cases) = &decl.body {
+        total = total.checked_add(u64::try_from(cases.len()).ok()?)?;
+    }
     for ty in roots(&decl.body) {
         total = total.checked_add(reference_weight(ty, weights)?)?;
     }
@@ -260,6 +268,9 @@ fn shape_fits_depth(shape: &TypeShape) -> bool {
             TypeKind::ExternalActionRequest { settlement } => pending.push((settlement, depth + 1)),
             TypeKind::Record(fields) => {
                 pending.extend(fields.values().map(|field| (field, depth + 1)));
+            }
+            TypeKind::Variant(cases) => {
+                pending.extend(cases.values().flatten().map(|payload| (payload, depth + 1)));
             }
             TypeKind::Bool
             | TypeKind::Int { .. }
