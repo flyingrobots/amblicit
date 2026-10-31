@@ -257,6 +257,7 @@ fn field<'a>(value: &'a CanonicalValue, key: &str) -> &'a CanonicalValue {
 
 fn rename_expr(expr: &mut CoreExpr, from: &str, to: &LocalRef) {
     match expr {
+        CoreExpr::Fold { initial, .. } => rename_expr(initial, from, to),
         CoreExpr::Match { scrutinee, arms } => {
             rename_expr(scrutinee, from, to);
             for arm in arms {

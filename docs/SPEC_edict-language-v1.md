@@ -2099,6 +2099,33 @@ effects. There is no other narrowing in v1.
 - Loop bodies obey normal A-normal effect rules; per-iteration effects retain
   ordering and the static maximum cardinality in Core IR (I-016).
 
+### First-order bounded state fold
+
+`fold(initial, step, N)` carries bounded state through a fixed number of pure
+steps (`EDICT-LANG-FOLD-001`). This expression introduces neither mutable locals
+nor function values. `step` must statically name a source-owned pure helper with
+signature `S -> S`; S is a bounded scalar or aggregate type and retains nominal
+identity. N is a statically supplied `U64` literal in the current compiler
+profile. The initial state is evaluated exactly once, then the helper is invoked
+in order N times. N equal to zero returns the initial state but does not exempt
+the helper from type checking, authority checks or cycle rejection.
+
+Core binds the initial expression, static step coordinate, iteration bound and
+state type in a `fold` expression requiring `core.fold/v1`. Consumers must
+validate the capability and state-preserving signature independently. Missing
+support is a refusal, never an unrolling fallback or silent zero-iteration
+execution. Costs include the initial expression, every step's transitive work,
+state validation/copy costs and per-iteration overhead. Arithmetic overflow in a
+static bound refuses. Runtime ceilings may refuse before completion; a partial
+accumulator is not a successful result.
+
+A terminal state is represented in S and its authored step returns the same
+state without reads or effects. Remaining iteration overhead is still charged.
+Pure source helper rules already prohibit reads and effects, and `fold` does
+not relax them. This is distinct from effect-emitting `for` over a list that
+already exists. Generic provider/runtime execution of `core.fold/v1` remains a
+separate implementation gate; this source/Core contract is not execution proof.
+
 ## Standard Functions
 
 The Edict Core prelude is intentionally small:

@@ -16,8 +16,8 @@ const VARIANT_METADATA_KEY_BYTES: u64 = 15;
 
 #[derive(Debug, Clone)]
 pub(super) struct Signature {
-    params: Vec<TypeShape>,
-    result: TypeShape,
+    pub(super) params: Vec<TypeShape>,
+    pub(super) result: TypeShape,
 }
 
 impl TypeChecker<'_> {

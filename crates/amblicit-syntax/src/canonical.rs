@@ -1504,6 +1504,18 @@ fn core_expr_value(expr: &CoreExpr) -> Result<CanonicalValue, CanonicalError> {
             }
             map(fields)
         }
+        CoreExpr::Fold {
+            initial,
+            step,
+            bound,
+            state_type,
+        } => map([
+            ("kind", text("fold")),
+            ("initial", core_expr_value(initial)?),
+            ("step", text(step)),
+            ("bound", CanonicalValue::Integer(i128::from(*bound))),
+            ("stateType", text(state_type)),
+        ]),
         CoreExpr::Match { scrutinee, arms } => map([
             ("kind", text("match")),
             ("scrutinee", core_expr_value(scrutinee)?),

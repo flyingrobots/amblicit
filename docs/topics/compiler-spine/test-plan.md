@@ -595,3 +595,32 @@ CSPINE-REQ-054 remains planned. The implemented rows establish their named fixtu
 | CSPINE-TP-197 | planned | Public execution and exact resource boundaries | CSPINE-REQ-063 | Public compiler packages preserve single-scrutinee and selected-arm runtime evaluation, with exact resource ceilings. | - | - | Generic Echo runtime and public package execution are downstream gates. |
 | CSPINE-TP-198 | implemented | Cost and scope | CSPINE-REQ-063 | Direct dispatch exceeding its budget refuses while a same-frame control accepts; nested matches and Boolean predicates retain scope and recursive calls in arms refuse. | direct_matches_charge_dispatch_without_a_helper_declaration, nested_matches_keep_outer_payloads_and_boolean_predicates_scoped, match_arms_cannot_hide_recursive_calls | crates/amblicit-syntax/tests/variant_matches.rs | Compiler accounting is distinct from runtime consumption. |
 | CSPINE-TP-199 | implemented | Match peer inference | CSPINE-REQ-063 | Bare integer arms infer width from typed peer arms regardless of arm order; the resulting Core retains source arm order. All-bare matches remain ambiguous without an expected type. | variant_match_infers_bare_integer_width_from_peer_arms, conditional_infers_bare_integer_width_from_match_peer, variant_match_without_a_typed_peer_keeps_integer_width_ambiguous | crates/amblicit-syntax/tests/variant_matches.rs | Review probe failed TypeMismatch before the inference repair. |
+
+
+## Bounded state-carrying fold (issue #268)
+
+Planned first-order contract: `fold(initial, step, N)` evaluates initial once,
+then applies the statically named source helper `step: S -> S` exactly N times
+in order. N is a statically known unsigned bound; state type S is bounded and
+must remain identical, including nominal identity. No function values, captures,
+mutable locals or recursion are introduced. A terminal state remains an authored
+step case that returns itself; remaining iteration overhead is still charged.
+Pure steps cannot perform reads or effects. This does not replace effect-emitting
+`for` (issue #267), nor does it claim the rope application is implemented.
+
+The Core representation must bind initial, static helper coordinate and bound,
+require an explicit capability, include the step in dependency/cycle validation,
+and charge every invocation and its transitive calls with checked arithmetic.
+Target must independently recheck that contract; a provider lacking the
+capability must refuse, never unroll or silently skip it. Generic runtime
+execution and public compiler-to-runtime evidence are downstream gates.
+
+| Requirement | Status | Contract | Owner |
+| --- | --- | --- | --- |
+| CSPINE-REQ-064 | planned | First-order bounded state fold preserves state identity, ordering, static bounds, authority and conservative cost. | #268 |
+
+| Case ID | Status | Case | Requirement | Oracle | Evidence | Fixture | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-200 | planned | Initial state, step and bound survive compilation | CSPINE-REQ-064 | Public source-to-Core result contains the explicit fold and static helper coordinate; no generated unrolling. | bounded_fold_preserves_initial_state_static_step_and_iteration_bound | crates/amblicit-syntax/tests/bounded_state_fold.rs | First RED witness; runtime behavior not yet established. |
+| CSPINE-TP-201 | planned | Invalid bound, state or helper authority | CSPINE-REQ-064 | Runtime-supplied bounds, wrong arity/state, callback values, recursive dependencies and bound/cost overflow refuse with structured errors. | - | - | Includes zero-bound safety: invalid helper/cycles cannot hide behind zero. |
+| CSPINE-TP-202 | planned | Independent Target and resource validation | CSPINE-REQ-064 | Mutated Core helper, bound, state or capability refuses independently; exact/one-under budgets and terminal-state work are checked. | - | - | Native Target evidence is distinct from provider/runtime evidence. |

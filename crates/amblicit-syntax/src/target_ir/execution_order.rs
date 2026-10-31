@@ -284,6 +284,7 @@ impl<'a> LocalAvailability<'a> {
         match expression {
             CoreExpr::Local { reference } => self.reference(reference),
             CoreExpr::Const(_) => true,
+            CoreExpr::Fold { initial, .. } => self.expression(initial, depth + 1),
             CoreExpr::Match { scrutinee, arms } => {
                 if !self.expression(scrutinee, depth + 1) {
                     return false;
@@ -365,6 +366,7 @@ fn provably_non_integer(expression: &CoreExpr, depth: usize) -> bool {
     }
     match expression {
         CoreExpr::Const(value) => !matches!(value, CoreValue::Int { .. }),
+        CoreExpr::Fold { .. } => false,
         CoreExpr::Match { arms, .. } => arms
             .iter()
             .any(|arm| provably_non_integer(&arm.body, depth + 1)),

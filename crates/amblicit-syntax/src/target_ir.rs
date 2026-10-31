@@ -12,6 +12,7 @@ mod byte_slice;
 mod byte_utf8;
 pub(crate) mod execution_order;
 mod pure_intrinsics;
+mod state_fold;
 mod totality;
 mod unsigned_addition;
 mod unsigned_subtraction;
@@ -910,7 +911,7 @@ fn validate_core_module(
         .required_core_capabilities
         .iter()
         // Constructor identities and payloads are independently checked below.
-        .filter(|capability| capability.as_str() != "core.variant/v1")
+        .filter(|capability| !matches!(capability.as_str(), "core.variant/v1" | "core.fold/v1"))
         .map(|capability| TargetLoweringFailure {
             kind: TargetLoweringFailureKind::UnsupportedCoreCapability,
             intent: None,
@@ -1731,6 +1732,9 @@ fn expression_has_closed_authority(
         return false;
     }
     match expression {
+        CoreExpr::Fold { .. } => {
+            state_fold::state(core, pure_functions, expression, available).is_some()
+        }
         CoreExpr::Match { scrutinee, arms } => {
             variant_matches::result_shape(core, pure_functions, scrutinee, arms, available)
                 .is_some()
@@ -1900,6 +1904,8 @@ fn expression_fits_declared_type(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> bool {
     match expression {
+        CoreExpr::Fold { .. } => state_fold::state(core, pure_functions, expression, available)
+            .is_some_and(|ty| core_type_fits(core, ty, expected)),
         CoreExpr::Match { scrutinee, arms } => variant_matches::every(
             core,
             pure_functions,
@@ -2166,6 +2172,9 @@ fn expression_string_shape(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<(u64, String)> {
     match expression {
+        CoreExpr::Fold { .. } => {
+            state_fold::string_shape(core, pure_functions, expression, available)
+        }
         CoreExpr::Match { scrutinee, arms } => {
             let mut shape: Option<(u64, String)> = None;
             let valid = variant_matches::every(
@@ -2275,6 +2284,9 @@ fn expression_type_coordinate(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<String> {
     match expression {
+        CoreExpr::Fold { .. } => {
+            state_fold::state(core, pure_functions, expression, available).map(str::to_owned)
+        }
         CoreExpr::Match { scrutinee, arms } => {
             variant_matches::coordinate(core, pure_functions, scrutinee, arms, available)
         }
@@ -2443,6 +2455,7 @@ fn expression_references_are_available(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> bool {
     match expression {
+        CoreExpr::Fold { initial, .. } => expression_references_are_available(initial, available),
         CoreExpr::Match { scrutinee, arms } => {
             expression_references_are_available(scrutinee, available)
                 && arms.iter().all(|arm| {
@@ -2605,6 +2618,7 @@ fn expression_has_empty_aggregate(expression: &CoreExpr, depth: usize) -> bool {
         return false;
     }
     match expression {
+        CoreExpr::Fold { initial, .. } => expression_has_empty_aggregate(initial, depth + 1),
         CoreExpr::Match { scrutinee, arms } => {
             expression_has_empty_aggregate(scrutinee, depth + 1)
                 || arms
@@ -2711,6 +2725,10 @@ fn expression_comparisons_admissible(
         expression_comparisons_admissible(core, pure_functions, value, available, depth + 1)
     };
     match expression {
+        CoreExpr::Fold { initial, .. } => {
+            state_fold::state(core, pure_functions, expression, available).is_some()
+                && child(initial)
+        }
         CoreExpr::Match { scrutinee, arms } => {
             child(scrutinee)
                 && variant_matches::every(
@@ -2919,6 +2937,8 @@ fn comparison_operand_shape(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<ComparisonOperandShape> {
     match expression {
+        CoreExpr::Fold { .. } => state_fold::state(core, pure_functions, expression, available)
+            .map(|ty| ComparisonOperandShape::Coordinate(ty.to_owned())),
         CoreExpr::Match { scrutinee, arms } => {
             variant_matches::shape(core, pure_functions, scrutinee, arms, available)
         }
@@ -3567,6 +3587,7 @@ fn predicate_references_step_output(
 
 fn expr_references_step_output(expr: &CoreExpr, step_outputs: &BTreeSet<String>) -> bool {
     match expr {
+        CoreExpr::Fold { initial, .. } => expr_references_step_output(initial, step_outputs),
         CoreExpr::Match { scrutinee, arms } => {
             expr_references_step_output(scrutinee, step_outputs)
                 || arms.iter().any(|arm| {

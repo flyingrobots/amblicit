@@ -160,6 +160,7 @@ fn protected_names(module_names: &BTreeSet<String>) -> BTreeSet<String> {
 }
 
 const PRELUDE_NAMES: &[&str] = &[
+    "fold",
     "Bool",
     "Bytes",
     "CapabilityRef",

@@ -48,6 +48,40 @@ callee frame. `if` and ordered `All`/`Any` predicates retain lazy evaluation.
 Boolean-valued expressions use existing Core `If` and predicate forms; Boolean
 values in predicate position compare with `true`.
 
+## Bounded state fold
+
+`fold(initial, step, N)` is a special first-order prelude expression. `step`
+names a source helper with exactly one parameter and the same declared return
+type. It is a compile-time helper reference, not a function value or closure.
+The initial state must fit that bounded state type without changing nominal
+identity. N is a `U64` literal; runtime-supplied bounds refuse.
+
+```amblicit
+package iteration.state@1;
+type State = { done: Bool };
+fn step(state: State) -> State { return { done: !state.done }; }
+fn run(initial: State) -> State { return fold(initial, step, 3u64); }
+```
+
+Core retains one initial expression, the source step coordinate, the bound and
+state type under `core.fold/v1`. Initial state is evaluated once, followed by
+exactly N ordered applications. With zero iterations the result is the initial
+state, but the step's signature, authority and acyclic dependency graph still
+must be valid. The compiler charges repeated step work and transitive calls
+with overflow-checked multiplication, including per-iteration overhead.
+
+A terminal state is an authored case whose step returns itself; it does not
+remove remaining iteration charges. Pure source helpers cannot read state or
+emit effects, including inside this form. Effect-emitting `for` remains a
+separate mechanism. The existing recursive-call prohibition includes step
+references even at zero bounds.
+
+Native Target checking independently validates the initial value, source helper
+and state identity. The current Echo provider/runtime does not yet support
+`core.fold/v1`; compiler support alone does not establish public package
+acceptance or runtime execution. The Jim persistent-rope and its oracle suite
+remain downstream work.
+
 ## Variant match expressions
 
 A value expression such as `match value { Empty => b"", Data(payload) => payload }`

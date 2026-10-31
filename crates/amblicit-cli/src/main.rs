@@ -1756,6 +1756,15 @@ fn core_expr_review(expr: &CoreExpr) -> Value {
             }
             value
         }
+        CoreExpr::Fold {
+            initial,
+            step,
+            bound,
+            state_type,
+        } => json!({
+            "kind": "fold", "initial": core_expr_review(initial),
+            "step": step, "bound": bound, "stateType": state_type,
+        }),
         CoreExpr::Match { scrutinee, arms } => json!({
             "kind": "match",
             "scrutinee": core_expr_review(scrutinee),
