@@ -458,3 +458,104 @@ fn target_requires_variant_capability_for_helpers_and_direct_constructors() {
         );
     }
 }
+
+fn variant_output_candidate(
+    ty: &str,
+    body: &str,
+) -> (CoreModule, amblicit_syntax::TargetIrArtifact, String) {
+    let source=format!("package choices.example@1; type Choice = variant {{ Empty, Data(U8) }}; type Envelope = {{ choice: Choice, }}; fn make(value: U8) -> {ty} {{ return {body}; }} type Input = {{ marker: U8, }}; type Output = {{ value: U8, }}; intent run(input: Input) returns Output profile p.read basis none budget <= p.small {{ let constructed: {ty} = make(input.marker); return {{ value: input.marker }}; }}");
+    let mut core = compile_to_core(&parse_module(&source).unwrap(), &context()).unwrap();
+    let baseline = amblicit_syntax::lower_to_target_ir(&core, &facts());
+    assert_eq!(
+        baseline.status,
+        amblicit_syntax::TargetLoweringStatus::Lowered,
+        "{baseline:?}"
+    );
+    assert!(baseline.result_projections.contains_key("run"));
+    let result_type = core.functions["make"].return_type.clone();
+    let intent = core.intents.get_mut("run").unwrap();
+    let local = intent
+        .body
+        .locals
+        .iter()
+        .find(|local| local.ty == result_type)
+        .unwrap()
+        .clone();
+    intent.output = result_type;
+    intent.body.result = amblicit_syntax::CoreExpr::Local {
+        reference: local.clone(),
+    };
+    let report = amblicit_syntax::lower_to_target_ir(&core, &facts());
+    assert_eq!(
+        report.status,
+        amblicit_syntax::TargetLoweringStatus::Lowered,
+        "{report:?}"
+    );
+    let target = report.artifact.unwrap();
+    let binding = target.intents["run"]
+        .pure_bindings
+        .iter()
+        .find(|binding| binding.binding == local)
+        .unwrap()
+        .id
+        .clone();
+    (core, target, binding)
+}
+
+#[test]
+fn variant_valued_result_projection_emission_refuses_direct_and_nested_values() {
+    for (ty, body) in [
+        ("Choice", "Choice::Data(value)"),
+        ("Envelope", "{ choice: Choice::Data(value) }"),
+        ("List<Choice,max=1>", "[Choice::Data(value)]"),
+    ] {
+        let (core, target, _) = variant_output_candidate(ty, body);
+        let failure = amblicit_syntax::emit_result_projection(&core, &target, "run").unwrap_err();
+        assert_eq!(
+            failure.kind(),
+            amblicit_syntax::ResultProjectionFailureKind::OutputShapeMismatch,
+            "{ty}: {failure:?}"
+        );
+        let report = amblicit_syntax::lower_to_target_ir(&core, &facts());
+        assert_eq!(
+            report.status,
+            amblicit_syntax::TargetLoweringStatus::Lowered
+        );
+        assert!(!report.result_projections.contains_key("run"));
+        assert_eq!(
+            report.result_projection_failures["run"].kind(),
+            amblicit_syntax::ResultProjectionFailureKind::OutputShapeMismatch
+        );
+    }
+}
+
+#[test]
+fn variant_valued_result_projection_verifier_refuses_caller_encoded_candidates() {
+    for (ty, body) in [
+        ("Choice", "Choice::Data(value)"),
+        ("Envelope", "{ choice: Choice::Data(value) }"),
+        ("List<Choice,max=1>", "[Choice::Data(value)]"),
+    ] {
+        let (core, target, binding_id) = variant_output_candidate(ty, body);
+        let candidate = amblicit_syntax::ResultProjection {
+            api_version: amblicit_syntax::RESULT_PROJECTION_API_VERSION.to_owned(),
+            operation_coordinate: format!("{}.run", core.coordinate),
+            output_type: core.intents["run"].output.clone(),
+            max_output_bytes: core.intents["run"].core_evaluation_budget.max_output_bytes,
+            expression: amblicit_syntax::ResultProjectionExpr::Source {
+                source: amblicit_syntax::ResultProjectionSource::PureBinding { binding_id },
+                path: Vec::new(),
+            },
+        };
+        let bytes = amblicit_syntax::encode_result_projection(&candidate).unwrap();
+        let digest = amblicit_syntax::digest_result_projection(&candidate).unwrap();
+        let failure =
+            amblicit_syntax::verify_result_projection(&core, &target, "run", &bytes, digest)
+                .unwrap_err();
+        assert_eq!(
+            failure.kind(),
+            amblicit_syntax::ResultProjectionFailureKind::OutputShapeMismatch,
+            "{ty}: {failure:?}"
+        );
+    }
+}

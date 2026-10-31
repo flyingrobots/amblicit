@@ -8,6 +8,10 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Refuse variant-bearing application-result projections in both emission and
+  independent verification until a result encoding contract exists; internal
+  variant computation can still lower to native Target IR.
+
 - Require `core.variant/v1` in variant-bearing untrusted Core before Target
   lowering; removing the metadata now refuses with `InvalidCoreIdentity`.
 

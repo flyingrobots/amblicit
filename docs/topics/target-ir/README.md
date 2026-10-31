@@ -710,3 +710,12 @@ Target requires `core.variant/v1` whenever the Core type table contains a varian
 including unused declarations. Missing capability metadata refuses as
 `InvalidCoreIdentity`; unknown names and versions refuse as
 `UnsupportedCoreCapability`. The capability list remains hash-significant.
+
+Native Target lowering can retain internal variant bindings, but result-projection
+emission and independent verification reject variant-bearing output graphs with
+`OutputShapeMismatch`. This includes projecting an entire aggregate containing a
+variant. Direct, record and list outputs have executable refusal witnesses;
+scalar-output controls still project. A refusal is recorded separately in
+`result_projection_failures`, so the native Target artifact may remain available.
+A module with no target-owned steps still refuses as `NoTargetSteps`, regardless
+of whether its input is variant-typed. [TIR-REQ-062]
