@@ -84,6 +84,7 @@ fn zero_bound_does_not_hide_recursive_step_authority() {
 #[test]
 fn fold_core_requires_capability_and_declared_step_state() {
     let original = compile_source("fn step(s: Bool) -> Bool { return !s; } fn run(s: Bool) -> Bool { return fold(s, step, 0u64); }").expect("zero bound");
+    encode_core_module(&original).expect("unmutated zero-bound fold encodes");
     assert!(original
         .required_core_capabilities
         .iter()
@@ -105,9 +106,18 @@ fn fold_core_requires_capability_and_declared_step_state() {
         if mutation == 2 {
             *state_type = "U8".into();
         }
-        assert!(
-            encode_core_module(&core).is_err(),
-            "mutated fold authority must not encode"
+        let failure = amblicit_syntax::validate_core_module_type_integrity(&core)
+            .expect_err("mutated fold authority must fail Core integrity");
+        assert_eq!(
+            failure.kind(),
+            amblicit_syntax::CoreTypeIntegrityFailureKind::InvalidDefinition
+        );
+        assert_eq!(failure.path(), "functions.run.body.result");
+        assert_eq!(
+            encode_core_module(&core)
+                .expect_err("invalid fold must not encode")
+                .kind(),
+            amblicit_syntax::CanonicalErrorKind::UnsupportedValue
         );
     }
 }
@@ -159,11 +169,30 @@ fn target_rechecks_fold_initial_state_and_static_helper() {
             1 => *step = "untrusted.step".into(),
             _ => *state_type = "Bool".into(),
         }
+        // The initial-value mismatch must reach the Target-local type check.
+        // Bad helper/state coordinates instead stop at shared Core integrity.
+        if mutation == 0 {
+            amblicit_syntax::validate_core_module_type_integrity(&core)
+                .expect("initial-value mismatch is structurally valid Core");
+            encode_core_module(&core).expect("initial-value mismatch encodes structurally");
+        } else {
+            let failure = amblicit_syntax::validate_core_module_type_integrity(&core)
+                .expect_err("helper/state forgery stops at shared Core integrity");
+            assert_eq!(
+                failure.kind(),
+                amblicit_syntax::CoreTypeIntegrityFailureKind::InvalidDefinition
+            );
+            assert_eq!(failure.path(), "functions.run.body.result");
+        }
         let report = amblicit_syntax::lower_to_target_ir(&core, &facts);
-        assert_ne!(
+        assert_eq!(
             report.status,
-            amblicit_syntax::TargetLoweringStatus::Lowered,
-            "{report:?}"
+            amblicit_syntax::TargetLoweringStatus::Unsupported
+        );
+        assert_eq!(report.failures.len(), 1, "{report:?}");
+        assert_eq!(
+            report.failures[0].kind,
+            amblicit_syntax::TargetLoweringFailureKind::InvalidCoreIdentity
         );
         assert!(report.artifact.is_none());
     }
