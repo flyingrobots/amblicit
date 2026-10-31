@@ -2908,7 +2908,7 @@ fn field_expression_shape(
     field: &str,
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<ComparisonOperandShape> {
-    let base_shape = comparison_operand_shape(core, pure_functions, base, available)?;
+    let base_shape = variant_matches::result_body_shape(core, pure_functions, base, available)?;
     comparison_record_fields(core, &base_shape)?.remove(field)
 }
 

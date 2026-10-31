@@ -108,7 +108,7 @@ fn joined_shape(
     }
 }
 
-fn result_body_shape(
+pub(super) fn result_body_shape(
     core: &CoreModule,
     functions: &[TargetPureFunctionFact],
     body: &CoreExpr,
@@ -169,5 +169,5 @@ pub(super) fn coordinate(
     arms: &[CoreMatchArm],
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<String> {
-    shape(core, functions, scrutinee, arms, available)?.type_coordinate()
+    result_shape(core, functions, scrutinee, arms, available)?.type_coordinate()
 }

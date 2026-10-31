@@ -747,3 +747,9 @@ For costed intrinsic arguments, a match establishes its byte/list bound from
 its largest arm, with payload references resolved in that arm's scope. Empty
 list literals contribute zero. This retains the intrinsic meter's existing
 conditional-bound rule for match alternatives. [TIR-REQ-063]
+
+Field and type recovery use value-capable match shapes rather than requiring
+all sibling fields to be comparison operands. A scalar field remains available
+when a matched record also contains an unrelated empty or nonempty list literal.
+Direct list-match comparisons remain outside the comparison language.
+[TIR-REQ-063]

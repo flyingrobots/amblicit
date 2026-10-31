@@ -14,6 +14,7 @@ versions still track specification maturity rather than a released product.
   Native Target rejects incompatible match results in untyped metadata while
   preserving compatible empty/nonempty list and record alternatives. Intrinsic
   cost accounting uses the largest bound across match arguments, including lists.
+  Recover scalar fields from matched records even when sibling fields hold lists.
   Provider/runtime matching remains separate.
 
 - Add acyclic source variant declarations and checked constructors with exact

@@ -452,3 +452,88 @@ fn target_preserves_empty_and_nested_list_match_metadata() {
         assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
     }
 }
+
+#[test]
+fn target_projects_match_record_fields_with_unrelated_list_literals() {
+    use amblicit_syntax::{CoreExpr, CoreValue, TargetLoweringStatus};
+    for empty in [false, true] {
+        let mut core = operation();
+        let result = &mut core.functions.get_mut("unwrap").unwrap().body.result;
+        let mut matched = result.clone();
+        let CoreExpr::Match { arms, .. } = &mut matched else {
+            panic!("match")
+        };
+        for arm in arms {
+            arm.body = CoreExpr::Record {
+                fields: std::collections::BTreeMap::from([
+                    ("value".into(), arm.body.clone()),
+                    (
+                        "unused".into(),
+                        CoreExpr::List {
+                            values: if empty {
+                                vec![]
+                            } else {
+                                vec![CoreExpr::Const(CoreValue::Bool(true))]
+                            },
+                        },
+                    ),
+                ]),
+            };
+        }
+        *result = CoreExpr::Field {
+            base: Box::new(matched),
+            field: "value".into(),
+        };
+        amblicit_syntax::validate_core_module_type_integrity(&core).expect("Core valid");
+        let report = amblicit_syntax::lower_to_target_ir(&core, &facts());
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Lowered,
+            "empty={empty}: {report:?}"
+        );
+    }
+}
+
+#[test]
+fn target_keeps_list_match_comparisons_outside_the_comparison_language() {
+    use amblicit_syntax::{CompareOp, CoreExpr, CorePredicate, CoreValue, TargetLoweringStatus};
+    let mut core = operation();
+    let result = &mut core.functions.get_mut("unwrap").unwrap().body.result;
+    let mut matched = result.clone();
+    let CoreExpr::Match { arms, .. } = &mut matched else {
+        panic!("match")
+    };
+    for arm in arms {
+        arm.body = CoreExpr::List {
+            values: vec![CoreExpr::Const(CoreValue::Bool(true))],
+        };
+    }
+    *result = CoreExpr::If {
+        predicate: Box::new(CorePredicate::Compare {
+            op: CompareOp::Eq,
+            left: matched.clone(),
+            right: matched,
+        }),
+        then_value: Box::new(CoreExpr::Const(CoreValue::Int {
+            width: "U8".into(),
+            value: "1".into(),
+        })),
+        else_value: Box::new(CoreExpr::Const(CoreValue::Int {
+            width: "U8".into(),
+            value: "0".into(),
+        })),
+    };
+    amblicit_syntax::validate_core_module_type_integrity(&core).expect("structurally valid");
+    let report = amblicit_syntax::lower_to_target_ir(&core, &facts());
+    assert_eq!(
+        report.status,
+        TargetLoweringStatus::Unsupported,
+        "{report:?}"
+    );
+    assert!(report.artifact.is_none());
+    assert!(report
+        .failures
+        .iter()
+        .any(|failure| failure.kind
+            == amblicit_syntax::TargetLoweringFailureKind::InvalidCoreIdentity));
+}
