@@ -14,6 +14,12 @@ versions still track specification maturity rather than a released product.
   TextMate and Tree-sitter recognize the suffix as one numeric token. Byte
   lookup, U8 arithmetic and participant runtime support remain separate.
 
+- Pin the capability-denied provider host to Wasmtime 48.0.8, fixing
+  RUSTSEC-2026-0422, RUSTSEC-2026-0423 and RUSTSEC-2026-0424 without
+  changing its enabled features or adding advisory exceptions. Regenerate the
+  source-bound provider fixture inventory and its Rust guest components with
+  the pinned fixture toolchain.
+
 - **Breaking:** stage 3 of the Amblicit rename renames the source extension
   and the editor grammars. Source files use `.amblicit` in place of `.edict`.
   A CLI directory input now selects only `.amblicit` files by default: the
