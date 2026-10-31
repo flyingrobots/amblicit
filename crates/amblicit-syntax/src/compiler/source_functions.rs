@@ -400,7 +400,7 @@ impl TypeChecker<'_> {
                 ..
             } => vec![lhs, rhs],
             Expr::Call { callee, args, .. }
-                if is_prelude_call(callee, &["len", "slice", "isUtf8", "count"]) =>
+                if is_prelude_call(callee, &["len", "slice", "isUtf8", "count", "at"]) =>
             {
                 args.iter().collect()
             }

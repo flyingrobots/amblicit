@@ -8,13 +8,21 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Add `at(bytes, index) -> U8` with a strict proof that the U64 index is below
+  the exact operand's length. Conditional and short-circuit guards stay scoped
+  to the expressions they dominate; Target independently rechecks untrusted
+  Core, including forged bounds and helper guards. `at` survives source-module
+  linking and is now a protected prelude name. Provider/runtime
+  execution remains a separate gate.
+
 - Authored `U8` scalar values and `u8` literals now preserve the existing Core
   unsigned-byte domain, including context-typed values and source-helper
   results through authenticated source-module linking. Out-of-range, negative
   and cross-width values refuse before Core. Functions, parameters and locals
   cannot shadow the U8 prelude name.
   TextMate and Tree-sitter recognize the suffix as one numeric token. Byte
-  lookup, U8 arithmetic and participant runtime support remain separate.
+  lookup is available through `at`; U8 arithmetic and participant runtime support
+  remain separate.
 
 - Pin the capability-denied provider host to Wasmtime 48.0.8, fixing
   RUSTSEC-2026-0422, RUSTSEC-2026-0423 and RUSTSEC-2026-0424 without

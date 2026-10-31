@@ -287,10 +287,20 @@ input-constraint enforcement, or runtime byte-copy charging.
 
   `U8` preserves the exact 0 through 255 domain in source types, contextual
   literals and `u8` suffixes, including source-helper results. Negative,
-  overflowing and cross-width values refuse before Core. Byte lookup and U8
-  arithmetic remain separate work.
+  overflowing and cross-width values refuse before Core. U8 arithmetic and
+  participant runtime acceptance remain separate work.
 
   [CSPINE-REQ-019] [CSPINE-REQ-021] [CSPINE-REQ-033] [CSPINE-REQ-059]
+- `at(bytes, index)` returns `U8` and lowers to `core.bytes.at<OperandType>`.
+  Its `U64` index needs a strict bound on the exact byte operand: `index <
+  len(bytes)` (or the reversed comparison), or a constant below a declared
+  minimum length. A byte maximum alone never proves a byte exists. Conditional
+  arms and short-circuit operands carry only their dominating predicate truths;
+  a proof for another operand, index or arm cannot authorize the lookup. Target
+  independently rechecks signature and totality on untrusted Core. Source-module
+  linking preserves U8 and the `at` prelude, whose name cannot be shadowed.
+  Provider admission and runtime execution require separate evidence.
+  [CSPINE-REQ-060]
 - Same-width `U32`/`U64` addition lowers to `core.integer.add<T>(left, right)`
   when literal bounds, zero identity, or dominating input constraints establish
   that the sum fits its width. Conjunctions contribute upper bounds; disjunctions

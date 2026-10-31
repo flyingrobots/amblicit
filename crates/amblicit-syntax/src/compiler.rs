@@ -20,6 +20,7 @@ use crate::core_ir::{
     CoreTypeReference, CoreValue, InputConstraint, InputConstraintSource, LocalRef, ResourceRef,
     CORE_API_VERSION, CORE_APPLICATION_INPUT_LOCAL_ID, MAX_CORE_TYPE_DEPTH,
 };
+mod byte_at;
 mod byte_concat;
 mod byte_count;
 mod byte_length;
@@ -3950,7 +3951,13 @@ impl<'a> TypeChecker<'a> {
                 ..
             } => {
                 let left = self.check_predicate(lhs, env);
+                let prefix = self.input_proof_constraints.len();
+                if let Some(left) = &left {
+                    self.input_proof_constraints
+                        .push(CorePredicate::Not(Box::new(left.clone())));
+                }
                 let right = self.check_predicate(rhs, env);
+                self.input_proof_constraints.truncate(prefix);
                 Some(CorePredicate::Any(vec![left?, right?]))
             }
             Expr::Binary { op, lhs, rhs, .. } => {
@@ -4181,29 +4188,7 @@ impl<'a> TypeChecker<'a> {
             } => self.check_unsigned_subtraction(lhs, rhs, env, expected, *span),
             Expr::Record { entries, span } => self.check_record(entries, env, expected, *span),
             Expr::List { items, span } => self.check_list_literal(items, env, expected, *span),
-            Expr::Call {
-                callee,
-                type_args,
-                args,
-                span,
-            } => match callee.as_ref() {
-                Expr::Ident { name, .. } if name == "len" => {
-                    self.check_byte_length(type_args, args, env, *span)
-                }
-                Expr::Ident { name, .. } if name == "isUtf8" => {
-                    self.check_byte_utf8(type_args, args, env, *span, expr)
-                }
-                Expr::Ident { name, .. } if name == "count" => {
-                    self.check_byte_count(type_args, args, env, *span, expr)
-                }
-                Expr::Ident { name, .. } if name == "slice" => {
-                    self.check_byte_slice(type_args, args, env, *span)
-                }
-                _ if self.target_pure_intrinsic(callee).is_some() => {
-                    self.check_target_pure_intrinsic(expr, env, expectation)
-                }
-                _ => self.check_pure_call(callee, type_args, args, env, expectation, *span),
-            },
+            Expr::Call { .. } => self.check_call_expression(expr, env, expectation),
             Expr::If {
                 cond,
                 then,
@@ -4243,6 +4228,44 @@ impl<'a> TypeChecker<'a> {
             }
         }
         checked
+    }
+
+    fn check_call_expression(
+        &mut self,
+        expr: &Expr,
+        env: &LocalEnvironment,
+        expectation: EffectOutputExpectation<'_>,
+    ) -> Option<TypedValue> {
+        let Expr::Call {
+            callee,
+            type_args,
+            args,
+            span,
+        } = expr
+        else {
+            return None;
+        };
+        match callee.as_ref() {
+            Expr::Ident { name, .. } if name == "len" => {
+                self.check_byte_length(type_args, args, env, *span)
+            }
+            Expr::Ident { name, .. } if name == "isUtf8" => {
+                self.check_byte_utf8(type_args, args, env, *span, expr)
+            }
+            Expr::Ident { name, .. } if name == "at" => {
+                self.check_byte_at(type_args, args, env, *span)
+            }
+            Expr::Ident { name, .. } if name == "count" => {
+                self.check_byte_count(type_args, args, env, *span, expr)
+            }
+            Expr::Ident { name, .. } if name == "slice" => {
+                self.check_byte_slice(type_args, args, env, *span)
+            }
+            _ if self.target_pure_intrinsic(callee).is_some() => {
+                self.check_target_pure_intrinsic(expr, env, expectation)
+            }
+            _ => self.check_pure_call(callee, type_args, args, env, expectation, *span),
+        }
     }
 
     fn check_predicate_value(&mut self, expr: &Expr, env: &LocalEnvironment) -> Option<TypedValue> {
@@ -4973,24 +4996,34 @@ impl<'a> TypeChecker<'a> {
         };
         let (then_value, else_value) = match expected {
             None if is_bare_integer_literal(then) => {
-                let else_value =
-                    self.check_expr_with_effect_expectation(els, env, else_expectation);
+                let else_value = self.check_conditional_arm(
+                    els,
+                    env,
+                    else_expectation,
+                    predicate.as_ref(),
+                    false,
+                );
                 let then_value = else_value
                     .as_ref()
                     .and_then(|value| self.check_expr_with_expected(then, env, Some(&value.ty)));
                 (then_value, else_value)
             }
             None if is_bare_integer_literal(els) => {
-                let then_value =
-                    self.check_expr_with_effect_expectation(then, env, then_expectation);
+                let then_value = self.check_conditional_arm(
+                    then,
+                    env,
+                    then_expectation,
+                    predicate.as_ref(),
+                    true,
+                );
                 let else_value = then_value
                     .as_ref()
                     .and_then(|value| self.check_expr_with_expected(els, env, Some(&value.ty)));
                 (then_value, else_value)
             }
             Some(_) | None => (
-                self.check_expr_with_effect_expectation(then, env, then_expectation),
-                self.check_expr_with_effect_expectation(els, env, else_expectation),
+                self.check_conditional_arm(then, env, then_expectation, predicate.as_ref(), true),
+                self.check_conditional_arm(els, env, else_expectation, predicate.as_ref(), false),
             ),
         };
 
@@ -5033,6 +5066,27 @@ impl<'a> TypeChecker<'a> {
             },
             ty,
         })
+    }
+
+    fn check_conditional_arm(
+        &mut self,
+        expr: &Expr,
+        env: &LocalEnvironment,
+        expectation: EffectOutputExpectation<'_>,
+        predicate: Option<&CorePredicate>,
+        truth: bool,
+    ) -> Option<TypedValue> {
+        let before = self.input_proof_constraints.len();
+        if let Some(predicate) = predicate {
+            self.input_proof_constraints.push(if truth {
+                predicate.clone()
+            } else {
+                CorePredicate::Not(Box::new(predicate.clone()))
+            });
+        }
+        let checked = self.check_expr_with_effect_expectation(expr, env, expectation);
+        self.input_proof_constraints.truncate(before);
+        checked
     }
 
     fn check_expr_with_intrinsic_effect_context(

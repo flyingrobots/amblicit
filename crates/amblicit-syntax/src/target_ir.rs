@@ -4,6 +4,7 @@
 //! effect nodes into in-memory Echo or git-warp review artifacts. It does not
 //! execute a runtime, run a verifier, assemble bundles, or perform admission.
 
+mod byte_at;
 mod byte_concat;
 mod byte_count;
 mod byte_length;
@@ -1730,43 +1731,8 @@ fn expression_has_closed_authority(
             callee,
             type_args,
             args,
-        } if callee == byte_concat::OPERATION => {
-            byte_concat::type_coordinate(core, pure_functions, type_args, args, available).is_some()
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if callee == byte_length::OPERATION => {
-            byte_length::type_coordinate(core, pure_functions, type_args, args, available).is_some()
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if callee == byte_utf8::OPERATION => {
-            byte_utf8::type_coordinate(core, pure_functions, type_args, args, available).is_some()
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if callee == byte_count::OPERATION => {
-            byte_count::type_coordinate(core, pure_functions, type_args, args, available).is_some()
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if callee == byte_slice::OPERATION => {
-            byte_slice::type_coordinate(core, pure_functions, type_args, args, available).is_some()
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if is_unsigned_arithmetic(callee) => {
-            unsigned_arithmetic::type_coordinate(core, pure_functions, type_args, args, available)
+        } if is_typed_prelude_operation(callee) => {
+            prelude_type_coordinate(core, pure_functions, callee, type_args, args, available)
                 .is_some()
         }
         CoreExpr::Call { callee, .. } if callee == "core.string.concat" => {
@@ -1847,10 +1813,43 @@ fn is_typed_prelude_operation(callee: &str) -> bool {
         byte_length::OPERATION,
         byte_utf8::OPERATION,
         byte_count::OPERATION,
+        byte_at::OPERATION,
         byte_slice::OPERATION,
     ]
     .contains(&callee)
         || is_unsigned_arithmetic(callee)
+}
+
+fn prelude_type_coordinate(
+    core: &CoreModule,
+    functions: &[TargetPureFunctionFact],
+    callee: &str,
+    type_args: &[String],
+    args: &[CoreExpr],
+    available: &BTreeMap<&str, &LocalRef>,
+) -> Option<String> {
+    match callee {
+        byte_at::OPERATION => byte_at::type_coordinate(core, functions, type_args, args, available),
+        byte_concat::OPERATION => {
+            byte_concat::type_coordinate(core, functions, type_args, args, available)
+        }
+        byte_count::OPERATION => {
+            byte_count::type_coordinate(core, functions, type_args, args, available)
+        }
+        byte_length::OPERATION => {
+            byte_length::type_coordinate(core, functions, type_args, args, available)
+        }
+        byte_slice::OPERATION => {
+            byte_slice::type_coordinate(core, functions, type_args, args, available)
+        }
+        byte_utf8::OPERATION => {
+            byte_utf8::type_coordinate(core, functions, type_args, args, available)
+        }
+        _ if is_unsigned_arithmetic(callee) => {
+            unsigned_arithmetic::type_coordinate(core, functions, type_args, args, available)
+        }
+        _ => None,
+    }
 }
 
 fn expression_fits_declared_type(
@@ -2220,43 +2219,8 @@ fn expression_type_coordinate(
             callee,
             type_args,
             args,
-        } if callee == byte_concat::OPERATION => {
-            byte_concat::type_coordinate(core, pure_functions, type_args, args, available)
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if callee == byte_length::OPERATION => {
-            byte_length::type_coordinate(core, pure_functions, type_args, args, available)
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if callee == byte_utf8::OPERATION => {
-            byte_utf8::type_coordinate(core, pure_functions, type_args, args, available)
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if callee == byte_count::OPERATION => {
-            byte_count::type_coordinate(core, pure_functions, type_args, args, available)
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if callee == byte_slice::OPERATION => {
-            byte_slice::type_coordinate(core, pure_functions, type_args, args, available)
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if is_unsigned_arithmetic(callee) => {
-            unsigned_arithmetic::type_coordinate(core, pure_functions, type_args, args, available)
+        } if is_typed_prelude_operation(callee) => {
+            prelude_type_coordinate(core, pure_functions, callee, type_args, args, available)
         }
         CoreExpr::Call { callee, .. } if callee == "core.string.concat" => {
             expression_string_shape(core, pure_functions, expression, available)

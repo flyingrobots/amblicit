@@ -2158,6 +2158,21 @@ The Edict Core prelude is intentionally small:
   caller computes derived metrics such as `lineCount` beside the count. A direct scan adds `N` steps to the static bound, and a helper
   scan is charged once, exactly as for `isUtf8`. Compiler and Target support
   establish typing, authority and bounds, not runtime execution evidence.
+- `at(bytes: Bytes<max=N>, index: U64) -> U8` reads exactly one raw byte
+  (`EDICT-LANG-BYTE-AT-001`). It lowers to
+  `core.bytes.at<OperandType>(bytes, index)`, retaining the exact operand
+  coordinate and expression. The index must be strictly below the operand's
+  actual length, established by a dominating comparison or, for a constant
+  index, a declared minimum length. A maximum, `index <= len(bytes)`, an
+  unrelated operand's length, or a later guard cannot establish this proof.
+  Conditional arms use their own predicate truth. A later `&&` operand sees
+  earlier operands as true; a later `||` operand sees earlier operands as false.
+  No such fact escapes the arm or lazy operand. Target independently rechecks
+  lookup typing and totality in caller-supplied Core. This adds no implicit
+  integer conversion, no missing-byte sentinel and no text-specific behavior.
+  `at` is a protected prelude spelling, so rename any local binding with that
+  name. The compiler establishes a U8 result and bounds proof; provider/runtime
+  execution is a separate acceptance gate.
 - `slice(bytes: Bytes<max=N>, start: U64, end: U64) -> Bytes<max=N>`
   selects the half-open byte range `[start,end)` only when the compiler proves
   `start <= end <= len(bytes)` (`EDICT-LANG-BYTE-SLICE-001`). The bytes remain

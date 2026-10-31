@@ -625,7 +625,7 @@ impl<'a> Rewrite<'a> {
                 Some(definition.linked.clone())
             } else if matches!(
                 head.as_str(),
-                "len" | "slice" | "isUtf8" | "count" | "hash" | "digest" | "some" | "none"
+                "len" | "slice" | "isUtf8" | "count" | "at" | "hash" | "digest" | "some" | "none"
             ) {
                 None
             } else {
