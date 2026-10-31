@@ -1749,8 +1749,8 @@ canonicalization refuses as `UnsupportedSourceShape`, including unused aliases.
 
 `U8` is the exact unsigned domain 0 through 255. Source accepts decimal `u8`
 literals and context-typed values without cross-width coercion. The implemented
-unsigned arithmetic subset remains U32/U64; recognizing U8 values does not add
-U8 arithmetic or byte lookup.
+unsigned arithmetic subset remains U32/U64. Guarded raw byte lookup is available
+through `at(bytes, index) -> U8`; this adds no U8 arithmetic.
 
 `Float` is not a core v1 type. A target or lawpack may define canonical
 floating-point semantics, but the core language does not assume them.
@@ -2158,6 +2158,24 @@ The Edict Core prelude is intentionally small:
   caller computes derived metrics such as `lineCount` beside the count. A direct scan adds `N` steps to the static bound, and a helper
   scan is charged once, exactly as for `isUtf8`. Compiler and Target support
   establish typing, authority and bounds, not runtime execution evidence.
+- `at(bytes: Bytes<max=N>, index: U64) -> U8` reads exactly one raw byte
+  (`EDICT-LANG-BYTE-AT-001`). It lowers to
+  `core.bytes.at<OperandType>(bytes, index)`, retaining the exact operand
+  coordinate and expression. The index must be strictly below the operand's
+  actual length, established by a dominating comparison or, for a constant
+  index, a declared minimum length. A maximum, `index <= len(bytes)`, an
+  unrelated operand's length, or a later guard cannot establish this proof.
+  The `if ... then ... else ...` expression adds its selected arm predicate
+  truth to enclosing proof facts. Statement-level `if`, branch-yield blocks and
+  `require` do not establish lookup proofs.
+  A later `&&` operand sees
+  earlier operands as true; a later `||` operand sees earlier operands as false.
+  No such fact escapes the arm or lazy operand. Target independently rechecks
+  lookup typing and totality in caller-supplied Core. This adds no implicit
+  integer conversion, no missing-byte sentinel and no text-specific behavior.
+  `at` is a protected prelude spelling, so rename any local binding with that
+  name. The compiler establishes a U8 result and bounds proof; provider/runtime
+  execution is a separate acceptance gate.
 - `slice(bytes: Bytes<max=N>, start: U64, end: U64) -> Bytes<max=N>`
   selects the half-open byte range `[start,end)` only when the compiler proves
   `start <= end <= len(bytes)` (`EDICT-LANG-BYTE-SLICE-001`). The bytes remain
@@ -2265,7 +2283,10 @@ The implemented byte-slice proof uses exact operands in conjunctive intent
 input constraints, identical endpoints, unsigned zero lower bounds, and ordered
 unsigned literals. The upper endpoint must be ordered against `len` of the
 same byte expression and exact operand coordinate. It does not infer alias,
-transitive, negated, disjunctive, or branch-local relationships. Separate input
+transitive, negated, or disjunctive relationships. A positive expression-level
+`if` arm can also supply the required comparisons; its predicate does not prove
+the opposite arm or a later expression. Statement-level `if` and `require` do
+not extend this proof scope. Separate input
 constraints form a canonical set and cannot justify one another or the earlier
 basis. Within an ordered `&&` predicate, the checked left predicate establishes
 positive proof for evaluation of its right predicate, including nested

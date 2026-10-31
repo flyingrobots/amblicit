@@ -595,3 +595,27 @@ fn linked_unsigned_byte_helpers_preserve_builtin_types_and_literal_width() {
         }
     }
 }
+
+#[test]
+fn linker_preserves_at_prelude_inside_an_imported_source_helper() {
+    let library = "package library.bytes@1; fn lookup(bytes: Bytes<max=32>, index: U64) -> U8 { return if index < len(bytes) then at(bytes, index) else 0u8; }";
+    let source = format!("package app.example@1; {} type Input={{bytes:Bytes<max=32>, index:U64,}}; intent evaluate(input:Input) returns U8 profile p.read basis none budget <= p.small {{let value = bytes.lookup(input.bytes,input.index); return value;}}", import("library.bytes@1",library,"bytes"));
+    let core = compile(&source, &[library]);
+    assert_eq!(core.functions.len(), 1);
+    let target = lower_to_target_ir(
+        &core,
+        &TargetIrLoweringFacts {
+            target_profile: ResourceRef {
+                coordinate: "echo.dpo@1".into(),
+                digest: Some(format!("sha256:{}", "1".repeat(64))),
+            },
+            target_ir_domain: "echo.span-ir/v1".into(),
+            operation_profiles: vec!["continuum.profile.read-only/v1".into()],
+            obstruction_coordinates: Vec::new(),
+            effect_lowerings: Vec::new(),
+            effect_signatures: Vec::new(),
+            pure_functions: Vec::new(),
+        },
+    );
+    assert_eq!(target.status, TargetLoweringStatus::Lowered, "{target:?}");
+}

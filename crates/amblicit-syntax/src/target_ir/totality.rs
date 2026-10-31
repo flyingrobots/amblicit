@@ -1,6 +1,6 @@
 //! Evaluation-scope traversal for partial Core operations at the Target boundary.
 use super::{
-    byte_slice, unsigned_addition, unsigned_subtraction, CoreExpr, CoreIntent, CoreModule,
+    byte_at, byte_slice, unsigned_addition, unsigned_subtraction, CoreExpr, CoreIntent, CoreModule,
     CoreNode, CorePredicate, CoreRequireFailureArm, InputConstraint, LocalRef,
 };
 use std::cell::RefCell;
@@ -192,9 +192,20 @@ fn predicate_is_total_at_depth(
             }
             true
         }
-        CorePredicate::Any(items) => items
-            .iter()
-            .all(|item| predicate_is_total_at_depth(core, item, constraints, depth + 1)),
+        CorePredicate::Any(items) => {
+            let negatives = items
+                .iter()
+                .map(|item| CorePredicate::Not(Box::new(item.clone())))
+                .collect::<Vec<_>>();
+            let mut prefix = constraints.to_vec();
+            for (item, negative) in items.iter().zip(&negatives) {
+                if !predicate_is_total_at_depth(core, item, &prefix, depth + 1) {
+                    return false;
+                }
+                prefix.push(negative);
+            }
+            true
+        }
         CorePredicate::Compare { left, right, .. } => {
             expression_is_total_at_depth(core, left, constraints, depth + 1)
                 && expression_is_total_at_depth(core, right, constraints, depth + 1)
@@ -243,9 +254,14 @@ fn expression_is_total_at_depth(
             then_value,
             else_value,
         } => {
+            let mut when_true = constraints.to_vec();
+            when_true.push(predicate);
+            let negative = CorePredicate::Not(predicate.clone());
+            let mut when_false = constraints.to_vec();
+            when_false.push(&negative);
             predicate_is_total_at_depth(core, predicate, constraints, depth + 1)
-                && expression_is_total_at_depth(core, then_value, constraints, depth + 1)
-                && expression_is_total_at_depth(core, else_value, constraints, depth + 1)
+                && expression_is_total_at_depth(core, then_value, &when_true, depth + 1)
+                && expression_is_total_at_depth(core, else_value, &when_false, depth + 1)
         }
         CoreExpr::Call {
             callee,
@@ -267,6 +283,9 @@ fn expression_is_total_at_depth(
                         return false;
                     };
                     unsigned_subtraction::proven_order(left, right, constraints)
+                }
+                byte_at::OPERATION => {
+                    byte_at::is_total(core.module(), type_args, args, constraints)
                 }
                 byte_slice::OPERATION => byte_slice::is_total(type_args, args, constraints),
                 _ => true,
