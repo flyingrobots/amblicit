@@ -76,6 +76,11 @@ state, but the step's signature, authority and acyclic dependency graph still
 must be valid. The compiler charges repeated step work and transitive calls
 with overflow-checked multiplication, including per-iteration overhead.
 
+Authenticated source-closure linking recognizes `fold` and resolves its static
+step through the same hygienic function-name mapping as an ordinary call. The
+step may be local or imported from another source module; linking does not turn
+callback values or runtime bounds into valid fold arguments.
+
 There is no early exit. A step that returns its input unchanged still runs
 for all N iterations. Pure source helpers cannot read state or
 emit effects, including inside this form. Effect-emitting `for` remains a

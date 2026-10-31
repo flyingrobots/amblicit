@@ -8,6 +8,10 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Preserve folds through authenticated source-closure compilation. Resolve local
+  and imported source step helpers with hygienic function identity while retaining
+  callback and dynamic-bound refusals.
+
 - Derive sized target-intrinsic operand bounds from the independently validated
   fold state, so a bounded byte accumulator can be passed directly to a costed
   intrinsic instead of being refused as unestablished work.
