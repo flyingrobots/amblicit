@@ -11,6 +11,7 @@ mod byte_length;
 mod byte_slice;
 mod byte_utf8;
 pub(crate) mod execution_order;
+mod fold_work;
 mod pure_intrinsics;
 mod state_fold;
 mod totality;
@@ -125,6 +126,8 @@ pub struct TargetPureFunctionFact {
     /// Present for a pinned target-catalog intrinsic, whose `lawpack` is then
     /// the target profile import rather than a lawpack.
     intrinsic_cost: Option<IntrinsicCost>,
+    /// Authenticated exported helper cost, unavailable for target intrinsics.
+    helper_cost: Option<CoreBudget>,
 }
 
 /// Linear cost rule of a pinned target pure intrinsic.
@@ -142,6 +145,7 @@ impl TargetPureFunctionFact {
         parameter_types: Vec<String>,
         return_type: String,
         type_closure: BTreeMap<String, CoreType>,
+        helper_cost: CoreBudget,
     ) -> Self {
         Self {
             lawpack,
@@ -151,6 +155,7 @@ impl TargetPureFunctionFact {
             return_type,
             type_closure,
             intrinsic_cost: None,
+            helper_cost: Some(helper_cost),
         }
     }
 
@@ -162,6 +167,7 @@ impl TargetPureFunctionFact {
             parameter_types: fact.parameter_types().to_vec(),
             return_type: fact.return_type().to_owned(),
             type_closure: fact.provider_types().clone(),
+            helper_cost: None,
             intrinsic_cost: Some(IntrinsicCost {
                 base: fact.cost_base(),
                 per_argument_max: fact.cost_per_argument_max().to_vec(),
@@ -961,6 +967,13 @@ fn validate_pure_binding_graphs(
                     intent_name,
                     None,
                     "Core operation is not proven total in its evaluation scope",
+                ));
+            }
+            if !fold_work::intent_cost_fits(core, pure_functions, intent) {
+                return Some(invalid_pure_binding(
+                    intent_name,
+                    None,
+                    "fold-capable Core work is unestablished or exceeds the evaluation budget",
                 ));
             }
             if !pure_intrinsics::intent_cost_fits(core, pure_functions, intent) {

@@ -398,9 +398,17 @@ it does not treat compiler Target IR as proof of runtime support.
 | ID | Status | Requirement | Source |
 | --- | --- | --- | --- |
 | TIR-REQ-064 | implemented | Native Target checks fold initial-value compatibility and the static source helper/state contract independently of source compilation. | issue #268 |
-| TIR-REQ-065 | planned | Target reconstructs bounded fold work from validated Core and imported cost authority, including initial evaluation, every step and transitive call, state validation/storage and iteration overhead, with checked arithmetic and budget refusal. | issue #268 |
+| TIR-REQ-065 | implemented | Target reconstructs bounded fold work from validated Core and imported cost authority, including initial evaluation, every step and transitive call, state validation/storage and iteration overhead, with checked arithmetic and budget refusal. | issue #268 |
 
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TIR-TP-126 | implemented | Fold typing boundary | TIR-REQ-064 | A valid fold lowers; initial-value corruption passes Core structure but refuses InvalidCoreIdentity in Target; helper/state corruption refuses at shared Core integrity. | target_rechecks_fold_initial_state_and_static_helper, fold_accepts_initial_bytes_within_state_bound | crates/amblicit-syntax/tests/bounded_state_fold.rs | This does not witness independent work admission. |
-| TIR-TP-127 | planned | Fold work admission | TIR-REQ-065 | Forged bounds and transitive/nested work cannot bypass step or allocation ceilings, with no intrinsic facts as well as with authenticated imported costs; exact ceilings pass and one-under ceilings refuse with a stable failure. | - | - | An arbitrary maximum-bound blacklist or iteration-only check does not establish this contract. |
+| TIR-TP-127 | implemented | Fold work admission | TIR-REQ-065 | Forged bounds and transitive/nested work cannot bypass step or allocation ceilings, with no intrinsic facts as well as with authenticated imported costs; exact ceilings pass and one-under ceilings refuse with a stable failure. | target_rejects_forged_fold_work_without_intrinsic_facts, target_fold_work_has_exact_step_and_storage_boundaries, target_fold_work_counts_transitive_and_nested_steps, target_fold_allocation_overflow_refuses_even_when_steps_fit, fold_work_uses_authenticated_imported_helper_budget | crates/amblicit-syntax/tests/bounded_state_fold.rs, crates/amblicit-syntax/tests/lawpack.rs | Hand-derived exact native step/storage ceilings; provider/runtime execution remains separate. |
+
+The independent fold meter must derive value cells and storage from Core types,
+resolve source calls transitively, and consume imported budgets only from sealed
+validated-lawpack facts. It must charge initializer evaluation, each step,
+parameter/result validation and iteration overhead with checked arithmetic.
+The authored compiler's cost tables are not an authority at this boundary.
+The first regression mutates valid emitted Core to 65,537 and u64::MAX iterations
+without any intrinsic facts, retaining positive and structural-encoding controls.

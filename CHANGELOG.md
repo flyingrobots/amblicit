@@ -8,11 +8,18 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Independently bound Core evaluation steps and storage in fold-capable modules.
+  Native Target counts ordinary/transitive helpers, nested folds, state validation
+  and iteration overhead, rejects arithmetic overflow and exact-budget overruns,
+  and uses only validated adapter budgets for imported helper work. Unsupported
+  accounting shapes refuse instead of contributing zero. Provider/runtime
+  execution and effect admission remain separate.
+
 - Reserve `fold` as a prelude name. The new `CoreExpr::Fold` variant and
   `TypedModule::required_core_capabilities` field require downstream exhaustive
   Rust consumers to update. Initial values keep the language's existing
   structural-record and nominal-variant compatibility rules. Provider/runtime
-  execution and complete independent fold-work admission remain separate gates.
+  execution and runtime admission remain separate gates.
 
 - Publish the fold-capable provider contract pack separately from existing
   digest-pinned packs. Preserve the earlier publication bytes and reproduce them

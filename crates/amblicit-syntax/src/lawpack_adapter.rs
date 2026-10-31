@@ -282,6 +282,7 @@ pub fn prepare_lawpack_compilation(
         let (projected_context, pure_functions) = project_pure_functions(
             compiler_context,
             bundle,
+            adapter,
             &lawpack,
             &alias,
             &prefix,
@@ -292,19 +293,7 @@ pub fn prepare_lawpack_compilation(
         compiler_context =
             project_bound_constants(compiler_context, bundle, &lawpack, &alias, &prefix)?;
 
-        for (coordinate, budget) in &adapter.budgets {
-            let local_budget = local_coordinate(&alias, &prefix, coordinate)?;
-            compiler_context = compiler_context
-                .with_budget(local_budget.clone(), budget.clone())
-                .with_pure_helper_cost(
-                    local_budget,
-                    PureHelperCostFact {
-                        lawpack: lawpack.clone(),
-                        coordinate: coordinate.clone(),
-                        budget: budget.clone(),
-                    },
-                );
-        }
+        compiler_context = project_budgets(compiler_context, adapter, &lawpack, &alias, &prefix)?;
 
         all_obstructions.extend(obstruction_coordinates);
         all_effect_lowerings.extend(effect_lowerings);
@@ -329,6 +318,29 @@ pub fn prepare_lawpack_compilation(
             pure_functions: canonical_pure_functions,
         },
     })
+}
+
+fn project_budgets(
+    mut context: CompilerContext,
+    adapter: &ValidatedLawpackAdapter,
+    lawpack: &ResourceRef,
+    alias: &str,
+    prefix: &str,
+) -> Result<CompilerContext, Vec<LawpackAdapterFailure>> {
+    for (coordinate, budget) in &adapter.budgets {
+        let local_budget = local_coordinate(alias, prefix, coordinate)?;
+        context = context
+            .with_budget(local_budget.clone(), budget.clone())
+            .with_pure_helper_cost(
+                local_budget,
+                PureHelperCostFact {
+                    lawpack: lawpack.clone(),
+                    coordinate: coordinate.clone(),
+                    budget: budget.clone(),
+                },
+            );
+    }
+    Ok(context)
 }
 
 fn exported_type_shapes(
@@ -468,6 +480,7 @@ fn project_effects(
 fn project_pure_functions(
     mut context: CompilerContext,
     bundle: &ValidatedLawpackBundle,
+    adapter: &ValidatedLawpackAdapter,
     lawpack: &ResourceRef,
     alias: &str,
     prefix: &str,
@@ -493,6 +506,17 @@ fn project_pure_functions(
             function.parameter_types.clone(),
             function.return_type.clone(),
             type_closure,
+            adapter
+                .budgets
+                .get(&function.cost_template)
+                .cloned()
+                .ok_or_else(|| {
+                    one(failure(
+                        LawpackAdapterFailureKind::InvalidShape,
+                        format!("exports.pureFunctions.{}", function.coordinate),
+                        "validated exported helper budget",
+                    ))
+                })?,
         ));
         context = context.with_pure_function(
             local_function,

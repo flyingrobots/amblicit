@@ -83,8 +83,11 @@ separate mechanism. The existing recursive-call prohibition includes step
 references even at zero bounds.
 
 Native Target checking independently validates the initial value, source helper
-and state compatibility. A native `Lowered` result does not establish complete
-independent work admission. The current Echo provider/runtime does not yet support
+and state compatibility. For fold-capable modules it also reconstructs conservative
+Core step and allocation bounds from Core types and authenticated imported costs,
+including transitive calls and checked nested iteration arithmetic. A native
+`Lowered` result does not establish runtime admission. The current Echo
+provider/runtime does not yet support
 `core.fold/v1`; compiler support alone does not establish public package
 acceptance or runtime execution. The Jim persistent-rope and its oracle suite
 remain downstream work.

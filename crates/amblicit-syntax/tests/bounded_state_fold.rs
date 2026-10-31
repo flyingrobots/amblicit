@@ -332,3 +332,175 @@ fn fold_name_cannot_be_shadowed_by_parameters_or_locals() {
         );
     }
 }
+
+#[test]
+fn target_rejects_forged_fold_work_without_intrinsic_facts() {
+    use amblicit_syntax::{CoreExpr, TargetLoweringFailureKind, TargetLoweringStatus};
+    let facts = lowering_facts();
+    assert!(facts.pure_functions.is_empty());
+    let original = operation(3, 65_536).expect("valid bounded operation");
+    assert_eq!(
+        amblicit_syntax::lower_to_target_ir(&original, &facts).status,
+        TargetLoweringStatus::Lowered
+    );
+    for forged in [65_537, u64::MAX] {
+        let mut core = original.clone();
+        let CoreExpr::Fold { bound, .. } = &mut core.functions.get_mut("run").unwrap().body.result
+        else {
+            panic!("fold")
+        };
+        *bound = forged;
+        encode_core_module(&core).expect("forged bound is structurally valid Core");
+        let report = amblicit_syntax::lower_to_target_ir(&core, &facts);
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Unsupported,
+            "bound {forged}: {report:?}"
+        );
+        assert_eq!(report.failures.len(), 1);
+        assert_eq!(
+            report.failures[0].kind,
+            TargetLoweringFailureKind::InvalidCoreIdentity
+        );
+        assert_eq!(report.failures[0].intent.as_deref(), Some("runIntent"));
+        assert!(report.artifact.is_none());
+    }
+}
+
+fn boolean_work_operation(step: &str, bound: u64) -> amblicit_syntax::CoreModule {
+    let source = format!("package iteration.state@1; type Input = {{ value: Bool }}; {step} fn run(s: Bool) -> Bool {{ return fold(s, step, {bound}u64); }} intent runIntent(input: Input) returns Input profile p.read basis none budget <= p.small {{ let result = run(input.value); return {{ value: result }}; }}");
+    let context = CompilerContext::new()
+        .with_operation_profile("p.read", "continuum.profile.read-only/v1")
+        .with_budget(
+            "p.small",
+            amblicit_syntax::CoreBudget {
+                max_steps: 1_000_000,
+                max_allocated_bytes: 1_048_576,
+                max_output_bytes: 65_536,
+            },
+        );
+    compile_to_core(&parse_module(&source).unwrap(), &context).unwrap()
+}
+
+fn assert_work_boundary(mut core: amblicit_syntax::CoreModule, steps: u64, bytes: u64) {
+    use amblicit_syntax::{TargetLoweringFailureKind, TargetLoweringStatus};
+    let facts = lowering_facts();
+    for (step_limit, byte_limit, accepted) in [
+        (steps, bytes, true),
+        (steps - 1, bytes, false),
+        (steps, bytes - 1, false),
+    ] {
+        let budget = &mut core
+            .intents
+            .get_mut("runIntent")
+            .unwrap()
+            .core_evaluation_budget;
+        budget.max_steps = step_limit;
+        budget.max_allocated_bytes = byte_limit;
+        encode_core_module(&core).expect("budget mutation is structurally valid");
+        let report = amblicit_syntax::lower_to_target_ir(&core, &facts);
+        if accepted {
+            assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+        } else {
+            assert_eq!(
+                report.status,
+                TargetLoweringStatus::Unsupported,
+                "limits {step_limit}/{byte_limit}: {report:?}"
+            );
+            assert_eq!(report.failures.len(), 1);
+            assert_eq!(
+                report.failures[0].kind,
+                TargetLoweringFailureKind::InvalidCoreIdentity
+            );
+            assert_eq!(report.failures[0].intent.as_deref(), Some("runIntent"));
+            assert!(report.artifact.is_none());
+        }
+    }
+}
+
+#[test]
+fn target_fold_work_has_exact_step_and_storage_boundaries() {
+    // Hand-derived portable costs: the one-field Input has 3 cells / 197 bytes.
+    // Frame + argument + run wrapper + binding + result = 34 steps / 1108 bytes.
+    // Each identity iteration: helper entry 1, parameter/result checks 2,
+    // local value 2 steps / 64 bytes, and iteration overhead 1 => 6 / 64.
+    for n in [0, 1, 3] {
+        assert_work_boundary(
+            boolean_work_operation("fn step(s: Bool) -> Bool { return s; }", n),
+            34 + 6 * n,
+            1108 + 64 * n,
+        );
+    }
+}
+
+#[test]
+fn target_fold_work_counts_transitive_and_nested_steps() {
+    // A transitive identity call adds 7 steps / 128 bytes per outer step.
+    let transitive =
+        "fn leaf(s: Bool) -> Bool { return s; } fn step(s: Bool) -> Bool { return leaf(s); }";
+    assert_work_boundary(
+        boolean_work_operation(transitive, 3),
+        34 + 13 * 3,
+        1108 + 192 * 3,
+    );
+    // Inner fold initializer/result = 4 / 128, two inner iterations = 12 / 128;
+    // step entry/checks = 3 and outer overhead = 1 => 20 / 256 per outer step.
+    let nested = "fn leaf(s: Bool) -> Bool { return s; } fn step(s: Bool) -> Bool { return fold(s, leaf, 2u64); }";
+    assert_work_boundary(
+        boolean_work_operation(nested, 3),
+        34 + 20 * 3,
+        1108 + 256 * 3,
+    );
+    let mut forged = boolean_work_operation(nested, 3);
+    for name in ["step", "run"] {
+        let amblicit_syntax::CoreExpr::Fold { bound, .. } =
+            &mut forged.functions.get_mut(name).unwrap().body.result
+        else {
+            panic!("fold")
+        };
+        *bound = 1_u64 << 32;
+    }
+    let report = amblicit_syntax::lower_to_target_ir(&forged, &lowering_facts());
+    assert_eq!(
+        report.status,
+        amblicit_syntax::TargetLoweringStatus::Unsupported
+    );
+    assert_eq!(
+        report.failures[0].kind,
+        amblicit_syntax::TargetLoweringFailureKind::InvalidCoreIdentity
+    );
+    assert!(report.artifact.is_none());
+}
+
+#[test]
+fn target_fold_allocation_overflow_refuses_even_when_steps_fit() {
+    let mut core = boolean_work_operation("fn step(s: Bool) -> Bool { return s; }", 1);
+    let amblicit_syntax::CoreExpr::Fold { bound, .. } =
+        &mut core.functions.get_mut("run").unwrap().body.result
+    else {
+        panic!("fold")
+    };
+    *bound = 1_u64 << 60;
+    // 34 + 6*N fits u64; 1108 + 64*N does not. This isolates storage overflow.
+    assert!(6_u64.checked_mul(*bound).unwrap().checked_add(34).is_some());
+    let budget = &mut core
+        .intents
+        .get_mut("runIntent")
+        .unwrap()
+        .core_evaluation_budget;
+    budget.max_steps = u64::MAX;
+    budget.max_allocated_bytes = u64::MAX;
+    encode_core_module(&core).expect("structurally valid overflow witness");
+    let report = amblicit_syntax::lower_to_target_ir(&core, &lowering_facts());
+    assert_eq!(
+        report.status,
+        amblicit_syntax::TargetLoweringStatus::Unsupported
+    );
+    assert_eq!(report.failures.len(), 1);
+    assert_eq!(
+        report.failures[0].kind,
+        amblicit_syntax::TargetLoweringFailureKind::InvalidCoreIdentity
+    );
+    assert_eq!(report.failures[0].intent.as_deref(), Some("runIntent"));
+    assert!(report.artifact.is_none());
+}

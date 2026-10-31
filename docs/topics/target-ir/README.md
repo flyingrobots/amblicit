@@ -761,8 +761,23 @@ parameter/return coordinates and an initial value compatible with that state.
 A wrong initial value can pass shared Core structural integrity and still fail
 Target with `InvalidCoreIdentity`. [TIR-REQ-064]
 
-`Lowered` describes native structural/type validation, not provider execution.
-Independent reconstruction of complete fold work is still a known gap: the
-existing Target meter charges imported intrinsic work, but does not charge
-ordinary step/helper work or iteration overhead. A forged large bound can pass
-that meter. [TIR-REQ-065]
+For modules requiring `core.fold/v1`, native Target independently reconstructs
+conservative Core evaluation steps and allocated bytes for each intent. It
+charges initial evaluation, transitive source calls, parameter/result validation,
+every iteration (including a done/terminal state), nested folds and value storage.
+All addition and multiplication are checked; unknown work or an exceeded ceiling
+refuses `InvalidCoreIdentity` without an artifact. Imported helper budgets come
+from the exact validated lawpack adapter, not estimates in Core. [TIR-REQ-065]
+
+Portable accounting uses 64-byte value cells, bounded byte/text/list storage,
+record keys, variant metadata and maximum branch work. Payload-bound matches
+include surrounding-frame storage. Fold-capable modules currently refuse types
+outside this accounting subset (option/map/capability/request values), symbolic
+collection-loop bounds and external-action request nodes. Modules without the
+fold capability retain their existing cost checks. Native bounds are conservative
+and can reject a compiler-accepted operation near its budget ceiling.
+
+`Lowered` remains a native compiler result. Provider/runtime execution, independent
+provider verification, effect execution costs, output encoding limits and runtime
+admission retain their separate authorities; this meter does not establish the
+full #268 runtime contract or the authored rope cutover.
