@@ -169,6 +169,7 @@ const PRELUDE_NAMES: &[&str] = &[
     "Map",
     "Option",
     "String",
+    "U8",
     "U32",
     "U64",
     "digest",

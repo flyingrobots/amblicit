@@ -372,3 +372,17 @@ fn obstruction_map_binders_cannot_shadow_visible_names() {
     );
     assert_eq!(kinds, vec![SemanticErrorKind::ShadowedName]);
 }
+
+#[test]
+fn unsigned_byte_prelude_name_cannot_be_shadowed() {
+    for source in [
+        "package bytes.shadow@1; fn U8(value: U8) -> U8 { return value; }",
+        "package bytes.shadow@1; fn retain(U8: U8) -> U8 { return U8; }",
+        "package bytes.shadow@1; fn retain(value: U8) -> U8 { let U8 = value; return U8; }",
+    ] {
+        assert_eq!(
+            semantic_kinds(source),
+            vec![SemanticErrorKind::ShadowedName]
+        );
+    }
+}

@@ -11,7 +11,8 @@ versions still track specification maturity rather than a released product.
 - Authored `U8` scalar values and `u8` literals now preserve the existing Core
   unsigned-byte domain, including context-typed values and source-helper
   results through authenticated source-module linking. Out-of-range, negative
-  and cross-width values refuse before Core.
+  and cross-width values refuse before Core. Functions, parameters and locals
+  cannot shadow the U8 prelude name.
   TextMate and Tree-sitter recognize the suffix as one numeric token. Byte
   lookup, U8 arithmetic and participant runtime support remain separate.
 
