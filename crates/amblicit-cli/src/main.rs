@@ -1756,6 +1756,15 @@ fn core_expr_review(expr: &CoreExpr) -> Value {
             }
             value
         }
+        CoreExpr::Match { scrutinee, arms } => json!({
+            "kind": "match",
+            "scrutinee": core_expr_review(scrutinee),
+            "arms": arms.iter().map(|arm| {
+                let mut value = json!({"case": arm.case, "body": core_expr_review(&arm.body)});
+                if let Some(binder) = &arm.binder { value["binder"] = local_ref_review(binder); }
+                value
+            }).collect::<Vec<_>>()
+        }),
         CoreExpr::Record { fields } => json!({
             "kind": "record",
             "fields": fields

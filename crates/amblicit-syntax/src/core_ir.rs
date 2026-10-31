@@ -1538,6 +1538,37 @@ fn validate_core_obstruction_reason_types(
     Ok(())
 }
 
+fn validate_core_match_types(
+    module: &CoreModule,
+    state: &mut CoreTypeIntegrityState,
+    scrutinee: &CoreExpr,
+    arms: &[CoreMatchArm],
+    path: &str,
+    depth: usize,
+) -> Result<(), CoreTypeIntegrityFailure> {
+    validate_core_expression_types(module, state, scrutinee, path, depth + 1)?;
+    let mut cases = BTreeSet::new();
+    if arms.is_empty() {
+        return Err(CoreTypeIntegrityFailure::new(
+            CoreTypeIntegrityFailureKind::InvalidDefinition,
+            path,
+        ));
+    }
+    for arm in arms {
+        if !is_core_field_name(&arm.case) || !cases.insert(&arm.case) {
+            return Err(CoreTypeIntegrityFailure::new(
+                CoreTypeIntegrityFailureKind::InvalidDefinition,
+                path,
+            ));
+        }
+        if let Some(binder) = &arm.binder {
+            validate_core_local_type(module, state, binder, path)?;
+        }
+        validate_core_expression_types(module, state, &arm.body, path, depth + 1)?;
+    }
+    Ok(())
+}
+
 fn validate_core_expression_types(
     module: &CoreModule,
     state: &mut CoreTypeIntegrityState,
@@ -1553,6 +1584,9 @@ fn validate_core_expression_types(
         CoreExpr::Const(_) => Ok(()),
         CoreExpr::Variant { ty, case, payload } => {
             variant_expressions::validate(module, state, ty, case, payload.as_deref(), path, depth)
+        }
+        CoreExpr::Match { scrutinee, arms } => {
+            validate_core_match_types(module, state, scrutinee, arms, path, depth)
         }
         CoreExpr::Record { fields } => {
             for (field, value) in fields {
@@ -1758,6 +1792,11 @@ pub enum CoreExpr {
         case: String,
         payload: Option<Box<CoreExpr>>,
     },
+    /// Exactly one scrutinee evaluation and one selected arm evaluation.
+    Match {
+        scrutinee: Box<CoreExpr>,
+        arms: Vec<CoreMatchArm>,
+    },
     Record {
         fields: BTreeMap<String, CoreExpr>,
     },
@@ -1779,6 +1818,14 @@ pub enum CoreExpr {
         then_value: Box<CoreExpr>,
         else_value: Box<CoreExpr>,
     },
+}
+
+/// An exhaustive case arm with an optional lexically scoped payload reference.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CoreMatchArm {
+    pub case: String,
+    pub binder: Option<LocalRef>,
+    pub body: CoreExpr,
 }
 
 /// Core predicate subset used by initial source-to-Core lowering.

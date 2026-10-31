@@ -378,3 +378,11 @@ Core expression review retains variant constructors as an explicit `kind: varian
 record with the exact `type`, `case` and optional `payload`; absent payload is
 omitted. The payload's own review shape is preserved. This is display/projection
 of compiler-built Core, not a runtime value codec. [CLI-REQ-013]
+
+## Match review data
+
+Core expression review JSON renders a match as `kind: "match"`, a recursively
+rendered `scrutinee`, and an `arms` array. Each arm has `case` and `body`; a
+payload-binding arm also has `binder` in the existing local-reference review
+shape. This is inspection data, not a runtime execution or provider-acceptance
+claim. [CLI-REQ-013]

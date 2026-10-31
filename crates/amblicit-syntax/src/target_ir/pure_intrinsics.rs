@@ -207,6 +207,20 @@ impl<'a> Meter<'a> {
         }
         let children = match expression {
             CoreExpr::Local { .. } | CoreExpr::Const(_) => Some(0),
+            CoreExpr::Match { scrutinee, arms } => {
+                let before = self.expression(scrutinee, available, depth + 1)?;
+                let mut largest = 0;
+                for arm in arms {
+                    let mut scope = available.clone();
+                    if let Some(binder) = &arm.binder {
+                        if scope.insert(binder.id.as_str(), binder).is_some() {
+                            return None;
+                        }
+                    }
+                    largest = largest.max(self.expression(&arm.body, &scope, depth + 1)?);
+                }
+                before.checked_add(largest)
+            }
             CoreExpr::Variant { payload, .. } => match payload {
                 Some(payload) => self.expression(payload, available, depth + 1),
                 None => Some(0),
@@ -330,6 +344,24 @@ impl<'a> Meter<'a> {
             return None;
         }
         match argument {
+            CoreExpr::Match { scrutinee, arms } => {
+                let mut largest = 0;
+                let valid = super::variant_matches::every(
+                    self.core,
+                    self.pure_functions,
+                    scrutinee,
+                    arms,
+                    available,
+                    |body, scope| {
+                        let Some(bound) = self.established_max_at(body, scope, depth + 1) else {
+                            return false;
+                        };
+                        largest = largest.max(bound);
+                        true
+                    },
+                );
+                valid.then_some(largest)
+            }
             CoreExpr::List { values } => u64::try_from(values.len()).ok(),
             CoreExpr::Const(CoreValue::Bytes(bytes)) => u64::try_from(bytes.len()).ok(),
             CoreExpr::If {

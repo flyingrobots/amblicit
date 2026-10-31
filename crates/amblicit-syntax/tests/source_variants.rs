@@ -167,18 +167,17 @@ fn payloadless_variant_cases_consume_the_source_work_budget() {
 }
 
 #[test]
-fn variant_matching_remains_explicitly_unsupported() {
+fn payloadless_variant_matching_lowers_to_core() {
     let source = "package choices.example@1; type Choice = variant { Empty }; fn inspect(value: Choice) -> U64 { return match value { Empty => 0u64 }; }";
-    let errors =
-        compile_to_core(&parse_module(source).unwrap(), &CompilerContext::new()).unwrap_err();
-    let start = source.find("match value").unwrap();
-    assert!(
-        errors.iter().any(
-            |error| error.kind == CompilerErrorKind::UnsupportedSourceShape
-                && error.span.start == start
-        ),
-        "{errors:?}"
-    );
+    let core = compile_to_core(&parse_module(source).unwrap(), &CompilerContext::new())
+        .expect("one-case match");
+    let amblicit_syntax::CoreExpr::Match { arms, .. } = &core.functions["inspect"].body.result
+    else {
+        panic!("match expression")
+    };
+    assert_eq!(arms.len(), 1);
+    assert_eq!(arms[0].case, "Empty");
+    assert!(arms[0].binder.is_none());
 }
 
 fn execution_context() -> CompilerContext {

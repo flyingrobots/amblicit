@@ -179,3 +179,14 @@ Out of scope:
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | COREIR-TP-041 | implemented | Variant expressions | COREIR-REQ-031 | Invalid constructor metadata cannot canonicalize; Target independently checks payload types; Core integrity checks payload scope; nested payloads do not hide helper calls or graph-depth violations. | raw_constructor_metadata_is_checked_before_canonical_encoding, variant_payloads_cannot_hide_capture_cycle_or_graph_depth, target_rechecks_constructor_payload_types_and_exact_union_identity, target_rejects_union_identity_substitution_through_helper_calls, target_totality_checks_reach_guarded_lookups_in_variant_payloads | crates/amblicit-syntax/tests/variant_constructors.rs | Core reference integrity and Target expression typing remain distinct judgments. |
+
+## Match expression identity and scope
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| COREIR-REQ-032 | implemented | Match expressions retain the scrutinee and lexical arm binders in canonical identity; integrity and function graph validation visit every arm. Structural integrity remains distinct from Target match typing. | docs/abi/edict-core.cddl |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COREIR-TP-042 | implemented | Match identity | COREIR-REQ-032 | Canonical arms retain their binder references, renamed source binders preserve bytes and recursive calls hidden in arms refuse. | variant_matches_preserve_scrutinee_and_arm_local_payloads, variant_matches_are_alpha_stable, match_arms_cannot_hide_recursive_calls | crates/amblicit-syntax/tests/variant_matches.rs | Does not prove every malformed caller-owned Core boundary. |
+| COREIR-TP-043 | planned | Match integrity negatives | COREIR-REQ-032 | Empty and duplicate arms, malformed case names, invalid binder types and empty identities fail at the Core integrity boundary; valid structural mutations reach Target typing. | - | - | Separate Core rejection from Target-only rejection. |

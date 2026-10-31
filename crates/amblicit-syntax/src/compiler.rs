@@ -30,6 +30,7 @@ mod list_literal;
 mod return_budget;
 mod signature_diagnostic;
 mod source_functions;
+mod source_matches;
 mod source_types;
 mod source_variants;
 mod target_pure_intrinsic;
@@ -1025,6 +1026,8 @@ struct EffectBindingProfile {
 
 #[derive(Debug, Clone)]
 struct TypeChecker<'a> {
+    match_depth: usize,
+    match_in_intent: bool,
     resolved: &'a ResolvedModule,
     function_signatures: BTreeMap<String, source_functions::Signature>,
     function_costs: BTreeMap<String, HelperCost>,
@@ -1053,6 +1056,8 @@ impl<'a> TypeChecker<'a> {
     fn new(resolved: &'a ResolvedModule) -> Self {
         Self {
             resolved,
+            match_depth: 0,
+            match_in_intent: false,
             function_signatures: BTreeMap::new(),
             function_costs: BTreeMap::new(),
             source_expression_costs: BTreeMap::new(),
@@ -1344,6 +1349,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn check_intent(&mut self, intent: &ResolvedIntent) -> Option<TypedIntent> {
+        self.match_in_intent = false;
         self.input_proof_constraints.clear();
         self.local_bounds.clear();
         let recorded_costs = self.source_expression_costs.len();
@@ -1477,7 +1483,7 @@ impl<'a> TypeChecker<'a> {
             };
             cost = self.checked_helper_cost_add(cost, clause_cost, intent.source.span)?;
         }
-        if !self.resolved.source_functions.is_empty() {
+        if !self.resolved.source_functions.is_empty() || self.match_in_intent {
             let input =
                 self.type_ref_shape(&intent.source.params[0].ty, intent.source.params[0].span)?;
             let output = self.type_ref_shape(&intent.source.returns, intent.source.span)?;
@@ -3989,7 +3995,11 @@ impl<'a> TypeChecker<'a> {
                     None
                 }
             }
-            Expr::Ident { .. } | Expr::Field { .. } | Expr::Call { .. } | Expr::If { .. } => {
+            Expr::Ident { .. }
+            | Expr::Field { .. }
+            | Expr::Call { .. }
+            | Expr::If { .. }
+            | Expr::Match { .. } => {
                 let expected = TypeShape::canonical_structural(TypeKind::Bool)?;
                 // Check the operand on its own terms before applying the
                 // predicate requirement; nested typing failures stay distinct.
@@ -4023,7 +4033,10 @@ impl<'a> TypeChecker<'a> {
                 None
             }
         }?;
-        if !self.resolved.source_functions.is_empty() {
+        if !self.resolved.source_functions.is_empty()
+            || self.match_depth > 0
+            || matches!(expr, Expr::Match { .. })
+        {
             self.record_source_predicate_cost(expr)?;
         }
         Some(checked)
@@ -4205,6 +4218,11 @@ impl<'a> TypeChecker<'a> {
             Expr::Record { entries, span } => self.check_record(entries, env, expected, *span),
             Expr::List { items, span } => self.check_list_literal(items, env, expected, *span),
             Expr::Call { .. } => self.check_call_expression(expr, env, expectation),
+            Expr::Match {
+                scrutinee,
+                arms,
+                span,
+            } => self.check_variant_match(scrutinee, arms, env, expected, *span),
             Expr::VariantLit {
                 ty_path,
                 case,
@@ -4237,10 +4255,7 @@ impl<'a> TypeChecker<'a> {
                 ..
             }
             | Expr::Unary { op: UnOp::Not, .. } => self.check_predicate_value(expr, env),
-            Expr::Binary { .. }
-            | Expr::Digest { .. }
-            | Expr::IfYield { .. }
-            | Expr::Match { .. } => {
+            Expr::Binary { .. } | Expr::Digest { .. } | Expr::IfYield { .. } => {
                 self.errors.push(error(
                     CompilerStage::TypeCheck,
                     CompilerErrorKind::UnsupportedSourceShape,
@@ -4250,7 +4265,10 @@ impl<'a> TypeChecker<'a> {
                 None
             }
         };
-        if !self.resolved.source_functions.is_empty() {
+        if !self.resolved.source_functions.is_empty()
+            || self.match_depth > 0
+            || matches!(expr, Expr::Match { .. })
+        {
             if let Some(value) = &checked {
                 self.record_source_expression_cost(expr, &value.ty)?;
             }

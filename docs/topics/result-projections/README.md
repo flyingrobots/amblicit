@@ -171,3 +171,12 @@ refuses earlier with `UnsupportedExpression`. Internal variant bindings can stil
 the lowerer reports the missing result projection separately. The executable
 witnesses cover direct, record and list outputs with scalar-output controls.
 [RESULT-PROJ-REQ-013]
+
+## Matches and projection leaves
+
+A `CoreExpr::Match` directly in a result-projection leaf refuses with
+`UnsupportedExpression`, as do other expressions outside the closed projection
+language. Matching inside a helper or pure binding does not itself extend that
+language: an ordinary supported scalar local can still be projected. Native
+Target match validation and application-result projection are separate gates.
+[RESULT-PROJ-REQ-007]
