@@ -318,3 +318,45 @@ fn structured_target_encodes_integer_match_comparisons() {
     amblicit_syntax::encode_target_ir_artifact(&report.artifact.unwrap())
         .expect("integer comparison remains encodable");
 }
+
+#[test]
+fn variant_match_infers_bare_integer_width_from_peer_arms() {
+    for body in [
+        "match value { Empty => 0, Data(p) => p }",
+        "match value { Data(p) => p, Empty => 0 }",
+    ] {
+        let core = compile(&format!(
+            "fn unwrap(value: Choice) -> U8 {{ let result = {body}; return result; }}"
+        ))
+        .unwrap_or_else(|errors| panic!("{body}: {errors:?}"));
+        let amblicit_syntax::CoreExpr::Match { arms, .. } =
+            &core.functions["unwrap"].body.bindings[0].value
+        else {
+            panic!("match binding")
+        };
+        let expected = if body.starts_with("match value { Empty") {
+            ["Empty", "Data"]
+        } else {
+            ["Data", "Empty"]
+        };
+        assert_eq!(
+            arms.iter().map(|arm| arm.case.as_str()).collect::<Vec<_>>(),
+            expected
+        );
+    }
+}
+
+#[test]
+fn conditional_infers_bare_integer_width_from_match_peer() {
+    compile("fn unwrap(value: Choice, flag: Bool) -> U8 { let result = if flag then match value { Empty => 1u8, Data(p) => 2u8 } else 3; return result; }")
+        .expect("conditional infers bare peer from typed match");
+}
+
+#[test]
+fn variant_match_without_a_typed_peer_keeps_integer_width_ambiguous() {
+    let errors = compile("fn unwrap(value: Choice) -> U8 { let result = match value { Empty => 0, Data(p) => 1 }; return result; }")
+        .expect_err("no inferred width for an all-bare match");
+    assert!(errors
+        .iter()
+        .any(|e| e.kind == CompilerErrorKind::TypeMismatch));
+}

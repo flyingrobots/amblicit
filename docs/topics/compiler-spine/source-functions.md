@@ -52,7 +52,10 @@ values in predicate position compare with `true`.
 
 A value expression such as `match value { Empty => b"", Data(payload) => payload }`
 checks every declared case exactly once and gives each payload binder a scope
-limited to its own arm. A payload can be discarded: `Data => b""` is valid.
+limited to its own arm. A payload can be discarded: `Data => b""` is valid. Without a declared
+expected result type, a bare integer arm takes its width from typed peer arms,
+independent of arm order. A match whose arms are all bare integers still needs
+an expected type.
 Statement-form matching remains outside the pure function profile. The canonical
 CDDL match expression existed before the Rust `CoreExpr::Match` representation.
 

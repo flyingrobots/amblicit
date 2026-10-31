@@ -1,7 +1,7 @@
 //! Exhaustive alternatives with one scrutinee and lexical arm payloads.
 use super::{
-    compatible, compatible_shape, error, CompilerErrorKind, CompilerStage, CoreExpr, Expr,
-    LocalEnvironment, Span, TypeChecker, TypeKind, TypeShape, TypedValue,
+    compatible, compatible_shape, error, is_bare_integer_literal, CompilerErrorKind, CompilerStage,
+    CoreExpr, Expr, LocalEnvironment, Span, TypeChecker, TypeKind, TypeShape, TypedValue,
 };
 use crate::{
     ast::MatchArm,
@@ -48,8 +48,15 @@ impl TypeChecker<'_> {
             return self.invalid_match("match must cover every case exactly once", span);
         }
         let mut result_type = expected.cloned();
-        let mut lowered = Vec::new();
-        for arm in arms {
+        let mut lowered = vec![None; arms.len()];
+        // Infer typed peers before bare literals, while retaining source arm order
+        // in Core. Like conditionals, no width is invented for all-bare arms.
+        let mut order = (0..arms.len()).collect::<Vec<_>>();
+        if expected.is_none() {
+            order.sort_by_key(|index| is_bare_integer_literal(&arms[*index].body));
+        }
+        for index in order {
+            let arm = &arms[index];
             let declared = &cases[&arm.case];
             let mut scope = env.clone();
             let binder = match (&arm.binder, declared) {
@@ -75,7 +82,12 @@ impl TypeChecker<'_> {
                 }
                 (None, _) => None,
             };
-            let body = self.check_expr_with_expected(&arm.body, &scope, expected)?;
+            let arm_expected = expected.or_else(|| {
+                is_bare_integer_literal(&arm.body)
+                    .then_some(result_type.as_ref())
+                    .flatten()
+            });
+            let body = self.check_expr_with_expected(&arm.body, &scope, arm_expected)?;
             result_type = match result_type {
                 None => Some(body.ty.clone()),
                 Some(prior) if expected.is_some() => {
@@ -94,7 +106,7 @@ impl TypeChecker<'_> {
                     None
                 })?),
             };
-            lowered.push(CoreMatchArm {
+            lowered[index] = Some(CoreMatchArm {
                 case: arm.case.clone(),
                 binder,
                 body: body.expr,
@@ -103,7 +115,7 @@ impl TypeChecker<'_> {
         Some(TypedValue {
             expr: CoreExpr::Match {
                 scrutinee: Box::new(value.expr),
-                arms: lowered,
+                arms: lowered.into_iter().collect::<Option<Vec<_>>>()?,
             },
             ty: result_type?,
         })
