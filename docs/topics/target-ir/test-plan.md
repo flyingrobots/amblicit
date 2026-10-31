@@ -361,3 +361,5 @@ it does not treat compiler Target IR as proof of runtime support.
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TIR-TP-112 | implemented | Conditional proof scope | TIR-REQ-061 | Source and Target accept proven positive arms; source refuses the opposite arm and Target independently refuses swapped caller-built Core arms. | conditional_proof_covers_unsigned_subtraction_without_leaking, conditional_proof_covers_unsigned_addition_without_leaking, conditional_proof_covers_byte_slice_without_leaking, target_rechecks_conditional_helper_dominance | crates/amblicit-syntax/tests/byte_at.rs | Provider/runtime support remains a separate gate. |
+
+| TIR-TP-113 | implemented | Malformed lookup Core | TIR-REQ-061 | Reordered lazy predicates, changed All/Any kind, and a forged byte coordinate claiming an operand minimum refuse with no artifact; valid controls lower. | target_rechecks_lazy_lookup_order_and_boolean_kind, target_rechecks_byte_at_signature_and_strict_totality | crates/amblicit-syntax/tests/byte_at.rs | Independent Target refusal witnesses, not source-only rejection. |

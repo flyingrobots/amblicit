@@ -224,7 +224,7 @@ fn byte_at_helper_guard_is_scoped_to_its_arm() {
 #[test]
 fn target_rechecks_byte_at_signature_and_strict_totality() {
     let original = compile("Bytes<max=32>", GUARD, LOOKUP);
-    for case in 0..7 {
+    for case in 0..8 {
         let mut core = original.clone();
         let intent = core.intents.get_mut("read").unwrap();
         match case {
@@ -263,6 +263,14 @@ fn target_rechecks_byte_at_signature_and_strict_totality() {
                         });
                     }
                     6 => type_args.push("U8".into()),
+                    7 => {
+                        type_args[0] = "Bytes<exact=32>".into();
+                        args[1] = CoreExpr::Const(CoreValue::Int {
+                            width: "U64".into(),
+                            value: "31".into(),
+                        });
+                        intent.input_constraints.clear();
+                    }
                     _ => unreachable!(),
                 }
             }
@@ -464,4 +472,54 @@ fn conditional_proof_covers_byte_slice_without_leaking() {
         "slice(input.bytes, input.start, input.end)",
         "b\"\"",
     );
+}
+
+#[test]
+fn target_rechecks_lazy_lookup_order_and_boolean_kind() {
+    for expression in [
+        "if index < len(bytes) && at(bytes, index) < 128u8 then 1u8 else 0u8",
+        "if index >= len(bytes) || at(bytes, index) < 128u8 then 1u8 else 0u8",
+    ] {
+        let original =
+            compile_to_core(&parse_module(&helper(expression)).unwrap(), &context()).unwrap();
+        assert_eq!(
+            lower_to_target_ir(&original, &facts()).status,
+            TargetLoweringStatus::Lowered
+        );
+        for swap_order in [true, false] {
+            let mut forged = original.clone();
+            let CoreExpr::If { predicate, .. } =
+                &mut forged.functions.get_mut("lookup").unwrap().body.result
+            else {
+                panic!("conditional helper")
+            };
+            let replacement = match predicate.as_mut() {
+                CorePredicate::All(items) => {
+                    if swap_order {
+                        items.swap(0, 1);
+                        CorePredicate::All(items.clone())
+                    } else {
+                        CorePredicate::Any(items.clone())
+                    }
+                }
+                CorePredicate::Any(items) => {
+                    if swap_order {
+                        items.swap(0, 1);
+                        CorePredicate::Any(items.clone())
+                    } else {
+                        CorePredicate::All(items.clone())
+                    }
+                }
+                _ => panic!("lazy predicate"),
+            };
+            **predicate = replacement;
+            let report = lower_to_target_ir(&forged, &facts());
+            assert_eq!(
+                report.status,
+                TargetLoweringStatus::Unsupported,
+                "{report:?}"
+            );
+            assert!(report.artifact.is_none());
+        }
+    }
 }
