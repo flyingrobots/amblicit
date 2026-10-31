@@ -140,14 +140,18 @@ unsupported. Provider acceptance and runtime execution are separate gates.
 [CSPINE-REQ-062]
 
 Exhaustive `match value { Empty => fallback, Data(payload) => payload }`
-expressions lower to the existing Core match form. Every declared case must
+expressions lower to the match form already reserved by the Core CDDL. Every declared case must
 appear exactly once. Optional payload bindings are lexical to their own arm;
 payloadless cases cannot introduce one. Arm results must have compatible types.
 Canonical references are independent of source binder spelling. Scrutinee work
 is counted once and alternative work uses the largest arm bound. Dispatch and
-selected-payload storage are charged even without helper declarations. Recursive
-calls hidden in arms remain invalid. These are compiler and native Target
-contracts; they do not establish provider or runtime execution. [CSPINE-REQ-063]
+storage are charged even without helper declarations: if any arm binds a
+payload, the compiler conservatively reserves the whole scrutinee storage bound.
+Recursive calls hidden in arms remain invalid. These cost bounds are compiler
+contracts; native Target independently validates match types, scope, totality
+and intrinsic costs, but does not independently meter dispatch or payload
+storage. Neither boundary establishes provider or runtime execution.
+[CSPINE-REQ-063]
 
 Every variant declaration in the finished Core type table adds the hash-significant
 `core.variant/v1` capability, including unused or source-linked declarations.

@@ -1,6 +1,5 @@
 # Changelog
 
-
 All notable changes to the Edict specifications are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
@@ -31,7 +30,7 @@ versions still track specification maturity rather than a released product.
 - Refuse variant-bearing application-result projections during emission and
   independent verification. Internal variant computation can still lower to
   native Target IR. The CLI displays constructor type, case and optional payload.
-  Matching, recursive variants, provider/runtime support and variant-valued
+  Recursive variants, provider/runtime matching and variant-valued
   application-result encoding remain separate implementation work.
 
 - Add `at(bytes, index) -> U8` with a strict proof that the U64 index is below

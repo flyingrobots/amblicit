@@ -23,7 +23,9 @@ first-order and nongeneric: functions cannot be passed as values or instantiate
 type arguments. Supported parameter/result types are the compiler's bounded
 scalar, record, list, variant and authenticated nominal families; this adds `Bool` as an
 explicit type reference as well as Boolean value and predicate composition.
-Matching, Option lowering and recursive functions remain unsupported. Arithmetic
+Exhaustive nonrecursive variant match expressions are supported, including
+arm-local payload bindings. Option lowering and recursive functions remain
+unsupported. Arithmetic
 and byte operations retain their separately documented bounded subsets.
 
 Each body has a fresh lexical environment. Parameters and earlier local bindings
@@ -45,6 +47,26 @@ must evaluate arguments left to right exactly once before entering the fresh
 callee frame. `if` and ordered `All`/`Any` predicates retain lazy evaluation.
 Boolean-valued expressions use existing Core `If` and predicate forms; Boolean
 values in predicate position compare with `true`.
+
+## Variant match expressions
+
+A value expression such as `match value { Empty => b"", Data(payload) => payload }`
+checks every declared case exactly once and gives each payload binder a scope
+limited to its own arm. A payload can be discarded: `Data => b""` is valid.
+Statement-form matching remains outside the pure function profile. The canonical
+CDDL match expression existed before the Rust `CoreExpr::Match` representation.
+
+Binder identities are positional within their lexical scope. Sibling arms can
+reuse `match.0` and `$match0`; consumers must resolve these identities within the
+arm environment, rather than treating them as module-global symbol keys.
+
+Compiler acceptance does not establish provider support. Against the Echo #941
+provider, the public compiler witness's source-function control compiles, while
+adding a match-bearing function refuses with `ProviderLowererRefused`, detail
+`UnsupportedSemantics`, subject `core.source-functions`. That subject does not
+mean all source functions are unsupported. Provider expression validation and
+runtime execution remain separate gates; `core.variant/v1` alone is not evidence
+that a provider implements matching.
 
 ## Authority and identity
 
