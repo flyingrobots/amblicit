@@ -8,6 +8,10 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Publish the fold-capable provider contract pack separately from existing
+  digest-pinned packs. Preserve the earlier publication bytes and reproduce them
+  with the frozen pre-fold Core schema. Schema acceptance is not runtime support.
+
 - Accept fold initial values whose bounds fit the declared step state, including
   empty bytes for a bounded byte accumulator. The step parameter and return type
   remain invariant, and oversized initial values still refuse. Native Target
