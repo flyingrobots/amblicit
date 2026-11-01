@@ -81,7 +81,8 @@ impl ApplicationPureIntrinsics {
             .collect::<Vec<_>>();
         admit_target_pure_intrinsics(&target, &catalog, &bytes, &required).map_err(|errors| {
             // Admission returns all failed obligations deterministically. The
-            // public category names the first; the message retains the full set.
+            // public category names the first by (kind, coordinate) ordering;
+            // the message retains the full set.
             let kind = errors
                 .first()
                 .map_or("TargetIntrinsicAdmissionFailed", |e| {

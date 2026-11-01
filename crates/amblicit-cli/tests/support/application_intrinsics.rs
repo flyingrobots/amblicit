@@ -54,10 +54,11 @@ fn rendered(digest: &C) -> String {
     let C::Bytes(bytes) = &parts[1] else {
         panic!("digest bytes")
     };
-    format!(
-        "sha256:{}",
-        bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
-    )
+    let mut rendered = String::from("sha256:");
+    for byte in bytes {
+        write!(&mut rendered, "{byte:02x}").expect("write digest");
+    }
+    rendered
 }
 fn load(path: &Path) -> C {
     decode_canonical_cbor(&fs::read(path).expect("fixture bytes")).expect("canonical fixture")
@@ -87,7 +88,7 @@ fn fixture_with_profile(
             "argumentTypes":["Bytes<max=32>"], "returnType":"Bytes<max=32>",
             "guardSupport":false, "footprintTemplate":"empty", "costTemplate":"identity",
             "writeClass":"none", "contractVersion":"test.identity/v1",
-            "costRule":{"base":1,"perArgumentMax":[0]}}
+            "costRule":{"base":1,"perArgumentMax":[1]}}
     }});
     change(&mut catalog);
     let catalog = cbor(catalog);
@@ -186,24 +187,13 @@ fn public_application_admits_profile_pinned_intrinsic_into_core_and_target() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let paths: Vec<_> = fs::read_dir(root.join(".build/application"))
-        .expect("outputs")
-        .map(|e| e.expect("entry").path())
-        .collect();
-    assert!(paths.len() >= 2, "Core and Target artifacts: {paths:?}");
-    let artifacts: Vec<_> = paths
-        .iter()
-        .filter(|p| p.extension().is_some_and(|e| e == "cbor"))
-        .map(|p| load(p))
-        .collect();
-    assert_eq!(
-        artifacts
-            .iter()
-            .filter(|v| contains_identity_call(v))
-            .count(),
-        2,
-        "both compiler artifacts preserve the admitted call: {artifacts:?}"
-    );
+    for name in ["core.cbor", "target-ir.cbor"] {
+        let artifact = load(&root.join(".build/application").join(name));
+        assert!(
+            contains_identity_call(&artifact),
+            "{name} must retain the actual call"
+        );
+    }
     fs::remove_dir_all(root).expect("cleanup");
 }
 
@@ -271,11 +261,11 @@ fn public_application_refuses_invalid_intrinsic_requirements_without_publication
                 "missing" => declaration["required"][0]["coordinate"] = json!("echo.dpo@1.missing"),
                 "duplicate" => {
                     declaration["required"] =
-                        json!([declaration["required"][0], declaration["required"][0]])
+                        json!([declaration["required"][0], declaration["required"][0]]);
                 }
                 "empty" => declaration["required"] = json!([]),
                 "too-many" => {
-                    declaration["required"] = json!(vec![declaration["required"][0].clone(); 65])
+                    declaration["required"] = json!(vec![declaration["required"][0].clone(); 65]);
                 }
                 "escape" => declaration["catalog"] = json!("../intrinsics.cbor"),
                 "self-pin" => declaration["digest"] = json!("sha256:untrusted"),
@@ -408,7 +398,53 @@ fn public_application_rejects_catalog_symlink_outside_provider() {
     fs::copy(root.join("provider/intrinsics.cbor"), &outside).expect("outside copy");
     std::os::unix::fs::symlink(outside, root.join("provider/escaped.cbor")).expect("symlink");
     edit_config(&config, |v| {
-        v["target"]["pureIntrinsics"]["catalog"] = json!("escaped.cbor")
+        v["target"]["pureIntrinsics"]["catalog"] = json!("escaped.cbor");
     });
     refusal(&root, &config, "ApplicationPathEscape");
+}
+
+#[test]
+fn public_application_omission_grants_no_intrinsic_facts() {
+    let root = temp_tree("omitted-intrinsics");
+    let config = fixture(&root);
+    edit_config(&config, |v| {
+        v["target"]
+            .as_object_mut()
+            .expect("target")
+            .remove("pureIntrinsics");
+    });
+    fs::remove_file(root.join("provider/intrinsics.cbor")).expect("no catalog to load");
+    refusal(&root, &config, "UnresolvedFunction");
+}
+
+#[test]
+fn public_application_charges_intrinsic_operand_bound_against_budget() {
+    let root = temp_tree("intrinsic-cost");
+    // scope is Bytes<max=32>; 32*32 exceeds the fixture's 512-step budget.
+    // The ordinary successful fixture uses a coefficient of 1.
+    let config = fixture_with_catalog(&root, |v| {
+        v["intrinsics"]["echo.dpo@1.identity"]["costRule"]["perArgumentMax"] = json!([32]);
+    });
+    refusal(&root, &config, "InvalidBound");
+}
+
+#[test]
+fn executable_application_intrinsics_still_require_provider_artifacts() {
+    let root = temp_tree("executable-intrinsic");
+    let config = fixture(&root);
+    edit_config(&config, |v| {
+        v["buildKind"] = json!("executableOperation");
+        v["externalActionResources"] = json!([]);
+    });
+    let path = root.join("src/observe-workspace.amblicit");
+    let source = fs::read_to_string(&path).expect("source");
+    let imports = source
+        .lines()
+        .filter(|line| line.starts_with("use lawpack") || line.starts_with("use target"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    fs::write(path,format!("package examples.workspace_observer@1;\n{imports}\nintent observe(input: Bytes<max=32>) returns Bytes<max=32> profile workspace.observeRequest basis none budget <= workspace.tinyObservationBudget {{ let value=echo.identity(input); return value; }}")).expect("pure intent");
+    // Compiler and result projection succeed, but the fixture has no provider schema.
+    // The executable route must not publish compiler artifacts as an accepted package.
+    refusal(&root, &config, "ProviderPackageReadFailed");
 }

@@ -112,7 +112,11 @@ including after symlink resolution. The application does not supply a catalog
 pin: the compiler reads the `intrinsics` resource reference from the selected
 profile only after that profile agrees with the provider manifest and lawpack
 adapter. It verifies the catalog's canonical bytes against that reference and
-admits the exact required contracts. The declaration requires 1..=64 non-empty
+admits all declared contracts, even if the source does not call them. Provider
+authors use `digest_target_intrinsics_catalog(catalog_coordinate, canonical_bytes)`
+to compute the pin: the canonical digest domain is the catalog coordinate. The
+profile encodes the reference as `{id, digest: ["sha256", <32 bytes>]}`.
+The declaration requires 1..=64 non-empty
 coordinate/version pairs; the catalog has the existing 1 MiB artifact limit.
 Duplicate requirements, invalid catalogs, wrong versions and substituted bytes
 fail before output publication. A declared v1 catalog is refused; it is never
