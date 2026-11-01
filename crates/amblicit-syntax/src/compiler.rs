@@ -1043,6 +1043,7 @@ struct TypeChecker<'a> {
     target_pure_intrinsic_costs: BTreeMap<usize, HelperCost>,
     source_predicate_costs: BTreeMap<usize, HelperCost>,
     source_value_bounds: BTreeMap<usize, (u64, u64)>,
+    source_loop_frames: BTreeMap<usize, HelperCost>,
     /// Byte maximum of every operand coordinate a `count` call resolved, so the
     /// addition proof can bound named coordinates without a type table.
     count_operand_maxima: BTreeMap<String, u64>,
@@ -1074,6 +1075,7 @@ impl<'a> TypeChecker<'a> {
             target_pure_intrinsic_costs: BTreeMap::new(),
             source_predicate_costs: BTreeMap::new(),
             source_value_bounds: BTreeMap::new(),
+            source_loop_frames: BTreeMap::new(),
             count_operand_maxima: BTreeMap::new(),
             local_bounds: BTreeMap::new(),
             input_proof_constraints: Vec::new(),
@@ -1385,7 +1387,11 @@ impl<'a> TypeChecker<'a> {
         let param = &source.params[0];
         let input_shape = self.type_ref_shape(&param.ty, param.span)?;
         let output_shape = self.type_ref_shape(&source.returns, source.span)?;
-        self.check_helper_cost_budget(intent)?;
+        // The complete list-work pass needs the typed loop binders recorded
+        // while checking the body; its budget gate runs immediately afterward.
+        if !self.meters_list_work() {
+            self.check_helper_cost_budget(intent)?;
+        }
         let input_binding = LocalRef {
             id: CORE_APPLICATION_INPUT_LOCAL_ID.to_owned(),
             alpha_name: "$arg0".to_owned(),
@@ -1444,6 +1450,7 @@ impl<'a> TypeChecker<'a> {
         if !self.resolved.source_functions.is_empty()
             || self.source_expression_costs.len() > recorded_costs
             || self.target_pure_intrinsic_costs.len() > recorded_intrinsics
+            || self.meters_list_work()
         {
             self.check_helper_cost_budget(intent)?;
         }
@@ -1604,7 +1611,26 @@ impl<'a> TypeChecker<'a> {
                     Some(ElseClause::If(stmt)) => self.helper_cost_for_stmt(stmt)?,
                     None => HelperCost::default(),
                 };
-                self.checked_helper_cost_add(cond_cost, then_cost.component_max(else_cost), *span)
+                let cost = self.checked_helper_cost_add(
+                    cond_cost,
+                    then_cost.component_max(else_cost),
+                    *span,
+                )?;
+                if self.meters_list_work() {
+                    // The selected statement block returns null; the enclosing
+                    // branch is also a Core node, even when its body is empty.
+                    self.checked_helper_cost_add(
+                        cost,
+                        HelperCost {
+                            steps: 3,
+                            allocated_bytes: 64,
+                            output_bytes: 0,
+                        },
+                        *span,
+                    )
+                } else {
+                    Some(cost)
+                }
             }
             Stmt::For {
                 iter,
@@ -1612,27 +1638,49 @@ impl<'a> TypeChecker<'a> {
                 body,
                 span,
                 ..
-            } => {
-                let iter_cost = self.helper_cost_for_expr(iter)?;
-                let body_cost = self.helper_cost_for_block(body)?;
-                let Some(factor) = self.helper_cost_loop_bound(bound) else {
-                    self.errors.push(error(
-                        CompilerStage::TypeCheck,
-                        CompilerErrorKind::MissingContextFact,
-                        "bounded-loop helper cost requires a resolvable loop bound",
-                        *span,
-                    ));
-                    return None;
-                };
-                let body_cost = self.checked_helper_cost_mul(body_cost, factor, *span)?;
-                let loop_cost = HelperCost {
-                    steps: factor,
-                    ..HelperCost::default()
-                };
-                let body_and_loop = self.checked_helper_cost_add(body_cost, loop_cost, *span)?;
-                self.checked_helper_cost_add(iter_cost, body_and_loop, *span)
-            }
+            } => self.helper_cost_for_loop(iter, bound, body, *span),
         }
+    }
+
+    fn helper_cost_for_loop(
+        &mut self,
+        iter: &Expr,
+        bound: &BoundRef,
+        body: &Block,
+        span: Span,
+    ) -> Option<HelperCost> {
+        let iter_cost = self.helper_cost_for_expr(iter)?;
+        let body_cost = self.helper_cost_for_block(body)?;
+        let Some(factor) = self.helper_cost_loop_bound(bound) else {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::MissingContextFact,
+                "bounded-loop helper cost requires a resolvable loop bound",
+                span,
+            ));
+            return None;
+        };
+        if self.meters_list_work() {
+            let frame = *self.source_loop_frames.get(&expression_identity(iter))?;
+            let iteration = self.checked_helper_cost_add(body_cost, frame, span)?;
+            let repeated = self.checked_helper_cost_mul(iteration, factor, span)?;
+            let total = self.checked_helper_cost_add(iter_cost, repeated, span)?;
+            return self.checked_helper_cost_add(
+                total,
+                HelperCost {
+                    steps: 1,
+                    ..HelperCost::default()
+                },
+                span,
+            );
+        }
+        let body_cost = self.checked_helper_cost_mul(body_cost, factor, span)?;
+        let loop_cost = HelperCost {
+            steps: factor,
+            ..HelperCost::default()
+        };
+        let body_and_loop = self.checked_helper_cost_add(body_cost, loop_cost, span)?;
+        self.checked_helper_cost_add(iter_cost, body_and_loop, span)
     }
 
     fn helper_cost_for_binding(
@@ -2259,6 +2307,13 @@ impl<'a> TypeChecker<'a> {
         };
 
         let binder_shape = item.as_ref().clone();
+        if self.meters_list_work() {
+            let Some(frame) = self.source_loop_frame_cost(&binder_shape, span) else {
+                return;
+            };
+            self.source_loop_frames
+                .insert(expression_identity(iter), frame);
+        }
         let binder = next_local(&mut state.local_index, binder_shape.coord.clone());
         let mut nested_env = env.clone();
         nested_env.insert(var.to_owned(), (binder.clone(), binder_shape));

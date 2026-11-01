@@ -342,6 +342,29 @@ impl TypeChecker<'_> {
         self.checked_helper_cost_add(nested, own, definition.span)
     }
 
+    pub(super) fn source_loop_frame_cost(
+        &mut self,
+        item: &TypeShape,
+        span: Span,
+    ) -> Option<HelperCost> {
+        let (cells, bytes) = self.source_value_bound(item, span)?;
+        // Binder evaluation contributes 1 + cells; the generated null result
+        // contributes one evaluation, one cell, and 64 bytes per iteration.
+        self.checked_helper_cost_add(
+            HelperCost {
+                steps: cells,
+                allocated_bytes: bytes,
+                output_bytes: 0,
+            },
+            HelperCost {
+                steps: 3,
+                allocated_bytes: VALUE_CELL_BYTES,
+                output_bytes: 0,
+            },
+            span,
+        )
+    }
+
     fn source_value_bound(&mut self, shape: &TypeShape, span: Span) -> Option<(u64, u64)> {
         if contains_external_action_request(shape) {
             self.errors.push(error(
@@ -615,6 +638,11 @@ impl TypeChecker<'_> {
                 | Expr::Match { .. }
         ) {
             steps += 2; // The Boolean equality's synthetic true operand.
+            if self.meters_list_work() {
+                // Native comparison work includes the full Boolean value cell,
+                // including when equality was generated from a bare predicate.
+                steps += VALUE_CELL_BYTES;
+            }
             allocated_bytes = VALUE_CELL_BYTES;
         }
         self.source_predicate_costs.insert(

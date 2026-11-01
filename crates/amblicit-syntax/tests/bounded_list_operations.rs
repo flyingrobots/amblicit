@@ -342,6 +342,99 @@ fn compile_with_steps(
 }
 
 #[test]
+fn bounded_for_list_work_includes_generated_frames() {
+    let body = "type Input = { xs: List<U8,max=2> }; type Output = { n: U64 };
+      intent run(input: Input) returns Output profile p.read basis none budget <= p.large {
+        for item in input.xs bounded 2 { let x = item; }
+        let n = listLen(input.xs); return { n };
+      }";
+    let mut ordered = facts();
+    ordered.target_ir_domain = "echo.span-ir/v3".into();
+    // Baseline 294/1350 + iterable 10/514 + two loop frames 7/192 each
+    // + one enclosing node step. Each frame includes its binder and null result.
+    for (steps, bytes, accepted) in [
+        (319, 2248, true),
+        (318, 2248, false),
+        (319, 2247, false),
+        (312, 2248, false),
+    ] {
+        let context = CompilerContext::new()
+            .with_operation_profile("p.read", "continuum.profile.read-only/v1")
+            .with_budget(
+                "p.large",
+                CoreBudget {
+                    max_steps: steps,
+                    max_allocated_bytes: bytes,
+                    max_output_bytes: 1_000_000,
+                },
+            );
+        let authored = compile_to_core(
+            &parse_module(&format!("package work.lists@1; {body}")).unwrap(),
+            &context,
+        );
+        assert_eq!(
+            authored.is_ok(),
+            accepted,
+            "source {steps}/{bytes}: {authored:?}"
+        );
+        let mut core = compile(body).unwrap();
+        let budget = &mut core.intents.get_mut("run").unwrap().core_evaluation_budget;
+        budget.max_steps = steps;
+        budget.max_allocated_bytes = bytes;
+        let report = lower_to_target_ir(&core, &ordered);
+        assert_eq!(
+            report.status == TargetLoweringStatus::Lowered,
+            accepted,
+            "target {steps}/{bytes}: {report:?}"
+        );
+    }
+}
+
+#[test]
+fn bounded_for_list_work_covers_empty_nested_and_record_items() {
+    for (input, loops) in [
+        (
+            "List<U8,max=0>",
+            "for item in input.xs bounded 0 { let x = item; }",
+        ),
+        (
+            "List<List<U8,max=2>,max=2>",
+            "for batch in input.xs bounded 2 { for item in batch bounded 2 { let x = item; } }",
+        ),
+        (
+            "List<Item,max=2>",
+            "for item in input.xs bounded 2 { let x = item; }",
+        ),
+        (
+            "List<Item,max=2>",
+            "for item in input.xs bounded 2 { if input.flag { let x = item; } }",
+        ),
+    ] {
+        let body = format!("type Item = {{ bytes: Bytes<max=4> }}; type Input = {{ xs: {input}, flag: Bool }}; type Output = {{ n: U64 }};
+          intent run(input: Input) returns Output profile p.read basis none budget <= p.large {{ {loops} let n = listLen(input.xs); return {{ n }}; }}");
+        compile(&body).expect("valid loop control");
+        let (mut low, mut high) = (0, 1_000_000);
+        while low < high {
+            let middle = low + (high - low) / 2;
+            if compile_with_steps(&body, middle).is_ok() {
+                high = middle;
+            } else {
+                low = middle + 1;
+            }
+        }
+        let core = compile_with_steps(&body, high).unwrap();
+        let mut ordered = facts();
+        ordered.target_ir_domain = "echo.span-ir/v3".into();
+        let report = lower_to_target_ir(&core, &ordered);
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Lowered,
+            "{input}, {loops}: source steps {high}: {report:?}"
+        );
+    }
+}
+
+#[test]
 fn mixed_list_and_byte_length_recheck_exact_work() {
     let body = "type Input = { xs: List<U8,max=2>, bs: Bytes<max=100> }; type Output = { n: U64 };
       intent run(input: Input) returns Output profile p.read basis none budget <= p.large {
