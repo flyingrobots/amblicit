@@ -828,6 +828,80 @@ fn target_rechecks_list_selection_and_nominal_element_coordinates() {
 }
 
 #[test]
+fn target_preserves_covariant_list_reads_with_actual_length_guards() {
+    let source = format!(
+        "fn read(xs: List<Bytes<max=2>,max=2>, i: U64, fallback: Bytes<max=4>) -> Bytes<max=4> {{
+           return if i < listLen(xs) then listAt(xs,i) else fallback;
+         }}
+         fn length(xs: List<Bytes<max=2>,max=2>) -> U64 {{ return listLen(xs); }}
+         {LENGTH_INTENT}"
+    );
+    let original = compile(&source).expect("source read control");
+    let report = lower_to_target_ir(&original, &facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+    for coordinate in [
+        "List<Bytes<max=2>,max=3>",
+        "List<Bytes<max=4>,max=2>",
+        "List<Bytes<max=4>,max=3>",
+    ] {
+        for forged_capacity_guard in [false, true] {
+            let mut core = original.clone();
+            let CoreExpr::Call { type_args, .. } =
+                &mut core.functions.get_mut("length").unwrap().body.result
+            else {
+                panic!("length")
+            };
+            type_args[0] = coordinate.into();
+            let CoreExpr::If {
+                predicate,
+                then_value,
+                ..
+            } = &mut core.functions.get_mut("read").unwrap().body.result
+            else {
+                panic!("guarded read")
+            };
+            let CorePredicate::Compare { right, .. } = predicate.as_mut() else {
+                panic!("comparison")
+            };
+            let CoreExpr::Call { type_args, .. } = right else {
+                panic!("actual length")
+            };
+            type_args[0] = coordinate.into();
+            if forged_capacity_guard {
+                *right = CoreExpr::Const(amblicit_syntax::CoreValue::Int {
+                    width: "U64".into(),
+                    value: "3".into(),
+                });
+            }
+            let CoreExpr::Call { type_args, .. } = then_value.as_mut() else {
+                panic!("access")
+            };
+            type_args[0] = coordinate.into();
+            validate_core_module_type_integrity(&core).expect("structural Core control");
+            let report = lower_to_target_ir(&core, &facts());
+            if forged_capacity_guard {
+                assert_eq!(
+                    report.status,
+                    TargetLoweringStatus::Unsupported,
+                    "{coordinate}: {report:?}"
+                );
+                assert!(report.artifact.is_none());
+                assert!(report.failures.iter().any(|failure| {
+                    failure.kind == TargetLoweringFailureKind::InvalidCoreIdentity
+                }));
+            } else {
+                assert_eq!(
+                    report.status,
+                    TargetLoweringStatus::Lowered,
+                    "{coordinate}: {report:?}"
+                );
+                assert!(report.artifact.is_some());
+            }
+        }
+    }
+}
+
+#[test]
 fn list_prelude_names_cannot_be_shadowed() {
     for name in ["listLen", "listAt", "listAppend", "listConcat"] {
         for source in [

@@ -754,12 +754,21 @@ when a matched record also contains an unrelated empty or nonempty list literal.
 Direct list-match comparisons remain outside the comparison language.
 [TIR-REQ-063]
 
+Match coordinate inference derives the scrutinee type once and reuses it when
+arm-coordinate joining needs structural fallback. An invalid nested scrutinee
+propagates refusal without restarting inference through that same subtree.
+Deterministic public-lowering tests bound coordinate visits for valid and invalid
+chains at depths 4 and 12; they do not establish whole-compiler complexity.
+
 ## Bounded fold validation
 
 The independent meter also applies to modules requiring `core.list/v1`, including
 intents without a fold. Native Target recognizes typed list length, access,
 append and concatenation calls, derives each result from the validated operand
 coordinates, and rechecks strict access/capacity guards on the exact operands.
+Length and access permit compatible widening of outer capacity and structural
+item bounds. Access still requires a strict guard against the actual length of
+that operand; a claimed capacity cannot replace its length in the guard.
 List append preserves its declared capacity. Concatenation requires identical
 item coordinates and checks the sum of independently reconstructed operand
 maxima. Both operands must retain their exact capacities and semantically
