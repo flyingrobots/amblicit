@@ -9,6 +9,7 @@
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TIR-TP-129 | implemented | List authority and work | TIR-REQ-066 | Valid controls lower; forged type arguments, operands, guards, capabilities and work budgets refuse with stable failure kinds. | target_rechecks_list_append_guard_and_signature, target_rechecks_list_selection_and_nominal_element_coordinates, target_rechecks_list_concatenation_bounds, target_list_work_has_exact_steps_and_storage_without_a_fold, target_reconstructs_list_fold_work_without_source_estimates | crates/amblicit-syntax/tests/bounded_list_operations.rs | Provider/runtime support belongs to Echo #946. |
+| TIR-TP-130 | implemented | Append type identity | TIR-REQ-066 | A forged append coordinate cannot widen the operand's declared capacity or item coordinate even when the guard and function result are coherently widened. | target_rejects_append_capacity_widening_with_a_coherent_guard, bounded_lists_preserve_empty_maximum_and_nominal_element_types | crates/amblicit-syntax/tests/bounded_list_operations.rs | Wider enclosing result bounds remain permitted; named lists, helper results and conditional operands preserve their declared list type. |
 
 Status: current verification design for Target IR generation and built-in
 lowerer compatibility.

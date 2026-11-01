@@ -75,6 +75,8 @@ fn bounded_lists_preserve_empty_maximum_and_nominal_element_types() {
         "fn select(xs: List<List<U8, max=2>, max=2>, i: U64) -> List<U8, max=2> { return if i < listLen(xs) then listAt(xs, i) else []; }",
         "type Item = variant { Empty, Value(U8) }; fn select(xs: List<Item, max=2>, i: U64) -> Item { return if i < listLen(xs) then listAt(xs, i) else Item::Empty; }",
         "fn join(a: List<U8, max=2>, b: List<U8, max=3>) -> List<U8, max=5> { return listConcat(a, b); }",
+        "type Items = List<U8,max=2>; fn identity(xs: Items) -> Items { return xs; } fn append(xs: Items) -> Items { return if listLen(identity(xs)) < 2u64 then listAppend(identity(xs),1u8) else xs; }",
+        "fn append(xs: List<U8,max=2>, ys: List<U8,max=2>, flag: Bool) -> List<U8,max=2> { return if listLen(if flag then xs else ys) < 2u64 then listAppend(if flag then xs else ys,1u8) else xs; }",
     ] {
         let specimen = format!("{body} type Input = {{ marker: U8 }}; type Output = {{ marker: U8 }}; intent witness(input: Input) returns Output profile p.read basis none budget <= p.large {{ let marker = input.marker; return {{ marker }}; }}");
         let core = compile(&specimen).expect(body);
@@ -155,6 +157,59 @@ fn target_rechecks_list_append_guard_and_signature() {
                 .any(|f| f.kind == TargetLoweringFailureKind::InvalidCoreIdentity),
             "{report:?}"
         );
+    }
+}
+
+#[test]
+fn target_rejects_append_capacity_widening_with_a_coherent_guard() {
+    for (operand, output, item, capacity) in [
+        ("List<U8,max=2>", "List<U8,max=3>", "7u8", 3),
+        (
+            "List<Bytes<max=1>,max=2>",
+            "List<Bytes<max=2>,max=2>",
+            "b\"x\"",
+            2,
+        ),
+    ] {
+        let source = format!("fn widen(xs: {operand}) -> {output} {{ return if listLen(xs) < 2u64 then listAppend(xs,{item}) else xs; }} {LENGTH_INTENT}");
+        let mut core = compile(&source).unwrap();
+        assert_eq!(
+            lower_to_target_ir(&core, &facts()).status,
+            TargetLoweringStatus::Lowered
+        );
+        let CoreExpr::If {
+            predicate,
+            then_value,
+            ..
+        } = &mut core.functions.get_mut("widen").unwrap().body.result
+        else {
+            panic!("guard")
+        };
+        let CorePredicate::Compare { left, right, .. } = predicate.as_mut() else {
+            panic!("comparison")
+        };
+        let CoreExpr::Call { type_args, .. } = left else {
+            panic!("length")
+        };
+        type_args[0] = output.into();
+        *right = CoreExpr::Const(amblicit_syntax::CoreValue::Int {
+            width: "U64".into(),
+            value: capacity.to_string(),
+        });
+        let CoreExpr::Call { type_args, .. } = then_value.as_mut() else {
+            panic!("append")
+        };
+        type_args[0] = output.into();
+        let report = lower_to_target_ir(&core, &facts());
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Unsupported,
+            "{report:?}"
+        );
+        assert!(report
+            .failures
+            .iter()
+            .any(|f| f.kind == TargetLoweringFailureKind::InvalidCoreIdentity));
     }
 }
 

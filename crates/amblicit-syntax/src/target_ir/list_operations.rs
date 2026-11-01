@@ -1,7 +1,8 @@
 //! Target-owned signature and totality checks; source proofs are not trusted.
 use super::{
-    expression_fits_declared_type, resolved_core_type, BTreeMap, CompareOp, CoreExpr, CoreModule,
-    CorePredicate, CoreType, CoreValue, LocalRef, TargetPureFunctionFact,
+    expression_fits_declared_type, expression_type_coordinate, resolved_core_type, BTreeMap,
+    CompareOp, CoreExpr, CoreModule, CorePredicate, CoreType, CoreValue, LocalRef,
+    TargetPureFunctionFact,
 };
 use crate::core_ir::render_self_describing_core_type;
 
@@ -39,7 +40,16 @@ pub(super) fn type_coordinate(
         ("core.list.at", [_], [_, index]) => {
             expression_fits_declared_type(core, functions, index, "U64", available).then_some(item)
         }
-        ("core.list.append", [_], [_, value]) => {
+        ("core.list.append", [_], [list, value]) => {
+            let operand = expression_type_coordinate(core, functions, list, available)?;
+            if resolved_core_type(core, &operand)?
+                != (CoreType::List {
+                    item: item.clone(),
+                    max,
+                })
+            {
+                return None;
+            }
             expression_fits_declared_type(core, functions, value, &item, available)
                 .then(|| coordinate.clone())
         }
