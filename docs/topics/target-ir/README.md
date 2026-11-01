@@ -767,6 +767,9 @@ equivalent item types; widening compatibility alone cannot authorize a larger
 claimed operand type. Structural record names may differ when their fields and
 bounds agree in both directions. Conditional and matched joins can also render
 the common structural record type when neither named type contains the other.
+Append and concatenation reuse each independently validated operand coordinate
+for compatibility and capacity checks. Nested call chains therefore avoid
+duplicating inference at every level; separate totality and guard checks remain.
 Wider enclosing result bounds remain permitted. Changed nominal element
 identity, weaker/removed guards, narrower operand bounds and sum overflow refuse.
 Conditional and matched record projections preserve declared list item coordinates.

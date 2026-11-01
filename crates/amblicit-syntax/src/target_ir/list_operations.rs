@@ -6,6 +6,9 @@ use super::{
 };
 use crate::core_ir::render_self_describing_core_type;
 
+#[cfg(test)]
+mod tests;
+
 pub(super) fn is_operation(callee: &str) -> bool {
     matches!(
         callee,
@@ -21,6 +24,9 @@ pub(super) fn type_coordinate(
     args: &[CoreExpr],
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<String> {
+    #[cfg(test)]
+    tests::visit();
+
     if !core
         .required_core_capabilities
         .iter()
@@ -32,14 +38,16 @@ pub(super) fn type_coordinate(
     let CoreType::List { item, max } = resolved_core_type(core, coordinate)? else {
         return None;
     };
-    if !expression_fits_declared_type(core, functions, args.first()?, coordinate, available) {
-        return None;
-    }
+    let first = args.first()?;
     if matches!(callee, "core.list.append" | "core.list.concat") {
-        let operand = expression_type_coordinate(core, functions, args.first()?, available)?;
+        // Coordinate inference validates the operand. Repeating contextual fit
+        // here would traverse every nested list call twice at each level.
+        let operand = expression_type_coordinate(core, functions, first, available)?;
         if !same_list_type(core, &operand, coordinate) {
             return None;
         }
+    } else if !expression_fits_declared_type(core, functions, first, coordinate, available) {
+        return None;
     }
     match (callee, type_args, args) {
         ("core.list.length", [_], [_]) => Some("U64".into()),
@@ -59,16 +67,7 @@ pub(super) fn type_coordinate(
                 return None;
             };
             let right_operand = expression_type_coordinate(core, functions, right, available)?;
-            if right_item != item
-                || !same_list_type(core, &right_operand, right_coordinate)
-                || !expression_fits_declared_type(
-                    core,
-                    functions,
-                    right,
-                    right_coordinate,
-                    available,
-                )
-            {
+            if right_item != item || !same_list_type(core, &right_operand, right_coordinate) {
                 return None;
             }
             render_self_describing_core_type(&CoreType::List {
