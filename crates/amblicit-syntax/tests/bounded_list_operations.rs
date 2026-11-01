@@ -143,6 +143,91 @@ fn matched_append_preserves_record_item_coordinates() {
 }
 
 #[test]
+fn structural_record_joins_preserve_list_operations() {
+    for definitions in [
+        "type A = { x: U8 }; type B = { x: U8 };",
+        "type A = { x: Bytes<max=1>, y: Bytes<max=3> }; type B = { x: Bytes<max=3>, y: Bytes<max=1> };",
+    ] {
+        for join in [
+            "if input.flag then input.xs else input.ys",
+            "match input.choice { Left => input.xs, Right => input.ys }",
+            "(if input.flag then { items: input.xs } else { items: input.ys }).items",
+        ] {
+            for bind_first in [true, false] {
+                let (setup, operand) = if bind_first {
+                    (format!("let selected = {join};"), "selected")
+                } else {
+                    (String::new(), join)
+                };
+                let source = format!("{definitions} type Choice = variant {{ Left, Right }};
+                  type Input = {{ xs: List<A,max=2>, ys: List<B,max=2>, flag: Bool, choice: Choice }};
+                  type Output = {{ n: U64 }};
+                  intent run(input: Input) returns Output profile p.read basis none budget <= p.large {{
+                    {setup} let combined = listConcat({operand}, {operand});
+                    let n = listLen(combined); return {{ n }};
+                  }}");
+                let core = compile(&source).expect("compatible structural record joins");
+                let mut target = facts(); target.target_ir_domain = "echo.span-ir/v3".into();
+                let report = lower_to_target_ir(&core, &target);
+                assert_eq!(report.status, TargetLoweringStatus::Lowered, "bound={bind_first}, {source}: {report:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn structural_record_function_joins_preserve_list_operations() {
+    for bind_first in [true, false] {
+        let join = "if flag then xs else ys";
+        let (setup, operand) = if bind_first {
+            (format!("let selected = {join};"), "selected")
+        } else {
+            (String::new(), join)
+        };
+        let source = format!(
+            "type A = {{ x: U8 }}; type B = {{ x: U8 }};
+          fn merge(xs: List<A,max=2>, ys: List<B,max=2>, flag: Bool) -> List<A,max=4> {{
+            {setup} return listConcat({operand}, {operand});
+          }} {LENGTH_INTENT}"
+        );
+        let core = compile(&source).unwrap();
+        let mut target = facts();
+        target.target_ir_domain = "echo.span-ir/v3".into();
+        let report = lower_to_target_ir(&core, &target);
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Lowered,
+            "bound={bind_first}: {report:?}"
+        );
+    }
+}
+
+#[test]
+fn concat_equivalence_retains_nominal_variant_identity() {
+    let source = format!("type A = variant {{ Value(U8) }}; type B = variant {{ Value(U8) }};
+      fn join(a: List<A,max=2>, b: List<A,max=2>) -> List<A,max=4> {{ return listConcat(a,b); }} {LENGTH_INTENT}");
+    let mut core = compile(&source).unwrap();
+    assert_eq!(
+        lower_to_target_ir(&core, &facts()).status,
+        TargetLoweringStatus::Lowered
+    );
+    let function = core.functions.get_mut("join").unwrap();
+    function.return_type = "List<work.lists@1.B,max=4>".into();
+    let CoreExpr::Call { type_args, .. } = &mut function.body.result else {
+        panic!("concat");
+    };
+    type_args.fill("List<work.lists@1.B,max=2>".into());
+    validate_core_module_type_integrity(&core).expect("well-formed nominal substitution");
+    let report = lower_to_target_ir(&core, &facts());
+    assert_eq!(report.status, TargetLoweringStatus::Unsupported);
+    assert!(report.artifact.is_none());
+    assert!(report
+        .failures
+        .iter()
+        .any(|failure| failure.kind == TargetLoweringFailureKind::InvalidCoreIdentity));
+}
+
+#[test]
 fn bounded_lists_reject_unsafe_guards_signatures_and_result_bounds() {
     use CompilerErrorKind as K;
     for (body, kind) in [

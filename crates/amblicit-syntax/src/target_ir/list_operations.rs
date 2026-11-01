@@ -1,7 +1,7 @@
 //! Target-owned signature and totality checks; source proofs are not trusted.
 use super::{
-    expression_fits_declared_type, expression_type_coordinate, resolved_core_type, BTreeMap,
-    CompareOp, CoreExpr, CoreModule, CorePredicate, CoreType, CoreValue, LocalRef,
+    core_type_fits, expression_fits_declared_type, expression_type_coordinate, resolved_core_type,
+    BTreeMap, CompareOp, CoreExpr, CoreModule, CorePredicate, CoreType, CoreValue, LocalRef,
     TargetPureFunctionFact,
 };
 use crate::core_ir::render_self_describing_core_type;
@@ -37,7 +37,7 @@ pub(super) fn type_coordinate(
     }
     if matches!(callee, "core.list.append" | "core.list.concat") {
         let operand = expression_type_coordinate(core, functions, args.first()?, available)?;
-        if resolved_core_type(core, &operand)? != resolved_core_type(core, coordinate)? {
+        if !same_list_type(core, &operand, coordinate) {
             return None;
         }
     }
@@ -58,11 +58,9 @@ pub(super) fn type_coordinate(
             else {
                 return None;
             };
+            let right_operand = expression_type_coordinate(core, functions, right, available)?;
             if right_item != item
-                || resolved_core_type(
-                    core,
-                    &expression_type_coordinate(core, functions, right, available)?,
-                )? != resolved_core_type(core, right_coordinate)?
+                || !same_list_type(core, &right_operand, right_coordinate)
                 || !expression_fits_declared_type(
                     core,
                     functions,
@@ -80,6 +78,30 @@ pub(super) fn type_coordinate(
         }
         _ => None,
     }
+}
+
+fn same_list_type(core: &CoreModule, actual: &str, claimed: &str) -> bool {
+    let (
+        Some(CoreType::List {
+            item: actual_item,
+            max: actual_max,
+        }),
+        Some(CoreType::List {
+            item: claimed_item,
+            max: claimed_max,
+        }),
+    ) = (
+        resolved_core_type(core, actual),
+        resolved_core_type(core, claimed),
+    )
+    else {
+        return false;
+    };
+    // Structural record names are transparent; nominal/variant identity is not.
+    // Two-way item compatibility preserves semantic bounds without widening.
+    actual_max == claimed_max
+        && core_type_fits(core, &actual_item, &claimed_item)
+        && core_type_fits(core, &claimed_item, &actual_item)
 }
 
 pub(super) fn is_total(

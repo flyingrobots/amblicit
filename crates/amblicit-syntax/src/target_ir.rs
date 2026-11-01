@@ -2941,7 +2941,15 @@ impl ComparisonOperandShape {
             Self::List { item, max } => {
                 Some(format!("List<{},max={max}>", item.type_coordinate()?))
             }
-            Self::Record(_) | Self::EmptyList => None,
+            Self::Record(fields) => {
+                crate::core_ir::render_self_describing_core_type(&CoreType::Record {
+                    fields: fields
+                        .iter()
+                        .map(|(name, value)| Some((name.clone(), value.type_coordinate()?)))
+                        .collect::<Option<BTreeMap<_, _>>>()?,
+                })
+            }
+            Self::EmptyList => None,
         }
     }
 }

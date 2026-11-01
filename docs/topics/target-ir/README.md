@@ -762,8 +762,11 @@ append and concatenation calls, derives each result from the validated operand
 coordinates, and rechecks strict access/capacity guards on the exact operands.
 List append preserves its declared capacity. Concatenation requires identical
 item coordinates and checks the sum of independently reconstructed operand
-maxima. Both operands must retain their declared item coordinates and maxima;
-widening compatibility alone cannot authorize a larger claimed operand type.
+maxima. Both operands must retain their exact capacities and semantically
+equivalent item types; widening compatibility alone cannot authorize a larger
+claimed operand type. Structural record names may differ when their fields and
+bounds agree in both directions. Conditional and matched joins can also render
+the common structural record type when neither named type contains the other.
 Wider enclosing result bounds remain permitted. Changed nominal element
 identity, weaker/removed guards, narrower operand bounds and sum overflow refuse.
 Conditional and matched record projections preserve declared list item coordinates.
