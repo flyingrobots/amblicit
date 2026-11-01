@@ -130,7 +130,9 @@ other targets and distributed capacity finality remain separately scoped.
 Fine-grained capacity sharding is not required without a demonstrated need;
 serialized membership can satisfy the initial semantics.
 
-This planning change adds no executable capability and changes no normative
-specification or current-truth topic shelf. Implementation PRs must update the
+The collections proposal adds no executable language capability and changes no
+normative specification. The working visualization has its own
+[current-behavior topic and test plan](../topics/roadmap-visualization/README.md).
+Implementation PRs for the planned language/runtime work must update the
 owning formal specification, coupled schemas, requirement/test-plan evidence
 and topic claims as their behavior lands. GitHub remains the sole live tracker.

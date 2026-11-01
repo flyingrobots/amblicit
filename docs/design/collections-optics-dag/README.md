@@ -89,8 +89,11 @@ No browser or package is installed by the check. Set `DAG_CHECK_OUTPUT` to an
 owned scratch directory if screenshots are wanted; otherwise no screenshots
 are retained. The check closes its browser and has a one-minute deadline.
 
-This is a generated illustration of a plan, with no normative language or ABI
-change. The current-truth topic shelves remain unchanged. The
+The viewer's current behavior and requirement/case/fixture/oracle mapping live
+in the [roadmap visualization topic](../../topics/roadmap-visualization/README.md).
+Its Python and browser checks run separately from the Rust gate; the topic test
+plan explicitly records the checker’s non-Rust evidence-registration gap.
+The page illustrates a plan and makes no normative language or ABI change. The
 [implementation rationale](../collections-optics-roadmap.md) explains the plan;
 the [GitHub roadmap](https://github.com/flyingrobots/amblicit/issues/288) owns
 live execution status and acceptance.
