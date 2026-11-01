@@ -78,7 +78,7 @@ const nodes=new Map(DATA.nodes.map(n=>[n.id,n]));
 const incoming=new Map(DATA.nodes.map(n=>[n.id,[]])),outgoing=new Map(DATA.nodes.map(n=>[n.id,[]]));
 DATA.edges.forEach(e=>{incoming.get(e.target).push(e);outgoing.get(e.source).push(e);});
 const completed=new Set();let preview=false;
-const state={selected:null,project:null,query:'',scope:'all',view:'graph',x:0,y:0,k:1};
+const state={selected:null,project:null,query:'',scope:'all',view:'graph',x:0,y:0,k:1,userView:false};
 const nodeElements=new Map(),edgeElements=[];
 const html=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;};
 const svg=(tag,attrs={},text)=>{const e=document.createElementNS(NS,tag);Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v));if(text!==undefined)e.textContent=text;return e;};
@@ -159,7 +159,7 @@ function renderWaves(ids){
     for(const stream of DATA.workstreams){const cell=html('td');for(const id of wave.filter(k=>ids.has(k)&&nodes.get(k).workstream===stream.id)){
       const n=nodes.get(id),card=html('div','wave-card');card.dataset.id=id;card.dataset.project=n.project;card.classList.toggle('dim',!matches(n));card.classList.toggle('selected',state.selected===id);card.classList.toggle('assumed',preview&&completed.has(id));card.classList.toggle('ready',preview&&eligible(id));
       const task=html('button','wave-task');task.append(html('span','wave-ref',issueRef(n)),html('span','wave-task-name',n.shortTitle));task.title=n.title;task.addEventListener('click',()=>selectTask(id));card.append(task);
-      if(preview){const status=completed.has(id)?'Assumed finished':eligible(id)?'Assume finished':'Waiting for prerequisites';const finish=html('button','simulate-finish',status);finish.disabled=!eligible(id);finish.title=incoming.get(id).filter(e=>!completed.has(e.source)).map(e=>issueRef(nodes.get(e.source))).join(', ');finish.addEventListener('click',()=>{if(eligible(id)){completed.add(id);renderWaves(scopeIds());}});card.append(finish);}
+      if(preview){const status=completed.has(id)?'Assumed finished':eligible(id)?'Assume finished':'Waiting for prerequisites';const finish=html('button','simulate-finish',status);finish.disabled=!eligible(id);finish.title=incoming.get(id).filter(e=>!completed.has(e.source)).map(e=>issueRef(nodes.get(e.source))).join(', ');finish.addEventListener('click',()=>{if(eligible(id)){completed.add(id);renderWaves(scopeIds());document.querySelector(`.wave-card[data-id="${CSS.escape(id)}"] .wave-task`).focus();}});card.append(finish);}
       cell.append(card);
     }if(!cell.children.length)cell.append(html('span','wave-empty','—'));tr.append(cell);}body.append(tr);
   });
@@ -183,14 +183,14 @@ function selectTask(id){state.selected=id;update();}
 function clearSelection(){state.selected=null;state.scope='all';$('scope').value='all';update();}
 function transform(){$('scene').setAttribute('transform',`translate(${state.x.toFixed(2)} ${state.y.toFixed(2)}) scale(${state.k.toFixed(4)})`);$('zoom-label').textContent=`${Math.round(state.k*100)}%`;}
 function fit(){
-  if(state.view!=='graph')return;const ids=scopeIds(),rects=[];
+  state.userView=false;if(state.view!=='graph')return;const ids=scopeIds(),rects=[];
   for(const id of ids){const n=nodes.get(id);rects.push({x:n.x,y:n.y,width:n.width,height:n.height});}
   for(const{e,path}of edgeElements)if(ids.has(e.source)&&ids.has(e.target))rects.push(path.getBBox());
   if(!rects.length)return;
   const x=Math.min(...rects.map(r=>r.x))-35,y=Math.min(...rects.map(r=>r.y))-60,w=Math.max(...rects.map(r=>r.x+r.width))-x+35,h=Math.max(...rects.map(r=>r.y+r.height))-y+70;
   const width=$('graph').clientWidth,height=$('graph').clientHeight;state.k=Math.max(.1,Math.min(width/w,height/h,1.35));state.x=(width-w*state.k)/2-x*state.k;state.y=(height-h*state.k)/2-y*state.k;transform();
 }
-function zoom(factor,x=$('graph').clientWidth/2,y=$('graph').clientHeight/2){const next=Math.min(2.5,Math.max(.1,state.k*factor));const ratio=next/state.k;state.x=x-(x-state.x)*ratio;state.y=y-(y-state.y)*ratio;state.k=next;transform();}
+function zoom(factor,x=$('graph').clientWidth/2,y=$('graph').clientHeight/2){state.userView=true;const next=Math.min(2.5,Math.max(.1,state.k*factor));const ratio=next/state.k;state.x=x-(x-state.x)*ratio;state.y=y-(y-state.y)*ratio;state.k=next;transform();}
 function switchView(view){state.view=view;$('graph-view').hidden=view!=='graph';$('list-view').hidden=view!=='list';$('waves-view').hidden=view!=='waves';$('view-waves').setAttribute('aria-pressed',String(view==='waves'));$('view-graph').setAttribute('aria-pressed',String(view==='graph'));$('view-list').setAttribute('aria-pressed',String(view==='list'));if(view==='graph')requestAnimationFrame(fit);}
 function reset(){state.selected=null;state.scope='all';state.query='';state.project=null;$('scope').value='all';$('search').value='';update();fit();}
 $('task-count').textContent=DATA.nodes.length;$('edge-count').textContent=DATA.edges.length;$('entry-count').textContent=DATA.nodes.filter(n=>n.entry).length;
@@ -202,16 +202,16 @@ $('theme').addEventListener('click',()=>{const next=document.documentElement.dat
 $('download-data').addEventListener('click',()=>{const blob=new Blob([JSON.stringify(DATA,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=html('a');a.href=url;a.download='collections-optics-task-dag.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
 let drag=null;
 $('graph').addEventListener('pointerdown',e=>{if(e.button!==0||e.target.closest('.task-node,.edge-hit'))return;drag={id:e.pointerId,x:e.clientX,y:e.clientY};$('graph').setPointerCapture(e.pointerId);$('graph').classList.add('dragging');});
-$('graph').addEventListener('pointermove',e=>{if(!drag||drag.id!==e.pointerId)return;state.x+=e.clientX-drag.x;state.y+=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;transform();});
+$('graph').addEventListener('pointermove',e=>{if(!drag||drag.id!==e.pointerId)return;state.userView=true;state.x+=e.clientX-drag.x;state.y+=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;transform();});
 for(const event of['pointerup','pointercancel','lostpointercapture'])$('graph').addEventListener(event,()=>{drag=null;$('graph').classList.remove('dragging');});
 $('graph').addEventListener('wheel',e=>{e.preventDefault();const rect=$('graph').getBoundingClientRect();zoom(Math.exp(-e.deltaY*.0018),e.clientX-rect.x,e.clientY-rect.y);},{passive:false});
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){reset();return;}if(e.target.closest('input,select,textarea'))return;
   if(e.key==='/'){e.preventDefault();$('search').focus();}else if(e.key==='+'||e.key==='='){zoom(1.25);}else if(e.key==='-'){zoom(.8);}else if(e.key==='0'){fit();}
-  else if(e.target.closest('#graph')&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();state.x+=e.key==='ArrowLeft'?60:e.key==='ArrowRight'?-60:0;state.y+=e.key==='ArrowUp'?60:e.key==='ArrowDown'?-60:0;transform();}
+  else if(e.target.closest('#graph')&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();state.userView=true;state.x+=e.key==='ArrowLeft'?60:e.key==='ArrowRight'?-60:0;state.y+=e.key==='ArrowUp'?60:e.key==='ArrowDown'?-60:0;transform();}
 });
 function initialView(){fit();if($('graph').clientWidth<600&&state.scope==='all'){const entries=DATA.nodes.filter(n=>n.entry),left=Math.min(...entries.map(n=>n.x)),top=Math.min(...entries.map(n=>n.y)),bottom=Math.max(...entries.map(n=>n.y+n.height));state.k=.85;state.x=22-left*state.k;state.y=($('graph').clientHeight-(bottom-top)*state.k)/2-top*state.k;transform();}}
-initializeWaves();makeGraph();update();requestAnimationFrame(initialView);new ResizeObserver(()=>{if(state.view==='graph')initialView();}).observe($('graph'));
+initializeWaves();makeGraph();update();requestAnimationFrame(initialView);new ResizeObserver(()=>{if(state.view==='graph'&&!state.userView)initialView();}).observe($('graph'));
 </script>
 </body>
 </html>

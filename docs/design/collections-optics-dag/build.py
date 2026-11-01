@@ -94,6 +94,9 @@ def prepare(data):
     nodes = {n['id']: n for n in data['nodes']}
     if len(nodes) != len(data['nodes']):
         raise ValueError('Duplicate task IDs')
+    issue_ids = [n['issueId'] for n in data['nodes'] if 'issueId' in n]
+    if len(set(issue_ids)) != len(issue_ids):
+        raise ValueError('Duplicate GitHub issue identities')
     edges = data['edges']
     seen = set()
     incoming = {key: [] for key in nodes}

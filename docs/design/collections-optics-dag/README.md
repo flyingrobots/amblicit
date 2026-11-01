@@ -9,7 +9,8 @@ Project colors identify Amblicit, Echo and Jim/Jedit. Search and project
 spotlights retain the surrounding dependency context. Selecting a task exposes
 the reasons for its direct prerequisites and dependents; the scope selector
 can isolate prerequisites, dependents or both. These views never synthesize
-transitive shortcuts. On narrow screens the map opens at a readable zoom on
+transitive shortcuts. Resizing preserves a reader's pan or zoom until Fit or
+Reset restores automatic fitting. On narrow screens the map opens at a readable zoom on
 the entry tasks; **Fit** shows the whole graph.
 
 The **Waves** view crosses earliest dependency antichains with four workstreams:
@@ -20,7 +21,8 @@ contracts rather than duplicated tasks.
 
 Waves are a preview, not execution barriers. The optional rolling-readiness
 simulation assumes selected eligible tasks have finished and immediately exposes
-their dependents. It changes only in-memory preview state. It does not assert
+their dependents. Keyboard focus returns to the completed card's task button.
+It changes only in-memory preview state. It does not assert
 actual acceptance, schedule workers, acquire resources or estimate durations.
 The widest-frontier example makes the distinction concrete: this snapshot has
 9 dependency waves, a largest wave of 8, and an exact maximum antichain of 9.
@@ -60,7 +62,8 @@ python3 build.py --check
 python3 verify_analysis.py
 ```
 
-The builder validates endpoints and edge kinds, rejects duplicate/self/cyclic
+The builder validates endpoints and edge kinds, rejects duplicate supplied
+GitHub issue identities and duplicate/self/cyclic
 dependencies, computes a deterministic layered layout, and embeds the data
 and interface into `index.html`. Routing slots are geometry only; they are
 never rendered as tasks or added to the semantic graph. The generated HTML
@@ -87,7 +90,9 @@ refresh GitHub. `PLAYWRIGHT_MODULE` can name an existing Playwright module and
 `CHROMIUM_EXECUTABLE` can select an existing compatible Chromium executable.
 No browser or package is installed by the check. Set `DAG_CHECK_OUTPUT` to an
 owned scratch directory if screenshots are wanted; otherwise no screenshots
-are retained. The check closes its browser and has a one-minute deadline.
+are retained. The check bounds browser launch to 30 seconds; after
+launch, a separate one-minute timer closes the browser if checks have not
+finished. This is not a one-minute deadline for the entire command.
 
 The viewer's current behavior and requirement/case/fixture/oracle mapping live
 in the [roadmap visualization topic](../../topics/roadmap-visualization/README.md).

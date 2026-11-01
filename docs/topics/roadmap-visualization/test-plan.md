@@ -23,6 +23,7 @@ separately; `cargo xtask verify` does not execute Python or Playwright.
 | RDAG-REQ-003 | gap | The standalone page supports project colors, task focus, search, a text list, export, keyboard selection, pan/zoom, narrow screens, and light/dark themes without network requests. | docs/design/collections-optics-dag/page.template.html |
 | RDAG-REQ-004 | gap | The in-memory readiness preview enables a task only after its own assumed predecessors finish, without a global wave barrier, resource admission, or tracker writes. | docs/design/collections-optics-dag/page.template.html |
 | RDAG-REQ-005 | gap | The fixed snapshot and template deterministically regenerate the checked-in HTML; check mode detects stale generated output without rewriting it. | docs/design/collections-optics-dag/build.py |
+| RDAG-REQ-006 | gap | Completing a simulated task retains keyboard focus in its card; window resizing preserves a reader-adjusted map until Fit or Reset; duplicate supplied GitHub issue identities reject. | docs/design/collections-optics-dag/page.template.html, docs/design/collections-optics-dag/build.py |
 
 ## Fixtures
 
@@ -50,7 +51,10 @@ result.
 | RDAG-TP-004 | gap | Browser graph and interaction | RDAG-REQ-001, RDAG-REQ-003 | The DOM and JSON export contain exactly the snapshot edges; focus never invents edges; colors, search/list, keyboard, zoom/pan, themes and mobile bounds meet assertions in an offline context. | node docs/design/collections-optics-dag/verify.mjs | docs/design/collections-optics-dag/verify.mjs, docs/design/collections-optics-dag/index.html, docs/design/collections-optics-dag/snapshot.json | Existing Playwright and compatible Chromium are required; the check installs nothing. |
 | RDAG-TP-005 | gap | Rolling eligibility | RDAG-REQ-004 | Assuming publication finished enables its consumers while unrelated first-wave work remains; list-runtime stays blocked until both prerequisites finish; the maximum-frontier example exposes nine eligible tasks. | node docs/design/collections-optics-dag/verify.mjs | docs/design/collections-optics-dag/verify.mjs, docs/design/collections-optics-dag/index.html | Completion is an in-memory assumption, not accepted runtime evidence. |
 | RDAG-TP-006 | gap | Generated artifact | RDAG-REQ-005 | Check mode compares regenerated text against the retained HTML and exits nonzero on a mismatch. | python3 docs/design/collections-optics-dag/build.py --check | docs/design/collections-optics-dag/build.py, docs/design/collections-optics-dag/page.template.html, docs/design/collections-optics-dag/snapshot.json, docs/design/collections-optics-dag/index.html | This command verifies freshness; it does not refresh the source graph or supply a cross-platform canonical serialization profile. |
-| RDAG-TP-007 | planned | Additional invalid endpoints | RDAG-REQ-001 | Duplicate, self-referential, and unbound edges each reject before rendering. | - | docs/design/collections-optics-dag/snapshot.json | The builder has these guards; focused negative cases beyond the existing cycle/resource checks remain to be added. |
+| RDAG-TP-007 | gap | Additional invalid endpoints | RDAG-REQ-001 | Duplicate, self-referential, and unbound edges each raise ValueError before rendering. | test_invalid_endpoints_are_rejected | docs/design/collections-optics-dag/verify_analysis.py | Added coverage of existing guards; automatic Rust evidence-name registration remains a gap. |
+| RDAG-TP-008 | gap | Interaction continuity | RDAG-REQ-006 | Keyboard completion focuses the same card's enabled task control; resizing retains a panned or zoomed transform; Fit restores automatic resizing. | node docs/design/collections-optics-dag/verify.mjs | docs/design/collections-optics-dag/verify.mjs, docs/design/collections-optics-dag/index.html | Both focus and zoom assertions failed before their implementation fixes and pass afterward. |
+| RDAG-TP-009 | gap | Unique issue identity | RDAG-REQ-006 | Two distinct task IDs with the same supplied issueId raise ValueError; synthetic nodes may omit issueId. | test_duplicate_issue_identity_is_rejected | docs/design/collections-optics-dag/verify_analysis.py | Failed before the guard and passes afterward; the four-node width fixture covers omitted issueId. |
+| RDAG-TP-010 | gap | Cross-workstream contracts | RDAG-REQ-002 | The reported cross-workstream edge list exactly matches captured edges with different workstream owners, without omissions or duplicates. | test_cross_workstream_edges_match_owners | docs/design/collections-optics-dag/verify_analysis.py, docs/design/collections-optics-dag/snapshot.json | Added coverage of existing behavior; not a new algorithm claim. |
 
 ## Commands and coverage
 
@@ -64,8 +68,9 @@ node docs/design/collections-optics-dag/verify.mjs
 
 The [artifact guide](../../design/collections-optics-dag/README.md) documents
 the optional Playwright module, Chromium executable, and screenshot-directory
-environment variables. The browser check has a one-minute deadline and closes
-its browser. These commands are explicit companion checks to the normal local
+environment variables. The check bounds launch to 30 seconds; a separate
+one-minute timer closes the browser after launch. These commands are explicit
+companion checks to the normal local
 gate, not commands that the Rust evidence-name checker executes.
 
 ## Known gaps
@@ -74,8 +79,6 @@ gate, not commands that the Rust evidence-name checker executes.
   checker, and these companion checks are not scheduled by the Rust CI jobs.
 - The browser suite exercises the captured graph; it is not a general browser
   accessibility certification or a test of arbitrary imported graph sizes.
-- Direct duplicate/self/unbound-edge negative cases are planned in RDAG-TP-007;
-  current rejection evidence exercises cycles and nonprecedence edges.
 - There is no resource-feasible scheduler, duration forecast, completion
   authority, tracker writer, or compiler/runtime acceptance implementation in
   this viewer.

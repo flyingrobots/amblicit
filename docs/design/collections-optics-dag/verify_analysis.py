@@ -48,6 +48,30 @@ class AnalysisChecks(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'workstream'):
             prepare(self.raw)
 
+    def test_duplicate_issue_identity_is_rejected(self):
+        self.raw['nodes'][1]['issueId'] = self.raw['nodes'][0]['issueId']
+        with self.assertRaises(ValueError):
+            prepare(self.raw)
+
+    def test_invalid_endpoints_are_rejected(self):
+        for edge in [self.raw['edges'][0],
+                     {'source': 'model', 'target': 'model', 'relationship': 'must_finish_before'},
+                     {'source': 'absent', 'target': 'model', 'relationship': 'must_finish_before'}]:
+            with self.subTest(edge=edge):
+                raw = copy.deepcopy(self.raw)
+                raw['edges'].append(copy.deepcopy(edge))
+                with self.assertRaises(ValueError):
+                    prepare(raw)
+
+    def test_cross_workstream_edges_match_owners(self):
+        data = prepare(self.raw)
+        owners = {k: s['id'] for s in self.raw['workstreams'] for k in s['tasks']}
+        expected = {(e['source'], e['target']) for e in self.raw['edges']
+                    if owners[e['source']] != owners[e['target']]}
+        actual = [(e['source'], e['target']) for e in data['analysis']['crossWorkstreamEdges']]
+        self.assertTrue(expected)
+        self.assertCountEqual(actual, expected)
+
     def test_generation_width_is_not_poset_width(self):
         raw = {'nodes': [{'id': k} for k in 'abcd'],
                'edges': [{'source': 'a', 'target': k, 'relationship': 'must_finish_before'}

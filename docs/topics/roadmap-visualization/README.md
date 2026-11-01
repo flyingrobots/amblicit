@@ -16,7 +16,8 @@ integration gap.
 
 ## Graph and analysis boundary
 
-The builder reads a dated JSON snapshot. It rejects unbound, duplicate,
+The builder reads a dated JSON snapshot. It rejects duplicate supplied GitHub
+issue identities as well as unbound, duplicate,
 reflexive, cyclic, and nonprecedence edges before producing the page. Every
 displayed arrow is a supplied prerequisite-to-dependent relationship. Project
 membership, workstreams, native parent hierarchy, and routing geometry do not
@@ -36,6 +37,10 @@ Waves views provide project colors, context-preserving search, prerequisite and
 dependent focus, keyboard selection, pan/zoom, JSON export, theme switching,
 and narrow-screen layouts without a server or network access. Following a
 GitHub link deliberately leaves the offline view. [RDAG-REQ-003]
+
+Resizing preserves a reader's pan or zoom until Fit or Reset restores automatic
+fitting. Completing a simulated task moves keyboard focus to the same card's
+enabled task button. [RDAG-REQ-006]
 
 The optional readiness preview stores assumptions in page memory. Finishing
 one eligible task can enable its consumers immediately; unrelated members of
