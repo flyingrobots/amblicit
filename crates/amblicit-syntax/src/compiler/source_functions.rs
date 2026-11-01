@@ -115,7 +115,7 @@ impl TypeChecker<'_> {
         self.input_proof_constraints.clear();
         self.local_bounds.clear();
         let mut env = LocalEnvironment::default();
-        let params = definition
+        let params: Vec<_> = definition
             .params
             .iter()
             .zip(&signature.params)
@@ -194,6 +194,12 @@ impl TypeChecker<'_> {
             return None;
         }
         let result = result?;
+        self.record_source_block_frame(
+            &definition.body,
+            params.iter().chain(&locals),
+            &env,
+            definition.span,
+        )?;
         Some(CoreFunction {
             params,
             return_type: signature.result.coord,
@@ -365,7 +371,11 @@ impl TypeChecker<'_> {
         )
     }
 
-    fn source_value_bound(&mut self, shape: &TypeShape, span: Span) -> Option<(u64, u64)> {
+    pub(super) fn source_value_bound(
+        &mut self,
+        shape: &TypeShape,
+        span: Span,
+    ) -> Option<(u64, u64)> {
         if contains_external_action_request(shape) {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
@@ -378,7 +388,7 @@ impl TypeChecker<'_> {
         value_bound(shape).or_else(|| self.function_bound_failure(span))
     }
 
-    fn function_bound_failure<T>(&mut self, span: Span) -> Option<T> {
+    pub(super) fn function_bound_failure<T>(&mut self, span: Span) -> Option<T> {
         self.errors.push(error(
             CompilerStage::TypeCheck,
             CompilerErrorKind::InvalidBound,

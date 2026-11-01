@@ -14,6 +14,11 @@
 
 | CSPINE-TP-213 | implemented | Requirement-node work | CSPINE-REQ-066 | A list-capable intent includes every requirement node in its source work admission; the exact 296-step boundary agrees with native Target, and branch/loop nesting retains those charges. | list_work_includes_each_requirement_node, list_work_multiplies_requirements_inside_nested_loops | crates/amblicit-syntax/tests/bounded_list_operations.rs | PR #299 review regression. |
 
+| CSPINE-TP-214 | implemented | Obstruction payload work | CSPINE-REQ-066 | Terminal and continuing shorthand payloads charge their emitted local reads; source thresholds cover native step and allocation thresholds with explicit-payload controls. | obstruction_payload_shorthand_covers_the_emitted_local_read | crates/amblicit-syntax/tests/bounded_list_work.rs | Baker Street F-1. |
+| CSPINE-TP-215 | implemented | Payload-match frames | CSPINE-REQ-066 | Source admission covers native copies of complete typed frames, including later locals, nested binders, branches, loops, helpers and fold repetitions; payload-discarding controls remain valid. | payload_matches_charge_complete_frames_and_nested_scopes, helper_and_fold_payload_matches_retain_frame_work | crates/amblicit-syntax/tests/bounded_list_work.rs | Baker Street F-2; source bounds may conservatively exceed native bounds. |
+
+| CSPINE-TP-216 | implemented | Effect frame work | CSPINE-REQ-066 | List-capable intents cover native receipt, obstruction binder/annotation and effect-node work, including repeated effects, loop bodies and payload-match frames. | effect_frames_and_obstructions_are_charged_in_list_capable_intents | crates/amblicit-syntax/tests/bounded_list_work.rs | PR #299 review regression. |
+
 Status: current verification design for the executable source-to-Core spine.
 
 ## Scope

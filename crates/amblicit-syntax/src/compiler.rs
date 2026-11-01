@@ -35,6 +35,7 @@ mod source_functions;
 mod source_matches;
 mod source_types;
 mod source_variants;
+mod source_work;
 mod target_pure_intrinsic;
 pub use signature_diagnostic::{
     EffectSignatureMismatch, SignatureMismatchPosition, SignaturePathSegment,
@@ -1044,6 +1045,11 @@ struct TypeChecker<'a> {
     source_predicate_costs: BTreeMap<usize, HelperCost>,
     source_value_bounds: BTreeMap<usize, (u64, u64)>,
     source_loop_frames: BTreeMap<usize, HelperCost>,
+    source_block_frames: BTreeMap<usize, HelperCost>,
+    source_match_binder_frames: BTreeMap<usize, HelperCost>,
+    source_reason_shorthand_costs: BTreeMap<usize, HelperCost>,
+    source_obstruction_frames: BTreeMap<String, HelperCost>,
+    source_cost_frame: HelperCost,
     /// Byte maximum of every operand coordinate a `count` call resolved, so the
     /// addition proof can bound named coordinates without a type table.
     count_operand_maxima: BTreeMap<String, u64>,
@@ -1076,6 +1082,11 @@ impl<'a> TypeChecker<'a> {
             source_predicate_costs: BTreeMap::new(),
             source_value_bounds: BTreeMap::new(),
             source_loop_frames: BTreeMap::new(),
+            source_block_frames: BTreeMap::new(),
+            source_match_binder_frames: BTreeMap::new(),
+            source_reason_shorthand_costs: BTreeMap::new(),
+            source_obstruction_frames: BTreeMap::new(),
+            source_cost_frame: HelperCost::default(),
             count_operand_maxima: BTreeMap::new(),
             local_bounds: BTreeMap::new(),
             input_proof_constraints: Vec::new(),
@@ -1494,20 +1505,26 @@ impl<'a> TypeChecker<'a> {
 
     fn check_helper_cost_budget(&mut self, intent: &ResolvedIntent) -> Option<HelperCost> {
         let mut cost = self.helper_cost_for_block(&intent.source.body)?;
-        for clause in &intent.source.clauses {
-            let clause_cost = match clause {
-                IntentClause::Basis(Some(expr)) => self.helper_cost_for_expr(expr)?,
-                IntentClause::Where(predicates) => {
-                    self.helper_cost_for_exprs_at(predicates, intent.source.span)?
+        let clauses =
+            self.with_source_block_frame(&intent.source.body, intent.source.span, |this| {
+                let mut cost = HelperCost::default();
+                for clause in &intent.source.clauses {
+                    let clause_cost = match clause {
+                        IntentClause::Basis(Some(expr)) => this.helper_cost_for_expr(expr)?,
+                        IntentClause::Where(predicates) => {
+                            this.helper_cost_for_exprs_at(predicates, intent.source.span)?
+                        }
+                        IntentClause::Profile(_)
+                        | IntentClause::Implements(_)
+                        | IntentClause::Basis(None)
+                        | IntentClause::Footprint(_)
+                        | IntentClause::Budget(_) => HelperCost::default(),
+                    };
+                    cost = this.checked_helper_cost_add(cost, clause_cost, intent.source.span)?;
                 }
-                IntentClause::Profile(_)
-                | IntentClause::Implements(_)
-                | IntentClause::Basis(None)
-                | IntentClause::Footprint(_)
-                | IntentClause::Budget(_) => HelperCost::default(),
-            };
-            cost = self.checked_helper_cost_add(cost, clause_cost, intent.source.span)?;
-        }
+                Some(cost)
+            })?;
+        cost = self.checked_helper_cost_add(cost, clauses, intent.source.span)?;
         if !self.resolved.source_functions.is_empty()
             || self.match_in_intent
             || self.meters_list_work()
@@ -1540,12 +1557,14 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn helper_cost_for_block(&mut self, block: &Block) -> Option<HelperCost> {
-        let mut cost = HelperCost::default();
-        for stmt in &block.stmts {
-            let stmt_cost = self.helper_cost_for_stmt(stmt)?;
-            cost = self.checked_helper_cost_add(cost, stmt_cost, block.span)?;
-        }
-        Some(cost)
+        self.with_source_block_frame(block, block.span, |this| {
+            let mut cost = HelperCost::default();
+            for stmt in &block.stmts {
+                let stmt_cost = this.helper_cost_for_stmt(stmt)?;
+                cost = this.checked_helper_cost_add(cost, stmt_cost, block.span)?;
+            }
+            Some(cost)
+        })
     }
 
     fn helper_cost_for_stmt(&mut self, stmt: &Stmt) -> Option<HelperCost> {
@@ -1744,7 +1763,7 @@ impl<'a> TypeChecker<'a> {
                         RecordEntry::Field { value, .. } | RecordEntry::Spread(value) => {
                             self.helper_cost_for_expr(value)?
                         }
-                        RecordEntry::Shorthand { .. } => HelperCost::default(),
+                        RecordEntry::Shorthand { .. } => self.source_reason_shorthand_cost(entry),
                     };
                     cost = self.checked_helper_cost_add(cost, entry_cost, *span)?;
                 }
@@ -1785,14 +1804,7 @@ impl<'a> TypeChecker<'a> {
                 scrutinee,
                 arms,
                 span,
-            } => {
-                let scrutinee_cost = self.helper_cost_for_expr(scrutinee)?;
-                let mut arm_cost = HelperCost::default();
-                for arm in arms {
-                    arm_cost = arm_cost.component_max(self.helper_cost_for_expr(&arm.body)?);
-                }
-                self.checked_helper_cost_add(scrutinee_cost, arm_cost, *span)
-            }
+            } => self.helper_cost_for_match(scrutinee, arms, *span),
         }?;
         let span = expr_span(expr);
         let own = self.recorded_own_cost(expr, span)?;
@@ -1902,13 +1914,15 @@ impl<'a> TypeChecker<'a> {
     ) -> Option<HelperCost> {
         // Keep the original borrowed expressions: their immutable AST identity
         // keys type/cost summaries, while spans remain diagnostics only.
-        let mut statement_cost = HelperCost::default();
-        for statement in &block.stmts {
-            let cost = self.helper_cost_for_stmt(statement)?;
-            statement_cost = self.checked_helper_cost_add(statement_cost, cost, block.span)?;
-        }
-        let value_cost = self.helper_cost_for_expr(&block.value)?;
-        self.checked_helper_cost_add(statement_cost, value_cost, block.span)
+        self.with_source_block_frame(block, block.span, |this| {
+            let mut statement_cost = HelperCost::default();
+            for statement in &block.stmts {
+                let cost = this.helper_cost_for_stmt(statement)?;
+                statement_cost = this.checked_helper_cost_add(statement_cost, cost, block.span)?;
+            }
+            let value_cost = this.helper_cost_for_expr(&block.value)?;
+            this.checked_helper_cost_add(statement_cost, value_cost, block.span)
+        })
     }
 
     fn helper_cost_for_handler(
@@ -1958,7 +1972,7 @@ impl<'a> TypeChecker<'a> {
                         RecordEntry::Field { value, .. } | RecordEntry::Spread(value) => {
                             self.helper_cost_for_expr(value)?
                         }
-                        RecordEntry::Shorthand { .. } => HelperCost::default(),
+                        RecordEntry::Shorthand { .. } => self.source_reason_shorthand_cost(entry),
                     };
                     payload = self.checked_helper_cost_add(payload, entry_cost, arm.span)?;
                 }
@@ -2036,6 +2050,7 @@ impl<'a> TypeChecker<'a> {
         }
 
         if let Some(result) = state.result {
+            self.record_source_block_frame(&source.body, locals.iter(), env, source.span)?;
             Some(CoreBlock {
                 locals: locals.clone(),
                 nodes: state.nodes,
@@ -2266,6 +2281,8 @@ impl<'a> TypeChecker<'a> {
         state.local_index = nested_state.local_index;
         state.obstruction_index = nested_state.obstruction_index;
         state.accumulated_steps = nested_state.accumulated_steps;
+        let _ =
+            self.record_source_block_frame(block, nested_locals.iter(), &nested_env, block.span);
         CoreBlock {
             locals: nested_locals,
             nodes: nested_state.nodes,
@@ -2351,6 +2368,12 @@ impl<'a> TypeChecker<'a> {
         state.local_index = nested_state.local_index;
         state.obstruction_index = nested_state.obstruction_index;
         state.accumulated_steps = nested_state.accumulated_steps;
+        if self
+            .record_source_block_frame(body, nested_locals.iter(), &nested_env, span)
+            .is_none()
+        {
+            return;
+        }
         state.nodes.push(CoreNode::For {
             binder,
             iter: iter_value.expr,
@@ -2846,7 +2869,7 @@ impl<'a> TypeChecker<'a> {
                         accepted = false;
                         // A repeated key does not resolve its shorthand name.
                     }
-                    let Some((local, _)) = env.get(name) else {
+                    let Some((local, shape)) = env.get(name) else {
                         if !env.poisoned.contains(name) {
                             self.errors.push(error(
                                 CompilerStage::TypeCheck,
@@ -2858,6 +2881,7 @@ impl<'a> TypeChecker<'a> {
                         accepted = false;
                         continue;
                     };
+                    self.record_source_reason_shorthand(entry, shape, *span)?;
                     fields.insert(
                         name.clone(),
                         CoreExpr::Local {
@@ -3401,6 +3425,7 @@ impl<'a> TypeChecker<'a> {
         if self.errors.len() != error_count {
             return None;
         }
+        self.record_source_block_frame(block, nested_locals.iter(), &nested_env, block.span)?;
         Some((
             CoreBlock {
                 locals: nested_locals,
@@ -3469,6 +3494,12 @@ impl<'a> TypeChecker<'a> {
         ) else {
             return;
         };
+        if self
+            .record_source_effect_frame(stmt.value, &binding_shape, &obstruction_map, stmt.span)
+            .is_none()
+        {
+            return;
+        }
         state.nodes.push(CoreNode::Effect {
             binding: local.clone(),
             effect,
@@ -3779,10 +3810,19 @@ impl<'a> TypeChecker<'a> {
                 ));
                 return None;
             };
+            self.record_source_obstruction_frame(&payload_shape, arm.span)?;
             payload_shape.value_type_coord()
         } else {
             // Legacy facts carry no failure-payload authority and this source
             // subset cannot read the binder. Preserve that erasure as Unit.
+            self.source_obstruction_frames.insert(
+                "Unit".to_owned(),
+                HelperCost {
+                    steps: 2,
+                    allocated_bytes: 64,
+                    output_bytes: 0,
+                },
+            );
             "Unit".to_owned()
         };
         let binder = LocalRef {

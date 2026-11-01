@@ -294,6 +294,13 @@ and null block result, the enclosing node, and selected statement-branch frames.
 Bare Boolean predicates include their generated equality comparison work.
 Each `require` includes its Core node step as well as predicate and arm work,
 including when repeated inside bounded loops.
+Shorthand obstruction payloads include their synthesized local reads.
+Payload-binding matches charge the complete typed block frame, including later
+locals and surrounding scopes, plus payload-cell work. Nested binders, helper
+calls and fold repetitions retain those charges. Source bounds may conservatively
+exceed the independently reconstructed native bounds.
+Effect bindings include receipt, obstruction binder/annotation and node work;
+generated obstruction locals also participate in copied match frames.
 Native Target independently checks the emitted calls and
 work budgets. Compiler/Target projections do not establish executable provider
 support; Echo #946 owns that consumer work. Intent results retain their existing
