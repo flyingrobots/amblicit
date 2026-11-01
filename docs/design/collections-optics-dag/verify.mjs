@@ -28,6 +28,25 @@ try {
   assert(!rendered.includes('identity->counterparts'));
   const embedded=await page.locator('#graph-data').textContent().then(JSON.parse);
   assert(!embedded.nodes.some(n=>n.number===288 && n.project==='amblicit'));
+  await page.locator('#view-waves').click();
+  assert.equal(await page.locator('#wave-table tbody tr').count(),9);
+  assert.equal(await page.locator('.wave-card').count(),snapshot.nodes.length);
+  const waveMembership=await page.locator('.wave-card').evaluateAll(es=>es.map(e=>e.dataset.id).sort());
+  assert.deepEqual(waveMembership,snapshot.nodes.map(n=>n.id).sort());
+  assert.equal(await page.locator('#width-exact').textContent(),'9');
+  assert.equal(await page.locator('#width-wave').textContent(),'8');
+  await page.locator('#preview-toggle').check();
+  assert.equal(await page.locator('.simulate-finish:enabled').count(),4);
+  await page.locator('.wave-card[data-id="list_publish"] .simulate-finish').click();
+  assert.equal(await page.locator('.wave-card[data-id="identity"] .simulate-finish').isEnabled(),true,'No wave barrier after a predecessor completes');
+  assert.equal(await page.locator('.wave-card[data-id="model"] .simulate-finish').isEnabled(),true);
+  assert.equal(await page.locator('.wave-card[data-id="list_runtime"] .simulate-finish').isEnabled(),false,'All prerequisites must be complete');
+  await page.locator('#preview-maximum').click();
+  assert.equal(await page.locator('.simulate-finish:enabled').count(),9);
+  await screenshot(page,'dag-waves.png');
+  await page.locator('#preview-reset').click();
+  await page.locator('#preview-toggle').uncheck();
+  await page.locator('#view-graph').click();
   assert.equal(new Set(await page.locator('.node-card').evaluateAll(es=>es.map(e=>getComputedStyle(e).fill))).size,3);
   await screenshot(page,'dag-desktop.png');
   await page.locator('#node-rope').click();
@@ -96,7 +115,10 @@ try {
   const heading=await mobile.locator('h1').boundingBox(),theme=await mobile.locator('#theme').boundingBox();
   assert(heading.y+heading.height<theme.y||theme.x>heading.x+heading.width);
   await screenshot(mobile,'dag-mobile-initial.png');
+  await mobile.locator('#view-waves').click();
+  assert(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  assert(await mobile.locator('.wave-table-wrap').evaluate(e=>e.scrollWidth>e.clientWidth));
   assert.deepEqual(errors,[]);
   assert.deepEqual(requests,[],'The page must work without a server, CDN or network');
-  console.log(JSON.stringify({pass:true,nodes:snapshot.nodes.length,nativeEdges:snapshot.edges.length,checks:['snapshot graph equality and direction','no hierarchy or synthetic edges','three project colors','prerequisite focus','project context','search and empty state','list alternative','zoom and pan','keyboard selection','mobile width','light theme','offline and no JavaScript errors','export fidelity','dependent and whole-chain focus','mobile initial zoom']}));
+  console.log(JSON.stringify({pass:true,nodes:snapshot.nodes.length,nativeEdges:snapshot.edges.length,checks:['snapshot graph equality and direction','no hierarchy or synthetic edges','three project colors','prerequisite focus','project context','search and empty state','list alternative','zoom and pan','keyboard selection','mobile width','light theme','offline and no JavaScript errors','export fidelity','dependent and whole-chain focus','mobile initial zoom','MECE wave rendering','rolling readiness without barriers','maximum frontier example','mobile waves scrolling']}));
 } finally {clearTimeout(deadline);await browser.close();}

@@ -472,5 +472,57 @@
       "reason": "Proves the replacement authoring surface is sufficient for the concrete consumer before retirement.",
       "evidence": "https://api.github.com/repos/flyingrobots/echo/issues/952/dependencies/blocked_by"
     }
+  ],
+  "workstreams": [
+    {
+      "id": "substrate",
+      "name": "Public execution",
+      "description": "Reusable public compiler/provider/runtime capabilities consumed by both collection work and the rope proof.",
+      "tasks": [
+        "list_core",
+        "list_publish",
+        "list_runtime",
+        "structured_effects",
+        "identity",
+        "closure_read"
+      ]
+    },
+    {
+      "id": "collections",
+      "name": "Collections & optics",
+      "description": "Reference laws, witnessed slots and traversal, atomic membership, immutable content, and the demonstrated composition surface.",
+      "tasks": [
+        "model",
+        "optic_flat",
+        "slot_compiler",
+        "slot_echo",
+        "traversal_compiler",
+        "traversal_echo",
+        "mutation_compiler",
+        "mutation_echo",
+        "content_compiler",
+        "content_echo",
+        "composition"
+      ]
+    },
+    {
+      "id": "rope",
+      "name": "Rope acceptance",
+      "description": "Current capability probes, independent schema-2 counterparts, and the first complete authored operation proof.",
+      "tasks": [
+        "rope_probe",
+        "counterparts",
+        "rope"
+      ]
+    },
+    {
+      "id": "adoption",
+      "name": "Adoption & compatibility",
+      "description": "Migrate the proved operation to collections/optics, then retire raw authoring while retaining versioned historical replay.",
+      "tasks": [
+        "rope_optics",
+        "retire_create"
+      ]
+    }
   ]
 }

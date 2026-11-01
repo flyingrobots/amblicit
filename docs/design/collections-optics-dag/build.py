@@ -10,6 +10,85 @@ ROOT = Path(__file__).resolve().parent
 WIDTH, HEIGHT, GAP = 194, 88, 60
 
 
+def analyze(data, nodes, incoming, outgoing, rank):
+    owners = {}
+    streams = set()
+    for stream in data['workstreams']:
+        if stream['id'] in streams:
+            raise ValueError('Duplicate workstream identifier')
+        streams.add(stream['id'])
+        for key in stream['tasks']:
+            if key in owners or key not in nodes:
+                raise ValueError(f'Overlapping or unknown workstream membership: {key}')
+            owners[key] = stream['id']
+    if set(owners) != set(nodes):
+        raise ValueError('Every task must have exactly one workstream')
+    for key, node in nodes.items():
+        node['workstream'] = owners[key]
+
+    keys = sorted(nodes)
+    reach = {k: set() for k in keys}
+    for u in sorted(keys, key=lambda k: (-rank[k], k)):
+        for v in outgoing[u]:
+            reach[u].add(v)
+            reach[u].update(reach[v])
+    # Exact poset width: maximum matching in the bipartite reachability graph.
+    # Both a maximum antichain and a same-size chain cover certify the result.
+    right = {}
+
+    def augment(u, visited):
+        for v in sorted(reach[u]):
+            if v in visited:
+                continue
+            visited.add(v)
+            if v not in right or augment(right[v], visited):
+                right[v] = u
+                return True
+        return False
+
+    for u in keys:
+        augment(u, set())
+    left = {u: v for v, u in right.items()}
+    zl, zr = set(keys) - set(left), set()
+    queue = sorted(zl)
+    while queue:
+        u = queue.pop()
+        for v in sorted(reach[u]):
+            if left.get(u) == v or v in zr:
+                continue
+            zr.add(v)
+            if v in right and right[v] not in zl:
+                zl.add(right[v])
+                queue.append(right[v])
+    antichain = sorted(zl - zr)
+    chains = []
+    for start in sorted(set(keys) - set(right)):
+        chain = [start]
+        while chain[-1] in left:
+            chain.append(left[chain[-1]])
+        chains.append(chain)
+    if (len(chains) != len(antichain)
+            or sorted(k for c in chains for k in c) != keys
+            or any(v in reach[u] for u in antichain for v in antichain)
+            or any(b not in reach[a] for c in chains for a, b in zip(c, c[1:]))):
+        raise ValueError('Invalid maximum-width certificate')
+    waves = [[k for k in keys if rank[k] == i] for i in range(max(rank.values()) + 1)]
+    paths = {}
+    for k in sorted(keys, key=lambda k: (rank[k], k)):
+        paths[k] = max((paths[p] for p in incoming[k]), key=lambda p: (len(p), p), default=[]) + [k]
+    data['analysis'] = {
+        'waves': waves,
+        'maximumAntichain': antichain,
+        'chainCover': chains,
+        'longestPath': max(paths.values(), key=lambda p: (len(p), p)),
+        'crossWorkstreamEdges': [
+            {'source': e['source'], 'target': e['target'],
+             'fromStream': owners[e['source']], 'toStream': owners[e['target']]}
+            for e in data['edges'] if owners[e['source']] != owners[e['target']]
+        ]
+    }
+
+
 def prepare(data):
     data = copy.deepcopy(data)
     nodes = {n['id']: n for n in data['nodes']}
@@ -37,6 +116,7 @@ def prepare(data):
         for key in ready:
             rank[key] = max((rank[p] + 1 for p in incoming[key]), default=0)
             remaining.remove(key)
+    analyze(data, nodes, incoming, outgoing, rank)
     # Empty routing slots carry long edges through columns without crossing cards.
     layers = [[] for _ in range(max(rank.values()) + 1)]
     for key, depth in rank.items():
