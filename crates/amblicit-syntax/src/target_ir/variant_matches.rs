@@ -169,5 +169,27 @@ pub(super) fn coordinate(
     arms: &[CoreMatchArm],
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<String> {
+    // Structural shapes erase record names. Join independently derived arm
+    // coordinates first, using the same rules as conditional expressions.
+    let mut coordinate: Option<String> = None;
+    if every(
+        core,
+        functions,
+        scrutinee,
+        arms,
+        available,
+        |body, scope| {
+            let Some(next) = expression_type_coordinate(core, functions, body, scope) else {
+                return false;
+            };
+            coordinate = match &coordinate {
+                None => Some(next),
+                Some(previous) => super::join_conditional_coordinates(core, previous, &next),
+            };
+            coordinate.is_some()
+        },
+    ) {
+        return coordinate;
+    }
     result_shape(core, functions, scrutinee, arms, available)?.type_coordinate()
 }

@@ -129,6 +129,27 @@ const MATCH_TYPES: &str = "type Item = variant { Value(U8), Empty }; type Input 
 const MATCH: &str = "match input.item { Value(value) => value, Empty => 0u8 }";
 
 #[test]
+fn reified_boolean_values_include_selected_constants() {
+    for predicate in [
+        "input.flag == true",
+        "input.flag != false",
+        "!input.flag",
+        "input.flag && true",
+        "input.flag || false",
+        "input.count < 3u64",
+        "!(input.flag && input.count <= 3u64)",
+    ] {
+        assert_source_covers_native(&format!(
+            "type Input = {{ xs: List<U8,max=2>, flag: Bool, count: U64 }};
+             type Output = {{ n: U64 }};
+             intent run(input: Input) returns Output profile p.read basis none budget <= p.large {{
+                let selected = {predicate}; let n = listLen(input.xs); return {{ n }};
+             }}"
+        ));
+    }
+}
+
+#[test]
 fn payload_matches_charge_complete_frames_and_nested_scopes() {
     for statements in [
         "let selected = match input.item { Value => 1u8, Empty => 0u8 };".to_owned(),

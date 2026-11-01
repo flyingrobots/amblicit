@@ -510,18 +510,23 @@ impl TypeChecker<'_> {
             } | Expr::Unary { op: UnOp::Not, .. }
         ) {
             // Reification is an If plus a selected Boolean constant expression.
-            own = self.checked_helper_cost_add(
-                own,
-                HelperCost {
-                    steps: 1,
-                    ..HelperCost::default()
-                },
-                span,
-            )?;
+            own = self.checked_helper_cost_add(own, self.predicate_reification_cost(), span)?;
         }
         self.source_expression_costs
             .insert(expression_identity(expr), own);
         Some(())
+    }
+
+    fn predicate_reification_cost(&self) -> HelperCost {
+        HelperCost {
+            steps: if self.meters_list_work() { 2 } else { 1 },
+            allocated_bytes: if self.meters_list_work() {
+                VALUE_CELL_BYTES
+            } else {
+                0
+            },
+            output_bytes: 0,
+        }
     }
 
     fn list_storage_cost(

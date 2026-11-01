@@ -111,6 +111,38 @@ fn conditional_append_preserves_record_item_coordinates() {
 }
 
 #[test]
+fn matched_append_preserves_record_item_coordinates() {
+    for (item, list) in [
+        ("Item", "List<Item,max=2>"),
+        ("Item", "Items"),
+        ("List<Item,max=1>", "List<List<Item,max=1>,max=2>"),
+    ] {
+        for matched in [
+            "match flag { A => identity(xs), B => ys }",
+            "match flag { A => if true then identity(xs) else ys, B => ys }",
+        ] {
+            let body = format!(
+                "type Item = {{ x: U8 }}; type Items = List<Item,max=2>;
+                 type Flag = variant {{ A, B }};
+                 fn identity(xs: {list}) -> {list} {{ return xs; }}
+                 fn append(xs: {list}, ys: {list}, item: {item}, flag: Flag) -> {list} {{
+                    return if listLen({matched}) < 2u64 then listAppend({matched},item) else xs;
+                 }} {LENGTH_INTENT}"
+            );
+            let core = compile(&body).expect("record list match compiles");
+            let mut target = facts();
+            target.target_ir_domain = "echo.span-ir/v3".into();
+            let report = lower_to_target_ir(&core, &target);
+            assert_eq!(
+                report.status,
+                TargetLoweringStatus::Lowered,
+                "{item}/{list}: {report:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn bounded_lists_reject_unsafe_guards_signatures_and_result_bounds() {
     use CompilerErrorKind as K;
     for (body, kind) in [

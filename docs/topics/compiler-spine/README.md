@@ -292,6 +292,9 @@ record-shorthand reads, operand validation, nested value storage/copy work and
 all fold iterations. Bounded `for` accounting includes each generated binder
 and null block result, the enclosing node, and selected statement-branch frames.
 Bare Boolean predicates include their generated equality comparison work.
+Predicates used as Boolean values also include the selected constant's evaluation
+and storage. Match-result joins retain declared record item coordinates for
+guarded append operands, including named and nested list types.
 Each `require` includes its Core node step as well as predicate and arm work,
 including when repeated inside bounded loops.
 Shorthand obstruction payloads include their synthesized local reads.
