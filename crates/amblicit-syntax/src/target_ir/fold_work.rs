@@ -495,7 +495,26 @@ impl<'a> Meter<'a> {
                     .expression(input, available, depth + 1)?
                     .add(self.value_type(&binding.ty, 0)?.evaluation()?)?;
                 for arm in obstruction_map.values() {
-                    cost = cost.add(self.expression(&arm.value, available, depth + 1)?)?;
+                    // Nullary obstruction annotations are not callable helpers.
+                    // Match the existing closed-authority rule only here; a
+                    // normal expression must still establish callable authority.
+                    let annotation = match &arm.value {
+                        CoreExpr::Call {
+                            callee,
+                            type_args,
+                            args,
+                        } if !callee.is_empty() && type_args.is_empty() && args.is_empty() => {
+                            Value {
+                                cells: 1,
+                                bytes: 64_u64.checked_add(u64::try_from(callee.len()).ok()?)?,
+                            }
+                            .evaluation()?
+                        }
+                        value => self.expression(value, available, depth + 1)?,
+                    };
+                    cost = cost
+                        .add(self.value_type(&arm.binder.ty, 0)?.evaluation()?)?
+                        .add(annotation)?;
                 }
                 cost
             }

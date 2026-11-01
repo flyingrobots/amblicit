@@ -3977,3 +3977,96 @@ fn digest_text(hex: char) -> String {
 mod ordered;
 #[path = "target_ir/structured.rs"]
 mod structured;
+
+#[test]
+fn fold_after_effect_preserves_nullary_obstruction_annotations() {
+    let context = effectful_context().with_budget(
+        "p.tiny",
+        CoreBudget {
+            max_steps: 65_536,
+            max_allocated_bytes: 1_048_576,
+            max_output_bytes: 65_536,
+        },
+    );
+    let compile = |source: &str| {
+        compile_to_core(
+            &amblicit_syntax::parse_module(source).expect("source parses"),
+            &context,
+        )
+        .expect("source compiles")
+    };
+    let control = compile(EFFECTFUL_REPLACE);
+    assert_eq!(
+        lower_to_target_ir(&control, &echo_facts()).status,
+        TargetLoweringStatus::Lowered
+    );
+    for bound in [0, 1, 3] {
+        let source = EFFECTFUL_REPLACE
+            .replace(
+                "intent t(",
+                "fn keep(value: Receipt) -> Receipt { return value; } intent t(",
+            )
+            .replace(
+                "return { id: input.id };",
+                &format!(
+                    "let retained = fold(receipt, keep, {bound}u64); return {{ id: retained.id }};"
+                ),
+            );
+        let core = compile(&source);
+        let lowered = lower_to_target_ir(&core, &echo_facts());
+        assert_eq!(
+            lowered.status,
+            TargetLoweringStatus::Lowered,
+            "bound {bound}: {lowered:?}"
+        );
+        for mutation in 0..5 {
+            let mut invalid = core.clone();
+            let intent = invalid.intents.get_mut("t").expect("intent");
+            match mutation {
+                0..=2 => {
+                    let CoreNode::Effect {
+                        obstruction_map, ..
+                    } = &mut intent.body.nodes[0]
+                    else {
+                        panic!("effect")
+                    };
+                    let CoreExpr::Call {
+                        callee,
+                        type_args,
+                        args,
+                    } = &mut obstruction_map.get_mut("rejected").expect("arm").value
+                    else {
+                        panic!("annotation")
+                    };
+                    if mutation == 0 {
+                        callee.clear();
+                    } else if mutation == 1 {
+                        type_args.push("Bool".into());
+                    } else {
+                        args.push(CoreExpr::Const(CoreValue::Bool(true)));
+                    }
+                }
+                3 => intent.core_evaluation_budget.max_allocated_bytes = 1,
+                _ => {
+                    let CoreNode::Let { value, .. } = &mut intent.body.nodes[1] else {
+                        panic!("fold binding")
+                    };
+                    *value = CoreExpr::Call {
+                        callee: "domain.WriteRejected".into(),
+                        type_args: vec![],
+                        args: vec![],
+                    };
+                }
+            }
+            let refused = lower_to_target_ir(&invalid, &echo_facts());
+            assert_eq!(refused.status, TargetLoweringStatus::Unsupported);
+            assert!(
+                refused
+                    .failures
+                    .iter()
+                    .any(|f| f.kind == TargetLoweringFailureKind::InvalidCoreIdentity),
+                "{refused:?}"
+            );
+        }
+    }
+}
