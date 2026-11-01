@@ -232,7 +232,7 @@ fn refusal(root: &Path, config: &Path, expected: &str) {
         stream.iter().any(|r| r["kind"] == expected),
         "expected {expected}: {stream:?}"
     );
-    assert!(output.stdout.is_empty());
+    assert_eq!(output.stdout, [] as [u8; 0]);
     assert_eq!(
         fs::read(output_dir.join("retained.bin")).expect("preserved"),
         b"previous"
