@@ -35,21 +35,18 @@ pub(super) fn type_coordinate(
     if !expression_fits_declared_type(core, functions, args.first()?, coordinate, available) {
         return None;
     }
+    if matches!(callee, "core.list.append" | "core.list.concat") {
+        let operand = expression_type_coordinate(core, functions, args.first()?, available)?;
+        if resolved_core_type(core, &operand)? != resolved_core_type(core, coordinate)? {
+            return None;
+        }
+    }
     match (callee, type_args, args) {
         ("core.list.length", [_], [_]) => Some("U64".into()),
         ("core.list.at", [_], [_, index]) => {
             expression_fits_declared_type(core, functions, index, "U64", available).then_some(item)
         }
-        ("core.list.append", [_], [list, value]) => {
-            let operand = expression_type_coordinate(core, functions, list, available)?;
-            if resolved_core_type(core, &operand)?
-                != (CoreType::List {
-                    item: item.clone(),
-                    max,
-                })
-            {
-                return None;
-            }
+        ("core.list.append", [_], [_, value]) => {
             expression_fits_declared_type(core, functions, value, &item, available)
                 .then(|| coordinate.clone())
         }
@@ -62,6 +59,10 @@ pub(super) fn type_coordinate(
                 return None;
             };
             if right_item != item
+                || resolved_core_type(
+                    core,
+                    &expression_type_coordinate(core, functions, right, available)?,
+                )? != resolved_core_type(core, right_coordinate)?
                 || !expression_fits_declared_type(
                     core,
                     functions,

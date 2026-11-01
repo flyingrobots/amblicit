@@ -810,3 +810,49 @@ fn target_rechecks_list_concatenation_bounds() {
             .any(|f| f.kind == TargetLoweringFailureKind::InvalidCoreIdentity));
     }
 }
+
+#[test]
+fn target_rejects_concat_operand_coordinate_widening() {
+    let mut accepted = Vec::new();
+    for (operand, claimed, output) in [
+        ("List<U8,max=2>", "List<U8,max=3>", "List<U8,max=6>"),
+        (
+            "List<Bytes<max=1>,max=2>",
+            "List<Bytes<max=2>,max=2>",
+            "List<Bytes<max=2>,max=4>",
+        ),
+    ] {
+        let original = compile(&format!("fn join(a: {operand}, b: {operand}) -> {output} {{ return listConcat(a,b); }} {LENGTH_INTENT}")).unwrap();
+        assert_eq!(
+            lower_to_target_ir(&original, &facts()).status,
+            TargetLoweringStatus::Lowered
+        );
+        for indices in [vec![0], vec![1], vec![0, 1]] {
+            let mut core = original.clone();
+            let CoreExpr::Call { type_args, .. } =
+                &mut core.functions.get_mut("join").unwrap().body.result
+            else {
+                panic!("concat");
+            };
+            for index in &indices {
+                type_args[*index] = claimed.into();
+            }
+            validate_core_module_type_integrity(&core).expect("well-formed forged coordinates");
+            let report = lower_to_target_ir(&core, &facts());
+            if report.status == TargetLoweringStatus::Lowered {
+                accepted.push(format!("{operand} -> {claimed}, operands {indices:?}"));
+                continue;
+            }
+            assert_eq!(report.status, TargetLoweringStatus::Unsupported);
+            assert!(report.artifact.is_none());
+            assert!(report
+                .failures
+                .iter()
+                .any(|failure| failure.kind == TargetLoweringFailureKind::InvalidCoreIdentity));
+        }
+    }
+    assert!(
+        accepted.is_empty(),
+        "accepted forged operand coordinates: {accepted:?}"
+    );
+}

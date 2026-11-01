@@ -760,8 +760,11 @@ The independent meter also applies to modules requiring `core.list/v1`, includin
 intents without a fold. Native Target recognizes typed list length, access,
 append and concatenation calls, derives each result from the validated operand
 coordinates, and rechecks strict access/capacity guards on the exact operands.
-List append preserves its declared capacity; concatenation checks the sum of
-both maxima and requires identical item coordinates. Changed nominal element
+List append preserves its declared capacity. Concatenation requires identical
+item coordinates and checks the sum of independently reconstructed operand
+maxima. Both operands must retain their declared item coordinates and maxima;
+widening compatibility alone cannot authorize a larger claimed operand type.
+Wider enclosing result bounds remain permitted. Changed nominal element
 identity, weaker/removed guards, narrower operand bounds and sum overflow refuse.
 Operand validation and full bounded storage/copy costs include nested payloads;
 checked arithmetic and step/storage budgets are enforced independently of source
