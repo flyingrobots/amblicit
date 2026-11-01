@@ -34,7 +34,7 @@ fn project(source: &str) -> Vec<Value> {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, [] as [u8; 0]);
     String::from_utf8(output.stdout)
         .unwrap()
         .lines()
