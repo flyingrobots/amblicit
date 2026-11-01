@@ -1,5 +1,7 @@
 mod source_inputs;
+mod target_intrinsics;
 use source_inputs::{LoadedSources, SourceArtifact};
+use target_intrinsics::ApplicationPureIntrinsics;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
@@ -121,6 +123,7 @@ struct ApplicationLawpack {
 struct ApplicationTarget {
     profile: String,
     provider_package: PathBuf,
+    pure_intrinsics: Option<ApplicationPureIntrinsics>,
 }
 
 struct LoadedLawpack {
@@ -298,12 +301,27 @@ pub(crate) fn build_application(config_path: &Path) -> Result<(), ApplicationBui
                 format!("source and lawpack closure do not corroborate: {failures:?}"),
             )
         })?;
+    let intrinsics = config
+        .target
+        .pure_intrinsics
+        .as_ref()
+        .map(|declaration| declaration.load_from_provider(&provider_root, &target_profile))
+        .transpose()?
+        .unwrap_or_default();
+    let mut compiler_context = preparation.compiler_context().clone();
+    for intrinsic in &intrinsics {
+        compiler_context = compiler_context.with_target_pure_intrinsic(intrinsic.clone());
+    }
+    let target_facts = preparation
+        .target_ir_facts()
+        .clone()
+        .with_target_pure_intrinsics(&intrinsics);
     let core = if let Some(linked) = &linked {
         linked
-            .compile(preparation.compiler_context())
+            .compile(&compiler_context)
             .map_err(|errors| sources.compiler_failure(errors))?
     } else {
-        compile_to_core(module, preparation.compiler_context()).map_err(|errors| {
+        compile_to_core(module, &compiler_context).map_err(|errors| {
             source_failure(
                 "ApplicationCompilationFailed",
                 "Edict application did not compile to Core",
@@ -328,7 +346,7 @@ pub(crate) fn build_application(config_path: &Path) -> Result<(), ApplicationBui
     let configuration =
         single_configuration_for_core(adapter.operation_profiles(), adapter.effects(), &core)?;
     validate_target_configuration_binding(configuration, &loaded.configuration_bytes)?;
-    let target_ir_report = lower_to_target_ir(&core, preparation.target_ir_facts());
+    let target_ir_report = lower_to_target_ir(&core, &target_facts);
     if target_ir_report.status != TargetLoweringStatus::Lowered {
         return Err(failure(
             "TargetLoweringFailed",
@@ -1036,6 +1054,9 @@ fn validate_application_manifest(
             "InvalidApplicationConfig",
             "executable-operation builds cannot declare external-action resources",
         ));
+    }
+    if let Some(intrinsics) = &config.target.pure_intrinsics {
+        intrinsics.validate()?;
     }
     let paths = config
         .sources
@@ -4890,6 +4911,7 @@ mod tests {
             target: ApplicationTarget {
                 profile: "target.test@1".to_owned(),
                 provider_package: PathBuf::from("provider"),
+                pure_intrinsics: None,
             },
             output_directory: PathBuf::from(".build/application"),
         }

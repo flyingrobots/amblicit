@@ -488,7 +488,9 @@ bytes whose digest equals a pin the consumer supplies. Both the target and the
 catalog reference must be fully digest-locked. Unknown, effectful, generic or
 incomplete contracts, unresolved or foreign types at any depth, and provider
 records that are not structurally closed are refused. Admitted facts enter the
-compiler with `with_target_pure_intrinsic`.
+compiler with `with_target_pure_intrinsic`. The [application CLI](../cli/README.md#target-pure-intrinsic-declarations)
+loads explicitly requested contracts from a catalog pinned by its selected target
+profile and supplies those facts to both compiler and Target IR lowering.
 
 Source calls an admitted intrinsic as `alias.name(...)` only through an exact
 digest-locked `use target` import of the intrinsic's own profile; a missing,
