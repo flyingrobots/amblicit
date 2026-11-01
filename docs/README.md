@@ -23,6 +23,9 @@ The current specification set is:
 - [Collections and Optics Implementation Rationale](./design/collections-optics-roadmap.md):
   planned contract constraints and merge boundaries for the broader collections
   work and authored Jim rope proof; links to the live GitHub roadmap.
+- [Interactive Task DAG](./design/collections-optics-dag/index.html): offline,
+  project-colored dependency map of the collections and authored rope roadmap;
+  a dated snapshot of native prerequisite edges.
 - [Documentation Standards Topic](./topics/documentation/): reader-task page
   types, documentation coverage, examples, and docs-impact rules.
 - [Release Roadmap](../ROADMAP.md): scheduled alpha milestones, release gates,

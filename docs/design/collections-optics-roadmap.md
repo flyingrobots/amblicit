@@ -5,6 +5,10 @@ the implementation plan; it does not define landed language behavior. The live
 work owners, acceptance checks and dependency graph are in
 [roadmap #288](https://github.com/flyingrobots/amblicit/issues/288).
 
+Explore the recorded prerequisites in the [interactive task DAG](collections-optics-dag/index.html).
+The [artifact guide](collections-optics-dag/README.md) explains its snapshot and
+rebuild boundary. The standalone page works offline.
+
 ## The result we want
 
 An author should be able to describe a bounded change to stored entities using
