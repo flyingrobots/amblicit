@@ -8,6 +8,11 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Fix native Target fold cost checking after an effect. Nullary obstruction
+  annotations retain their existing authority semantics and receive bounded
+  label/binder charges instead of being mistaken for pure helper calls. Ordinary
+  expressions and malformed annotations still require valid authority.
+
 - Add first-order bounded state iteration `fold(initial, step, N)` through source
   closures, explicit Core and native Target validation. Provider/runtime execution
   remains downstream. The reserved name, new Core variant and new TypedModule
