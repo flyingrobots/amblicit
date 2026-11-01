@@ -1626,28 +1626,10 @@ fn validate_core_expression_types(
             depth + 1,
         ),
         CoreExpr::Call {
-            type_args, args, ..
-        } => {
-            for (index, reference) in type_args.iter().enumerate() {
-                validate_core_type_reference(
-                    module,
-                    state,
-                    reference,
-                    &format!("{path}.call.typeArgs[{index}]"),
-                    0,
-                )?;
-            }
-            for (index, argument) in args.iter().enumerate() {
-                validate_core_expression_types(
-                    module,
-                    state,
-                    argument,
-                    &format!("{path}.call.args[{index}]"),
-                    depth + 1,
-                )?;
-            }
-            Ok(())
-        }
+            callee,
+            type_args,
+            args,
+        } => validate_core_call_types(module, state, callee, type_args, args, path, depth),
         CoreExpr::If {
             predicate,
             then_value,
@@ -1676,6 +1658,49 @@ fn validate_core_expression_types(
             )
         }
     }
+}
+
+fn validate_core_call_types(
+    module: &CoreModule,
+    state: &mut CoreTypeIntegrityState,
+    callee: &str,
+    type_args: &[String],
+    args: &[CoreExpr],
+    path: &str,
+    depth: usize,
+) -> Result<(), CoreTypeIntegrityFailure> {
+    if matches!(
+        callee,
+        "core.list.length" | "core.list.at" | "core.list.append" | "core.list.concat"
+    ) && !module
+        .required_core_capabilities
+        .iter()
+        .any(|c| c == "core.list/v1")
+    {
+        return Err(CoreTypeIntegrityFailure::new(
+            CoreTypeIntegrityFailureKind::InvalidDefinition,
+            path,
+        ));
+    }
+    for (index, reference) in type_args.iter().enumerate() {
+        validate_core_type_reference(
+            module,
+            state,
+            reference,
+            &format!("{path}.call.typeArgs[{index}]"),
+            0,
+        )?;
+    }
+    for (index, argument) in args.iter().enumerate() {
+        validate_core_expression_types(
+            module,
+            state,
+            argument,
+            &format!("{path}.call.args[{index}]"),
+            depth + 1,
+        )?;
+    }
+    Ok(())
 }
 
 fn validate_core_fold_types(

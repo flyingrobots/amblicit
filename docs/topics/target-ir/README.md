@@ -756,6 +756,19 @@ Direct list-match comparisons remain outside the comparison language.
 
 ## Bounded fold validation
 
+The independent meter also applies to modules requiring `core.list/v1`, including
+intents without a fold. Native Target recognizes typed list length, access,
+append and concatenation calls, derives each result from the validated operand
+coordinates, and rechecks strict access/capacity guards on the exact operands.
+List append preserves its declared capacity; concatenation checks the sum of
+both maxima and requires identical item coordinates. Changed nominal element
+identity, weaker/removed guards, narrower operand bounds and sum overflow refuse.
+Operand validation and full bounded storage/copy costs include nested payloads;
+checked arithmetic and step/storage budgets are enforced independently of source
+estimates. The simple length specimen's native bound is 294 steps and 1,350 bytes;
+either one-unit-short budget refuses. These are native compiler artifacts, not
+provider execution evidence. [TIR-REQ-066]
+
 Native Target recognizes `core.fold/v1` and checks a source step with matching
 parameter/return coordinates and an initial value compatible with that state.
 A wrong initial value can pass shared Core structural integrity and still fail

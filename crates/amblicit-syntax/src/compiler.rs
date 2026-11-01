@@ -27,6 +27,7 @@ mod byte_length;
 mod byte_slice;
 mod byte_utf8;
 mod list_literal;
+mod list_operations;
 mod return_budget;
 mod signature_diagnostic;
 mod source_fold;
@@ -1032,6 +1033,7 @@ struct EffectBindingProfile {
 #[derive(Debug, Clone)]
 struct TypeChecker<'a> {
     core_capabilities: BTreeSet<String>,
+    list_work_pass: list_operations::WorkPass,
     match_depth: usize,
     match_in_intent: bool,
     resolved: &'a ResolvedModule,
@@ -1063,6 +1065,7 @@ impl<'a> TypeChecker<'a> {
         Self {
             resolved,
             core_capabilities: BTreeSet::new(),
+            list_work_pass: list_operations::WorkPass::Discover,
             match_depth: 0,
             match_in_intent: false,
             function_signatures: BTreeMap::new(),
@@ -1096,6 +1099,13 @@ impl<'a> TypeChecker<'a> {
             if let Some(typed) = self.check_intent(intent) {
                 intents.push(typed);
             }
+        }
+        // Capability discovery precedes full-module accounting. Recheck once so
+        // earlier intents/operands are also charged when a later call uses lists.
+        if !self.meters_list_work() && self.core_capabilities.contains("core.list/v1") {
+            let mut metered = Self::new(self.resolved);
+            metered.list_work_pass = list_operations::WorkPass::Meter;
+            return metered.check();
         }
         let module = TypedModule {
             required_core_capabilities: self.core_capabilities.into_iter().collect(),
@@ -1491,7 +1501,10 @@ impl<'a> TypeChecker<'a> {
             };
             cost = self.checked_helper_cost_add(cost, clause_cost, intent.source.span)?;
         }
-        if !self.resolved.source_functions.is_empty() || self.match_in_intent {
+        if !self.resolved.source_functions.is_empty()
+            || self.match_in_intent
+            || self.meters_list_work()
+        {
             let input =
                 self.type_ref_shape(&intent.source.params[0].ty, intent.source.params[0].span)?;
             let output = self.type_ref_shape(&intent.source.returns, intent.source.span)?;
@@ -4049,10 +4062,7 @@ impl<'a> TypeChecker<'a> {
                 None
             }
         }?;
-        if !self.resolved.source_functions.is_empty()
-            || self.match_depth > 0
-            || matches!(expr, Expr::Match { .. })
-        {
+        if self.records_source_cost(expr) {
             self.record_source_predicate_cost(expr)?;
         }
         Some(checked)
@@ -4281,15 +4291,23 @@ impl<'a> TypeChecker<'a> {
                 None
             }
         };
-        if !self.resolved.source_functions.is_empty()
-            || self.match_depth > 0
-            || matches!(expr, Expr::Match { .. })
-        {
+        if self.records_source_cost(expr) {
             if let Some(value) = &checked {
                 self.record_source_expression_cost(expr, &value.ty)?;
             }
         }
         checked
+    }
+
+    fn meters_list_work(&self) -> bool {
+        self.list_work_pass == list_operations::WorkPass::Meter
+    }
+
+    fn records_source_cost(&self, expr: &Expr) -> bool {
+        self.meters_list_work()
+            || !self.resolved.source_functions.is_empty()
+            || self.match_depth > 0
+            || matches!(expr, Expr::Match { .. })
     }
 
     fn check_call_expression(
@@ -4308,6 +4326,14 @@ impl<'a> TypeChecker<'a> {
             return None;
         };
         match callee.as_ref() {
+            Expr::Ident { name, .. }
+                if matches!(
+                    name.as_str(),
+                    "listLen" | "listAt" | "listAppend" | "listConcat"
+                ) =>
+            {
+                self.check_list_operation(name, type_args, args, env, *span)
+            }
             Expr::Ident { name, .. } if name == "fold" => {
                 self.check_fold(type_args, args, env, *span)
             }

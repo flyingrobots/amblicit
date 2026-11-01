@@ -12,6 +12,7 @@ mod byte_slice;
 mod byte_utf8;
 pub(crate) mod execution_order;
 mod fold_work;
+mod list_operations;
 mod pure_intrinsics;
 mod state_fold;
 mod totality;
@@ -917,7 +918,12 @@ fn validate_core_module(
         .required_core_capabilities
         .iter()
         // Constructor identities and payloads are independently checked below.
-        .filter(|capability| !matches!(capability.as_str(), "core.variant/v1" | "core.fold/v1"))
+        .filter(|capability| {
+            !matches!(
+                capability.as_str(),
+                "core.variant/v1" | "core.fold/v1" | "core.list/v1"
+            )
+        })
         .map(|capability| TargetLoweringFailure {
             kind: TargetLoweringFailureKind::UnsupportedCoreCapability,
             intent: None,
@@ -1874,6 +1880,7 @@ fn is_typed_prelude_operation(callee: &str) -> bool {
         byte_slice::OPERATION,
     ]
     .contains(&callee)
+        || list_operations::is_operation(callee)
         || is_unsigned_arithmetic(callee)
 }
 
@@ -1886,6 +1893,9 @@ fn prelude_type_coordinate(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<String> {
     match callee {
+        _ if list_operations::is_operation(callee) => {
+            list_operations::type_coordinate(core, functions, callee, type_args, args, available)
+        }
         byte_at::OPERATION => byte_at::type_coordinate(core, functions, type_args, args, available),
         byte_concat::OPERATION => {
             byte_concat::type_coordinate(core, functions, type_args, args, available)

@@ -83,7 +83,7 @@ pub(super) fn intent_cost_fits(
     if !core
         .required_core_capabilities
         .iter()
-        .any(|c| c == "core.fold/v1")
+        .any(|c| c == "core.fold/v1" || c == "core.list/v1")
     {
         return true;
     }

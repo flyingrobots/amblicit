@@ -396,6 +396,8 @@ impl TypeChecker<'_> {
             allocated_bytes: bytes,
             output_bytes: 0,
         };
+        let list_storage = self.list_storage_cost(expr, shape, bytes, span)?;
+        own = self.checked_helper_cost_add(own, list_storage, span)?;
         let matching = self.match_storage_cost(expr, span)?;
         own = self.checked_helper_cost_add(own, matching, span)?;
         let arguments: Vec<&Expr> = match expr {
@@ -406,7 +408,8 @@ impl TypeChecker<'_> {
                 ..
             } => vec![lhs, rhs],
             Expr::Call { callee, args, .. }
-                if is_prelude_call(callee, &["len", "slice", "isUtf8", "count", "at"]) =>
+                if is_prelude_call(callee, &["len", "slice", "isUtf8", "count", "at"])
+                    || is_prelude_call(callee, super::list_operations::NAMES) =>
             {
                 args.iter().collect()
             }
@@ -481,6 +484,54 @@ impl TypeChecker<'_> {
         self.source_expression_costs
             .insert(expression_identity(expr), own);
         Some(())
+    }
+
+    fn list_storage_cost(
+        &mut self,
+        expr: &Expr,
+        shape: &TypeShape,
+        bytes: u64,
+        span: Span,
+    ) -> Option<HelperCost> {
+        let mut cost = HelperCost::default();
+        if self.meters_list_work() {
+            if let (Expr::Record { entries, .. }, TypeKind::Record(fields)) = (expr, &shape.kind) {
+                // Shorthand emits a Local but has no separately metered Expr.
+                for entry in entries {
+                    if let super::RecordEntry::Shorthand { name, .. } = entry {
+                        let (cells, bytes) = self.source_value_bound(fields.get(name)?, span)?;
+                        let steps = cells
+                            .checked_add(1)
+                            .or_else(|| self.function_bound_failure(span))?;
+                        cost = self.checked_helper_cost_add(
+                            cost,
+                            HelperCost {
+                                steps,
+                                allocated_bytes: bytes,
+                                output_bytes: 0,
+                            },
+                            span,
+                        )?;
+                    }
+                }
+            }
+        }
+        if let Expr::Call { callee, args, .. } = expr {
+            if is_prelude_call(callee, super::list_operations::NAMES) {
+                // Include bounded validation/copy work for nested payload storage.
+                cost.steps = args
+                    .iter()
+                    .try_fold(bytes, |total, argument| {
+                        total.checked_add(
+                            self.source_value_bounds
+                                .get(&expression_identity(argument))?
+                                .1,
+                        )
+                    })
+                    .or_else(|| self.function_bound_failure(span))?;
+            }
+        }
+        Some(cost)
     }
 
     fn match_storage_cost(&mut self, expr: &Expr, span: Span) -> Option<HelperCost> {

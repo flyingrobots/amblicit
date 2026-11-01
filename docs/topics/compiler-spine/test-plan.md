@@ -1,5 +1,16 @@
 # Compiler Spine Test Plan
 
+## Bounded list operations (#289)
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| CSPINE-REQ-066 | implemented | `listLen`, proof-checked `listAt`, capacity-preserving `listAppend` and bound-summing `listConcat` operate on bounded immutable lists without changing byte primitives. Checked access requires an exact-operand strict guard; append requires room under the declared maximum. Authored variants express missing/full outcomes. | issue #289 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-210 | implemented | Bounded worklists | CSPINE-REQ-066 | Empty/max lists, first/last access, nested and nominal elements, and repeated fold accumulation compile; invalid signatures, unsafe guards, capacity overflow and one-too-small results refuse with structured errors. | bounded_lists_accumulate_through_invariant_fold_state, bounded_lists_preserve_empty_maximum_and_nominal_element_types, bounded_lists_reject_unsafe_guards_signatures_and_result_bounds, bounded_list_guards_follow_short_circuit_and_branch_dominance, bounded_lists_preserve_typed_missing_and_full_outcomes, list_prelude_names_cannot_be_shadowed, public_compiler_projects_bounded_worklists_repeatably, public_compiler_reports_unsafe_list_access_and_small_result_bounds, linked_lists_preserve_builtins_and_nominal_elements | crates/amblicit-syntax/tests/bounded_list_operations.rs, crates/amblicit-cli/tests/bounded_lists_cli.rs, crates/amblicit-syntax/tests/source_module_compilation.rs, fixtures/lang/functions/bounded-worklist.amblicit | No stored collections, recursion, mutable locals or runtime execution claim. |
+| CSPINE-TP-211 | implemented | List work admission | CSPINE-REQ-066 | Checked static steps/storage include bounded list validation/copy work and every fold iteration; tiny budgets and arithmetic overflow refuse. | target_list_work_has_exact_steps_and_storage_without_a_fold, source_list_work_accounts_for_intents_before_capability_discovery, target_reconstructs_list_fold_work_without_source_estimates | crates/amblicit-syntax/tests/bounded_list_operations.rs | Standalone intents and authenticated source helpers must use the same contract. |
+
 Status: current verification design for the executable source-to-Core spine.
 
 ## Scope

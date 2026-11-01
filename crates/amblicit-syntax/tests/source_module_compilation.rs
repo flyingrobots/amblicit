@@ -719,3 +719,34 @@ fn linked_fold_keeps_callback_and_dynamic_bound_refusals() {
         );
     }
 }
+
+#[test]
+fn linked_lists_preserve_builtins_and_nominal_elements() {
+    let library = "package library.worklist@1; type Item = variant { Empty, Value(U64) };
+      fn step(xs: List<Item,max=2>) -> List<Item,max=2> { return if listLen(xs) < 2u64 then listAppend(xs,Item::Value(1u64)) else xs; }
+      fn run(value: U64) -> U64 { let empty: List<Item,max=2> = []; let result = fold(empty,step,3u64); let joined = listConcat(result,empty); return if value < listLen(joined) then match listAt(joined,value) { Empty => 0u64, Value(found) => found } else 0u64; }";
+    let source = root(
+        &import("library.worklist@1", library, "worklist"),
+        "",
+        "worklist.run(input.value)",
+    );
+    let core = compile(&source, &[library]);
+    let facts = TargetIrLoweringFacts {
+        target_profile: ResourceRef {
+            coordinate: "echo.dpo@1".into(),
+            digest: Some(format!("sha256:{}", "1".repeat(64))),
+        },
+        target_ir_domain: "echo.span-ir/v1".into(),
+        operation_profiles: vec!["continuum.profile.read-only/v1".into()],
+        obstruction_coordinates: vec![],
+        effect_lowerings: vec![],
+        effect_signatures: vec![],
+        pure_functions: vec![],
+    };
+    let report = lower_to_target_ir(&core, &facts);
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+    assert_eq!(
+        digest_core_module(&core).unwrap(),
+        digest_core_module(&compile(&source, &[library])).unwrap()
+    );
+}
