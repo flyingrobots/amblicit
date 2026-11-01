@@ -66,7 +66,7 @@ fn assert_source_covers_native(source: &str) {
         assert_eq!(
             report.status,
             TargetLoweringStatus::Lowered,
-            "native setup: {source}: {report:?}"
+            "native admission of supported Core: {source}: {report:?}"
         );
         let source_min = minimum(|value| match compile(value) {
             Ok(_) => true,
@@ -146,6 +146,28 @@ fn reified_boolean_values_include_selected_constants() {
                 let selected = {predicate}; let n = listLen(input.xs); return {{ n }};
              }}"
         ));
+    }
+}
+
+#[test]
+fn projected_lists_retain_coordinates_and_storage_bounds() {
+    for item in ["U8", "Item", "List<Item,max=1>"] {
+        for projection in [
+            "input.xs",
+            "(if input.flag then { items: input.xs } else { items: input.ys }).items",
+            "(match input.choice { A => { items: input.xs }, B => { items: input.ys } }).items",
+            "(if input.flag then { outer: { items: input.xs } } else { outer: { items: input.ys } }).outer.items",
+        ] {
+            assert_source_covers_native(&format!(
+                "type Item = {{ x: U8 }}; type Choice = variant {{ A, B }};
+                 type Items = List<{item},max=2>;
+                 type Input = {{ xs: Items, ys: Items, flag: Bool, choice: Choice }};
+                 type Output = {{ n: U64 }};
+                 intent run(input: Input) returns Output profile p.read basis none budget <= p.large {{
+                    let n = listLen({projection}); return {{ n }};
+                 }}"
+            ));
+        }
     }
 }
 

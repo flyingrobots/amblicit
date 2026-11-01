@@ -2332,12 +2332,7 @@ fn expression_type_coordinate(
             Some(format!("Bytes<exact={}>", u64::try_from(value.len()).ok()?))
         }
         CoreExpr::Field { base, field } => {
-            let ComparisonOperandShape::Coordinate(coordinate) =
-                field_expression_shape(core, pure_functions, base, field, available)?
-            else {
-                return None;
-            };
-            Some(coordinate)
+            field_expression_shape(core, pure_functions, base, field, available)?.type_coordinate()
         }
         CoreExpr::Call {
             callee,
@@ -3014,6 +3009,17 @@ fn join_conditional_shapes(
 ) -> Option<ComparisonOperandShape> {
     if depth > MAX_CORE_TYPE_DEPTH {
         return None;
+    }
+    // Preserve declared list item coordinates before structural joins erase
+    // record names. This also applies to fields of anonymous record results.
+    if let (ComparisonOperandShape::Coordinate(left), ComparisonOperandShape::Coordinate(right)) =
+        (left, right)
+    {
+        if matches!(resolved_core_type(core, left), Some(CoreType::List { .. })) {
+            if let Some(coordinate) = join_conditional_coordinates(core, left, right) {
+                return Some(ComparisonOperandShape::Coordinate(coordinate));
+            }
+        }
     }
     match (left, right) {
         (ComparisonOperandShape::EmptyList, ComparisonOperandShape::EmptyList) => {

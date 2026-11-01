@@ -766,6 +766,9 @@ maxima. Both operands must retain their declared item coordinates and maxima;
 widening compatibility alone cannot authorize a larger claimed operand type.
 Wider enclosing result bounds remain permitted. Changed nominal element
 identity, weaker/removed guards, narrower operand bounds and sum overflow refuse.
+Conditional and matched record projections preserve declared list item coordinates.
+The meter derives storage from validated structural field shapes for anonymous
+nested records as well as named types, with checked arithmetic and depth limits.
 Operand validation and full bounded storage/copy costs include nested payloads;
 checked arithmetic and step/storage budgets are enforced independently of source
 estimates. The simple length specimen's native bound is 294 steps and 1,350 bytes;
