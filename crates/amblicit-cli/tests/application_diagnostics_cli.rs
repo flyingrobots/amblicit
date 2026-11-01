@@ -697,3 +697,6 @@ fn application_module_build_prepares_shared_lawpack_aliases() {
         fs::remove_dir_all(root).expect("remove fixture");
     }
 }
+
+#[path = "support/application_intrinsics.rs"]
+mod application_intrinsics;

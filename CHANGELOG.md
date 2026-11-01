@@ -8,6 +8,12 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Admit explicitly required target pure intrinsics through public application
+  builds. Catalog locations stay inside the provider package; the selected,
+  adapter-bound profile supplies their pin. Invalid contracts fail before
+  publication, and validated facts reach both Core compilation and Target IR
+  lowering. Provider/runtime execution remains a separate requirement.
+
 - Fix native Target fold cost checking after an effect. Nullary obstruction
   annotations retain their existing authority semantics and receive bounded
   label/binder charges instead of being mistaken for pure helper calls. Ordinary
