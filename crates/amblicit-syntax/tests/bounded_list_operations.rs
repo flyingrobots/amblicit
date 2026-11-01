@@ -242,6 +242,100 @@ intent run(input: Input) returns Output profile p.read basis none budget <= p.la
   let n = listLen(input.xs); return { n };
 }";
 
+fn compile_with_steps(
+    body: &str,
+    steps: u64,
+) -> Result<CoreModule, Vec<amblicit_syntax::CompilerError>> {
+    compile_to_core(
+        &parse_module(&format!("package work.lists@1; {body}")).expect("parse mixed specimen"),
+        &CompilerContext::new()
+            .with_operation_profile("p.read", "continuum.profile.read-only/v1")
+            .with_budget(
+                "p.large",
+                CoreBudget {
+                    max_steps: steps,
+                    max_allocated_bytes: 1_000_000,
+                    max_output_bytes: 1_000_000,
+                },
+            ),
+    )
+}
+
+#[test]
+fn mixed_list_and_byte_length_recheck_exact_work() {
+    let body = "type Input = { xs: List<U8,max=2>, bs: Bytes<max=100> }; type Output = { n: U64 };
+      intent run(input: Input) returns Output profile p.read basis none budget <= p.large {
+        let dummy = listLen(input.xs); let n = len(input.bs); return { n };
+      }";
+    // Frame 20 + list-length 274 + byte-length 240 + two lets 2 + result 6.
+    // Byte length includes 64 result bytes plus 164 bounded operand bytes.
+    for (steps, accepted) in [(542, true), (541, false), (314, false)] {
+        let source = compile_with_steps(body, steps);
+        assert_eq!(source.is_ok(), accepted, "source {steps}: {source:?}");
+        if let Err(errors) = source {
+            assert!(errors
+                .iter()
+                .any(|e| e.kind == CompilerErrorKind::InvalidBound));
+        }
+        let mut core = compile(body).unwrap();
+        core.intents
+            .get_mut("run")
+            .unwrap()
+            .core_evaluation_budget
+            .max_steps = steps;
+        let report = lower_to_target_ir(&core, &facts());
+        assert_eq!(
+            report.status == TargetLoweringStatus::Lowered,
+            accepted,
+            "target {steps}: {report:?}"
+        );
+    }
+}
+
+#[test]
+fn mixed_list_and_byte_text_work_is_sufficient_for_target() {
+    for operation in [
+        "len(input.bs)",
+        "slice(input.bs, 0u64, 0u64)",
+        "isUtf8(input.bs)",
+        "count(input.bs, b\"x\")",
+        "if 0u64 < len(input.bs) then at(input.bs, 0u64) else 0u8",
+        "input.bs + input.bs",
+        "input.text + input.text",
+    ] {
+        for list_first in [true, false] {
+            let list = "let n = listLen(input.xs);";
+            let other = format!("let other = {operation};");
+            let bindings = if list_first {
+                format!("{list} {other}")
+            } else {
+                format!("{other} {list}")
+            };
+            let body = format!("type Input = {{ xs: List<U8,max=2>, bs: Bytes<max=100>, text: String<max=10> }}; type Output = {{ n: U64 }};
+              intent run(input: Input) returns Output profile p.read basis none budget <= p.large {{ {bindings} return {{ n }}; }}");
+            compile_with_steps(&body, 1_000_000).expect("valid mixed specimen");
+            // Find the tight source-admitted budget, then ask the independent
+            // native meter whether that budget actually suffices.
+            let (mut low, mut high) = (0, 1_000_000);
+            while low < high {
+                let middle = low + (high - low) / 2;
+                if compile_with_steps(&body, middle).is_ok() {
+                    high = middle;
+                } else {
+                    low = middle + 1;
+                }
+            }
+            let core = compile_with_steps(&body, high).unwrap();
+            let report = lower_to_target_ir(&core, &facts());
+            assert_eq!(
+                report.status,
+                TargetLoweringStatus::Lowered,
+                "{operation}, list first={list_first}, source steps={high}: {report:?}"
+            );
+        }
+    }
+}
+
 #[test]
 fn target_list_work_has_exact_steps_and_storage_without_a_fold() {
     let original = compile(LENGTH_INTENT).unwrap();

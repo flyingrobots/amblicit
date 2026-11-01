@@ -368,6 +368,10 @@ impl TypeChecker<'_> {
     /// Full bounded operand storage conservatively bounds the UTF-8 and count
     /// scans, as it already does for byte comparison work.
     fn byte_scan_steps(&self, expr: &Expr) -> u64 {
+        // List-capable modules charge complete prelude operand/result storage.
+        if self.meters_list_work() {
+            return 0;
+        }
         match expr {
             Expr::Call { callee, args, .. } if is_prelude_call(callee, &["isUtf8", "count"]) => {
                 args.first()
@@ -438,8 +442,9 @@ impl TypeChecker<'_> {
             },
             span,
         )?;
-        if matches!(expr, Expr::Binary { op: BinOp::Add, .. })
-            || matches!(expr, Expr::Call { callee, .. } if is_prelude_call(callee, &["slice"]))
+        if !self.meters_list_work()
+            && (matches!(expr, Expr::Binary { op: BinOp::Add, .. })
+                || matches!(expr, Expr::Call { callee, .. } if is_prelude_call(callee, &["slice"])))
         {
             let steps = match &shape.kind {
                 TypeKind::Bytes { max, .. } => *max,
@@ -516,20 +521,39 @@ impl TypeChecker<'_> {
                 }
             }
         }
-        if let Expr::Call { callee, args, .. } = expr {
-            if is_prelude_call(callee, super::list_operations::NAMES) {
-                // Include bounded validation/copy work for nested payload storage.
-                cost.steps = args
-                    .iter()
-                    .try_fold(bytes, |total, argument| {
-                        total.checked_add(
-                            self.source_value_bounds
-                                .get(&expression_identity(argument))?
-                                .1,
-                        )
-                    })
-                    .or_else(|| self.function_bound_failure(span))?;
+        let arguments: Vec<&Expr> = match expr {
+            Expr::Call { callee, args, .. }
+                if is_prelude_call(callee, super::list_operations::NAMES)
+                    || (self.meters_list_work()
+                        && is_prelude_call(callee, &["len", "slice", "isUtf8", "count", "at"])) =>
+            {
+                args.iter().collect()
             }
+            Expr::Binary {
+                op: BinOp::Add,
+                lhs,
+                rhs,
+                ..
+            } if self.meters_list_work()
+                && matches!(shape.kind, TypeKind::Bytes { .. } | TypeKind::String { .. }) =>
+            {
+                vec![lhs, rhs]
+            }
+            _ => Vec::new(),
+        };
+        if !arguments.is_empty() {
+            // Match native Target's complete non-arithmetic prelude charge,
+            // including byte/text operations mixed with list operations.
+            cost.steps = arguments
+                .into_iter()
+                .try_fold(bytes, |total, argument| {
+                    total.checked_add(
+                        self.source_value_bounds
+                            .get(&expression_identity(argument))?
+                            .1,
+                    )
+                })
+                .or_else(|| self.function_bound_failure(span))?;
         }
         Some(cost)
     }
