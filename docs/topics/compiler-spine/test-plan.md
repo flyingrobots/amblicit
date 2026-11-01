@@ -12,6 +12,8 @@
 | CSPINE-TP-211 | implemented | List work admission | CSPINE-REQ-066 | Checked static steps/storage include bounded list validation/copy work and every fold iteration; tiny budgets and arithmetic overflow refuse. | target_list_work_has_exact_steps_and_storage_without_a_fold, source_list_work_accounts_for_intents_before_capability_discovery, target_reconstructs_list_fold_work_without_source_estimates | crates/amblicit-syntax/tests/bounded_list_operations.rs | Standalone intents and authenticated source helpers must use the same contract. |
 | CSPINE-TP-212 | implemented | Mixed prelude work | CSPINE-REQ-066 | A list-capable intent mixing byte/text primitives must not pass source work admission with a budget rejected by native Target. Both operation orders and the exact mixed-length boundary are checked. | mixed_list_and_byte_length_recheck_exact_work, mixed_list_and_byte_text_work_is_sufficient_for_target | crates/amblicit-syntax/tests/bounded_list_operations.rs | PR #299 review regression. |
 
+| CSPINE-TP-213 | implemented | Requirement-node work | CSPINE-REQ-066 | A list-capable intent includes every requirement node in its source work admission; the exact 296-step boundary agrees with native Target, and branch/loop nesting retains those charges. | list_work_includes_each_requirement_node, list_work_multiplies_requirements_inside_nested_loops | crates/amblicit-syntax/tests/bounded_list_operations.rs | PR #299 review regression. |
+
 Status: current verification design for the executable source-to-Core spine.
 
 ## Scope

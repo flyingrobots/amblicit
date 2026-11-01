@@ -342,6 +342,60 @@ fn compile_with_steps(
 }
 
 #[test]
+fn list_work_includes_each_requirement_node() {
+    let body = LENGTH_INTENT.replace("let n =", "require true else example.No; let n =");
+    let mut ordered = facts();
+    ordered.target_ir_domain = "echo.span-ir/v3".into();
+    ordered.obstruction_coordinates.push("example.No".into());
+    for (steps, accepted) in [(296, true), (295, false)] {
+        let source = compile_with_steps(&body, steps);
+        assert_eq!(source.is_ok(), accepted, "source {steps}: {source:?}");
+        if let Err(errors) = source {
+            assert!(errors
+                .iter()
+                .any(|e| e.kind == CompilerErrorKind::InvalidBound));
+        }
+        let mut core = compile(&body).unwrap();
+        core.intents
+            .get_mut("run")
+            .unwrap()
+            .core_evaluation_budget
+            .max_steps = steps;
+        let report = lower_to_target_ir(&core, &ordered);
+        assert_eq!(
+            report.status == TargetLoweringStatus::Lowered,
+            accepted,
+            "target {steps}: {report:?}"
+        );
+    }
+}
+
+#[test]
+fn list_work_multiplies_requirements_inside_nested_loops() {
+    for requirements in [
+        "require true else example.No; require false else example.No;",
+        "for item in input.xs bounded 2 { require true else example.No; }",
+        "for a in input.xs bounded 2 { for b in input.xs bounded 2 { require true else example.No; } }",
+        "if true { require true else example.No; } else { require false else example.No; }",
+    ] {
+        let body = LENGTH_INTENT.replace("let n =", &format!("{requirements} let n ="));
+        compile(&body).expect("valid requirement control");
+        let (mut low, mut high) = (0, 1_000_000);
+        while low < high {
+            let middle = low + (high - low) / 2;
+            if compile_with_steps(&body, middle).is_ok() { high = middle; } else { low = middle + 1; }
+        }
+        let core = compile_with_steps(&body, high).unwrap();
+        let mut ordered = facts();
+        ordered.target_ir_domain = "echo.span-ir/v3".into();
+        ordered.obstruction_coordinates.push("example.No".into());
+        let report = lower_to_target_ir(&core, &ordered);
+        assert_eq!(report.status, TargetLoweringStatus::Lowered,
+            "{requirements}: source steps {high}: {report:?}");
+    }
+}
+
+#[test]
 fn bounded_for_list_work_includes_generated_frames() {
     let body = "type Input = { xs: List<U8,max=2> }; type Output = { n: U64 };
       intent run(input: Input) returns Output profile p.read basis none budget <= p.large {

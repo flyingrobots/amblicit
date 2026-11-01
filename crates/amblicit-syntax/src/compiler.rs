@@ -1580,11 +1580,7 @@ impl<'a> TypeChecker<'a> {
                 predicate,
                 arm,
                 span,
-            } => {
-                let predicate_cost = self.helper_cost_for_expr(predicate)?;
-                let arm_cost = self.helper_cost_for_require_arm(arm)?;
-                self.checked_helper_cost_add(predicate_cost, arm_cost, *span)
-            }
+            } => self.helper_cost_for_requirement(predicate, arm, *span),
             Stmt::Guarantee {
                 predicate,
                 obstruction,
@@ -1930,6 +1926,25 @@ impl<'a> TypeChecker<'a> {
             }
             None => Some(HelperCost::default()),
         }
+    }
+
+    fn helper_cost_for_requirement(
+        &mut self,
+        predicate: &Expr,
+        arm: &RequireElseArm,
+        span: Span,
+    ) -> Option<HelperCost> {
+        let predicate_cost = self.helper_cost_for_expr(predicate)?;
+        let arm_cost = self.helper_cost_for_require_arm(arm)?;
+        let cost = self.checked_helper_cost_add(predicate_cost, arm_cost, span)?;
+        self.checked_helper_cost_add(
+            cost,
+            HelperCost {
+                steps: u64::from(self.meters_list_work()),
+                ..HelperCost::default()
+            },
+            span,
+        )
     }
 
     fn helper_cost_for_require_arm(&mut self, arm: &RequireElseArm) -> Option<HelperCost> {

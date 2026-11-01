@@ -292,6 +292,8 @@ record-shorthand reads, operand validation, nested value storage/copy work and
 all fold iterations. Bounded `for` accounting includes each generated binder
 and null block result, the enclosing node, and selected statement-branch frames.
 Bare Boolean predicates include their generated equality comparison work.
+Each `require` includes its Core node step as well as predicate and arm work,
+including when repeated inside bounded loops.
 Native Target independently checks the emitted calls and
 work budgets. Compiler/Target projections do not establish executable provider
 support; Echo #946 owns that consumer work. Intent results retain their existing
