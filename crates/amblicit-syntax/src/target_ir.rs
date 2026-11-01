@@ -2366,6 +2366,18 @@ fn expression_type_coordinate(
             if !predicate_fits_core_types(core, pure_functions, predicate, available) {
                 return None;
             }
+            // Preserve declared coordinates before structural comparison drops
+            // record names, including record items nested in bounded lists.
+            if let (Some(then_coordinate), Some(else_coordinate)) = (
+                expression_type_coordinate(core, pure_functions, then_value, available),
+                expression_type_coordinate(core, pure_functions, else_value, available),
+            ) {
+                if let Some(coordinate) =
+                    join_conditional_coordinates(core, &then_coordinate, &else_coordinate)
+                {
+                    return Some(coordinate);
+                }
+            }
             let then_shape = comparison_operand_shape(core, pure_functions, then_value, available)?;
             let else_shape = comparison_operand_shape(core, pure_functions, else_value, available)?;
             join_conditional_shapes(core, &then_shape, &else_shape, 0)?.type_coordinate()

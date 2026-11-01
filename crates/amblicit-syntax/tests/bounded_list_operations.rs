@@ -86,6 +86,31 @@ fn bounded_lists_preserve_empty_maximum_and_nominal_element_types() {
 }
 
 #[test]
+fn conditional_append_preserves_record_item_coordinates() {
+    for (item, list) in [
+        ("Item", "List<Item,max=2>"),
+        ("Item", "Items"),
+        ("List<Item,max=1>", "List<List<Item,max=1>,max=2>"),
+    ] {
+        let body = format!(
+            "type Item = {{ x: U8 }}; type Items = List<Item,max=2>;
+            fn identity(xs: {list}) -> {list} {{ return xs; }}
+            fn append(xs: {list}, ys: {list}, item: {item}, flag: Bool) -> {list} {{
+                return if listLen(if flag then identity(xs) else ys) < 2u64
+                    then listAppend(if flag then identity(xs) else ys,item) else xs;
+            }} {LENGTH_INTENT}"
+        );
+        let core = compile(&body).expect("record list conditional compiles");
+        let report = lower_to_target_ir(&core, &facts());
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Lowered,
+            "{item}/{list}: {report:?}"
+        );
+    }
+}
+
+#[test]
 fn bounded_lists_reject_unsafe_guards_signatures_and_result_bounds() {
     use CompilerErrorKind as K;
     for (body, kind) in [
