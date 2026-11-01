@@ -20,6 +20,15 @@ The current specification set is:
   obligation-closure resolution.
 - [Obstruction Strands Design Note](./design/obstruction-strands-v0.md):
   non-topic planning note for future repairable obstruction preservation.
+- [Collections and Optics Implementation Rationale](./design/collections-optics-roadmap.md):
+  planned contract constraints and merge boundaries for the broader collections
+  work and authored Jim rope proof; links to the live GitHub roadmap.
+- [Interactive Task DAG](./design/collections-optics-dag/index.html): offline,
+  project-colored dependency map of the collections and authored rope roadmap;
+  a dated snapshot of native prerequisite edges.
+- [Roadmap Visualization Topic](./topics/roadmap-visualization/): current viewer
+  behavior and its Python/browser verification plan, separate from the language
+  capabilities proposed in the roadmap.
 - [Documentation Standards Topic](./topics/documentation/): reader-task page
   types, documentation coverage, examples, and docs-impact rules.
 - [Release Roadmap](../ROADMAP.md): scheduled alpha milestones, release gates,

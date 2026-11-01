@@ -80,6 +80,8 @@ cargo xtask verify
   publication contract, release runbook, and verification matrix.
 - [Review Process](./review-process/README.md): pull request review-bot fallback
   policy for CodeRabbit outages and alternate bot review.
+- [Roadmap Visualization](./roadmap-visualization/README.md): offline task DAG,
+  certified antichain analysis, MECE workstreams, and simulated readiness.
 - [Rust Standards](./rust-standards/README.md): Rust safety, determinism, error
   design, I/O boundary, dependency, generated-artifact, and review policy.
 - [Semantic Validation](./semantic-validation/README.md): source/surface

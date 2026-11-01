@@ -67,6 +67,7 @@ require an empty placeholder page. [DOCS-REQ-003]
 | Lawpacks and assurance | integrator, maintainer | planned when executable lawpack or assurance tools exist | planned around lawpack validation and assurance explainers | current lawpacks and assurance shelves plus specs | current topic READMEs and assurance guide | gap until executable tools exist | current lawpacks and assurance test plans |
 | Release process | maintainer | not needed: release is operator workflow, not newcomer product use | current release process topic and release notes | current release workflow and roadmap | current release-process shelf | current tag recovery policy, limited to known release failures | current release-process test plan |
 | Contributor workflow | maintainer, agent | current `CONTRIBUTING.md` and `AGENTS.md` orientation | current testing and documentation workflow topics | current local verification commands | current topic-shelf policy | gap for local environment failures | current `xtask` evidence |
+| Roadmap visualization | roadmap reviewer, contributor | current standalone task DAG | current artifact use/rebuild guide | current roadmap-visualization topic | current graph and readiness boundary | artifact guide covers stale output and browser prerequisites | current Python/browser test plan; non-Rust evidence registration remains a stated gap |
 
 When a capability gains a CLI, public API, generated reference, visual UI, or
 operational failure mode, update this matrix before claiming the documentation

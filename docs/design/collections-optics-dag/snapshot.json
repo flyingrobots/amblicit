@@ -1,0 +1,528 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-11-01T16:30:57.973035+00:00",
+  "roadmapUrl": "https://github.com/flyingrobots/amblicit/issues/288",
+  "source": "Native GitHub issue dependencies, verified in both blocked_by and blocking directions. Parent/sub-issue links define scope only and never create edges.",
+  "nodes": [
+    {
+      "id": "identity",
+      "issueId": 5951219517,
+      "number": 260,
+      "project": "amblicit",
+      "url": "https://github.com/flyingrobots/amblicit/issues/260",
+      "title": "Expose ContentAddressV1 identity inputs to Edict source",
+      "shortTitle": "Expose target identity",
+      "state": "open",
+      "summary": "Expose the exact ContentAddressV1 law to authored source, with independent vectors and public execution evidence."
+    },
+    {
+      "id": "closure_read",
+      "issueId": 5951218941,
+      "number": 926,
+      "project": "echo",
+      "url": "https://github.com/flyingrobots/echo/issues/926",
+      "title": "Authored reads: typed outgoing-edge reads and a guided bounded closure read",
+      "shortTitle": "Guided graph reads",
+      "state": "open",
+      "summary": "Read typed outgoing edges and a bounded, witnessed closure while preserving distinct root/path occurrences."
+    },
+    {
+      "id": "rope",
+      "issueId": 5160800937,
+      "number": 296,
+      "project": "jedit",
+      "url": "https://github.com/flyingrobots/jedit/issues/296",
+      "title": "Slice: Author and prove Jim's first Edict operation ReplaceRange",
+      "shortTitle": "Prove authored ReplaceRange",
+      "state": "open",
+      "summary": "Prove the complete authored ReplaceRange operation through public compilation, separate verification and generic Echo execution, discharging all 40 retained obligations."
+    },
+    {
+      "id": "list_core",
+      "issueId": 6148958055,
+      "number": 289,
+      "project": "amblicit",
+      "url": "https://github.com/flyingrobots/amblicit/issues/289",
+      "title": "Add bounded list operations needed by explicit worklists",
+      "shortTitle": "Compile list operations",
+      "state": "open",
+      "summary": "Authored code can measure, select from, and build bounded list worklists with typed outcomes and checked static costs."
+    },
+    {
+      "id": "list_publish",
+      "issueId": 6148958261,
+      "number": 945,
+      "project": "echo",
+      "url": "https://github.com/flyingrobots/echo/issues/945",
+      "title": "Publish and prove bounded list values through the public provider path",
+      "shortTitle": "Publish list values",
+      "state": "open",
+      "summary": "Compiler-produced bounded list values are independently verified and executed by the published generic Echo provider, including the ordered-read route."
+    },
+    {
+      "id": "model",
+      "issueId": 6148958405,
+      "number": 290,
+      "project": "amblicit",
+      "url": "https://github.com/flyingrobots/amblicit/issues/290",
+      "title": "Collections: specify places, ownership, snapshots, and candidate laws",
+      "shortTitle": "Collections reference model",
+      "state": "open",
+      "summary": "A versioned collections contract and a small executable reference model make the proposed semantics testable before a production representation is selected."
+    },
+    {
+      "id": "rope_probe",
+      "issueId": 6148958639,
+      "number": 388,
+      "project": "jedit",
+      "url": "https://github.com/flyingrobots/jedit/issues/388",
+      "title": "Refresh the authored-rope capability matrix against exact public artifacts",
+      "shortTitle": "Refresh rope probes",
+      "state": "open",
+      "summary": "A reproducible source-to-provider inventory identifies the remaining concrete blockers for the real iterative rope program and its exact current component tuple."
+    },
+    {
+      "id": "content_compiler",
+      "issueId": 6148960346,
+      "number": 291,
+      "project": "amblicit",
+      "url": "https://github.com/flyingrobots/amblicit/issues/291",
+      "title": "Define typed immutable content references and semantic value identity",
+      "shortTitle": "Typed semantic content",
+      "state": "open",
+      "summary": "Authored immutable values have a portable semantic digest, bounded typed resolution and normalized ensure obligations distinct from target storage IDs."
+    },
+    {
+      "id": "list_runtime",
+      "issueId": 6148960518,
+      "number": 946,
+      "project": "echo",
+      "url": "https://github.com/flyingrobots/echo/issues/946",
+      "title": "Execute and publish bounded list worklist operations",
+      "shortTitle": "Execute list operations",
+      "state": "open",
+      "summary": "The list operations emitted by Amblicit execute through the separate provider verifier and generic evaluator with matching bounds and charges."
+    },
+    {
+      "id": "optic_flat",
+      "issueId": 6148960780,
+      "number": 292,
+      "project": "amblicit",
+      "url": "https://github.com/flyingrobots/amblicit/issues/292",
+      "title": "Demonstrate a pure optic description on the existing flat text operation",
+      "shortTitle": "Pure optic specimen",
+      "state": "open",
+      "summary": "One bounded payload-focus description can explain and lower the existing flat operation without adding reads or authority."
+    },
+    {
+      "id": "slot_compiler",
+      "issueId": 6148960945,
+      "number": 293,
+      "project": "amblicit",
+      "url": "https://github.com/flyingrobots/amblicit/issues/293",
+      "title": "Compile one witnessed optional-slot optic and guarded candidate",
+      "shortTitle": "Compile optional slots",
+      "state": "open",
+      "summary": "The compiler represents an optional membership observation and a bounded proposed slot change under the versioned collection law."
+    },
+    {
+      "id": "structured_effects",
+      "issueId": 6148976371,
+      "number": 947,
+      "project": "echo",
+      "url": "https://github.com/flyingrobots/echo/issues/947",
+      "title": "Execute and publish structured bounded effect loops and branches",
+      "shortTitle": "Execute structured effects",
+      "state": "open",
+      "summary": "Generic Echo executes compiler-produced structured Target IR loops and conditional effects in the declared order."
+    },
+    {
+      "id": "counterparts",
+      "issueId": 6148976568,
+      "number": 389,
+      "project": "jedit",
+      "url": "https://github.com/flyingrobots/jedit/issues/389",
+      "title": "Define executable schema-2 fixtures for every retained rope obligation",
+      "shortTitle": "Schema-2 rope fixtures",
+      "state": "open",
+      "summary": "All 40 retained oracle IDs have independently specified schema-2 fixtures, typed outcomes and physical expectations, including explicit decisions for all 12 counterparts."
+    },
+    {
+      "id": "slot_echo",
+      "issueId": 6148976765,
+      "number": 948,
+      "project": "echo",
+      "url": "https://github.com/flyingrobots/echo/issues/948",
+      "title": "Execute witnessed optional-slot observations and guarded changes",
+      "shortTitle": "Execute optional slots",
+      "state": "open",
+      "summary": "The first optional-slot optic runs through public source, independent verification and Echo atomic admission with complete dynamic support."
+    },
+    {
+      "id": "traversal_compiler",
+      "issueId": 6148977087,
+      "number": 294,
+      "project": "amblicit",
+      "url": "https://github.com/flyingrobots/amblicit/issues/294",
+      "title": "Compile bounded snapshot traversal with complete selection support",
+      "shortTitle": "Compile snapshot traversal",
+      "state": "open",
+      "summary": "Authored traversal yields authoritative entries from one basis and retains the support of empty and filtered observations."
+    },
+    {
+      "id": "mutation_compiler",
+      "issueId": 6148978674,
+      "number": 295,
+      "project": "amblicit",
+      "url": "https://github.com/flyingrobots/amblicit/issues/295",
+      "title": "Compile collection membership operations into one validated candidate",
+      "shortTitle": "Compile membership candidates",
+      "state": "open",
+      "summary": "Authors can express get/add/remove/replace/iter under one fixed basis while the compiler preserves payload, ownership and candidate obligations."
+    },
+    {
+      "id": "traversal_echo",
+      "issueId": 6148978882,
+      "number": 949,
+      "project": "echo",
+      "url": "https://github.com/flyingrobots/echo/issues/949",
+      "title": "Execute bounded collection traversal and preserve negative reads",
+      "shortTitle": "Execute snapshot traversal",
+      "state": "open",
+      "summary": "Published Echo execution corroborates the complete snapshot traversal contract, including empty and filtered read support."
+    },
+    {
+      "id": "mutation_echo",
+      "issueId": 6148979027,
+      "number": 950,
+      "project": "echo",
+      "url": "https://github.com/flyingrobots/echo/issues/950",
+      "title": "Admit collection candidates atomically with ownership and capacity",
+      "shortTitle": "Atomic membership admission",
+      "state": "open",
+      "summary": "One public collection operation validates and commits its complete candidate, or retains a typed outcome without partial application mutation."
+    },
+    {
+      "id": "content_echo",
+      "issueId": 6148979365,
+      "number": 951,
+      "project": "echo",
+      "url": "https://github.com/flyingrobots/echo/issues/951",
+      "title": "Enforce immutable content resolution and ensure candidates",
+      "shortTitle": "Immutable content enforcement",
+      "state": "open",
+      "summary": "Echo realizes the portable content contract with typed bounded resolution, target identity checks and immutable admitted storage."
+    },
+    {
+      "id": "composition",
+      "issueId": 6148979566,
+      "number": 296,
+      "project": "amblicit",
+      "url": "https://github.com/flyingrobots/amblicit/issues/296",
+      "title": "Compose the demonstrated optics without losing basis or support",
+      "shortTitle": "Compose demonstrated optics",
+      "state": "open",
+      "summary": "The proven payload, membership, traversal and content foci compose within an explicitly bounded subset without inventing authority or dropping context."
+    },
+    {
+      "id": "rope_optics",
+      "issueId": 6148979808,
+      "number": 390,
+      "project": "jedit",
+      "url": "https://github.com/flyingrobots/jedit/issues/390",
+      "title": "Prove authored ReplaceRange through the collections and optics surface",
+      "shortTitle": "Prove rope through optics",
+      "state": "open",
+      "summary": "The completed authored rope operation uses the new supported collection/content/optic authoring surface while preserving all text, physical and causal acceptance obligations."
+    },
+    {
+      "id": "retire_create",
+      "issueId": 6148980064,
+      "number": 952,
+      "project": "echo",
+      "url": "https://github.com/flyingrobots/echo/issues/952",
+      "title": "Retire raw CreateNode from new authored surfaces while preserving replay",
+      "shortTitle": "Retire raw creation",
+      "state": "open",
+      "summary": "New authoring profiles require the proven collection/content contracts; retained historical artifacts keep an explicit tested replay path."
+    }
+  ],
+  "edges": [
+    {
+      "source": "list_publish",
+      "target": "identity",
+      "relationship": "must_finish_before",
+      "reason": "The public contentAddress input includes bounded outgoing-edge lists; native-only list support cannot establish the public identity witness.",
+      "evidence": "https://api.github.com/repos/flyingrobots/amblicit/issues/260/dependencies/blocked_by"
+    },
+    {
+      "source": "list_publish",
+      "target": "closure_read",
+      "relationship": "must_finish_before",
+      "reason": "The authored read contract needs bounded list/record values and matching ordered-read type judgments.",
+      "evidence": "https://api.github.com/repos/flyingrobots/echo/issues/926/dependencies/blocked_by"
+    },
+    {
+      "source": "list_runtime",
+      "target": "rope",
+      "relationship": "must_finish_before",
+      "reason": "Iterative descent/rebuild requires executed bounded worklist operations.",
+      "evidence": "https://api.github.com/repos/flyingrobots/jedit/issues/296/dependencies/blocked_by"
+    },
+    {
+      "source": "structured_effects",
+      "target": "rope",
+      "relationship": "must_finish_before",
+      "reason": "Fresh nodes and selected effects require bounded repeated/conditional emission.",
+      "evidence": "https://api.github.com/repos/flyingrobots/jedit/issues/296/dependencies/blocked_by"
+    },
+    {
+      "source": "identity",
+      "target": "rope",
+      "relationship": "must_finish_before",
+      "reason": "Every ensured node must match the exact independently verified ContentAddressV1 law.",
+      "evidence": "https://api.github.com/repos/flyingrobots/jedit/issues/296/dependencies/blocked_by"
+    },
+    {
+      "source": "closure_read",
+      "target": "rope",
+      "relationship": "must_finish_before",
+      "reason": "The operation must observe typed edges and a bounded occurrence-preserving closure.",
+      "evidence": "https://api.github.com/repos/flyingrobots/jedit/issues/296/dependencies/blocked_by"
+    },
+    {
+      "source": "counterparts",
+      "target": "rope",
+      "relationship": "must_finish_before",
+      "reason": "All physical and typed-outcome expectations must be specified independently before complete acceptance.",
+      "evidence": "https://api.github.com/repos/flyingrobots/jedit/issues/296/dependencies/blocked_by"
+    },
+    {
+      "source": "model",
+      "target": "content_compiler",
+      "relationship": "must_finish_before",
+      "reason": "Establishes semantic-versus-storage identity and immutable-link/candidate rules.",
+      "evidence": "https://api.github.com/repos/flyingrobots/amblicit/issues/291/dependencies/blocked_by"
+    },
+    {
+      "source": "list_core",
+      "target": "list_runtime",
+      "relationship": "must_finish_before",
+      "reason": "Defines the operation and artifact contract consumed here.",
+      "evidence": "https://api.github.com/repos/flyingrobots/echo/issues/946/dependencies/blocked_by"
+    },
+    {
+      "source": "list_publish",
+      "target": "list_runtime",
+      "relationship": "must_finish_before",
+      "reason": "Provides the complete published list value/type and ordered-read support this evaluator extends.",
+      "evidence": "https://api.github.com/repos/flyingrobots/echo/issues/946/dependencies/blocked_by"
+    },
+    {
+      "source": "model",
+      "target": "optic_flat",
+      "relationship": "must_finish_before",
+      "reason": "Supplies the description/reading/candidate distinction and the observation named by each law.",
+      "evidence": "https://api.github.com/repos/flyingrobots/amblicit/issues/292/dependencies/blocked_by"
+    },
+    {
+      "source": "model",
+      "target": "slot_compiler",
+      "relationship": "must_finish_before",
+      "reason": "Settles canonical place identity, outcome attribution, wire shape, and ownership rules.",
+      "evidence": "https://api.github.com/repos/flyingrobots/amblicit/issues/293/dependencies/blocked_by"
+    },
+    {
+      "source": "list_publish",
+      "target": "structured_effects",
+      "relationship": "must_finish_before",
+      "reason": "Structured iterations consume the published bounded-list value and verification contract.",
+      "evidence": "https://api.github.com/repos/flyingrobots/echo/issues/947/dependencies/blocked_by"
+    },
+    {
+      "source": "rope_probe",
+      "target": "counterparts",
+      "relationship": "must_finish_before",
+      "reason": "Pins the actual source/target boundary and routes unresolved capability requirements.",
+      "evidence": "https://api.github.com/repos/flyingrobots/jedit/issues/389/dependencies/blocked_by"
+    },
+    {
+      "source": "slot_compiler",
+      "target": "slot_echo",
+      "relationship": "must_finish_before",
+      "reason": "Provides real source artifacts, the capability schema and declared slot semantics.",
+      "evidence": "https://api.github.com/repos/flyingrobots/echo/issues/948/dependencies/blocked_by"
+    },
+    {
+      "source": "slot_compiler",
+      "target": "traversal_compiler",
+      "relationship": "must_finish_before",
+      "reason": "Defines the typed focus, basis and reading/support representation.",
+      "evidence": "https://api.github.com/repos/flyingrobots/amblicit/issues/294/dependencies/blocked_by"
+    },
+    {
+      "source": "list_core",
+      "target": "traversal_compiler",
+      "relationship": "must_finish_before",
+      "reason": "Provides the checked list operations used to select and accumulate bounded entries without hidden mutation.",
+      "evidence": "https://api.github.com/repos/flyingrobots/amblicit/issues/294/dependencies/blocked_by"
+    },
+    {
+      "source": "traversal_compiler",
+      "target": "mutation_compiler",
+      "relationship": "must_finish_before",
+      "reason": "Supplies fixed-basis entry selection and complete read-support contracts.",
+      "evidence": "https://api.github.com/repos/flyingrobots/amblicit/issues/295/dependencies/blocked_by"
+    },
+    {
+      "source": "traversal_compiler",
+      "target": "traversal_echo",
+      "relationship": "must_finish_before",
+      "reason": "Defines the bounded traversal and support artifact contract.",
+      "evidence": "https://api.github.com/repos/flyingrobots/echo/issues/949/dependencies/blocked_by"
+    },
+    {
+      "source": "slot_echo",
+      "target": "traversal_echo",
+      "relationship": "must_finish_before",
+      "reason": "Provides the actual slot/owner/absence witnessing and admission machinery.",
+      "evidence": "https://api.github.com/repos/flyingrobots/echo/issues/949/dependencies/blocked_by"
+    },
+    {
+      "source": "list_runtime",
+      "target": "traversal_echo",
+      "relationship": "must_finish_before",
+      "reason": "Provides the executed list/worklist operations used by public traversal consumers.",
+      "evidence": "https://api.github.com/repos/flyingrobots/echo/issues/949/dependencies/blocked_by"
+    },
+    {
+      "source": "mutation_compiler",
+      "target": "mutation_echo",
+      "relationship": "must_finish_before",
+      "reason": "Supplies the candidate contract and real compiler-produced programs.",
+      "evidence": "https://api.github.com/repos/flyingrobots/echo/issues/950/dependencies/blocked_by"
+    },
+    {
+      "source": "traversal_echo",
+      "target": "mutation_echo",
+      "relationship": "must_finish_before",
+      "reason": "Provides complete dynamic selection support used by collection mutations.",
+      "evidence": "https://api.github.com/repos/flyingrobots/echo/issues/950/dependencies/blocked_by"
+    },
+    {
+      "source": "structured_effects",
+      "target": "mutation_echo",
+      "relationship": "must_finish_before",
+      "reason": "Provides bounded repeated/conditional emissions with fresh bindings and private buffering.",
+      "evidence": "https://api.github.com/repos/flyingrobots/echo/issues/950/dependencies/blocked_by"
+    },
+    {
+      "source": "content_compiler",
+      "target": "content_echo",
+      "relationship": "must_finish_before",
+      "reason": "Defines portable digest, typed link, resolution and ensure contracts.",
+      "evidence": "https://api.github.com/repos/flyingrobots/echo/issues/951/dependencies/blocked_by"
+    },
+    {
+      "source": "mutation_echo",
+      "target": "content_echo",
+      "relationship": "must_finish_before",
+      "reason": "Provides the complete candidate normalization/admission framework.",
+      "evidence": "https://api.github.com/repos/flyingrobots/echo/issues/951/dependencies/blocked_by"
+    },
+    {
+      "source": "identity",
+      "target": "content_echo",
+      "relationship": "must_finish_before",
+      "reason": "Supplies the published exact target content-address law and verified vectors.",
+      "evidence": "https://api.github.com/repos/flyingrobots/echo/issues/951/dependencies/blocked_by"
+    },
+    {
+      "source": "optic_flat",
+      "target": "composition",
+      "relationship": "must_finish_before",
+      "reason": "Supplies the demonstrated pure focus interpretation.",
+      "evidence": "https://api.github.com/repos/flyingrobots/amblicit/issues/296/dependencies/blocked_by"
+    },
+    {
+      "source": "content_echo",
+      "target": "composition",
+      "relationship": "must_finish_before",
+      "reason": "Completes all stored/content candidate surfaces being composed, including membership through its prerequisite chain.",
+      "evidence": "https://api.github.com/repos/flyingrobots/amblicit/issues/296/dependencies/blocked_by"
+    },
+    {
+      "source": "rope",
+      "target": "rope_optics",
+      "relationship": "must_finish_before",
+      "reason": "Provides the already-proved authored operation and independent full acceptance baseline.",
+      "evidence": "https://api.github.com/repos/flyingrobots/jedit/issues/390/dependencies/blocked_by"
+    },
+    {
+      "source": "composition",
+      "target": "rope_optics",
+      "relationship": "must_finish_before",
+      "reason": "Provides the complete supported collection/content/optic surface to migrate onto.",
+      "evidence": "https://api.github.com/repos/flyingrobots/jedit/issues/390/dependencies/blocked_by"
+    },
+    {
+      "source": "rope_optics",
+      "target": "retire_create",
+      "relationship": "must_finish_before",
+      "reason": "Proves the replacement authoring surface is sufficient for the concrete consumer before retirement.",
+      "evidence": "https://api.github.com/repos/flyingrobots/echo/issues/952/dependencies/blocked_by"
+    }
+  ],
+  "workstreams": [
+    {
+      "id": "substrate",
+      "name": "Public execution",
+      "description": "Reusable public compiler/provider/runtime capabilities consumed by both collection work and the rope proof.",
+      "tasks": [
+        "list_core",
+        "list_publish",
+        "list_runtime",
+        "structured_effects",
+        "identity",
+        "closure_read"
+      ]
+    },
+    {
+      "id": "collections",
+      "name": "Collections & optics",
+      "description": "Reference laws, witnessed slots and traversal, atomic membership, immutable content, and the demonstrated composition surface.",
+      "tasks": [
+        "model",
+        "optic_flat",
+        "slot_compiler",
+        "slot_echo",
+        "traversal_compiler",
+        "traversal_echo",
+        "mutation_compiler",
+        "mutation_echo",
+        "content_compiler",
+        "content_echo",
+        "composition"
+      ]
+    },
+    {
+      "id": "rope",
+      "name": "Rope acceptance",
+      "description": "Current capability probes, independent schema-2 counterparts, and the first complete authored operation proof.",
+      "tasks": [
+        "rope_probe",
+        "counterparts",
+        "rope"
+      ]
+    },
+    {
+      "id": "adoption",
+      "name": "Adoption & compatibility",
+      "description": "Migrate the proved operation to collections/optics, then retire raw authoring while retaining versioned historical replay.",
+      "tasks": [
+        "rope_optics",
+        "retire_create"
+      ]
+    }
+  ]
+}
