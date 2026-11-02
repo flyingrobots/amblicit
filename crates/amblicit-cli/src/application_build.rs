@@ -4111,6 +4111,50 @@ mod tests {
     }
 
     #[test]
+    fn structured_application_binds_the_independently_verified_root_projection() {
+        let source = include_str!("../../../fixtures/lawpack/hello-echo/create-greetings.amblicit");
+        let (core, report) = hello_echo_source_target_ir_report(
+            source,
+            Some(amblicit_syntax::ECHO_STRUCTURED_SPAN_IR_DOMAIN),
+        );
+        let Some(target) = report.artifact.as_ref() else {
+            panic!("structured Target IR");
+        };
+        let (intent, projection) = test_ok(
+            single_result_projection(
+                &report.result_projections,
+                &report.result_projection_failures,
+            ),
+            "structured application has exactly one supported result",
+        );
+        let verified = test_ok(
+            amblicit_syntax::verify_result_projection(
+                &core,
+                target,
+                intent,
+                projection.canonical_bytes(),
+                projection.digest(),
+            ),
+            "independent result check",
+        );
+        let inputs = test_ok(
+            with_result_projection_input(Vec::new(), projection),
+            "bind result",
+        );
+        assert_eq!(verified.digest(), projection.digest());
+        assert_eq!(inputs.len(), 1);
+        assert_eq!(inputs[0].role, RESULT_PROJECTION_ROLE);
+        assert_eq!(
+            inputs[0].artifact.artifact.bytes,
+            projection.canonical_bytes()
+        );
+        assert_eq!(
+            inputs[0].artifact.artifact.domain,
+            RESULT_PROJECTION_DIGEST_DOMAIN
+        );
+    }
+
+    #[test]
     fn provider_schema_selection_loads_every_bound_role_under_bounded_stress() {
         let mut manifest = provider_manifest_with_schema_count(32);
         let mut state = STRESS_SEED;
@@ -4155,13 +4199,23 @@ mod tests {
     }
 
     fn hello_echo_target_ir_report() -> TargetLoweringReport {
+        hello_echo_source_target_ir_report(
+            include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.amblicit"),
+            None,
+        )
+        .1
+    }
+
+    fn hello_echo_source_target_ir_report(
+        source: &str,
+        domain: Option<&str>,
+    ) -> (amblicit_syntax::CoreModule, TargetLoweringReport) {
         let manifest =
             include_bytes!("../../../fixtures/lawpack/hello-echo/manifest.cbor").as_slice();
         let exports =
             include_bytes!("../../../fixtures/lawpack/hello-echo/exports.cbor").as_slice();
         let adapter =
             include_bytes!("../../../fixtures/lawpack/hello-echo/adapter.cbor").as_slice();
-        let source = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.amblicit");
         let bundle = test_ok(
             decode_lawpack_bundle(manifest, exports),
             "decode Hello Echo lawpack",
@@ -4179,7 +4233,12 @@ mod tests {
             compile_to_core(&module, preparation.compiler_context()),
             "compile Hello Echo Core",
         );
-        lower_to_target_ir(&core, preparation.target_ir_facts())
+        let mut facts = preparation.target_ir_facts().clone();
+        if let Some(domain) = domain {
+            domain.clone_into(&mut facts.target_ir_domain);
+        }
+        let report = lower_to_target_ir(&core, &facts);
+        (core, report)
     }
 
     fn external_action_target_ir() -> TargetIrArtifact {

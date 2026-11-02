@@ -7,6 +7,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
+mod structured;
+
 use crate::core_ir::{
     core_type_fits, resolved_core_type, validate_core_module_type_integrity,
     CORE_APPLICATION_INPUT_LOCAL_ID,
@@ -428,7 +430,20 @@ impl<'a> ProjectionSemantics<'a> {
         )?;
         let input = resolve_application_input(core_intent, intent_name)?;
         let (pure_by_local, pure_by_id, capability_by_local, capability_by_step) =
-            resolve_projection_sources(core_intent, target_intent, intent_name, &input)?;
+            if target_ir.domain == crate::ECHO_STRUCTURED_SPAN_IR_DOMAIN {
+                if !crate::target_ir::execution_order::header_has_valid_execution_order(
+                    &target_ir.domain,
+                    &target_ir.target_profile,
+                ) {
+                    return Err(failure(
+                        ResultProjectionFailureKind::CoreTargetMismatch,
+                        intent_name,
+                    ));
+                }
+                structured::resolve_sources(core_intent, target_intent, intent_name, &input)?
+            } else {
+                resolve_projection_sources(core_intent, target_intent, intent_name, &input)?
+            };
 
         Ok(Self {
             core,
@@ -525,6 +540,12 @@ fn resolve_application_input(
 
 type ProjectionByLocal = BTreeMap<String, (String, LocalRef)>;
 type ProjectionById = BTreeMap<String, LocalRef>;
+type ProjectionSources = (
+    ProjectionByLocal,
+    ProjectionById,
+    ProjectionByLocal,
+    ProjectionById,
+);
 
 fn resolve_projection_sources(
     core_intent: &CoreIntent,

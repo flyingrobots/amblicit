@@ -8,6 +8,13 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Admit compiler-owned result projections for explicitly selected structured
+  Target v3 operations. Projection emission and independent verification match
+  nested Core/order correspondence and retain only root-scope result sources;
+  loop and branch locals cannot escape into application output. Public
+  application builds can bind the verified projection into provider inputs;
+  provider and runtime structured-effect support remains Echo #947.
+
 - Add `listLen`, proof-checked `listAt`, capacity-preserving `listAppend` and
   bounded `listConcat` for immutable authored worklists under `core.list/v1`.
   Source and native Target independently validate types, guards and checked work

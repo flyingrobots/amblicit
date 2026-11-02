@@ -27,6 +27,15 @@ binding belong to Echo.
 
 ## Fixtures
 
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| RESULT-PROJ-REQ-014 | implemented | A structured Target v3 operation preserves the complete nested Core/order correspondence while projecting only application input and root-scope pure/effect results. Child bindings cannot escape; altered order, nested instructions and unrepresented child results refuse in both emission and verification. | issue #300 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| RESULT-PROJ-TP-030 | implemented | Structured result boundary | RESULT-PROJ-REQ-014 | Source with a branch inside a bounded loop preserves nested operations and independently verifies its root pure and effect results; graph mutations and child-source leaks refuse with stable error categories. | structured_source_emits_and_independently_verifies_root_result_sources, structured_projection_refuses_changed_nested_instructions_and_order, structured_projection_does_not_export_child_binding_or_effect_results, structured_projection_refuses_unrepresented_child_results_and_locals | crates/amblicit-syntax/tests/result_projection/structured.rs, fixtures/lawpack/hello-echo/create-greetings.amblicit | Compiler projection claim only; provider and runtime acceptance belong to Echo. |
+| RESULT-PROJ-TP-031 | implemented | Application input closure | RESULT-PROJ-REQ-014 | The application builder selects the single compiler projection, independently verifies its identity, then binds the exact canonical bytes and domain into its provider input closure. | structured_application_binds_the_independently_verified_root_projection | crates/amblicit-cli/src/application_build.rs, fixtures/lawpack/hello-echo/create-greetings.amblicit | Tests the application's pre-provider boundary; no provider execution claim. |
+
 | Fixture | Purpose | Oracle |
 | --- | --- | --- |
 | `fixtures/lawpack/hello-echo/create-greeting.amblicit` | Real application source with one application-input field and one capability-result field in its result. | Compilation and Target IR lowering derive the reviewed projection without native Hello Echo code. |

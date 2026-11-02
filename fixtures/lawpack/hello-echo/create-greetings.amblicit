@@ -1,0 +1,34 @@
+package examples.hello_echo@1;
+
+use lawpack hello.echo@1 digest "sha256:39e22e7e030d442f4d67a559e21e81bcf99806420d848353b9c69375266092f1" as hello;
+
+type BatchInput = {
+  item: hello.CreateGreetingInput,
+  items: List<hello.CreateGreetingInput, max=2>,
+};
+
+type GreetingCreated = {
+  key: String<max=64>,
+  message: String<max=256>,
+};
+
+intent createGreeting(input: BatchInput) returns GreetingCreated
+  profile hello.createGreeting
+  basis input.item.basis
+  budget <= hello.smallCreateBudget
+{
+  let message = input.item.message;
+  for item in input.items bounded 2 {
+    let observed = item;
+    if observed.message != "" {
+      let receipt: hello.GreetingReceipt = hello.createGreeting(observed)
+        else { alreadyExists(existing) => hello.AlreadyExists };
+    } else {
+      require observed.message == "" else hello.AlreadyExists;
+    }
+  }
+  let receipt: hello.GreetingReceipt = hello.createGreeting(input.item)
+    else { alreadyExists(existing) => hello.AlreadyExists };
+  let returned = message;
+  return { key: receipt.key, message: returned };
+}

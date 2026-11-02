@@ -1,5 +1,8 @@
 //! Compiler-owned result-projection contract and independent verification.
 
+#[path = "result_projection/structured.rs"]
+mod structured;
+
 use std::collections::BTreeMap;
 
 use amblicit_syntax::{

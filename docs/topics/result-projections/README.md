@@ -95,6 +95,31 @@ Echo bytes and digest under
 
 ## Independent Verification
 
+For explicitly selected `echo.span-ir/v3`, the body may contain literal-bounded
+loops and statement branches. Before selecting projection sources, both APIs
+check the complete Core body against the structured Target order: control
+identity and placement, loop binder/iterable/bound, branch predicate, instruction
+order and payloads, child-block local declarations and null results, and exact
+table coverage. The Target order judgment enforces fresh identities and lexical
+availability through both arms. Missing or changed nested instructions refuse
+even when they do not contribute to the final result. [RESULT-PROJ-REQ-014]
+
+Only the application input and pure/effect bindings introduced directly in the
+root block are result sources. A nested instruction stays in the Target tables
+for execution, but its local or step result is unavailable after that loop or
+branch. Root bindings keep their original table identities, including indices
+that follow nested instructions. No iteration-result list or branch-result join
+is added to the projection language. [RESULT-PROJ-REQ-014]
+
+This correspondence check has no adapter or runtime authority. An adapter may
+rename obstruction keys while retaining their Core arm bindings and values;
+the provider still validates that mapping and its target intrinsic. Projection
+admission does not establish effect-budget feasibility or successful execution.
+The existing application builder independently verifies the projection and
+binds its exact bytes into provider inputs; a provider that lacks structured
+effect support still refuses at its own boundary. [RESULT-PROJ-REQ-007]
+[RESULT-PROJ-REQ-014]
+
 `verify_result_projection` does not call the emitter or trust the claimed
 digest. It:
 
