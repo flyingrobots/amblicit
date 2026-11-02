@@ -61,6 +61,7 @@ impl TypeChecker<'_> {
             let mut scope = env.clone();
             let binder = match (&arm.binder, declared) {
                 (Some(name), Some(payload)) => {
+                    self.record_source_match_binder(arm, payload, arm.span)?;
                     let mut index = 0;
                     while scope
                         .values

@@ -754,7 +754,41 @@ when a matched record also contains an unrelated empty or nonempty list literal.
 Direct list-match comparisons remain outside the comparison language.
 [TIR-REQ-063]
 
+Match coordinate inference derives the scrutinee type once and reuses it when
+arm-coordinate joining needs structural fallback. An invalid nested scrutinee
+propagates refusal without restarting inference through that same subtree.
+Deterministic public-lowering tests bound coordinate visits for valid and invalid
+chains at depths 4 and 12; they do not establish whole-compiler complexity.
+
 ## Bounded fold validation
+
+The independent meter also applies to modules requiring `core.list/v1`, including
+intents without a fold. Native Target recognizes typed list length, access,
+append and concatenation calls, derives each result from the validated operand
+coordinates, and rechecks strict access/capacity guards on the exact operands.
+Length and access permit compatible widening of outer capacity and structural
+item bounds. Access still requires a strict guard against the actual length of
+that operand; a claimed capacity cannot replace its length in the guard.
+List append preserves its declared capacity. Concatenation requires identical
+item coordinates and checks the sum of independently reconstructed operand
+maxima. Both operands must retain their exact capacities and semantically
+equivalent item types; widening compatibility alone cannot authorize a larger
+claimed operand type. Structural record names may differ when their fields and
+bounds agree in both directions. Conditional and matched joins can also render
+the common structural record type when neither named type contains the other.
+Append and concatenation reuse each independently validated operand coordinate
+for compatibility and capacity checks. Nested call chains therefore avoid
+duplicating inference at every level; separate totality and guard checks remain.
+Wider enclosing result bounds remain permitted. Changed nominal element
+identity, weaker/removed guards, narrower operand bounds and sum overflow refuse.
+Conditional and matched record projections preserve declared list item coordinates.
+The meter derives storage from validated structural field shapes for anonymous
+nested records as well as named types, with checked arithmetic and depth limits.
+Operand validation and full bounded storage/copy costs include nested payloads;
+checked arithmetic and step/storage budgets are enforced independently of source
+estimates. The simple length specimen's native bound is 294 steps and 1,350 bytes;
+either one-unit-short budget refuses. These are native compiler artifacts, not
+provider execution evidence. [TIR-REQ-066]
 
 Native Target recognizes `core.fold/v1` and checks a source step with matching
 parameter/return coordinates and an initial value compatible with that state.

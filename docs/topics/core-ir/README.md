@@ -220,3 +220,14 @@ checks the capability and invariant helper signature and includes the helper
 in cycle checks even at zero bound. Initial-value structural integrity is
 separate from Target's value-to-state compatibility check. These are compilation
 contracts, not evidence that a provider executes fold. [COREIR-REQ-033]
+
+## Bounded list calls
+
+`core.list.length`, `core.list.at`, `core.list.append` and `core.list.concat`
+use the existing generic call encoding under `core.list/v1`. The first three
+retain one list type coordinate; concatenation retains both operand coordinates.
+Argument order, values and type arguments remain hash-significant, as does the
+required capability set. No Core expression variant or ABI field is added.
+Missing capability fails Core integrity before encoding; signatures, totality
+and result compatibility remain separate Target judgments. Unsupported capability
+versions refuse explicitly. [COREIR-REQ-034]

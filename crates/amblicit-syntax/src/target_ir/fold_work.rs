@@ -83,7 +83,7 @@ pub(super) fn intent_cost_fits(
     if !core
         .required_core_capabilities
         .iter()
-        .any(|c| c == "core.fold/v1")
+        .any(|c| c == "core.fold/v1" || c == "core.list/v1")
     {
         return true;
     }
@@ -163,12 +163,37 @@ impl<'a> Meter<'a> {
         })
     }
 
+    fn shape_value(&self, shape: &super::ComparisonOperandShape, depth: usize) -> Option<Value> {
+        use super::ComparisonOperandShape as Shape;
+        if depth > MAX_CORE_TYPE_DEPTH {
+            return None;
+        }
+        match shape {
+            Shape::Coordinate(ty) => self.value_type(ty, depth),
+            Shape::EmptyList => Some(Value::CELL),
+            Shape::Record(fields) => fields.iter().try_fold(Value::CELL, |total, (key, item)| {
+                total.add(Self::field(key, self.shape_value(item, depth + 1)?)?)
+            }),
+            Shape::List { item, max } => {
+                let item = self.shape_value(item, depth + 1)?;
+                Value::CELL.add(Value {
+                    cells: item.cells.checked_mul(*max)?,
+                    bytes: item.bytes.checked_mul(*max)?,
+                })
+            }
+        }
+    }
+
     fn value(&self, expr: &CoreExpr, available: &Scope<'_>, depth: usize) -> Option<Value> {
         if depth > MAX_CORE_GRAPH_DEPTH {
             return None;
         }
         match expr {
             CoreExpr::Const(CoreValue::Null) => Some(Value::CELL),
+            CoreExpr::Field { base, field } => self.shape_value(
+                &super::field_expression_shape(self.core, self.facts, base, field, available)?,
+                0,
+            ),
             CoreExpr::Record { fields } => {
                 fields.iter().try_fold(Value::CELL, |total, (key, expr)| {
                     total.add(Self::field(key, self.value(expr, available, depth + 1)?)?)

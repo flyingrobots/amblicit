@@ -264,6 +264,51 @@ type with `TypeMismatch`, and a literal with no expected list type with
 literal reports only its elements' own errors. Effect calls inside a literal
 reject as in record literals. [CSPINE-REQ-057]
 
+Bounded immutable worklists have four reserved prelude operations. For
+`xs: List<T,max=N>`, `listLen(xs)` returns `U64`, `listAt(xs,index)` returns `T`,
+and `listAppend(xs,value)` returns the same bounded list type. Access requires
+a dominating strict proof `index < listLen(xs)` for the exact operands; append
+requires `listLen(xs) < Nu64` for the exact list and declared capacity. Expression
+branches and ordered short-circuit predicates carry these facts. A weak bound,
+another list/index, an alias, or a non-dominating disjunction does not suffice.
+The compiler does not introduce a throwing operation or a new Option protocol.
+An authored closed variant can represent `Missing` or `Full`, as in the
+[public worklist specimen](../../../fixtures/lang/functions/bounded-worklist.amblicit).
+Byte `len` and `at` retain their existing meaning. [CSPINE-REQ-066]
+
+`listConcat(left,right)` requires identical item coordinates and returns a
+structural list whose maximum is the checked sum of the operand maxima. A
+smaller result annotation refuses even if particular inputs happen to be short.
+Append checks the value using existing item compatibility and preserves the
+capacity so it can accumulate inside an invariant `fold` state. These operations
+take no authored type arguments; list literals still need an explicit expected
+list type, such as a prior annotated binding. Index width is U64. Capacity/sum
+overflow and bounded work overflow refuse; nested values and nominal variant
+elements retain their types. [CSPINE-REQ-066]
+
+Modules using these operations declare `core.list/v1`. Capability discovery is
+followed by one complete metered checking pass, including earlier intents,
+record-shorthand reads, operand validation, nested value storage/copy work and
+all fold iterations. Bounded `for` accounting includes each generated binder
+and null block result, the enclosing node, and selected statement-branch frames.
+Bare Boolean predicates include their generated equality comparison work.
+Predicates used as Boolean values also include the selected constant's evaluation
+and storage. Match-result joins retain declared record item coordinates for
+guarded append operands, including named and nested list types.
+Each `require` includes its Core node step as well as predicate and arm work,
+including when repeated inside bounded loops.
+Shorthand obstruction payloads include their synthesized local reads.
+Payload-binding matches charge the complete typed block frame, including later
+locals and surrounding scopes, plus payload-cell work. Nested binders, helper
+calls and fold repetitions retain those charges. Source bounds may conservatively
+exceed the independently reconstructed native bounds.
+Effect bindings include receipt, obstruction binder/annotation and node work;
+generated obstruction locals also participate in copied match frames.
+Native Target independently checks the emitted calls and
+work budgets. Compiler/Target projections do not establish executable provider
+support; Echo #946 owns that consumer work. Intent results retain their existing
+canonical result-projection restrictions. [CSPINE-REQ-066]
+
 `slice(bytes, start, end)` lowers bounded raw bytes and U64 endpoints to
 `core.bytes.slice<OperandType>(bytes,start,end)`. Its result keeps the operand
 maximum and drops positive minimum/exact length, since empty slices are valid.

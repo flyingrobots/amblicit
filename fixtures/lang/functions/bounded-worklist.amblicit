@@ -1,0 +1,47 @@
+package worklists.example@1;
+
+type Item = variant { Value(U8), Empty };
+type Selection = variant { Missing, Found(Item) };
+type Addition = variant { Full, Added(List<Item,max=3>) };
+
+fn lookup(xs: List<Item,max=3>, index: U64) -> Selection {
+  return if index < listLen(xs) then Selection::Found(listAt(xs,index)) else Selection::Missing;
+}
+fn append(xs: List<Item,max=3>, value: Item) -> Addition {
+  return if listLen(xs) < 3u64 then Addition::Added(listAppend(xs,value)) else Addition::Full;
+}
+fn step(xs: List<Item,max=3>) -> List<Item,max=3> {
+  return if listLen(xs) < 3u64 then listAppend(xs,Item::Value(7u8)) else xs;
+}
+fn build() -> List<Item,max=3> {
+  let empty: List<Item,max=3> = [];
+  return fold(empty,step,5u64);
+}
+fn itemValue(item: Item) -> U8 {
+  return match item { Value(value) => value, Empty => 0u8 };
+}
+fn selectedValue(selection: Selection) -> U8 {
+  return match selection { Found(item) => itemValue(item), Missing => 0u8 };
+}
+fn wasFull(addition: Addition) -> Bool {
+  return match addition { Full => true, Added(items) => false };
+}
+
+type Input = { left: List<Item,max=2>, right: List<Item,max=1>, index: U64 };
+type Output = {
+  emptyLength: U64, fullLength: U64, selected: U8, first: U8, last: U8,
+  builtLength: U64, joinedLength: U64, nestedLength: U64, full: Bool,
+};
+intent work(input: Input) returns Output profile p.read basis none budget <= p.large {
+  let empty: List<Item,max=0> = [];
+  let maximum: List<Item,max=3> = [Item::Value(1u8),Item::Value(2u8),Item::Value(3u8)];
+  let joined = listConcat(input.left,input.right);
+  let built = build();
+  let nested: List<List<Item,max=3>,max=1> = [built];
+  return {
+    emptyLength: listLen(empty), fullLength: listLen(maximum), selected: selectedValue(lookup(joined,input.index)),
+    first: selectedValue(lookup(maximum,0u64)), last: selectedValue(lookup(maximum,2u64)),
+    builtLength: listLen(built), joinedLength: listLen(joined), nestedLength: listLen(nested),
+    full: wasFull(append(maximum,Item::Empty)),
+  };
+}

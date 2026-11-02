@@ -1902,6 +1902,37 @@ rejects. It lowers to Core `{ kind: "list", values: [...] }`, and Target
 independently checks the element count against the declared maximum and every
 element against the item type.
 
+Bounded immutable list operations (`EDICT-LANG-LIST-OPS-001`) are reserved
+prelude functions, distinct from the byte operations `len` and `at`:
+
+| Source | Result | Required proof or bound |
+| --- | --- | --- |
+| `listLen(xs)` | `U64` | `xs` is a bounded structural list |
+| `listAt(xs,index)` | The list item type | Exact `index < listLen(xs)` before evaluation |
+| `listAppend(xs,value)` | The same list type and maximum | Exact `listLen(xs) < Nu64`, for declared maximum N; value fits the item type |
+| `listConcat(left,right)` | `List<T,max=L+R>` | Identical item coordinates T; checked sum of declared maxima |
+
+These functions accept no authored type arguments. List literals retain the
+expected-type rule above; bind an explicitly typed literal before using it as
+an operation operand. An index has type U64. The compiler recognizes strict
+comparisons in both directions and their negations, expression-if branch facts
+and ordered short-circuit facts. It does not infer aliases or transitive bounds.
+Unproved access/capacity refuses `UnsupportedSourceShape`; invalid element/index
+types or a smaller annotated result refuse `TypeMismatch`; bound or cost overflow
+refuses `InvalidBound`. Authored variants can expose missing/full outcomes without
+exceptions or mutation. A full/empty branch can return its own declared outcome.
+
+Core uses ordinary typed calls `core.list.length`, `core.list.at`,
+`core.list.append`, and `core.list.concat` under required capability `core.list/v1`.
+Length/access/append carry one operand list coordinate; concatenation carries
+both list coordinates. Call operands, type arguments and capability are canonical
+identity. Native Target derives signatures, strict domains and bounded work
+independently. Full-module static accounting includes nested list storage,
+operand validation/copy work and every declared fold step with checked arithmetic.
+Consumers must explicitly support the capability. Native compilation does not
+establish provider or runtime acceptance. This adds immutable value operations,
+not stored collections, places, allocation, recursive types or mutable locals.
+
 Maps must use canonical key ordering. Lists and maps must declare finite
 maximum cardinality. Map key types in v1 are limited to scalar, enum, digest,
 bytes, string with declared canonicalization policy, or imported types that

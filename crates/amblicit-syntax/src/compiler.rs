@@ -27,6 +27,7 @@ mod byte_length;
 mod byte_slice;
 mod byte_utf8;
 mod list_literal;
+mod list_operations;
 mod return_budget;
 mod signature_diagnostic;
 mod source_fold;
@@ -34,6 +35,7 @@ mod source_functions;
 mod source_matches;
 mod source_types;
 mod source_variants;
+mod source_work;
 mod target_pure_intrinsic;
 pub use signature_diagnostic::{
     EffectSignatureMismatch, SignatureMismatchPosition, SignaturePathSegment,
@@ -1032,6 +1034,7 @@ struct EffectBindingProfile {
 #[derive(Debug, Clone)]
 struct TypeChecker<'a> {
     core_capabilities: BTreeSet<String>,
+    list_work_pass: list_operations::WorkPass,
     match_depth: usize,
     match_in_intent: bool,
     resolved: &'a ResolvedModule,
@@ -1041,6 +1044,12 @@ struct TypeChecker<'a> {
     target_pure_intrinsic_costs: BTreeMap<usize, HelperCost>,
     source_predicate_costs: BTreeMap<usize, HelperCost>,
     source_value_bounds: BTreeMap<usize, (u64, u64)>,
+    source_loop_frames: BTreeMap<usize, HelperCost>,
+    source_block_frames: BTreeMap<usize, HelperCost>,
+    source_match_binder_frames: BTreeMap<usize, HelperCost>,
+    source_reason_shorthand_costs: BTreeMap<usize, HelperCost>,
+    source_obstruction_frames: BTreeMap<String, HelperCost>,
+    source_cost_frame: HelperCost,
     /// Byte maximum of every operand coordinate a `count` call resolved, so the
     /// addition proof can bound named coordinates without a type table.
     count_operand_maxima: BTreeMap<String, u64>,
@@ -1063,6 +1072,7 @@ impl<'a> TypeChecker<'a> {
         Self {
             resolved,
             core_capabilities: BTreeSet::new(),
+            list_work_pass: list_operations::WorkPass::Discover,
             match_depth: 0,
             match_in_intent: false,
             function_signatures: BTreeMap::new(),
@@ -1071,6 +1081,12 @@ impl<'a> TypeChecker<'a> {
             target_pure_intrinsic_costs: BTreeMap::new(),
             source_predicate_costs: BTreeMap::new(),
             source_value_bounds: BTreeMap::new(),
+            source_loop_frames: BTreeMap::new(),
+            source_block_frames: BTreeMap::new(),
+            source_match_binder_frames: BTreeMap::new(),
+            source_reason_shorthand_costs: BTreeMap::new(),
+            source_obstruction_frames: BTreeMap::new(),
+            source_cost_frame: HelperCost::default(),
             count_operand_maxima: BTreeMap::new(),
             local_bounds: BTreeMap::new(),
             input_proof_constraints: Vec::new(),
@@ -1096,6 +1112,13 @@ impl<'a> TypeChecker<'a> {
             if let Some(typed) = self.check_intent(intent) {
                 intents.push(typed);
             }
+        }
+        // Capability discovery precedes full-module accounting. Recheck once so
+        // earlier intents/operands are also charged when a later call uses lists.
+        if !self.meters_list_work() && self.core_capabilities.contains("core.list/v1") {
+            let mut metered = Self::new(self.resolved);
+            metered.list_work_pass = list_operations::WorkPass::Meter;
+            return metered.check();
         }
         let module = TypedModule {
             required_core_capabilities: self.core_capabilities.into_iter().collect(),
@@ -1375,7 +1398,11 @@ impl<'a> TypeChecker<'a> {
         let param = &source.params[0];
         let input_shape = self.type_ref_shape(&param.ty, param.span)?;
         let output_shape = self.type_ref_shape(&source.returns, source.span)?;
-        self.check_helper_cost_budget(intent)?;
+        // The complete list-work pass needs the typed loop binders recorded
+        // while checking the body; its budget gate runs immediately afterward.
+        if !self.meters_list_work() {
+            self.check_helper_cost_budget(intent)?;
+        }
         let input_binding = LocalRef {
             id: CORE_APPLICATION_INPUT_LOCAL_ID.to_owned(),
             alpha_name: "$arg0".to_owned(),
@@ -1434,6 +1461,7 @@ impl<'a> TypeChecker<'a> {
         if !self.resolved.source_functions.is_empty()
             || self.source_expression_costs.len() > recorded_costs
             || self.target_pure_intrinsic_costs.len() > recorded_intrinsics
+            || self.meters_list_work()
         {
             self.check_helper_cost_budget(intent)?;
         }
@@ -1477,21 +1505,30 @@ impl<'a> TypeChecker<'a> {
 
     fn check_helper_cost_budget(&mut self, intent: &ResolvedIntent) -> Option<HelperCost> {
         let mut cost = self.helper_cost_for_block(&intent.source.body)?;
-        for clause in &intent.source.clauses {
-            let clause_cost = match clause {
-                IntentClause::Basis(Some(expr)) => self.helper_cost_for_expr(expr)?,
-                IntentClause::Where(predicates) => {
-                    self.helper_cost_for_exprs_at(predicates, intent.source.span)?
+        let clauses =
+            self.with_source_block_frame(&intent.source.body, intent.source.span, |this| {
+                let mut cost = HelperCost::default();
+                for clause in &intent.source.clauses {
+                    let clause_cost = match clause {
+                        IntentClause::Basis(Some(expr)) => this.helper_cost_for_expr(expr)?,
+                        IntentClause::Where(predicates) => {
+                            this.helper_cost_for_exprs_at(predicates, intent.source.span)?
+                        }
+                        IntentClause::Profile(_)
+                        | IntentClause::Implements(_)
+                        | IntentClause::Basis(None)
+                        | IntentClause::Footprint(_)
+                        | IntentClause::Budget(_) => HelperCost::default(),
+                    };
+                    cost = this.checked_helper_cost_add(cost, clause_cost, intent.source.span)?;
                 }
-                IntentClause::Profile(_)
-                | IntentClause::Implements(_)
-                | IntentClause::Basis(None)
-                | IntentClause::Footprint(_)
-                | IntentClause::Budget(_) => HelperCost::default(),
-            };
-            cost = self.checked_helper_cost_add(cost, clause_cost, intent.source.span)?;
-        }
-        if !self.resolved.source_functions.is_empty() || self.match_in_intent {
+                Some(cost)
+            })?;
+        cost = self.checked_helper_cost_add(cost, clauses, intent.source.span)?;
+        if !self.resolved.source_functions.is_empty()
+            || self.match_in_intent
+            || self.meters_list_work()
+        {
             let input =
                 self.type_ref_shape(&intent.source.params[0].ty, intent.source.params[0].span)?;
             let output = self.type_ref_shape(&intent.source.returns, intent.source.span)?;
@@ -1520,12 +1557,14 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn helper_cost_for_block(&mut self, block: &Block) -> Option<HelperCost> {
-        let mut cost = HelperCost::default();
-        for stmt in &block.stmts {
-            let stmt_cost = self.helper_cost_for_stmt(stmt)?;
-            cost = self.checked_helper_cost_add(cost, stmt_cost, block.span)?;
-        }
-        Some(cost)
+        self.with_source_block_frame(block, block.span, |this| {
+            let mut cost = HelperCost::default();
+            for stmt in &block.stmts {
+                let stmt_cost = this.helper_cost_for_stmt(stmt)?;
+                cost = this.checked_helper_cost_add(cost, stmt_cost, block.span)?;
+            }
+            Some(cost)
+        })
     }
 
     fn helper_cost_for_stmt(&mut self, stmt: &Stmt) -> Option<HelperCost> {
@@ -1560,11 +1599,7 @@ impl<'a> TypeChecker<'a> {
                 predicate,
                 arm,
                 span,
-            } => {
-                let predicate_cost = self.helper_cost_for_expr(predicate)?;
-                let arm_cost = self.helper_cost_for_require_arm(arm)?;
-                self.checked_helper_cost_add(predicate_cost, arm_cost, *span)
-            }
+            } => self.helper_cost_for_requirement(predicate, arm, *span),
             Stmt::Guarantee {
                 predicate,
                 obstruction,
@@ -1591,7 +1626,26 @@ impl<'a> TypeChecker<'a> {
                     Some(ElseClause::If(stmt)) => self.helper_cost_for_stmt(stmt)?,
                     None => HelperCost::default(),
                 };
-                self.checked_helper_cost_add(cond_cost, then_cost.component_max(else_cost), *span)
+                let cost = self.checked_helper_cost_add(
+                    cond_cost,
+                    then_cost.component_max(else_cost),
+                    *span,
+                )?;
+                if self.meters_list_work() {
+                    // The selected statement block returns null; the enclosing
+                    // branch is also a Core node, even when its body is empty.
+                    self.checked_helper_cost_add(
+                        cost,
+                        HelperCost {
+                            steps: 3,
+                            allocated_bytes: 64,
+                            output_bytes: 0,
+                        },
+                        *span,
+                    )
+                } else {
+                    Some(cost)
+                }
             }
             Stmt::For {
                 iter,
@@ -1599,27 +1653,49 @@ impl<'a> TypeChecker<'a> {
                 body,
                 span,
                 ..
-            } => {
-                let iter_cost = self.helper_cost_for_expr(iter)?;
-                let body_cost = self.helper_cost_for_block(body)?;
-                let Some(factor) = self.helper_cost_loop_bound(bound) else {
-                    self.errors.push(error(
-                        CompilerStage::TypeCheck,
-                        CompilerErrorKind::MissingContextFact,
-                        "bounded-loop helper cost requires a resolvable loop bound",
-                        *span,
-                    ));
-                    return None;
-                };
-                let body_cost = self.checked_helper_cost_mul(body_cost, factor, *span)?;
-                let loop_cost = HelperCost {
-                    steps: factor,
-                    ..HelperCost::default()
-                };
-                let body_and_loop = self.checked_helper_cost_add(body_cost, loop_cost, *span)?;
-                self.checked_helper_cost_add(iter_cost, body_and_loop, *span)
-            }
+            } => self.helper_cost_for_loop(iter, bound, body, *span),
         }
+    }
+
+    fn helper_cost_for_loop(
+        &mut self,
+        iter: &Expr,
+        bound: &BoundRef,
+        body: &Block,
+        span: Span,
+    ) -> Option<HelperCost> {
+        let iter_cost = self.helper_cost_for_expr(iter)?;
+        let body_cost = self.helper_cost_for_block(body)?;
+        let Some(factor) = self.helper_cost_loop_bound(bound) else {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::MissingContextFact,
+                "bounded-loop helper cost requires a resolvable loop bound",
+                span,
+            ));
+            return None;
+        };
+        if self.meters_list_work() {
+            let frame = *self.source_loop_frames.get(&expression_identity(iter))?;
+            let iteration = self.checked_helper_cost_add(body_cost, frame, span)?;
+            let repeated = self.checked_helper_cost_mul(iteration, factor, span)?;
+            let total = self.checked_helper_cost_add(iter_cost, repeated, span)?;
+            return self.checked_helper_cost_add(
+                total,
+                HelperCost {
+                    steps: 1,
+                    ..HelperCost::default()
+                },
+                span,
+            );
+        }
+        let body_cost = self.checked_helper_cost_mul(body_cost, factor, span)?;
+        let loop_cost = HelperCost {
+            steps: factor,
+            ..HelperCost::default()
+        };
+        let body_and_loop = self.checked_helper_cost_add(body_cost, loop_cost, span)?;
+        self.checked_helper_cost_add(iter_cost, body_and_loop, span)
     }
 
     fn helper_cost_for_binding(
@@ -1687,7 +1763,7 @@ impl<'a> TypeChecker<'a> {
                         RecordEntry::Field { value, .. } | RecordEntry::Spread(value) => {
                             self.helper_cost_for_expr(value)?
                         }
-                        RecordEntry::Shorthand { .. } => HelperCost::default(),
+                        RecordEntry::Shorthand { .. } => self.source_reason_shorthand_cost(entry),
                     };
                     cost = self.checked_helper_cost_add(cost, entry_cost, *span)?;
                 }
@@ -1728,14 +1804,7 @@ impl<'a> TypeChecker<'a> {
                 scrutinee,
                 arms,
                 span,
-            } => {
-                let scrutinee_cost = self.helper_cost_for_expr(scrutinee)?;
-                let mut arm_cost = HelperCost::default();
-                for arm in arms {
-                    arm_cost = arm_cost.component_max(self.helper_cost_for_expr(&arm.body)?);
-                }
-                self.checked_helper_cost_add(scrutinee_cost, arm_cost, *span)
-            }
+            } => self.helper_cost_for_match(scrutinee, arms, *span),
         }?;
         let span = expr_span(expr);
         let own = self.recorded_own_cost(expr, span)?;
@@ -1845,13 +1914,15 @@ impl<'a> TypeChecker<'a> {
     ) -> Option<HelperCost> {
         // Keep the original borrowed expressions: their immutable AST identity
         // keys type/cost summaries, while spans remain diagnostics only.
-        let mut statement_cost = HelperCost::default();
-        for statement in &block.stmts {
-            let cost = self.helper_cost_for_stmt(statement)?;
-            statement_cost = self.checked_helper_cost_add(statement_cost, cost, block.span)?;
-        }
-        let value_cost = self.helper_cost_for_expr(&block.value)?;
-        self.checked_helper_cost_add(statement_cost, value_cost, block.span)
+        self.with_source_block_frame(block, block.span, |this| {
+            let mut statement_cost = HelperCost::default();
+            for statement in &block.stmts {
+                let cost = this.helper_cost_for_stmt(statement)?;
+                statement_cost = this.checked_helper_cost_add(statement_cost, cost, block.span)?;
+            }
+            let value_cost = this.helper_cost_for_expr(&block.value)?;
+            this.checked_helper_cost_add(statement_cost, value_cost, block.span)
+        })
     }
 
     fn helper_cost_for_handler(
@@ -1871,6 +1942,25 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    fn helper_cost_for_requirement(
+        &mut self,
+        predicate: &Expr,
+        arm: &RequireElseArm,
+        span: Span,
+    ) -> Option<HelperCost> {
+        let predicate_cost = self.helper_cost_for_expr(predicate)?;
+        let arm_cost = self.helper_cost_for_require_arm(arm)?;
+        let cost = self.checked_helper_cost_add(predicate_cost, arm_cost, span)?;
+        self.checked_helper_cost_add(
+            cost,
+            HelperCost {
+                steps: u64::from(self.meters_list_work()),
+                ..HelperCost::default()
+            },
+            span,
+        )
+    }
+
     fn helper_cost_for_require_arm(&mut self, arm: &RequireElseArm) -> Option<HelperCost> {
         match arm {
             RequireElseArm::Terminal(target) => self.helper_cost_for_target(Some(target)),
@@ -1882,7 +1972,7 @@ impl<'a> TypeChecker<'a> {
                         RecordEntry::Field { value, .. } | RecordEntry::Spread(value) => {
                             self.helper_cost_for_expr(value)?
                         }
-                        RecordEntry::Shorthand { .. } => HelperCost::default(),
+                        RecordEntry::Shorthand { .. } => self.source_reason_shorthand_cost(entry),
                     };
                     payload = self.checked_helper_cost_add(payload, entry_cost, arm.span)?;
                 }
@@ -1960,6 +2050,7 @@ impl<'a> TypeChecker<'a> {
         }
 
         if let Some(result) = state.result {
+            self.record_source_block_frame(&source.body, locals.iter(), env, source.span)?;
             Some(CoreBlock {
                 locals: locals.clone(),
                 nodes: state.nodes,
@@ -2190,6 +2281,8 @@ impl<'a> TypeChecker<'a> {
         state.local_index = nested_state.local_index;
         state.obstruction_index = nested_state.obstruction_index;
         state.accumulated_steps = nested_state.accumulated_steps;
+        let _ =
+            self.record_source_block_frame(block, nested_locals.iter(), &nested_env, block.span);
         CoreBlock {
             locals: nested_locals,
             nodes: nested_state.nodes,
@@ -2246,6 +2339,13 @@ impl<'a> TypeChecker<'a> {
         };
 
         let binder_shape = item.as_ref().clone();
+        if self.meters_list_work() {
+            let Some(frame) = self.source_loop_frame_cost(&binder_shape, span) else {
+                return;
+            };
+            self.source_loop_frames
+                .insert(expression_identity(iter), frame);
+        }
         let binder = next_local(&mut state.local_index, binder_shape.coord.clone());
         let mut nested_env = env.clone();
         nested_env.insert(var.to_owned(), (binder.clone(), binder_shape));
@@ -2268,6 +2368,12 @@ impl<'a> TypeChecker<'a> {
         state.local_index = nested_state.local_index;
         state.obstruction_index = nested_state.obstruction_index;
         state.accumulated_steps = nested_state.accumulated_steps;
+        if self
+            .record_source_block_frame(body, nested_locals.iter(), &nested_env, span)
+            .is_none()
+        {
+            return;
+        }
         state.nodes.push(CoreNode::For {
             binder,
             iter: iter_value.expr,
@@ -2763,7 +2869,7 @@ impl<'a> TypeChecker<'a> {
                         accepted = false;
                         // A repeated key does not resolve its shorthand name.
                     }
-                    let Some((local, _)) = env.get(name) else {
+                    let Some((local, shape)) = env.get(name) else {
                         if !env.poisoned.contains(name) {
                             self.errors.push(error(
                                 CompilerStage::TypeCheck,
@@ -2775,6 +2881,7 @@ impl<'a> TypeChecker<'a> {
                         accepted = false;
                         continue;
                     };
+                    self.record_source_reason_shorthand(entry, shape, *span)?;
                     fields.insert(
                         name.clone(),
                         CoreExpr::Local {
@@ -3318,6 +3425,7 @@ impl<'a> TypeChecker<'a> {
         if self.errors.len() != error_count {
             return None;
         }
+        self.record_source_block_frame(block, nested_locals.iter(), &nested_env, block.span)?;
         Some((
             CoreBlock {
                 locals: nested_locals,
@@ -3386,6 +3494,12 @@ impl<'a> TypeChecker<'a> {
         ) else {
             return;
         };
+        if self
+            .record_source_effect_frame(stmt.value, &binding_shape, &obstruction_map, stmt.span)
+            .is_none()
+        {
+            return;
+        }
         state.nodes.push(CoreNode::Effect {
             binding: local.clone(),
             effect,
@@ -3696,10 +3810,19 @@ impl<'a> TypeChecker<'a> {
                 ));
                 return None;
             };
+            self.record_source_obstruction_frame(&payload_shape, arm.span)?;
             payload_shape.value_type_coord()
         } else {
             // Legacy facts carry no failure-payload authority and this source
             // subset cannot read the binder. Preserve that erasure as Unit.
+            self.source_obstruction_frames.insert(
+                "Unit".to_owned(),
+                HelperCost {
+                    steps: 2,
+                    allocated_bytes: 64,
+                    output_bytes: 0,
+                },
+            );
             "Unit".to_owned()
         };
         let binder = LocalRef {
@@ -4049,10 +4172,7 @@ impl<'a> TypeChecker<'a> {
                 None
             }
         }?;
-        if !self.resolved.source_functions.is_empty()
-            || self.match_depth > 0
-            || matches!(expr, Expr::Match { .. })
-        {
+        if self.records_source_cost(expr) {
             self.record_source_predicate_cost(expr)?;
         }
         Some(checked)
@@ -4281,15 +4401,23 @@ impl<'a> TypeChecker<'a> {
                 None
             }
         };
-        if !self.resolved.source_functions.is_empty()
-            || self.match_depth > 0
-            || matches!(expr, Expr::Match { .. })
-        {
+        if self.records_source_cost(expr) {
             if let Some(value) = &checked {
                 self.record_source_expression_cost(expr, &value.ty)?;
             }
         }
         checked
+    }
+
+    fn meters_list_work(&self) -> bool {
+        self.list_work_pass == list_operations::WorkPass::Meter
+    }
+
+    fn records_source_cost(&self, expr: &Expr) -> bool {
+        self.meters_list_work()
+            || !self.resolved.source_functions.is_empty()
+            || self.match_depth > 0
+            || matches!(expr, Expr::Match { .. })
     }
 
     fn check_call_expression(
@@ -4308,6 +4436,14 @@ impl<'a> TypeChecker<'a> {
             return None;
         };
         match callee.as_ref() {
+            Expr::Ident { name, .. }
+                if matches!(
+                    name.as_str(),
+                    "listLen" | "listAt" | "listAppend" | "listConcat"
+                ) =>
+            {
+                self.check_list_operation(name, type_args, args, env, *span)
+            }
             Expr::Ident { name, .. } if name == "fold" => {
                 self.check_fold(type_args, args, env, *span)
             }

@@ -1,5 +1,15 @@
 # Core IR Test Plan
 
+## Bounded list operation identity (#289)
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| COREIR-REQ-034 | implemented | List operations use typed generic Core calls and require `core.list/v1`; canonical bytes retain operation, operand coordinates, operands and capability. Missing capability refuses before encoding. | issue #289 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COREIR-TP-045 | implemented | List identity | COREIR-REQ-034 | Repeat compilation preserves bytes; operand/operation changes alter identity; stripping the capability refuses structured Core integrity. | bounded_list_capability_is_required_for_canonical_encoding, bounded_list_identity_changes_with_operands_and_unknown_capabilities_refuse, bounded_lists_accumulate_through_invariant_fold_state | crates/amblicit-syntax/tests/bounded_list_operations.rs | Unknown capabilities remain explicit target refusals. |
+
 Status: current verification design for the Core semantic model, CDDL schema,
 canonical encoder, and reviewed Core golden artifacts.
 

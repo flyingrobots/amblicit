@@ -8,6 +8,14 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Add `listLen`, proof-checked `listAt`, capacity-preserving `listAppend` and
+  bounded `listConcat` for immutable authored worklists under `core.list/v1`.
+  Source and native Target independently validate types, guards and checked work
+  budgets, including invariant fold accumulation and nested/nominal elements.
+  List-capable modules account for record-shorthand reads and all intents.
+  Byte primitives and result-projection limits retain their existing meanings;
+  executable provider/runtime support remains Echo #946.
+
 - Admit explicitly required target pure intrinsics through public application
   builds. Catalog locations stay inside the provider package; the selected,
   adapter-bound profile supplies their pin. Invalid contracts fail before

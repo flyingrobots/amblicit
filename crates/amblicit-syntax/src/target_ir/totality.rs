@@ -287,6 +287,15 @@ fn expression_is_total_at_depth(
                 return false;
             }
             match callee.as_str() {
+                _ if super::list_operations::is_operation(callee) => {
+                    super::list_operations::is_total(
+                        core.module(),
+                        callee,
+                        type_args,
+                        args,
+                        constraints,
+                    )
+                }
                 unsigned_addition::OPERATION => {
                     unsigned_addition::is_total(core, type_args, args, constraints)
                 }

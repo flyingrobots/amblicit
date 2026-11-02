@@ -633,6 +633,10 @@ impl<'a> Rewrite<'a> {
             } else if matches!(
                 head.as_str(),
                 "len"
+                    | "listLen"
+                    | "listAt"
+                    | "listAppend"
+                    | "listConcat"
                     | "slice"
                     | "isUtf8"
                     | "count"

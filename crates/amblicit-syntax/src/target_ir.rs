@@ -12,6 +12,7 @@ mod byte_slice;
 mod byte_utf8;
 pub(crate) mod execution_order;
 mod fold_work;
+mod list_operations;
 mod pure_intrinsics;
 mod state_fold;
 mod totality;
@@ -917,7 +918,12 @@ fn validate_core_module(
         .required_core_capabilities
         .iter()
         // Constructor identities and payloads are independently checked below.
-        .filter(|capability| !matches!(capability.as_str(), "core.variant/v1" | "core.fold/v1"))
+        .filter(|capability| {
+            !matches!(
+                capability.as_str(),
+                "core.variant/v1" | "core.fold/v1" | "core.list/v1"
+            )
+        })
         .map(|capability| TargetLoweringFailure {
             kind: TargetLoweringFailureKind::UnsupportedCoreCapability,
             intent: None,
@@ -1874,6 +1880,7 @@ fn is_typed_prelude_operation(callee: &str) -> bool {
         byte_slice::OPERATION,
     ]
     .contains(&callee)
+        || list_operations::is_operation(callee)
         || is_unsigned_arithmetic(callee)
 }
 
@@ -1886,6 +1893,9 @@ fn prelude_type_coordinate(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<String> {
     match callee {
+        _ if list_operations::is_operation(callee) => {
+            list_operations::type_coordinate(core, functions, callee, type_args, args, available)
+        }
         byte_at::OPERATION => byte_at::type_coordinate(core, functions, type_args, args, available),
         byte_concat::OPERATION => {
             byte_concat::type_coordinate(core, functions, type_args, args, available)
@@ -2322,12 +2332,7 @@ fn expression_type_coordinate(
             Some(format!("Bytes<exact={}>", u64::try_from(value.len()).ok()?))
         }
         CoreExpr::Field { base, field } => {
-            let ComparisonOperandShape::Coordinate(coordinate) =
-                field_expression_shape(core, pure_functions, base, field, available)?
-            else {
-                return None;
-            };
-            Some(coordinate)
+            field_expression_shape(core, pure_functions, base, field, available)?.type_coordinate()
         }
         CoreExpr::Call {
             callee,
@@ -2355,6 +2360,18 @@ fn expression_type_coordinate(
         } => {
             if !predicate_fits_core_types(core, pure_functions, predicate, available) {
                 return None;
+            }
+            // Preserve declared coordinates before structural comparison drops
+            // record names, including record items nested in bounded lists.
+            if let (Some(then_coordinate), Some(else_coordinate)) = (
+                expression_type_coordinate(core, pure_functions, then_value, available),
+                expression_type_coordinate(core, pure_functions, else_value, available),
+            ) {
+                if let Some(coordinate) =
+                    join_conditional_coordinates(core, &then_coordinate, &else_coordinate)
+                {
+                    return Some(coordinate);
+                }
             }
             let then_shape = comparison_operand_shape(core, pure_functions, then_value, available)?;
             let else_shape = comparison_operand_shape(core, pure_functions, else_value, available)?;
@@ -2924,7 +2941,15 @@ impl ComparisonOperandShape {
             Self::List { item, max } => {
                 Some(format!("List<{},max={max}>", item.type_coordinate()?))
             }
-            Self::Record(_) | Self::EmptyList => None,
+            Self::Record(fields) => {
+                crate::core_ir::render_self_describing_core_type(&CoreType::Record {
+                    fields: fields
+                        .iter()
+                        .map(|(name, value)| Some((name.clone(), value.type_coordinate()?)))
+                        .collect::<Option<BTreeMap<_, _>>>()?,
+                })
+            }
+            Self::EmptyList => None,
         }
     }
 }
@@ -2992,6 +3017,17 @@ fn join_conditional_shapes(
 ) -> Option<ComparisonOperandShape> {
     if depth > MAX_CORE_TYPE_DEPTH {
         return None;
+    }
+    // Preserve declared list item coordinates before structural joins erase
+    // record names. This also applies to fields of anonymous record results.
+    if let (ComparisonOperandShape::Coordinate(left), ComparisonOperandShape::Coordinate(right)) =
+        (left, right)
+    {
+        if matches!(resolved_core_type(core, left), Some(CoreType::List { .. })) {
+            if let Some(coordinate) = join_conditional_coordinates(core, left, right) {
+                return Some(ComparisonOperandShape::Coordinate(coordinate));
+            }
+        }
     }
     match (left, right) {
         (ComparisonOperandShape::EmptyList, ComparisonOperandShape::EmptyList) => {

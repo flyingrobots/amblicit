@@ -6,18 +6,31 @@ use super::{
 use crate::core_ir::CoreMatchArm;
 use std::collections::{BTreeMap, BTreeSet};
 
+#[cfg(test)]
+mod tests;
+
 pub(super) fn every(
     core: &CoreModule,
     functions: &[TargetPureFunctionFact],
     scrutinee: &CoreExpr,
     arms: &[CoreMatchArm],
     available: &BTreeMap<&str, &LocalRef>,
-    mut check: impl FnMut(&CoreExpr, &BTreeMap<&str, &LocalRef>) -> bool,
+    check: impl FnMut(&CoreExpr, &BTreeMap<&str, &LocalRef>) -> bool,
 ) -> bool {
     let Some(ty) = expression_type_coordinate(core, functions, scrutinee, available) else {
         return false;
     };
-    let Some(CoreType::Variant { cases }) = resolved_core_type(core, &ty) else {
+    every_for_type(core, &ty, arms, available, check)
+}
+
+fn every_for_type(
+    core: &CoreModule,
+    scrutinee_type: &str,
+    arms: &[CoreMatchArm],
+    available: &BTreeMap<&str, &LocalRef>,
+    mut check: impl FnMut(&CoreExpr, &BTreeMap<&str, &LocalRef>) -> bool,
+) -> bool {
+    let Some(CoreType::Variant { cases }) = resolved_core_type(core, scrutinee_type) else {
         return false;
     };
     let names = arms
@@ -78,29 +91,34 @@ fn joined_shape(
     available: &BTreeMap<&str, &LocalRef>,
     results: bool,
 ) -> Option<super::ComparisonOperandShape> {
+    let ty = expression_type_coordinate(core, functions, scrutinee, available)?;
+    joined_shape_for_type(core, functions, &ty, arms, available, results)
+}
+
+fn joined_shape_for_type(
+    core: &CoreModule,
+    functions: &[TargetPureFunctionFact],
+    scrutinee_type: &str,
+    arms: &[CoreMatchArm],
+    available: &BTreeMap<&str, &LocalRef>,
+    results: bool,
+) -> Option<super::ComparisonOperandShape> {
     let mut result: Option<super::ComparisonOperandShape> = None;
-    let valid = every(
-        core,
-        functions,
-        scrutinee,
-        arms,
-        available,
-        |body, scope| {
-            let ty = if results {
-                result_body_shape(core, functions, body, scope)
-            } else {
-                super::comparison_operand_shape(core, functions, body, scope)
-            };
-            let Some(ty) = ty else {
-                return false;
-            };
-            result = match &result {
-                None => Some(ty),
-                Some(previous) => super::join_conditional_shapes(core, previous, &ty, 0),
-            };
-            result.is_some()
-        },
-    );
+    let valid = every_for_type(core, scrutinee_type, arms, available, |body, scope| {
+        let ty = if results {
+            result_body_shape(core, functions, body, scope)
+        } else {
+            super::comparison_operand_shape(core, functions, body, scope)
+        };
+        let Some(ty) = ty else {
+            return false;
+        };
+        result = match &result {
+            None => Some(ty),
+            Some(previous) => super::join_conditional_shapes(core, previous, &ty, 0),
+        };
+        result.is_some()
+    });
     if valid {
         result
     } else {
@@ -169,5 +187,27 @@ pub(super) fn coordinate(
     arms: &[CoreMatchArm],
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<String> {
-    result_shape(core, functions, scrutinee, arms, available)?.type_coordinate()
+    #[cfg(test)]
+    tests::visit();
+
+    // Both arm judgments share this inference. Re-entering the scrutinee on
+    // fallback doubles rejection work at each nested failing match.
+    let scrutinee_type = expression_type_coordinate(core, functions, scrutinee, available)?;
+    // Structural shapes erase record names. Join independently derived arm
+    // coordinates first, using the same rules as conditional expressions.
+    let mut coordinate: Option<String> = None;
+    if every_for_type(core, &scrutinee_type, arms, available, |body, scope| {
+        let Some(next) = expression_type_coordinate(core, functions, body, scope) else {
+            return false;
+        };
+        coordinate = match &coordinate {
+            None => Some(next),
+            Some(previous) => super::join_conditional_coordinates(core, previous, &next),
+        };
+        coordinate.is_some()
+    }) {
+        return coordinate;
+    }
+    joined_shape_for_type(core, functions, &scrutinee_type, arms, available, true)?
+        .type_coordinate()
 }
