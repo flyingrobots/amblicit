@@ -184,7 +184,7 @@ pub use lowerability::{
     LowerabilityFailureKind, LowerabilityReport, LowerabilityStatus, LoweringRequirements,
     NativeEffectSupport, SemanticEffectRequirement, TargetProfileFacts, WriteClass,
 };
-pub use parser::{parse_module, ParseError, ParseErrorKind};
+pub use parser::{parse_module, ParseError, ParseErrorKind, MAX_SOURCE_NESTING_DEPTH};
 pub use provider::{
     bind_target_provider_manifest, select_provider_component, validate_target_provider_manifest,
     ProviderArtifactKind, ProviderArtifactRef, ProviderArtifactSource,

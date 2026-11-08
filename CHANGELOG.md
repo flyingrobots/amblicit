@@ -8,6 +8,37 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- **Breaking (Rust API):** `ParseErrorKind` gains `NestingTooDeep`; an
+  exhaustive `match` on it outside `amblicit-syntax` must add the arm.
+
+- **Breaking (source):** sources nested past `MAX_SOURCE_NESTING_DEPTH` (256
+  levels, counting the enclosing statement and expression) are refused with
+  the parse diagnostic `NestingTooDeep`. Nested in a `let` statement around a
+  simple leaf (an identifier or a scalar literal), 254 nested parentheses, `!`, `-`,
+  calls such as `f(f(x))`, lists, records, `match` expressions, variant
+  payloads, `Option<...>` types or `else if` arms parse and 255 are refused;
+  255 chained operators, field accesses, chained calls such as `f()()`,
+  ternaries, or nested `if` or `for` statements parse and 256 are refused (the
+  syntax shelf has the full table). Before, the only limit was the stack: a
+  release build on an 8 MiB main thread accepted about 1,900 nested
+  parentheses (#277), and loop-built chains of any length; all of that past
+  the new limit is now refused.
+
+- Add the public constant `MAX_SOURCE_NESTING_DEPTH` (256), exported by
+  `amblicit_syntax` and re-exported by `amblicit::diagnostic`.
+
+- Stop `amblicit check` from aborting with a stack overflow and no output on
+  deeply nested sources (a few hundred nested parentheses in a debug build,
+  about 1,900 in release on an 8 MiB stack), which lost the response for every
+  input in the request (#277). The `amblicit` binary runs each request on its
+  own 64 MiB thread, so the result no longer depends on the platform's
+  main-thread stack (1 MiB on Windows); if that thread cannot be started, it
+  reports a new `RequestThread` CLI diagnostic and exits 2. The limit bounds
+  recursion, not the thread: a library caller that parses untrusted sources
+  on its own thread should give that thread a stack comparable to the
+  binary's 64 MiB. From #277's measurement, a 2 MiB spawned thread is
+  expected to overflow before the limit in a debug build (#301).
+
 - Add `listLen`, proof-checked `listAt`, capacity-preserving `listAppend` and
   bounded `listConcat` for immutable authored worklists under `core.list/v1`.
   Source and native Target independently validate types, guards and checked work
