@@ -10,7 +10,9 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 mod source_functions;
+mod variant_expressions;
 pub(crate) use source_functions::validate_function_graph;
+pub(crate) use variant_expressions::{core_variant_case, core_variant_identity_matches};
 
 /// The Core ABI identifier emitted by this crate.
 pub const CORE_API_VERSION: &str = "edict.core/v1";
@@ -643,7 +645,8 @@ fn core_type_fits_at_depth(core: &CoreModule, source: &str, target: &str, depth:
                 })
         }
         (CoreType::Variant { cases: left }, CoreType::Variant { cases: right }) => {
-            left.keys().eq(right.keys())
+            core_variant_identity_matches(core, source, target)
+                && left.keys().eq(right.keys())
                 && left.iter().all(|(case, left_payload)| {
                     match (
                         left_payload,
@@ -1535,6 +1538,37 @@ fn validate_core_obstruction_reason_types(
     Ok(())
 }
 
+fn validate_core_match_types(
+    module: &CoreModule,
+    state: &mut CoreTypeIntegrityState,
+    scrutinee: &CoreExpr,
+    arms: &[CoreMatchArm],
+    path: &str,
+    depth: usize,
+) -> Result<(), CoreTypeIntegrityFailure> {
+    validate_core_expression_types(module, state, scrutinee, path, depth + 1)?;
+    let mut cases = BTreeSet::new();
+    if arms.is_empty() {
+        return Err(CoreTypeIntegrityFailure::new(
+            CoreTypeIntegrityFailureKind::InvalidDefinition,
+            path,
+        ));
+    }
+    for arm in arms {
+        if !is_core_field_name(&arm.case) || !cases.insert(&arm.case) {
+            return Err(CoreTypeIntegrityFailure::new(
+                CoreTypeIntegrityFailureKind::InvalidDefinition,
+                path,
+            ));
+        }
+        if let Some(binder) = &arm.binder {
+            validate_core_local_type(module, state, binder, path)?;
+        }
+        validate_core_expression_types(module, state, &arm.body, path, depth + 1)?;
+    }
+    Ok(())
+}
+
 fn validate_core_expression_types(
     module: &CoreModule,
     state: &mut CoreTypeIntegrityState,
@@ -1548,6 +1582,18 @@ fn validate_core_expression_types(
             validate_core_local_type(module, state, reference, &format!("{path}.local.type"))
         }
         CoreExpr::Const(_) => Ok(()),
+        CoreExpr::Variant { ty, case, payload } => {
+            variant_expressions::validate(module, state, ty, case, payload.as_deref(), path, depth)
+        }
+        CoreExpr::Fold {
+            initial,
+            step,
+            state_type,
+            ..
+        } => validate_core_fold_types(module, state, initial, step, state_type, path, depth),
+        CoreExpr::Match { scrutinee, arms } => {
+            validate_core_match_types(module, state, scrutinee, arms, path, depth)
+        }
         CoreExpr::Record { fields } => {
             for (field, value) in fields {
                 validate_core_expression_types(
@@ -1580,28 +1626,10 @@ fn validate_core_expression_types(
             depth + 1,
         ),
         CoreExpr::Call {
-            type_args, args, ..
-        } => {
-            for (index, reference) in type_args.iter().enumerate() {
-                validate_core_type_reference(
-                    module,
-                    state,
-                    reference,
-                    &format!("{path}.call.typeArgs[{index}]"),
-                    0,
-                )?;
-            }
-            for (index, argument) in args.iter().enumerate() {
-                validate_core_expression_types(
-                    module,
-                    state,
-                    argument,
-                    &format!("{path}.call.args[{index}]"),
-                    depth + 1,
-                )?;
-            }
-            Ok(())
-        }
+            callee,
+            type_args,
+            args,
+        } => validate_core_call_types(module, state, callee, type_args, args, path, depth),
         CoreExpr::If {
             predicate,
             then_value,
@@ -1630,6 +1658,78 @@ fn validate_core_expression_types(
             )
         }
     }
+}
+
+fn validate_core_call_types(
+    module: &CoreModule,
+    state: &mut CoreTypeIntegrityState,
+    callee: &str,
+    type_args: &[String],
+    args: &[CoreExpr],
+    path: &str,
+    depth: usize,
+) -> Result<(), CoreTypeIntegrityFailure> {
+    if matches!(
+        callee,
+        "core.list.length" | "core.list.at" | "core.list.append" | "core.list.concat"
+    ) && !module
+        .required_core_capabilities
+        .iter()
+        .any(|c| c == "core.list/v1")
+    {
+        return Err(CoreTypeIntegrityFailure::new(
+            CoreTypeIntegrityFailureKind::InvalidDefinition,
+            path,
+        ));
+    }
+    for (index, reference) in type_args.iter().enumerate() {
+        validate_core_type_reference(
+            module,
+            state,
+            reference,
+            &format!("{path}.call.typeArgs[{index}]"),
+            0,
+        )?;
+    }
+    for (index, argument) in args.iter().enumerate() {
+        validate_core_expression_types(
+            module,
+            state,
+            argument,
+            &format!("{path}.call.args[{index}]"),
+            depth + 1,
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_core_fold_types(
+    module: &CoreModule,
+    state: &mut CoreTypeIntegrityState,
+    initial: &CoreExpr,
+    step: &str,
+    state_type: &str,
+    path: &str,
+    depth: usize,
+) -> Result<(), CoreTypeIntegrityFailure> {
+    let function = step
+        .strip_prefix(&format!("{}.", module.coordinate))
+        .and_then(|name| module.functions.get(name));
+    if !module
+        .required_core_capabilities
+        .iter()
+        .any(|c| c == "core.fold/v1")
+        || !function.is_some_and(|f| {
+            f.params.len() == 1 && f.params[0].ty == state_type && f.return_type == state_type
+        })
+    {
+        return Err(CoreTypeIntegrityFailure::new(
+            CoreTypeIntegrityFailureKind::InvalidDefinition,
+            path,
+        ));
+    }
+    validate_core_type_reference(module, state, state_type, path, 0)?;
+    validate_core_expression_types(module, state, initial, path, depth + 1)
 }
 
 fn validate_core_predicate_types(
@@ -1746,6 +1846,24 @@ pub enum CoreExpr {
         reference: LocalRef,
     },
     Const(CoreValue),
+    /// A checked tagged value under the existing variant-expression schema.
+    Variant {
+        ty: String,
+        case: String,
+        payload: Option<Box<CoreExpr>>,
+    },
+    /// First-order state iteration; the named source helper has signature S -> S.
+    Fold {
+        initial: Box<CoreExpr>,
+        step: String,
+        bound: u64,
+        state_type: String,
+    },
+    /// Exactly one scrutinee evaluation and one selected arm evaluation.
+    Match {
+        scrutinee: Box<CoreExpr>,
+        arms: Vec<CoreMatchArm>,
+    },
     Record {
         fields: BTreeMap<String, CoreExpr>,
     },
@@ -1767,6 +1885,14 @@ pub enum CoreExpr {
         then_value: Box<CoreExpr>,
         else_value: Box<CoreExpr>,
     },
+}
+
+/// An exhaustive case arm with an optional lexically scoped payload reference.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CoreMatchArm {
+    pub case: String,
+    pub binder: Option<LocalRef>,
+    pub body: CoreExpr,
 }
 
 /// Core predicate subset used by initial source-to-Core lowering.

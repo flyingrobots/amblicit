@@ -1311,7 +1311,7 @@ digest-lit    = '"' , "sha256:" , 64 * hex , '"' ;
 string-lit    = '"' , { string-char | escape } , '"' ;
 bytes-lit     = "b" , string-lit ;
 int-lit       = digit , { digit | "_" } , int-suffix? ;
-int-suffix    = "i32" | "i64" | "u32" | "u64" ;
+int-suffix    = "i32" | "i64" | "u8" | "u32" | "u64" ;
 bool-lit      = "true" | "false" ;
 comment       = "//" , { not-newline } | "/*" , { not-end-comment } , "*/" ;
 ```
@@ -1336,7 +1336,7 @@ Lexical conformance fixtures must pin these details before parser freeze:
 - Integer underscores may appear only between digits, never at the beginning,
   end, or adjacent to another underscore.
 - Integer width and signedness are hash-significant, so every integer value
-  must resolve to exactly one of `I32`, `I64`, `U32`, `U64`. A literal resolves
+  must resolve to exactly one of `I32`, `I64`, `U8`, `U32`, `U64`. A literal resolves
   by explicit suffix (`1u64`, `64_000i64`) or by an unambiguous expected type
   propagated from its context. Expected-type propagation reaches: record fields,
   variant payloads, `Option` constructors, `List`/`Map` literal elements,
@@ -1712,11 +1712,13 @@ additional nominal contract or Core type table entry. In particular, an alias
 of a digest-bound imported nominal type preserves that exact contract and does
 not permit substitution of its raw storage representation.
 
-The current compiler resolves acyclic source aliases and record dependencies
+The current compiler resolves acyclic source aliases, record and variant dependencies
 before checking function signatures or intent bodies. Declaration ordering does
 not change the resulting canonical Core. Alias targets must already belong to
-the currently lowerable type subset; this does not introduce generic,
-recursive or variant lowering.
+the currently lowerable type subset. Variant declarations preserve named cases
+and payload references in Core. Checked constructors preserve the named case and
+optional payload. Exhaustive matching lowers to Core with arm-local optional payload binders.
+Generic and recursive types remain outside this source subset.
 
 Source type dependency paths have a ceiling of 128 declarations. Fully expanded
 structural height, including inline constructors, cached alias targets and
@@ -1741,11 +1743,16 @@ canonicalization refuses as `UnsupportedSourceShape`, including unused aliases.
 
 - `Bool`
 - `I32`, `I64`
-- `U32`, `U64`
+- `U8`, `U32`, `U64`
 - `String`
 - `Bytes`
 - `Digest`
 - `Unit`
+
+`U8` is the exact unsigned domain 0 through 255. Source accepts decimal `u8`
+literals and context-typed values without cross-width coercion. The implemented
+unsigned arithmetic subset remains U32/U64. Guarded raw byte lookup is available
+through `at(bytes, index) -> U8`; this adds no U8 arithmetic.
 
 `Float` is not a core v1 type. A target or lawpack may define canonical
 floating-point semantics, but the core language does not assume them.
@@ -1841,7 +1848,7 @@ The adopted rules are:
   out-of-range input using Bunny's validated conversion policy; its rounding
   and failure behavior require separate conformance evidence.
 
-This does not reinterpret `I32`, `I64`, `U32` or `U64` as fixed-point values.
+This does not reinterpret `I32`, `I64`, `U8`, `U32` or `U64` as fixed-point values.
 Their exact domains, canonical identity, range proofs and signed division's
 truncation-toward-zero rule remain unchanged. There is no implicit conversion
 between an integer and this fixed-point domain.
@@ -1894,6 +1901,37 @@ expected list type, a non-list expected type, or more than `N` elements
 rejects. It lowers to Core `{ kind: "list", values: [...] }`, and Target
 independently checks the element count against the declared maximum and every
 element against the item type.
+
+Bounded immutable list operations (`EDICT-LANG-LIST-OPS-001`) are reserved
+prelude functions, distinct from the byte operations `len` and `at`:
+
+| Source | Result | Required proof or bound |
+| --- | --- | --- |
+| `listLen(xs)` | `U64` | `xs` is a bounded structural list |
+| `listAt(xs,index)` | The list item type | Exact `index < listLen(xs)` before evaluation |
+| `listAppend(xs,value)` | The same list type and maximum | Exact `listLen(xs) < Nu64`, for declared maximum N; value fits the item type |
+| `listConcat(left,right)` | `List<T,max=L+R>` | Identical item coordinates T; checked sum of declared maxima |
+
+These functions accept no authored type arguments. List literals retain the
+expected-type rule above; bind an explicitly typed literal before using it as
+an operation operand. An index has type U64. The compiler recognizes strict
+comparisons in both directions and their negations, expression-if branch facts
+and ordered short-circuit facts. It does not infer aliases or transitive bounds.
+Unproved access/capacity refuses `UnsupportedSourceShape`; invalid element/index
+types or a smaller annotated result refuse `TypeMismatch`; bound or cost overflow
+refuses `InvalidBound`. Authored variants can expose missing/full outcomes without
+exceptions or mutation. A full/empty branch can return its own declared outcome.
+
+Core uses ordinary typed calls `core.list.length`, `core.list.at`,
+`core.list.append`, and `core.list.concat` under required capability `core.list/v1`.
+Length/access/append carry one operand list coordinate; concatenation carries
+both list coordinates. Call operands, type arguments and capability are canonical
+identity. Native Target derives signatures, strict domains and bounded work
+independently. Full-module static accounting includes nested list storage,
+operand validation/copy work and every declared fold step with checked arithmetic.
+Consumers must explicitly support the capability. Native compilation does not
+establish provider or runtime acceptance. This adds immutable value operations,
+not stored collections, places, allocation, recursive types or mutable locals.
 
 Maps must use canonical key ordering. Lists and maps must declare finite
 maximum cardinality. Map key types in v1 are limited to scalar, enum, digest,
@@ -2070,7 +2108,7 @@ effects. There is no other narrowing in v1.
 
 ## Loops
 
-`for x in collection bounded N` is the only loop form in v1
+`for x in collection bounded N` is the collection-loop form in v1
 (`EDICT-LANG-LOOP-001`):
 
 - v1 iterates `List<T, max=M>` only. `Map` iteration is deferred to a later
@@ -2092,9 +2130,44 @@ effects. There is no other narrowing in v1.
 - Loop bodies obey normal A-normal effect rules; per-iteration effects retain
   ordering and the static maximum cardinality in Core IR (I-016).
 
+### First-order bounded state fold
+
+`fold(initial, step, N)` carries bounded state through a fixed number of pure
+steps (`EDICT-LANG-FOLD-001`). This expression introduces neither mutable locals
+nor function values. `step` must statically name a source-owned pure helper with
+signature `S -> S`; parameter and return type coordinates must be identical.
+S is a bounded scalar or aggregate type. The initial value follows ordinary
+argument compatibility: records are structural, variants retain nominal identity,
+and narrower value bounds may fit S. N must be a `U64`-suffixed literal in the
+current compiler profile; named constants and lawpack coordinates refuse. Source
+closure linking resolves local and imported step helpers hygienically. The
+initial state is evaluated exactly once, then the helper is invoked
+in order N times. N equal to zero returns the initial state but does not exempt
+the helper from type checking, authority checks or cycle rejection.
+
+Core binds the initial expression, static step coordinate, iteration bound and
+state type in a `fold` expression requiring `core.fold/v1`. Consumers must
+validate the capability and state-preserving signature independently. Missing
+support is a refusal, never an unrolling fallback or silent zero-iteration
+execution. Costs include the initial expression, every step's transitive work,
+state validation/copy costs and per-iteration overhead. Overflow while
+accumulating costs or multiplying the step cost by N refuses. Runtime ceilings may refuse before completion; a partial
+accumulator is not a successful result.
+
+There is no early exit. A terminal state is represented in S and its authored
+step returns the same state without reads or effects; all N iterations still count.
+Pure source helper rules already prohibit reads and effects, and `fold` does
+not relax them. This is distinct from effect-emitting `for` over a list that
+already exists. Generic provider/runtime execution of `core.fold/v1` remains a
+separate implementation gate; this source/Core contract is not execution proof.
+
 ## Standard Functions
 
 The Edict Core prelude is intentionally small:
+
+- `fold(initial, step, N)` is the reserved first-order state-iteration form
+  described above. It is not a function value. Source declarations, parameters
+  and locals cannot shadow the prelude name `fold`.
 
 - `hash(label: StringLiteral, value...) -> Digest`
 - `canonicalEncode<T>(value: T) -> Bytes<max=CanonicalEncodedMax<T>>` (the
@@ -2103,7 +2176,7 @@ The Edict Core prelude is intentionally small:
   `CanonicalEncodedMax<T>` is a compiler-derived type-level bound: the maximum
   `edict.canonical-cbor/v1` encoded byte length of any value of type `T`,
   computed structurally (`EDICT-LANG-ENCODEMAX-001`):
-  - scalars: the fixed canonical-CBOR width for `Bool`/`I32`/`I64`/`U32`/`U64`/
+  - scalars: the fixed canonical-CBOR width for `Bool`/`I32`/`I64`/`U8`/`U32`/`U64`/
     `Digest`/`Unit`;
   - `String<max=N[,canonical=...]>`: CBOR text-header bytes + the maximum UTF-8
     byte length of `N` Unicode scalar values **after** the declared
@@ -2153,6 +2226,24 @@ The Edict Core prelude is intentionally small:
   caller computes derived metrics such as `lineCount` beside the count. A direct scan adds `N` steps to the static bound, and a helper
   scan is charged once, exactly as for `isUtf8`. Compiler and Target support
   establish typing, authority and bounds, not runtime execution evidence.
+- `at(bytes: Bytes<max=N>, index: U64) -> U8` reads exactly one raw byte
+  (`EDICT-LANG-BYTE-AT-001`). It lowers to
+  `core.bytes.at<OperandType>(bytes, index)`, retaining the exact operand
+  coordinate and expression. The index must be strictly below the operand's
+  actual length, established by a dominating comparison or, for a constant
+  index, a declared minimum length. A maximum, `index <= len(bytes)`, an
+  unrelated operand's length, or a later guard cannot establish this proof.
+  The `if ... then ... else ...` expression adds its selected arm predicate
+  truth to enclosing proof facts. Statement-level `if`, branch-yield blocks and
+  `require` do not establish lookup proofs.
+  A later `&&` operand sees
+  earlier operands as true; a later `||` operand sees earlier operands as false.
+  No such fact escapes the arm or lazy operand. Target independently rechecks
+  lookup typing and totality in caller-supplied Core. This adds no implicit
+  integer conversion, no missing-byte sentinel and no text-specific behavior.
+  `at` is a protected prelude spelling, so rename any local binding with that
+  name. The compiler establishes a U8 result and bounds proof; provider/runtime
+  execution is a separate acceptance gate.
 - `slice(bytes: Bytes<max=N>, start: U64, end: U64) -> Bytes<max=N>`
   selects the half-open byte range `[start,end)` only when the compiler proves
   `start <= end <= len(bytes)` (`EDICT-LANG-BYTE-SLICE-001`). The bytes remain
@@ -2177,6 +2268,9 @@ Integer (I32/I64/U32/U64):
   checkedAdd, checkedSub, checkedMul, checkedDiv, checkedRem -> Option<T>
   no bitwise operators in v1
   signed / and % truncate toward zero; remainder takes the dividend's sign
+U8:
+  == != < <= > >=
+  # Value and comparison support; arithmetic is not implemented for U8.
 String:
   +                       # bounded concatenation (see Refined Scalar Types)
   == !=                   # over the exact canonical scalar sequence
@@ -2257,7 +2351,10 @@ The implemented byte-slice proof uses exact operands in conjunctive intent
 input constraints, identical endpoints, unsigned zero lower bounds, and ordered
 unsigned literals. The upper endpoint must be ordered against `len` of the
 same byte expression and exact operand coordinate. It does not infer alias,
-transitive, negated, disjunctive, or branch-local relationships. Separate input
+transitive, negated, or disjunctive relationships. A positive expression-level
+`if` arm can also supply the required comparisons; its predicate does not prove
+the opposite arm or a later expression. Statement-level `if` and `require` do
+not extend this proof scope. Separate input
 constraints form a canonical set and cannot justify one another or the earlier
 basis. Within an ordered `&&` predicate, the checked left predicate establishes
 positive proof for evaluation of its right predicate, including nested
@@ -3164,6 +3261,18 @@ but that index is not a second authority: source capabilities are authoritative
 in the source profile and Core capabilities are authoritative in the Core
 module. Capability flags never change Core IR hash semantics for features that
 are present.
+
+The current compiler emits `core.variant/v1` whenever the finished Core type table
+contains a variant declaration. This is a module-wide requirement, including
+unused declarations and declarations linked from source modules. The conservative
+scope avoids presenting a type graph as supported merely because its current
+intent bodies do not inspect that type. It does not claim a variant value ABI.
+Current Target lowering requires this capability for variant type tables and
+independently checks constructor identities and payload types. Missing capability
+metadata refuses as `InvalidCoreIdentity` before unknown capabilities are checked.
+After that check, unknown capabilities refuse as `UnsupportedCoreCapability`
+without an artifact. Provider and runtime variant
+support and variant-valued external results remain separate implementation gates.
 
 ## Implementation Plan
 

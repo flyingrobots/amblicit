@@ -432,7 +432,7 @@ module.exports = grammar({
 
     number: $ => token(seq(
       /[0-9]+(_[0-9]+)*/,
-      optional(choice('i32', 'i64', 'u32', 'u64')),
+      optional(choice('i32', 'i64', 'u8', 'u32', 'u64')),
     )),
 
     string: $ => token(seq(

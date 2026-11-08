@@ -67,3 +67,9 @@ Out of scope:
 - Generated Tree-sitter parser packages are not shipped yet.
 - Vim, Zed, and jedit extension packages are not shipped yet.
 - Graft and jedit projection adapters are not shipped yet.
+
+## Unsigned byte literals
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| DEVTOOLS-TP-014 | implemented | Byte literal suffix | DEVTOOLS-REQ-003, DEVTOOLS-REQ-004 | TextMate scopes the entire `255u8` literal to the same Number span as the reference lexer; the reference parser accepts the U8 source in the Tree-sitter corpus. | textmate_grammar_scopes_unsigned_byte_suffix, tree_sitter_corpus_examples_match_reference_parser | grammars/tree-sitter-amblicit/test/corpus/current-subset.txt | The generated Tree-sitter parser is checked separately with `tree-sitter test`; that command is not part of `cargo xtask verify` or this row's automated evidence. No runtime authority follows from highlighting. |

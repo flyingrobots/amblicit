@@ -1106,6 +1106,22 @@ fn textmate_grammar_scopes_public_number_spans_in_version_labels() {
 }
 
 #[test]
+fn textmate_grammar_scopes_unsigned_byte_suffix() {
+    let grammar = textmate_grammar();
+    let number_regex = textmate_repository_match(&grammar, "numbers");
+    let source = "let value: U8 = 255u8;";
+    let token = amblicit_syntax::highlight_source(source)
+        .expect("byte literal lexes")
+        .into_iter()
+        .find(|token| token.role == amblicit_syntax::HighlightRole::Number)
+        .expect("number token");
+    assert_eq!(token.lexeme(source), "255u8");
+    assert!(
+        textmate_regex_spans(number_regex, source).contains(&(token.span.start, token.span.end))
+    );
+}
+
+#[test]
 fn vscode_extension_declares_textmate_language_contract() {
     let root = repo_root().expect("repo root");
     let manifest = vscode_extension_manifest();

@@ -102,6 +102,15 @@ outside the schema under `fixtures/core/canonical/`. [COREIR-REQ-007]
 - Core expressions and predicates are separate schema families. Expressions
   compute values; predicates express boolean obligations and input constraints.
   [COREIR-REQ-003]
+- `CoreExpr::Variant` carries the existing schema's exact `type`, `case` and
+  optional `payload`. Canonical encoding omits an absent payload. The Core
+  reference-integrity judgment checks the named variant, case membership,
+  payload presence and all payload references; function scope/cycle and graph
+  depth checks descend into that payload. Target independently checks payload
+  expression typing against the available locals. The forged-capture witness
+  exercises the earlier Core integrity boundary, not an isolated Target refusal. Named variant references fit only the
+  same resolved type identity, including through helper calls and locals; equal
+  case shapes do not erase the explicit type discriminator. [COREIR-REQ-031]
 - Core blocks contain explicit locals, ordered nodes, and a result expression.
   Nodes cover local binding, semantic effects, guards, branches, bounded loops,
   match blocks, and proof obligations. A branch may carry one optional result
@@ -185,3 +194,40 @@ Those items belong to the compiler-spine, lowerability, and admission milestones
 tracked in the roadmap.
 
 The verification matrix is tracked in [test-plan.md](./test-plan.md).
+
+## Match expression integrity
+
+The public Rust API exports `CoreMatchArm` alongside `CoreExpr::Match` through
+`amblicit_syntax` and the `amblicit` facade. A match carries one scrutinee and
+ordered arms, each with a case, optional `LocalRef` binder and body. Permuting
+source arms changes canonical bytes and the module digest; alpha-renaming a
+payload binder does not. Canonical
+encoding uses the pre-existing CDDL `match-expr` and `match-arm` shapes.
+
+Core integrity rejects empty or duplicate arm lists, malformed case names and
+invalid binder type references, and visits scrutinee and bodies under the graph
+depth budget. Function validation gives each arm its own lexical environment
+and includes all arms in call-graph validation. These structural checks do not
+establish exhaustive coverage or payload/result type compatibility; native
+Target performs those separate judgments. Binder IDs may repeat in sibling
+arms, but must resolve within their lexical arm. [COREIR-REQ-032]
+
+## Bounded state fold
+
+Core encodes `fold` with `initial`, the source helper coordinate `step`, a
+literal `bound`, and `stateType`, under `core.fold/v1`. Integrity validation
+checks the capability and invariant helper signature and includes the helper
+in cycle checks even at zero bound. Initial-value structural integrity is
+separate from Target's value-to-state compatibility check. These are compilation
+contracts, not evidence that a provider executes fold. [COREIR-REQ-033]
+
+## Bounded list calls
+
+`core.list.length`, `core.list.at`, `core.list.append` and `core.list.concat`
+use the existing generic call encoding under `core.list/v1`. The first three
+retain one list type coordinate; concatenation retains both operand coordinates.
+Argument order, values and type arguments remain hash-significant, as does the
+required capability set. No Core expression variant or ABI field is added.
+Missing capability fails Core integrity before encoding; signatures, totality
+and result compatibility remain separate Target judgments. Unsupported capability
+versions refuse explicitly. [COREIR-REQ-034]

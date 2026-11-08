@@ -120,6 +120,46 @@ import owned by that same source module. These checks grant no runtime
 authority. Public application/provider closure
 consumption remains a separate requirement. [CSPINE-REQ-051]
 
+Acyclic source `type Choice = variant { Empty, Data(Payload) };` declarations
+enter the existing Core variant graph. Case names and optional payload references
+retain their exact named identity, including original coordinates after source
+module linking. Case/declaration order does not change canonical Core meaning;
+aliases remain transparent. Zero-case variants (`variant {}`), duplicate case names, unresolved
+payloads, cycles and expansion excess refuse. Every case consumes source work,
+including payloadless cases. Compiler type checking reports each independent
+unresolved payload at its case span and never emits a partial variant type. The
+source linker retains its single-error API, as for records. Variant payloads consume structural depth just as
+record fields do. [CSPINE-REQ-061]
+
+Constructors such as `Choice::Empty` and `Choice::Data(value)` preserve exact
+variant identity, case and optional payload through Core. Payload types, widths,
+bounds and nominal identities are checked. Variant helper storage uses checked,
+conservative bounds; genuine size overflow remains `InvalidBound`.
+Enums, recursive variants and variant-valued intent result sizing remain
+unsupported. Provider acceptance and runtime execution are separate gates.
+[CSPINE-REQ-062]
+
+Exhaustive `match value { Empty => fallback, Data(payload) => payload }`
+expressions lower to the match form already reserved by the Core CDDL. Every declared case must
+appear exactly once. Optional payload bindings are lexical to their own arm;
+payloadless cases cannot introduce one. Arm results must have compatible types.
+Canonical references are independent of source binder spelling. Scrutinee work
+is counted once and alternative work uses the largest arm bound. Dispatch and
+storage are charged even without helper declarations: if any arm binds a
+payload, the compiler conservatively reserves the whole scrutinee storage bound.
+Recursive calls hidden in arms remain invalid. These cost bounds are compiler
+contracts; native Target independently validates match types, scope, totality
+and intrinsic costs, but does not independently meter dispatch or payload
+storage. Neither boundary establishes provider or runtime execution.
+[CSPINE-REQ-063]
+
+Every variant declaration in the finished Core type table adds the hash-significant
+`core.variant/v1` capability, including unused or source-linked declarations.
+Target requires this capability for variant type tables and independently checks
+constructor identity, payload types, scope and totality. Missing metadata refuses
+with `InvalidCoreIdentity`; unknown capabilities still refuse without an artifact. Other Target restrictions still apply, including result projection.
+[CSPINE-REQ-061, CSPINE-REQ-062]
+
 Source `type Alias = Target;` declarations are transparent spellings for
 currently lowerable targets. They introduce no new nominal authority or Core
 type table entry. Aliases retain bounded representations and the exact owning
@@ -137,6 +177,7 @@ accepted and 129 refuses as `InvalidBound`. Staged `resolve_module` then
 cumulative source-defined declaration expansion each have a 65,536-unit ceiling.
 A scalar or opaque imported reference costs one expansion unit; list/map/option
 constructors add one plus their children; a record adds one plus its fields.
+A variant adds one plus every case and the expansion weight of each payload.
 References to source-defined types use their complete expansion weight on every
 occurrence. This bounds source-defined DAG expansion before shape construction;
 it is not a physical allocator metric or a replacement for imported-type and
@@ -173,7 +214,10 @@ Boolean `&&` and `||` predicates lower to ordered Core `All` and `Any` forms
 where predicate checking is used: input constraints, statement conditionals,
 requirements, branch-yield conditions, and pure conditionals. This preserves
 predicate structure at source-to-Core; it does not claim target execution
-support. Only conjunction supplies input-domain proof evidence.
+support. Conjunction supplies positive input-domain proof evidence. Within an
+expression-level `if`, the selected arm also receives its predicate truth.
+Byte lookup additionally recognizes the false prefix of lazy `||`; subtraction,
+addition and slicing do not derive bounds from negated or disjunctive facts.
 [CSPINE-REQ-039]
 
 The prelude call `len(value)` lowers for bounded structural `Bytes`, including
@@ -220,6 +264,51 @@ type with `TypeMismatch`, and a literal with no expected list type with
 literal reports only its elements' own errors. Effect calls inside a literal
 reject as in record literals. [CSPINE-REQ-057]
 
+Bounded immutable worklists have four reserved prelude operations. For
+`xs: List<T,max=N>`, `listLen(xs)` returns `U64`, `listAt(xs,index)` returns `T`,
+and `listAppend(xs,value)` returns the same bounded list type. Access requires
+a dominating strict proof `index < listLen(xs)` for the exact operands; append
+requires `listLen(xs) < Nu64` for the exact list and declared capacity. Expression
+branches and ordered short-circuit predicates carry these facts. A weak bound,
+another list/index, an alias, or a non-dominating disjunction does not suffice.
+The compiler does not introduce a throwing operation or a new Option protocol.
+An authored closed variant can represent `Missing` or `Full`, as in the
+[public worklist specimen](../../../fixtures/lang/functions/bounded-worklist.amblicit).
+Byte `len` and `at` retain their existing meaning. [CSPINE-REQ-066]
+
+`listConcat(left,right)` requires identical item coordinates and returns a
+structural list whose maximum is the checked sum of the operand maxima. A
+smaller result annotation refuses even if particular inputs happen to be short.
+Append checks the value using existing item compatibility and preserves the
+capacity so it can accumulate inside an invariant `fold` state. These operations
+take no authored type arguments; list literals still need an explicit expected
+list type, such as a prior annotated binding. Index width is U64. Capacity/sum
+overflow and bounded work overflow refuse; nested values and nominal variant
+elements retain their types. [CSPINE-REQ-066]
+
+Modules using these operations declare `core.list/v1`. Capability discovery is
+followed by one complete metered checking pass, including earlier intents,
+record-shorthand reads, operand validation, nested value storage/copy work and
+all fold iterations. Bounded `for` accounting includes each generated binder
+and null block result, the enclosing node, and selected statement-branch frames.
+Bare Boolean predicates include their generated equality comparison work.
+Predicates used as Boolean values also include the selected constant's evaluation
+and storage. Match-result joins retain declared record item coordinates for
+guarded append operands, including named and nested list types.
+Each `require` includes its Core node step as well as predicate and arm work,
+including when repeated inside bounded loops.
+Shorthand obstruction payloads include their synthesized local reads.
+Payload-binding matches charge the complete typed block frame, including later
+locals and surrounding scopes, plus payload-cell work. Nested binders, helper
+calls and fold repetitions retain those charges. Source bounds may conservatively
+exceed the independently reconstructed native bounds.
+Effect bindings include receipt, obstruction binder/annotation and node work;
+generated obstruction locals also participate in copied match frames.
+Native Target independently checks the emitted calls and
+work budgets. Compiler/Target projections do not establish executable provider
+support; Echo #946 owns that consumer work. Intent results retain their existing
+canonical result-projection restrictions. [CSPINE-REQ-066]
+
 `slice(bytes, start, end)` lowers bounded raw bytes and U64 endpoints to
 `core.bytes.slice<OperandType>(bytes,start,end)`. Its result keeps the operand
 maximum and drops positive minimum/exact length, since empty slices are valid.
@@ -227,7 +316,9 @@ Operand type failures point to the wrong byte or endpoint expression; two wrong
 endpoints receive separate `TypeMismatch` diagnostics. [CSPINE-REQ-042]
 The compiler requires exact evidence of `start <= end <= len(bytes)` from
 conjunctive input constraints or unconditional equal/zero relationships. It
-does not infer aliases, transitive orders, or branch-local facts. Within an
+does not infer aliases or transitive orders. Positive expression-level `if` arms
+also supply comparison facts, scoped to that arm; statement-level branches and
+`require` do not. Within an
 ordered `&&` predicate, checked left predicates may establish the domain of
 later predicates. Separate input constraints remain a canonical set and cannot
 justify one another or the earlier basis. Conjunction proof facts do not escape
@@ -255,7 +346,7 @@ without its consumer evaluator implementing that call. Successful packaging or
 an accepted verifier report therefore does not establish slice execution,
 input-constraint enforcement, or runtime byte-copy charging.
 
-- The lowerable subset is deliberately narrow: local record type declarations and transparent aliases,
+- The subset lowerable to Core is deliberately narrow: local record and acyclic variant type declarations and transparent aliases,
   first-order nongeneric source functions, one-parameter intents, `profile`, `basis none` or one input-derived explicit
   basis, `budget <=`, `where` predicates, pure `let` bindings, one annotated
   effectful `let ... else` shape, lowerable `require ... else` obstruction
@@ -271,7 +362,7 @@ input-constraint enforcement, or runtime byte-copy charging.
   within the operation step budget.
   [CSPINE-REQ-006] [CSPINE-REQ-011] [CSPINE-REQ-017] [CSPINE-REQ-023]
   [CSPINE-REQ-025] [CSPINE-REQ-026]
-- The fixed-width source scalar set is `I32`, `I64`, `U32`, and `U64`.
+- The fixed-width source scalar set is `I32`, `I64`, `U8`, `U32`, and `U64`.
   Explicitly suffixed literals retain their exact width and signedness;
   bare literals inherit an unambiguous expected width from supported comparison,
   annotation, and record-return contexts. Unconstrained bare literals, overflow,
@@ -285,10 +376,27 @@ input-constraint enforcement, or runtime byte-copy charging.
   | `Bytes<exact=N>` | Closed interval `min=N,max=N` | Structural byte type |
   | Digest-bound imported lawpack alias | Bounds supplied by the exported definition | Nominal exported coordinate |
 
-  [CSPINE-REQ-019] [CSPINE-REQ-021] [CSPINE-REQ-033]
+  `U8` preserves the exact 0 through 255 domain in source types, contextual
+  literals and `u8` suffixes, including source-helper results. Negative,
+  overflowing and cross-width values refuse before Core. U8 arithmetic and
+  participant runtime acceptance remain separate work.
+
+  [CSPINE-REQ-019] [CSPINE-REQ-021] [CSPINE-REQ-033] [CSPINE-REQ-059]
+- `at(bytes, index)` returns `U8` and lowers to `core.bytes.at<OperandType>`.
+  Its `U64` index needs a strict bound on the exact byte operand: `index <
+  len(bytes)` (or the reversed comparison), or a constant below a declared
+  minimum length. A byte maximum alone never proves a byte exists. Conditional
+  expression arms and short-circuit operands add their dominating predicate truths
+  to the enclosing constraints;
+  a proof for another operand, index or arm cannot authorize the lookup. Target
+  independently rechecks signature and totality on untrusted Core. Source-module
+  linking preserves U8 and the `at` prelude, whose name cannot be shadowed.
+  Provider admission and runtime execution require separate evidence.
+  [CSPINE-REQ-060]
 - Same-width `U32`/`U64` addition lowers to `core.integer.add<T>(left, right)`
   when literal bounds, zero identity, or dominating input constraints establish
-  that the sum fits its width. Conjunctions contribute upper bounds; disjunctions
+  that the sum fits its width. Positive expression-level `if` arm predicates also
+  contribute bounds within that arm. Conjunctions contribute upper bounds; disjunctions
   and negations do not. Nested sums compose those bounds. Unproved overflow
   refuses instead of wrapping. Signed and mixed-width sums are outside this
   subset. Bounded string and byte concatenation keep their existing meaning.
@@ -297,7 +405,8 @@ input-constraint enforcement, or runtime byte-copy charging.
 - Same-width `U32`/`U64` subtraction lowers to
   `core.integer.subtract<T>(left, right)` when the operands are identical,
   the subtrahend is zero, literal operands are ordered, or a checked input
-  constraint directly establishes the required order. Conjunctions supply
+  constraint directly establishes the required order. Positive expression-level
+  `if` arms also supply the required order within that arm. Conjunctions supply
   evidence; disjunctions and negations do not. Within `&&`, the checked left
   predicate can prove the right operand's domain. These temporary facts are
   restored afterward; completed input constraints also justify the intent body.
@@ -424,7 +533,9 @@ bytes whose digest equals a pin the consumer supplies. Both the target and the
 catalog reference must be fully digest-locked. Unknown, effectful, generic or
 incomplete contracts, unresolved or foreign types at any depth, and provider
 records that are not structurally closed are refused. Admitted facts enter the
-compiler with `with_target_pure_intrinsic`.
+compiler with `with_target_pure_intrinsic`. The [application CLI](../cli/README.md#target-pure-intrinsic-declarations)
+loads explicitly requested contracts from a catalog pinned by its selected target
+profile and supplies those facts to both compiler and Target IR lowering.
 
 Source calls an admitted intrinsic as `alias.name(...)` only through an exact
 digest-locked `use target` import of the intrinsic's own profile; a missing,

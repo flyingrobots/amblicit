@@ -1057,3 +1057,44 @@ fn target_refuses_intrinsic_calls_inside_loop_bodies() {
         refused(&core, &facts(), case);
     }
 }
+
+#[test]
+fn target_bounds_a_match_list_by_its_largest_arm() {
+    let expression = "echo.contentAddress(input.warp, input.nodeType, input.atomType, input.text, match Choice::Empty { Empty => [], Data => [{ edgeType: input.anchor, to: input.buffer }] })";
+    let source = source("Bytes<max=4096>", expression).replace(
+        "type Input =",
+        "type Choice = variant { Empty, Data }; type Input =",
+    );
+    let mut core = compile_to_core(&parse_module(&source).unwrap(), &context(65_536)).unwrap();
+    core.intents
+        .get_mut("ids")
+        .unwrap()
+        .core_evaluation_budget
+        .max_steps = node_cost(4096);
+    let report = lower_to_target_ir(&core, &facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+    core.intents
+        .get_mut("ids")
+        .unwrap()
+        .core_evaluation_budget
+        .max_steps = node_cost(4096) - 1;
+    refused(&core, &facts(), "budget below the largest match arm");
+}
+
+#[test]
+fn target_intrinsic_accepts_a_fold_with_validated_bounded_bytes_state() {
+    let expression = NODE.replace("input.text", "fold(input.text, retain, 2u64)");
+    let authored = source("Bytes<max=8>", &expression).replace(
+        "type Input =",
+        "fn retain(value: Bytes<max=8>) -> Bytes<max=8> { return value; } type Input =",
+    );
+    let core = compile_to_core(&parse_module(&authored).unwrap(), &context(65_536))
+        .expect("bounded fold intrinsic argument compiles");
+    let report = lower_to_target_ir(&core, &facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+    assert_eq!(
+        report.failures,
+        Vec::<amblicit_syntax::TargetLoweringFailure>::new()
+    );
+    assert!(report.artifact.is_some());
+}

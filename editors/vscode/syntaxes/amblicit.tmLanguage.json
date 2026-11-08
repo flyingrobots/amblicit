@@ -62,7 +62,7 @@
     },
     "numbers": {
       "name": "constant.numeric.integer.amblicit",
-      "match": "\\b[0-9]+(?:_[0-9]+)*(?:i32|i64|u32|u64)?\\b|\\b[0-9]+(?:_[0-9]+)*_"
+      "match": "\\b[0-9]+(?:_[0-9]+)*(?:i32|i64|u8|u32|u64)?\\b|\\b[0-9]+(?:_[0-9]+)*_"
     },
     "keywords": {
       "name": "keyword.control.amblicit",

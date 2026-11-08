@@ -9,11 +9,15 @@ use super::{
 };
 
 const VALUE_CELL_BYTES: u64 = 64;
+// Container plus type/case values and their keys, and one payload key.
+const VARIANT_METADATA_CELLS: u64 = 6;
+// The UTF-8 bytes of the type, case, and payload field names.
+const VARIANT_METADATA_KEY_BYTES: u64 = 15;
 
 #[derive(Debug, Clone)]
 pub(super) struct Signature {
-    params: Vec<TypeShape>,
-    result: TypeShape,
+    pub(super) params: Vec<TypeShape>,
+    pub(super) result: TypeShape,
 }
 
 impl TypeChecker<'_> {
@@ -111,7 +115,7 @@ impl TypeChecker<'_> {
         self.input_proof_constraints.clear();
         self.local_bounds.clear();
         let mut env = LocalEnvironment::default();
-        let params = definition
+        let params: Vec<_> = definition
             .params
             .iter()
             .zip(&signature.params)
@@ -190,6 +194,12 @@ impl TypeChecker<'_> {
             return None;
         }
         let result = result?;
+        self.record_source_block_frame(
+            &definition.body,
+            params.iter().chain(&locals),
+            &env,
+            definition.span,
+        )?;
         Some(CoreFunction {
             params,
             return_type: signature.result.coord,
@@ -338,7 +348,34 @@ impl TypeChecker<'_> {
         self.checked_helper_cost_add(nested, own, definition.span)
     }
 
-    fn source_value_bound(&mut self, shape: &TypeShape, span: Span) -> Option<(u64, u64)> {
+    pub(super) fn source_loop_frame_cost(
+        &mut self,
+        item: &TypeShape,
+        span: Span,
+    ) -> Option<HelperCost> {
+        let (cells, bytes) = self.source_value_bound(item, span)?;
+        // Binder evaluation contributes 1 + cells; the generated null result
+        // contributes one evaluation, one cell, and 64 bytes per iteration.
+        self.checked_helper_cost_add(
+            HelperCost {
+                steps: cells,
+                allocated_bytes: bytes,
+                output_bytes: 0,
+            },
+            HelperCost {
+                steps: 3,
+                allocated_bytes: VALUE_CELL_BYTES,
+                output_bytes: 0,
+            },
+            span,
+        )
+    }
+
+    pub(super) fn source_value_bound(
+        &mut self,
+        shape: &TypeShape,
+        span: Span,
+    ) -> Option<(u64, u64)> {
         if contains_external_action_request(shape) {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
@@ -351,7 +388,7 @@ impl TypeChecker<'_> {
         value_bound(shape).or_else(|| self.function_bound_failure(span))
     }
 
-    fn function_bound_failure<T>(&mut self, span: Span) -> Option<T> {
+    pub(super) fn function_bound_failure<T>(&mut self, span: Span) -> Option<T> {
         self.errors.push(error(
             CompilerStage::TypeCheck,
             CompilerErrorKind::InvalidBound,
@@ -364,6 +401,10 @@ impl TypeChecker<'_> {
     /// Full bounded operand storage conservatively bounds the UTF-8 and count
     /// scans, as it already does for byte comparison work.
     fn byte_scan_steps(&self, expr: &Expr) -> u64 {
+        // List-capable modules charge complete prelude operand/result storage.
+        if self.meters_list_work() {
+            return 0;
+        }
         match expr {
             Expr::Call { callee, args, .. } if is_prelude_call(callee, &["isUtf8", "count"]) => {
                 args.first()
@@ -392,6 +433,10 @@ impl TypeChecker<'_> {
             allocated_bytes: bytes,
             output_bytes: 0,
         };
+        let list_storage = self.list_storage_cost(expr, shape, bytes, span)?;
+        own = self.checked_helper_cost_add(own, list_storage, span)?;
+        let matching = self.match_storage_cost(expr, span)?;
+        own = self.checked_helper_cost_add(own, matching, span)?;
         let arguments: Vec<&Expr> = match expr {
             Expr::Binary {
                 op: BinOp::Add | BinOp::Sub,
@@ -400,7 +445,8 @@ impl TypeChecker<'_> {
                 ..
             } => vec![lhs, rhs],
             Expr::Call { callee, args, .. }
-                if is_prelude_call(callee, &["len", "slice", "isUtf8", "count"]) =>
+                if is_prelude_call(callee, &["len", "slice", "isUtf8", "count", "at"])
+                    || is_prelude_call(callee, super::list_operations::NAMES) =>
             {
                 args.iter().collect()
             }
@@ -429,8 +475,9 @@ impl TypeChecker<'_> {
             },
             span,
         )?;
-        if matches!(expr, Expr::Binary { op: BinOp::Add, .. })
-            || matches!(expr, Expr::Call { callee, .. } if is_prelude_call(callee, &["slice"]))
+        if !self.meters_list_work()
+            && (matches!(expr, Expr::Binary { op: BinOp::Add, .. })
+                || matches!(expr, Expr::Call { callee, .. } if is_prelude_call(callee, &["slice"])))
         {
             let steps = match &shape.kind {
                 TypeKind::Bytes { max, .. } => *max,
@@ -463,18 +510,117 @@ impl TypeChecker<'_> {
             } | Expr::Unary { op: UnOp::Not, .. }
         ) {
             // Reification is an If plus a selected Boolean constant expression.
-            own = self.checked_helper_cost_add(
-                own,
-                HelperCost {
-                    steps: 1,
-                    ..HelperCost::default()
-                },
-                span,
-            )?;
+            own = self.checked_helper_cost_add(own, self.predicate_reification_cost(), span)?;
         }
         self.source_expression_costs
             .insert(expression_identity(expr), own);
         Some(())
+    }
+
+    fn predicate_reification_cost(&self) -> HelperCost {
+        HelperCost {
+            steps: if self.meters_list_work() { 2 } else { 1 },
+            allocated_bytes: if self.meters_list_work() {
+                VALUE_CELL_BYTES
+            } else {
+                0
+            },
+            output_bytes: 0,
+        }
+    }
+
+    fn list_storage_cost(
+        &mut self,
+        expr: &Expr,
+        shape: &TypeShape,
+        bytes: u64,
+        span: Span,
+    ) -> Option<HelperCost> {
+        let mut cost = HelperCost::default();
+        if self.meters_list_work() {
+            if let (Expr::Record { entries, .. }, TypeKind::Record(fields)) = (expr, &shape.kind) {
+                // Shorthand emits a Local but has no separately metered Expr.
+                for entry in entries {
+                    if let super::RecordEntry::Shorthand { name, .. } = entry {
+                        let (cells, bytes) = self.source_value_bound(fields.get(name)?, span)?;
+                        let steps = cells
+                            .checked_add(1)
+                            .or_else(|| self.function_bound_failure(span))?;
+                        cost = self.checked_helper_cost_add(
+                            cost,
+                            HelperCost {
+                                steps,
+                                allocated_bytes: bytes,
+                                output_bytes: 0,
+                            },
+                            span,
+                        )?;
+                    }
+                }
+            }
+        }
+        let arguments: Vec<&Expr> = match expr {
+            Expr::Call { callee, args, .. }
+                if is_prelude_call(callee, super::list_operations::NAMES)
+                    || (self.meters_list_work()
+                        && is_prelude_call(callee, &["len", "slice", "isUtf8", "count", "at"])) =>
+            {
+                args.iter().collect()
+            }
+            Expr::Binary {
+                op: BinOp::Add,
+                lhs,
+                rhs,
+                ..
+            } if self.meters_list_work()
+                && matches!(shape.kind, TypeKind::Bytes { .. } | TypeKind::String { .. }) =>
+            {
+                vec![lhs, rhs]
+            }
+            _ => Vec::new(),
+        };
+        if !arguments.is_empty() {
+            // Match native Target's complete non-arithmetic prelude charge,
+            // including byte/text operations mixed with list operations.
+            cost.steps = arguments
+                .into_iter()
+                .try_fold(bytes, |total, argument| {
+                    total.checked_add(
+                        self.source_value_bounds
+                            .get(&expression_identity(argument))?
+                            .1,
+                    )
+                })
+                .or_else(|| self.function_bound_failure(span))?;
+        }
+        Some(cost)
+    }
+
+    fn match_storage_cost(&mut self, expr: &Expr, span: Span) -> Option<HelperCost> {
+        if let Expr::Match {
+            scrutinee, arms, ..
+        } = expr
+        {
+            // Reserve the entire bounded scrutinee for selected payload storage;
+            // this safely includes metadata even when the payload is smaller.
+            let (cells, bytes) = *self
+                .source_value_bounds
+                .get(&expression_identity(scrutinee))?;
+            let dispatch = u64::try_from(arms.len()).ok()?;
+            let extra = HelperCost {
+                steps: cells
+                    .checked_add(dispatch)
+                    .or_else(|| self.function_bound_failure(span))?,
+                allocated_bytes: if arms.iter().any(|arm| arm.binder.is_some()) {
+                    bytes
+                } else {
+                    0
+                },
+                output_bytes: 0,
+            };
+            return Some(extra);
+        }
+        Some(HelperCost::default())
     }
 
     pub(super) fn record_source_predicate_cost(&mut self, expr: &Expr) -> Option<()> {
@@ -500,9 +646,18 @@ impl TypeChecker<'_> {
             }
         } else if matches!(
             expr,
-            Expr::Ident { .. } | Expr::Field { .. } | Expr::Call { .. } | Expr::If { .. }
+            Expr::Ident { .. }
+                | Expr::Field { .. }
+                | Expr::Call { .. }
+                | Expr::If { .. }
+                | Expr::Match { .. }
         ) {
             steps += 2; // The Boolean equality's synthetic true operand.
+            if self.meters_list_work() {
+                // Native comparison work includes the full Boolean value cell,
+                // including when equality was generated from a bare predicate.
+                steps += VALUE_CELL_BYTES;
+            }
             allocated_bytes = VALUE_CELL_BYTES;
         }
         self.source_predicate_costs.insert(
@@ -566,6 +721,10 @@ fn contains_external_action_request(shape: &TypeShape) -> bool {
         }
         TypeKind::List { item, .. } => contains_external_action_request(item),
         TypeKind::Record(fields) => fields.values().any(contains_external_action_request),
+        TypeKind::Variant(cases) => cases
+            .values()
+            .flatten()
+            .any(contains_external_action_request),
         TypeKind::Bool
         | TypeKind::Int { .. }
         | TypeKind::Bytes { .. }
@@ -573,8 +732,7 @@ fn contains_external_action_request(shape: &TypeShape) -> bool {
     }
 }
 
-// Portable conservative value-storage accounting: one 64-byte value cell,
-// plus bounded payload and child cells. It does not use host pointer widths.
+/// Portable conservative value-storage accounting, independent of host pointer widths.
 fn value_bound(shape: &TypeShape) -> Option<(u64, u64)> {
     match &shape.kind {
         TypeKind::Bool | TypeKind::Int { .. } => Some((1, VALUE_CELL_BYTES)),
@@ -603,6 +761,30 @@ fn value_bound(shape: &TypeShape) -> Option<(u64, u64)> {
                 ))
             },
         ),
+        TypeKind::Variant(cases) => {
+            let mut cells = 1;
+            let mut bytes = VALUE_CELL_BYTES;
+            let mut label = 0;
+            for (name, payload) in cases {
+                let (child_cells, child_bytes) = match payload {
+                    Some(payload) => value_bound(payload)?,
+                    None => (1, VALUE_CELL_BYTES),
+                };
+                cells = cells.max(child_cells);
+                bytes = bytes.max(child_bytes);
+                label = label.max(u64::try_from(name.len()).ok()?);
+            }
+            // Conservative record-shaped storage: container, type/case values
+            // and their keys, plus a payload key and maximum payload (or null).
+            Some((
+                cells.checked_add(VARIANT_METADATA_CELLS)?,
+                bytes
+                    .checked_add(VARIANT_METADATA_CELLS * VALUE_CELL_BYTES)?
+                    .checked_add(VARIANT_METADATA_KEY_BYTES)?
+                    .checked_add(u64::try_from(shape.coord.len()).ok()?)?
+                    .checked_add(label)?,
+            ))
+        }
         TypeKind::ExternalActionRequest { .. } => None,
     }
 }
@@ -621,7 +803,7 @@ fn encoded_bound(shape: &TypeShape) -> Option<u64> {
                 .checked_add(u64::try_from(name.len()).ok()?)?
                 .checked_add(encoded_bound(shape)?)
         }),
-        TypeKind::ExternalActionRequest { .. } => None,
+        TypeKind::ExternalActionRequest { .. } | TypeKind::Variant(_) => None,
     }
 }
 

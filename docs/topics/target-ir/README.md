@@ -12,7 +12,8 @@ execute a runtime, admit a bundle, or mutate participant state.
 Unsigned `core.integer.add<U32/U64>` requires independently checked operand
 types and an upper-bound proof that its sum fits the declared width. Literal
 and nested sums compose bounds; dominating conjunctive comparisons contribute
-limits in either direction. Missing or disjunctive proof refuses raw Core with
+limits in either direction, including positive expression-level conditional arms.
+Missing or disjunctive proof refuses raw Core with
 `InvalidCoreIdentity` and no Target artifact. Source compilation is not proof
 at this boundary. Provider and runtime support remain separate. [TIR-REQ-056]
 
@@ -572,7 +573,8 @@ each operand once per inference call and independently checks local authority,
 endpoint widths and the conservative result bound.
 
 A separate Target-owned totality walk requires `start <= end <= len(bytes)`
-from exact conjunctive input evidence or unconditional equal/zero relations.
+from exact conjunctive input evidence, positive expression-level conditional
+arm comparisons, or unconditional equal/zero relations.
 Within an ordered `All`, each child must be total before its predicate becomes
 proof for later children. The walker retains borrowed predicate references,
 not cloned Core trees. Reordering a partial expression before its proof refuses
@@ -629,7 +631,8 @@ support for the preserved call.
 The target lowerer recognizes `core.integer.subtract<U32/U64>` with exactly two
 same-width operands. A target-owned Core walk independently checks that each
 subtraction is total from identical operands, zero, ordered constants, or exact
-operand order in conjunctive input predicates. It does not invoke the source
+operand order in conjunctive input predicates or a positive expression-level
+conditional arm. It does not invoke the source
 compiler's proof routine. Basis and input predicates are checked without using
 those predicates as already-established evidence. Disjunctive and negated
 predicates do not authorize subtraction.
@@ -666,3 +669,156 @@ the exact complete Core digest, even for a require-only intent without imports
 or a basis. Existing `NoTargetSteps` and result-projection restrictions remain.
 Provider schema admission and pure/read runtime function execution require the
 consumer to select and implement the new published contract explicitly.
+
+## Byte lookup and expression-level conditional proofs
+
+`core.bytes.at<OperandType>(bytes, index)` requires the same byte operand
+coordinate, a U64 index and a U8 result. Target independently proves strict
+`index < len(bytes)` for the same operand, or a constant index below its declared
+minimum length. A maximum alone cannot prove presence. The proof is reconstructed
+from caller-supplied Core; source acceptance is not trusted.
+
+Expression-level `CoreExpr::If` arms extend enclosing facts with their selected
+predicate truth. Positive arm comparisons also prove the domains of subtraction,
+addition and slicing; swapping their arms must refuse independently of the source
+compiler. These operations retain their existing conservative proof rules:
+negated and disjunctive facts do not establish their bounds. Byte lookup also
+recognizes strict inequalities implied by a false predicate and the false prefix
+of lazy `Any`. Facts are scoped to the evaluated arm or lazy operand.
+
+Statement-level and branch-yield `CoreNode::Branch` forms, and `require`, do not
+extend the proof facts. The supported expression is `if ... then ... else ...`.
+Provider admission, input enforcement and runtime execution remain separate gates.
+[TIR-REQ-061]
+
+## Checked variant construction
+
+Variant expressions are checked against the exact resolved union identity,
+selected case and required payload. Target rechecks payload expression types,
+integer widths, bounds, nominal contracts and available locals from untrusted
+Core. The same identity rule applies through helper calls and local references,
+so a structurally identical union cannot substitute for the declared one.
+Executable witnesses cover payload scope/cycle checks, graph depth, byte-lookup
+totality and exact helper-call argument/return identity. Dedicated payload
+mutation witnesses for intrinsic-cost, operator-admissibility and execution-order
+traversals remain planned in TIR-TP-118. [TIR-REQ-062]
+
+This is native Target IR validation and lowering. Provider acceptance, runtime
+variant values, runtime matching, recursion and variant-valued external result encoding
+are separate implementation gates.
+
+Target requires `core.variant/v1` whenever the Core type table contains a variant,
+including unused declarations. Missing capability metadata refuses as
+`InvalidCoreIdentity` before unknown capabilities are checked; after that check,
+unknown names and versions refuse as `UnsupportedCoreCapability`. The capability list remains hash-significant.
+
+Native Target lowering can retain internal variant bindings, but result-projection
+emission and independent verification reject variant-bearing output graphs of
+otherwise projectable source leaves with `OutputShapeMismatch`. Constructor
+expressions themselves refuse earlier with `UnsupportedExpression`. This includes projecting an entire aggregate containing a
+variant. Direct, record and list outputs have executable refusal witnesses;
+scalar-output controls still project. A refusal is recorded separately in
+`result_projection_failures`, so the native Target artifact may remain available.
+A module with no target-owned steps still refuses as `NoTargetSteps`, regardless
+of whether its input is variant-typed. [TIR-REQ-062]
+
+A variant-typed input can flow through a source helper while a scalar output
+retains its result projection. This native Target witness does not establish
+provider admission or runtime input decoding. [TIR-REQ-062]
+
+### Exhaustive match expressions
+
+Native Target independently checks the scrutinee's variant identity, exact case
+coverage, payload binder types, lexical scope and each arm's result type.
+Record-valued matches retain their field shapes. Type, authority, totality,
+intrinsic-cost and execution-order traversals enter each arm's scope; cost
+bounds take the maximum alternative after the single scrutinee cost. The
+canonical wire form was already reserved in `edict-core.cddl`; `core.variant/v1`
+continues to identify the variant type inventory. This does not establish that
+an older provider accepts matching. [TIR-REQ-063]
+
+Match expressions in basis and reason payloads must have compatible result
+shapes even though those metadata positions do not supply an expected type.
+This independent judgment includes lists and records containing lists; empty
+list literals take their element shape from nonempty peers. It does not extend
+the comparison language. [TIR-REQ-063]
+
+For costed intrinsic arguments, a match establishes its byte/list bound from
+its largest arm, with payload references resolved in that arm's scope. Empty
+list literals contribute zero. This retains the intrinsic meter's existing
+conditional-bound rule for match alternatives. [TIR-REQ-063]
+
+Field and type recovery use value-capable match shapes rather than requiring
+all sibling fields to be comparison operands. A scalar field remains available
+when a matched record also contains an unrelated empty or nonempty list literal.
+Direct list-match comparisons remain outside the comparison language.
+[TIR-REQ-063]
+
+Match coordinate inference derives the scrutinee type once and reuses it when
+arm-coordinate joining needs structural fallback. An invalid nested scrutinee
+propagates refusal without restarting inference through that same subtree.
+Deterministic public-lowering tests bound coordinate visits for valid and invalid
+chains at depths 4 and 12; they do not establish whole-compiler complexity.
+
+## Bounded fold validation
+
+The independent meter also applies to modules requiring `core.list/v1`, including
+intents without a fold. Native Target recognizes typed list length, access,
+append and concatenation calls, derives each result from the validated operand
+coordinates, and rechecks strict access/capacity guards on the exact operands.
+Length and access permit compatible widening of outer capacity and structural
+item bounds. Access still requires a strict guard against the actual length of
+that operand; a claimed capacity cannot replace its length in the guard.
+List append preserves its declared capacity. Concatenation requires identical
+item coordinates and checks the sum of independently reconstructed operand
+maxima. Both operands must retain their exact capacities and semantically
+equivalent item types; widening compatibility alone cannot authorize a larger
+claimed operand type. Structural record names may differ when their fields and
+bounds agree in both directions. Conditional and matched joins can also render
+the common structural record type when neither named type contains the other.
+Append and concatenation reuse each independently validated operand coordinate
+for compatibility and capacity checks. Nested call chains therefore avoid
+duplicating inference at every level; separate totality and guard checks remain.
+Wider enclosing result bounds remain permitted. Changed nominal element
+identity, weaker/removed guards, narrower operand bounds and sum overflow refuse.
+Conditional and matched record projections preserve declared list item coordinates.
+The meter derives storage from validated structural field shapes for anonymous
+nested records as well as named types, with checked arithmetic and depth limits.
+Operand validation and full bounded storage/copy costs include nested payloads;
+checked arithmetic and step/storage budgets are enforced independently of source
+estimates. The simple length specimen's native bound is 294 steps and 1,350 bytes;
+either one-unit-short budget refuses. These are native compiler artifacts, not
+provider execution evidence. [TIR-REQ-066]
+
+Native Target recognizes `core.fold/v1` and checks a source step with matching
+parameter/return coordinates and an initial value compatible with that state.
+A wrong initial value can pass shared Core structural integrity and still fail
+Target with `InvalidCoreIdentity`. [TIR-REQ-064]
+
+For modules requiring `core.fold/v1`, native Target independently reconstructs
+conservative Core evaluation steps and allocated bytes for each intent. It
+charges initial evaluation, transitive source calls, parameter/result validation,
+every iteration (including a done/terminal state), nested folds and value storage.
+Sized intrinsic operands derive fold maxima from the validated state type.
+All addition and multiplication are checked; unknown work or an exceeded ceiling
+refuses `InvalidCoreIdentity` without an artifact. Imported helper budgets come
+from the exact validated lawpack adapter, not estimates in Core. [TIR-REQ-065]
+
+A fold-capable module declares `core.fold/v1`; every intent in that module uses
+this native accounting model, even if an individual intent does not reach a fold.
+A portable value cell is an accounting unit of 64 bytes, not a measurement of
+host allocator usage. Runtime soundness must be established against the eventual
+executing consumer separately.
+
+Portable accounting uses 64-byte value cells, bounded byte/text/list storage,
+record keys, variant metadata and maximum branch work. Payload-bound matches
+include surrounding-frame storage. Fold-capable modules currently refuse types
+outside this accounting subset (option/map/capability/request values), symbolic
+collection-loop bounds and external-action request nodes. Modules without the
+fold capability retain their existing cost checks. Native bounds are conservative
+and can reject a compiler-accepted operation near its budget ceiling.
+
+`Lowered` remains a native compiler result. Provider/runtime execution, independent
+provider verification, effect execution costs, output encoding limits and runtime
+admission retain their separate authorities; this meter does not establish the
+full #268 runtime contract or the authored rope cutover.

@@ -160,6 +160,11 @@ fn protected_names(module_names: &BTreeSet<String>) -> BTreeSet<String> {
 }
 
 const PRELUDE_NAMES: &[&str] = &[
+    "listLen",
+    "listAt",
+    "listAppend",
+    "listConcat",
+    "fold",
     "Bool",
     "Bytes",
     "CapabilityRef",
@@ -169,12 +174,14 @@ const PRELUDE_NAMES: &[&str] = &[
     "Map",
     "Option",
     "String",
+    "U8",
     "U32",
     "U64",
     "digest",
     "false",
     "hash",
     "count",
+    "at",
     "isUtf8",
     "len",
     "none",
@@ -317,7 +324,15 @@ fn validate_type_expr(expr: &TypeExpr, span: Span, errors: &mut Vec<SemanticErro
             }
         }
         TypeExpr::Variant(cases) => {
+            let mut names = BTreeSet::new();
             for case in cases {
+                if !names.insert(&case.name) {
+                    errors.push(error(
+                        SemanticErrorKind::DuplicateName,
+                        format!("duplicate variant case `{}`", case.name),
+                        case.span,
+                    ));
+                }
                 if let Some(payload) = &case.payload {
                     validate_type_ref(payload, case.span, errors);
                 }

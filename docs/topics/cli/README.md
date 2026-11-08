@@ -91,6 +91,45 @@ The authoring format, local-versus-external resource identity, publication
 policy, and artifact ownership model are documented in the
 [lawpack-authoring guide](../lawpack-authoring/README.md).
 
+### Target pure intrinsic declarations
+
+An application can explicitly require pure intrinsic contracts from its selected
+target profile. Add `pureIntrinsics` inside `target`, for example for a provider
+that publishes the illustrated contract:
+
+```json
+{
+  "catalog": "generated/resources/resource.target-intrinsics.cbor",
+  "required": [{
+    "coordinate": "example.target@1.identity",
+    "contractVersion": "example.identity/v1"
+  }]
+}
+```
+
+The catalog path is relative to the provider package and must remain inside it,
+including after symlink resolution. The application does not supply a catalog
+pin: the compiler reads the `intrinsics` resource reference from the selected
+profile only after that profile agrees with the provider manifest and lawpack
+adapter. It verifies the catalog's canonical bytes against that reference and
+admits all declared contracts, even if the source does not call them. Provider
+authors use `digest_target_intrinsics_catalog(catalog_coordinate, canonical_bytes)`
+to compute the pin: the canonical digest domain is the catalog coordinate. The
+profile encodes the reference as `{id, digest: ["sha256", <32 bytes>]}`.
+The declaration requires 1..=64 non-empty
+coordinate/version pairs; the catalog has the existing 1 MiB artifact limit.
+Duplicate requirements, invalid catalogs, wrong versions and substituted bytes
+fail before output publication. A declared v1 catalog is refused; it is never
+silently treated as absent. Omitting the declaration loads no catalog and grants
+no intrinsic facts. [CLI-REQ-020]
+
+The source must import that exact pinned profile with `use target`. The admitted
+facts enter both compilation and native Target IR validation, which independently
+checks calls and costs. This compiler path does not install an implementation or
+certify a provider's runtime support. Echo's ContentAddressV1 publication and
+runtime integration remain downstream; the current public witness uses an
+explicitly test-only intrinsic in an external-action compiler fixture.
+
 ### Application Builds
 
 An application manifest names an ordered, explicit source closure, its complete
@@ -120,8 +159,9 @@ module support does not expand the existing source-function accounting profile,
 which continues to refuse request-bearing values.
 
 The application path is resolved from the process working directory. Every
-path inside the manifest is resolved from the manifest's parent directory and
-must be non-empty, relative, and free of parent traversal. A minimal manifest
+path inside the manifest is resolved from the manifest's parent directory, except
+`target.pureIntrinsics.catalog`, which is relative to the selected provider package.
+All paths must be non-empty, relative, and free of parent traversal. A minimal manifest
 has this shape:
 
 ```json
@@ -373,3 +413,23 @@ The verification matrix is tracked in [test-plan.md](./test-plan.md).
 Application build diagnostics include optional `signatureMismatch` context on a compiler `TypeMismatch` at the `typeCheck` stage. It contains `effect`, `position` (`input` or `receipt`), `path`, `expectedType`, and `actualType`. Field segments carry a separate name; list-item and settlement segments carry only their kind. Exactly absent fields use JSON null for the corresponding type. Other errors omit this property. Existing source spans, source locations, summaries, status counts, and failed-output publication rules are preserved.
 
 The diagnostic and projection schemas admit this optional context. Consumers pinned to an older strict schema must update that schema before accepting the new property. Records without the property remain valid. The projection formatter preserves supplied compiler detail; current public projection inputs do not load a lawpack signature closure. No new projection transport or capability is introduced.
+
+Core expression review retains variant constructors as an explicit `kind: variant`
+record with the exact `type`, `case` and optional `payload`; absent payload is
+omitted. The payload's own review shape is preserved. This is display/projection
+of compiler-built Core, not a runtime value codec. [CLI-REQ-013]
+
+## Match review data
+
+Core expression review JSON renders a match as `kind: "match"`, a recursively
+rendered `scrutinee`, and an `arms` array. Each arm has `case` and `body`; a
+payload-binding arm also has `binder` in the existing local-reference review
+shape. This is inspection data, not a runtime execution or provider-acceptance
+claim. [CLI-REQ-013]
+
+## Fold review data
+
+Core review JSON renders `kind: "fold"`, recursively rendered `initial`,
+`step`, `bound`, and `stateType`. These fields describe compiler-built Core;
+this display does not prove provider execution or independent work admission.
+A dedicated CLI projection fixture remains planned. [CLI-REQ-013]

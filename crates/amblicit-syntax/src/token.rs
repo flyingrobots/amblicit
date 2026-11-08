@@ -29,6 +29,7 @@ impl Span {
 pub enum IntSuffix {
     I32,
     I64,
+    U8,
     U32,
     U64,
 }
@@ -38,6 +39,7 @@ impl IntSuffix {
         match s {
             "i32" => Some(Self::I32),
             "i64" => Some(Self::I64),
+            "u8" => Some(Self::U8),
             "u32" => Some(Self::U32),
             "u64" => Some(Self::U64),
             _ => None,
@@ -50,6 +52,7 @@ impl IntSuffix {
         match self {
             Self::I32 => "i32",
             Self::I64 => "i64",
+            Self::U8 => "u8",
             Self::U32 => "u32",
             Self::U64 => "u64",
         }

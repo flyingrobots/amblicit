@@ -179,6 +179,7 @@ fn fixed_width_integer_types_and_suffixes_preserve_exact_domains() {
     for (width, suffix, maximum) in [
         ("I32", "i32", "2147483647"),
         ("I64", "i64", "9223372036854775807"),
+        ("U8", "u8", "255"),
         ("U32", "u32", "4294967295"),
         ("U64", "u64", "18446744073709551615"),
     ] {
@@ -208,6 +209,88 @@ fn fixed_width_integer_types_and_suffixes_preserve_exact_domains() {
             })
         );
     }
+}
+
+#[test]
+fn u8_context_and_width_preserve_canonical_identity() {
+    let source = OPERATION_SOURCE
+        .replace("U64", "U8")
+        .replace("18446744073709551615u64", "255");
+    let core = compile_operation(&source);
+    let CorePredicate::Compare { right, .. } =
+        &core.intents["splice"].input_constraints[0].predicate
+    else {
+        panic!("expected a comparison");
+    };
+    assert_eq!(
+        right,
+        &CoreExpr::Const(CoreValue::Int {
+            width: "U8".into(),
+            value: "255".into(),
+        })
+    );
+    // Change only the literal width: changing declared types too would let
+    // their canonical encoding hide a missing literal-width binding.
+    let mut wider = core.clone();
+    let CorePredicate::Compare { right, .. } =
+        &mut wider.intents.get_mut("splice").unwrap().input_constraints[0].predicate
+    else {
+        panic!("expected a comparison");
+    };
+    let CoreExpr::Const(CoreValue::Int { width, .. }) = right else {
+        panic!("expected an integer literal");
+    };
+    *width = "U32".into();
+    assert_ne!(
+        digest_core_module(&core).unwrap(),
+        digest_core_module(&wider).unwrap()
+    );
+    let report = lower_to_target_ir(&core, &target_facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered);
+}
+
+#[test]
+fn u8_literals_refuse_out_of_range_and_cross_width_values() {
+    for literal in ["256u8", "-1u8", "256", "-1", "1u32"] {
+        let source = OPERATION_SOURCE
+            .replace("U64", "U8")
+            .replace("18446744073709551615u64", literal);
+        let module = parse_module(&source).expect("U8 source syntax");
+        let errors = compile_to_core(&module, &operation_context()).expect_err("invalid U8 domain");
+        assert_eq!(
+            errors
+                .iter()
+                .map(|error| (error.stage, error.kind))
+                .collect::<Vec<_>>(),
+            vec![(CompilerStage::TypeCheck, CompilerErrorKind::TypeMismatch)],
+            "{literal}"
+        );
+    }
+}
+
+#[test]
+fn u8_source_helper_preserves_its_result_width() {
+    let source = OPERATION_SOURCE.replace(
+        "intent splice",
+        "fn byteMarker() -> U8 { return 255u8; }\nintent splice",
+    );
+    let context = operation_context().with_budget(
+        "sequence.small",
+        CoreBudget {
+            max_steps: 4096,
+            max_allocated_bytes: 65536,
+            max_output_bytes: 4096,
+        },
+    );
+    let core = compile_to_core(&parse_module(&source).expect("U8 helper syntax"), &context)
+        .expect("U8 helper with sufficient whole-operation budget");
+    assert_eq!(
+        core.functions["byteMarker"].body.result,
+        CoreExpr::Const(CoreValue::Int {
+            width: "U8".into(),
+            value: "255".into(),
+        })
+    );
 }
 
 #[test]
@@ -614,4 +697,64 @@ fn explicit_basis_target_ir_cannot_drop_its_semantic_closure() {
             .kind(),
         CanonicalErrorKind::UnsupportedValue
     );
+}
+
+#[test]
+fn u8_comparisons_preserve_every_declared_operator() {
+    use amblicit_syntax::core_ir::CompareOp;
+
+    for (operator, expected) in [
+        ("==", CompareOp::Eq),
+        ("!=", CompareOp::Ne),
+        ("<", CompareOp::Lt),
+        ("<=", CompareOp::Le),
+        (">", CompareOp::Gt),
+        (">=", CompareOp::Ge),
+    ] {
+        let source = OPERATION_SOURCE.replace("U64", "U8").replace(
+            "input.start <= 18446744073709551615u64",
+            &format!("input.start {operator} 255u8"),
+        );
+        let core = compile_operation(&source);
+        let CorePredicate::Compare { op, right, .. } =
+            &core.intents["splice"].input_constraints[0].predicate
+        else {
+            panic!("expected a comparison");
+        };
+        assert_eq!(*op, expected);
+        assert_eq!(
+            right,
+            &CoreExpr::Const(CoreValue::Int {
+                width: "U8".into(),
+                value: "255".into(),
+            })
+        );
+    }
+}
+
+#[test]
+fn u8_helpers_refuse_cross_width_results_and_arithmetic() {
+    for (expression, expected) in [
+        ("1u32", CompilerErrorKind::TypeMismatch),
+        ("1u64", CompilerErrorKind::TypeMismatch),
+        ("value + 0u8", CompilerErrorKind::UnsupportedSourceShape),
+        ("value - 0u8", CompilerErrorKind::UnsupportedSourceShape),
+        ("value * 1u8", CompilerErrorKind::UnsupportedSourceShape),
+        ("value / 1u8", CompilerErrorKind::UnsupportedSourceShape),
+        ("value % 1u8", CompilerErrorKind::UnsupportedSourceShape),
+    ] {
+        let source = OPERATION_SOURCE.replace(
+            "intent splice",
+            &format!("fn byteMarker(value: U8) -> U8 {{ return {expression}; }}\nintent splice"),
+        );
+        let module = parse_module(&source).expect("U8 helper source syntax");
+        let errors = compile_to_core(&module, &operation_context())
+            .expect_err("cross-width results and U8 arithmetic must refuse");
+        assert!(
+            errors
+                .iter()
+                .any(|error| { error.stage == CompilerStage::TypeCheck && error.kind == expected }),
+            "{expression}: {errors:?}"
+        );
+    }
 }

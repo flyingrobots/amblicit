@@ -4,16 +4,22 @@
 //! effect nodes into in-memory Echo or git-warp review artifacts. It does not
 //! execute a runtime, run a verifier, assemble bundles, or perform admission.
 
+mod byte_at;
 mod byte_concat;
 mod byte_count;
 mod byte_length;
 mod byte_slice;
 mod byte_utf8;
 pub(crate) mod execution_order;
+mod fold_work;
+mod list_operations;
 mod pure_intrinsics;
+mod state_fold;
 mod totality;
 mod unsigned_addition;
 mod unsigned_subtraction;
+mod variant_constructors;
+mod variant_matches;
 
 mod unsigned_arithmetic {
     pub(super) use super::unsigned_subtraction::type_coordinate;
@@ -121,6 +127,8 @@ pub struct TargetPureFunctionFact {
     /// Present for a pinned target-catalog intrinsic, whose `lawpack` is then
     /// the target profile import rather than a lawpack.
     intrinsic_cost: Option<IntrinsicCost>,
+    /// Authenticated exported helper cost, unavailable for target intrinsics.
+    helper_cost: Option<CoreBudget>,
 }
 
 /// Linear cost rule of a pinned target pure intrinsic.
@@ -138,6 +146,7 @@ impl TargetPureFunctionFact {
         parameter_types: Vec<String>,
         return_type: String,
         type_closure: BTreeMap<String, CoreType>,
+        helper_cost: CoreBudget,
     ) -> Self {
         Self {
             lawpack,
@@ -147,6 +156,7 @@ impl TargetPureFunctionFact {
             return_type,
             type_closure,
             intrinsic_cost: None,
+            helper_cost: Some(helper_cost),
         }
     }
 
@@ -158,6 +168,7 @@ impl TargetPureFunctionFact {
             parameter_types: fact.parameter_types().to_vec(),
             return_type: fact.return_type().to_owned(),
             type_closure: fact.provider_types().clone(),
+            helper_cost: None,
             intrinsic_cost: Some(IntrinsicCost {
                 base: fact.cost_base(),
                 per_argument_max: fact.cost_per_argument_max().to_vec(),
@@ -887,9 +898,32 @@ fn validate_core_module(
     if !floating_imports.is_empty() {
         return floating_imports;
     }
+    if core
+        .types
+        .values()
+        .any(|ty| matches!(ty, CoreType::Variant { .. }))
+        && !core
+            .required_core_capabilities
+            .iter()
+            .any(|capability| capability == "core.variant/v1")
+    {
+        return vec![TargetLoweringFailure {
+            kind: TargetLoweringFailureKind::InvalidCoreIdentity,
+            intent: None,
+            node_index: None,
+            detail: "required_core_capabilities.core.variant/v1".to_owned(),
+        }];
+    }
     let capability_failures = core
         .required_core_capabilities
         .iter()
+        // Constructor identities and payloads are independently checked below.
+        .filter(|capability| {
+            !matches!(
+                capability.as_str(),
+                "core.variant/v1" | "core.fold/v1" | "core.list/v1"
+            )
+        })
         .map(|capability| TargetLoweringFailure {
             kind: TargetLoweringFailureKind::UnsupportedCoreCapability,
             intent: None,
@@ -939,6 +973,13 @@ fn validate_pure_binding_graphs(
                     intent_name,
                     None,
                     "Core operation is not proven total in its evaluation scope",
+                ));
+            }
+            if !fold_work::intent_cost_fits(core, pure_functions, intent) {
+                return Some(invalid_pure_binding(
+                    intent_name,
+                    None,
+                    "fold-capable Core work is unestablished or exceeds the evaluation budget",
                 ));
             }
             if !pure_intrinsics::intent_cost_fits(core, pure_functions, intent) {
@@ -1710,6 +1751,29 @@ fn expression_has_closed_authority(
         return false;
     }
     match expression {
+        CoreExpr::Fold { .. } => {
+            state_fold::state(core, pure_functions, expression, available).is_some()
+        }
+        CoreExpr::Match { scrutinee, arms } => {
+            variant_matches::result_shape(core, pure_functions, scrutinee, arms, available)
+                .is_some()
+                && variant_matches::every(
+                    core,
+                    pure_functions,
+                    scrutinee,
+                    arms,
+                    available,
+                    |body, scope| {
+                        expression_has_closed_authority(core, pure_functions, body, scope)
+                    },
+                )
+        }
+        CoreExpr::Variant { ty, payload, .. } => {
+            variant_constructors::fits(core, pure_functions, expression, ty, available)
+                && payload.as_ref().is_none_or(|value| {
+                    expression_has_closed_authority(core, pure_functions, value, available)
+                })
+        }
         CoreExpr::Local { reference } => resolved_core_type(core, &reference.ty).is_some(),
         CoreExpr::Const(CoreValue::Int { width, value }) => {
             crate::core_ir::parse_core_integer(width, value).is_some()
@@ -1730,43 +1794,8 @@ fn expression_has_closed_authority(
             callee,
             type_args,
             args,
-        } if callee == byte_concat::OPERATION => {
-            byte_concat::type_coordinate(core, pure_functions, type_args, args, available).is_some()
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if callee == byte_length::OPERATION => {
-            byte_length::type_coordinate(core, pure_functions, type_args, args, available).is_some()
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if callee == byte_utf8::OPERATION => {
-            byte_utf8::type_coordinate(core, pure_functions, type_args, args, available).is_some()
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if callee == byte_count::OPERATION => {
-            byte_count::type_coordinate(core, pure_functions, type_args, args, available).is_some()
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if callee == byte_slice::OPERATION => {
-            byte_slice::type_coordinate(core, pure_functions, type_args, args, available).is_some()
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if is_unsigned_arithmetic(callee) => {
-            unsigned_arithmetic::type_coordinate(core, pure_functions, type_args, args, available)
+        } if is_typed_prelude_operation(callee) => {
+            prelude_type_coordinate(core, pure_functions, callee, type_args, args, available)
                 .is_some()
         }
         CoreExpr::Call { callee, .. } if callee == "core.string.concat" => {
@@ -1847,10 +1876,47 @@ fn is_typed_prelude_operation(callee: &str) -> bool {
         byte_length::OPERATION,
         byte_utf8::OPERATION,
         byte_count::OPERATION,
+        byte_at::OPERATION,
         byte_slice::OPERATION,
     ]
     .contains(&callee)
+        || list_operations::is_operation(callee)
         || is_unsigned_arithmetic(callee)
+}
+
+fn prelude_type_coordinate(
+    core: &CoreModule,
+    functions: &[TargetPureFunctionFact],
+    callee: &str,
+    type_args: &[String],
+    args: &[CoreExpr],
+    available: &BTreeMap<&str, &LocalRef>,
+) -> Option<String> {
+    match callee {
+        _ if list_operations::is_operation(callee) => {
+            list_operations::type_coordinate(core, functions, callee, type_args, args, available)
+        }
+        byte_at::OPERATION => byte_at::type_coordinate(core, functions, type_args, args, available),
+        byte_concat::OPERATION => {
+            byte_concat::type_coordinate(core, functions, type_args, args, available)
+        }
+        byte_count::OPERATION => {
+            byte_count::type_coordinate(core, functions, type_args, args, available)
+        }
+        byte_length::OPERATION => {
+            byte_length::type_coordinate(core, functions, type_args, args, available)
+        }
+        byte_slice::OPERATION => {
+            byte_slice::type_coordinate(core, functions, type_args, args, available)
+        }
+        byte_utf8::OPERATION => {
+            byte_utf8::type_coordinate(core, functions, type_args, args, available)
+        }
+        _ if is_unsigned_arithmetic(callee) => {
+            unsigned_arithmetic::type_coordinate(core, functions, type_args, args, available)
+        }
+        _ => None,
+    }
 }
 
 fn expression_fits_declared_type(
@@ -1861,6 +1927,21 @@ fn expression_fits_declared_type(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> bool {
     match expression {
+        CoreExpr::Fold { .. } => state_fold::state(core, pure_functions, expression, available)
+            .is_some_and(|ty| core_type_fits(core, ty, expected)),
+        CoreExpr::Match { scrutinee, arms } => variant_matches::every(
+            core,
+            pure_functions,
+            scrutinee,
+            arms,
+            available,
+            |body, scope| {
+                expression_fits_declared_type(core, pure_functions, body, expected, scope)
+            },
+        ),
+        CoreExpr::Variant { .. } => {
+            variant_constructors::fits(core, pure_functions, expression, expected, available)
+        }
         CoreExpr::Local { reference } => {
             available.get(reference.id.as_str()).copied() == Some(reference)
                 && core_type_fits(core, &reference.ty, expected)
@@ -2114,11 +2195,42 @@ fn expression_string_shape(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<(u64, String)> {
     match expression {
+        CoreExpr::Match { scrutinee, arms } => {
+            let mut shape: Option<(u64, String)> = None;
+            let valid = variant_matches::every(
+                core,
+                pure_functions,
+                scrutinee,
+                arms,
+                available,
+                |body, scope| {
+                    let Some((max, canonical)) =
+                        expression_string_shape(core, pure_functions, body, scope)
+                    else {
+                        return false;
+                    };
+                    if let Some((prior, prior_canonical)) = &shape {
+                        if prior_canonical != &canonical {
+                            return false;
+                        }
+                        shape = Some(((*prior).max(max), canonical));
+                    } else {
+                        shape = Some((max, canonical));
+                    }
+                    true
+                },
+            );
+            if valid {
+                shape
+            } else {
+                None
+            }
+        }
         CoreExpr::Const(CoreValue::String(value)) => Some((
             u64::try_from(value.chars().count()).ok()?,
             "raw-utf8".to_owned(),
         )),
-        CoreExpr::Local { .. } | CoreExpr::Field { .. } => {
+        CoreExpr::Fold { .. } | CoreExpr::Local { .. } | CoreExpr::Field { .. } => {
             let coordinate =
                 expression_type_coordinate(core, pure_functions, expression, available)?;
             let CoreType::String { max, canonical } = resolved_core_type(core, &coordinate)? else {
@@ -2178,7 +2290,8 @@ fn expression_string_shape(
             CoreValue::Null | CoreValue::Bool(_) | CoreValue::Int { .. } | CoreValue::Bytes(_),
         )
         | CoreExpr::Record { .. }
-        | CoreExpr::List { .. } => None,
+        | CoreExpr::List { .. }
+        | CoreExpr::Variant { .. } => None,
     }
 }
 
@@ -2191,6 +2304,16 @@ fn expression_type_coordinate(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<String> {
     match expression {
+        CoreExpr::Fold { .. } => {
+            state_fold::state(core, pure_functions, expression, available).map(str::to_owned)
+        }
+        CoreExpr::Match { scrutinee, arms } => {
+            variant_matches::coordinate(core, pure_functions, scrutinee, arms, available)
+        }
+        CoreExpr::Variant { ty, .. } => {
+            variant_constructors::fits(core, pure_functions, expression, ty, available)
+                .then(|| ty.clone())
+        }
         CoreExpr::Local { reference }
             if available.get(reference.id.as_str()).copied() == Some(reference)
                 && resolved_core_type(core, &reference.ty).is_some() =>
@@ -2209,54 +2332,14 @@ fn expression_type_coordinate(
             Some(format!("Bytes<exact={}>", u64::try_from(value.len()).ok()?))
         }
         CoreExpr::Field { base, field } => {
-            let ComparisonOperandShape::Coordinate(coordinate) =
-                field_expression_shape(core, pure_functions, base, field, available)?
-            else {
-                return None;
-            };
-            Some(coordinate)
+            field_expression_shape(core, pure_functions, base, field, available)?.type_coordinate()
         }
         CoreExpr::Call {
             callee,
             type_args,
             args,
-        } if callee == byte_concat::OPERATION => {
-            byte_concat::type_coordinate(core, pure_functions, type_args, args, available)
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if callee == byte_length::OPERATION => {
-            byte_length::type_coordinate(core, pure_functions, type_args, args, available)
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if callee == byte_utf8::OPERATION => {
-            byte_utf8::type_coordinate(core, pure_functions, type_args, args, available)
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if callee == byte_count::OPERATION => {
-            byte_count::type_coordinate(core, pure_functions, type_args, args, available)
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if callee == byte_slice::OPERATION => {
-            byte_slice::type_coordinate(core, pure_functions, type_args, args, available)
-        }
-        CoreExpr::Call {
-            callee,
-            type_args,
-            args,
-        } if is_unsigned_arithmetic(callee) => {
-            unsigned_arithmetic::type_coordinate(core, pure_functions, type_args, args, available)
+        } if is_typed_prelude_operation(callee) => {
+            prelude_type_coordinate(core, pure_functions, callee, type_args, args, available)
         }
         CoreExpr::Call { callee, .. } if callee == "core.string.concat" => {
             expression_string_shape(core, pure_functions, expression, available)
@@ -2277,6 +2360,18 @@ fn expression_type_coordinate(
         } => {
             if !predicate_fits_core_types(core, pure_functions, predicate, available) {
                 return None;
+            }
+            // Preserve declared coordinates before structural comparison drops
+            // record names, including record items nested in bounded lists.
+            if let (Some(then_coordinate), Some(else_coordinate)) = (
+                expression_type_coordinate(core, pure_functions, then_value, available),
+                expression_type_coordinate(core, pure_functions, else_value, available),
+            ) {
+                if let Some(coordinate) =
+                    join_conditional_coordinates(core, &then_coordinate, &else_coordinate)
+                {
+                    return Some(coordinate);
+                }
             }
             let then_shape = comparison_operand_shape(core, pure_functions, then_value, available)?;
             let else_shape = comparison_operand_shape(core, pure_functions, else_value, available)?;
@@ -2387,6 +2482,22 @@ fn expression_references_are_available(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> bool {
     match expression {
+        CoreExpr::Fold { initial, .. } => expression_references_are_available(initial, available),
+        CoreExpr::Match { scrutinee, arms } => {
+            expression_references_are_available(scrutinee, available)
+                && arms.iter().all(|arm| {
+                    let mut scope = available.clone();
+                    if let Some(binder) = &arm.binder {
+                        if scope.insert(binder.id.as_str(), binder).is_some() {
+                            return false;
+                        }
+                    }
+                    expression_references_are_available(&arm.body, &scope)
+                })
+        }
+        CoreExpr::Variant { payload, .. } => payload
+            .as_ref()
+            .is_none_or(|value| expression_references_are_available(value, available)),
         CoreExpr::Local { reference } => {
             available.get(reference.id.as_str()).copied() == Some(reference)
         }
@@ -2534,6 +2645,16 @@ fn expression_has_empty_aggregate(expression: &CoreExpr, depth: usize) -> bool {
         return false;
     }
     match expression {
+        CoreExpr::Fold { initial, .. } => expression_has_empty_aggregate(initial, depth + 1),
+        CoreExpr::Match { scrutinee, arms } => {
+            expression_has_empty_aggregate(scrutinee, depth + 1)
+                || arms
+                    .iter()
+                    .any(|arm| expression_has_empty_aggregate(&arm.body, depth + 1))
+        }
+        CoreExpr::Variant { payload, .. } => payload
+            .as_ref()
+            .is_some_and(|value| expression_has_empty_aggregate(value, depth + 1)),
         CoreExpr::Local { .. } | CoreExpr::Const(_) => false,
         CoreExpr::Record { fields } => fields
             .values()
@@ -2631,6 +2752,30 @@ fn expression_comparisons_admissible(
         expression_comparisons_admissible(core, pure_functions, value, available, depth + 1)
     };
     match expression {
+        CoreExpr::Fold { initial, .. } => {
+            state_fold::state(core, pure_functions, expression, available).is_some()
+                && child(initial)
+        }
+        CoreExpr::Match { scrutinee, arms } => {
+            child(scrutinee)
+                && variant_matches::every(
+                    core,
+                    pure_functions,
+                    scrutinee,
+                    arms,
+                    available,
+                    |body, scope| {
+                        expression_comparisons_admissible(
+                            core,
+                            pure_functions,
+                            body,
+                            scope,
+                            depth + 1,
+                        )
+                    },
+                )
+        }
+        CoreExpr::Variant { payload, .. } => payload.as_deref().is_none_or(child),
         CoreExpr::Local { .. } | CoreExpr::Const(_) => true,
         CoreExpr::Record { fields } => fields.values().all(child),
         CoreExpr::List { values } | CoreExpr::Call { args: values, .. } => values.iter().all(child),
@@ -2779,6 +2924,8 @@ fn predicate_operands_are_comparable(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ComparisonOperandShape {
+    // Result inference only; an empty literal has no element type yet.
+    EmptyList,
     Coordinate(String),
     Record(BTreeMap<String, ComparisonOperandShape>),
     List {
@@ -2794,7 +2941,15 @@ impl ComparisonOperandShape {
             Self::List { item, max } => {
                 Some(format!("List<{},max={max}>", item.type_coordinate()?))
             }
-            Self::Record(_) => None,
+            Self::Record(fields) => {
+                crate::core_ir::render_self_describing_core_type(&CoreType::Record {
+                    fields: fields
+                        .iter()
+                        .map(|(name, value)| Some((name.clone(), value.type_coordinate()?)))
+                        .collect::<Option<BTreeMap<_, _>>>()?,
+                })
+            }
+            Self::EmptyList => None,
         }
     }
 }
@@ -2806,7 +2961,7 @@ fn field_expression_shape(
     field: &str,
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<ComparisonOperandShape> {
-    let base_shape = comparison_operand_shape(core, pure_functions, base, available)?;
+    let base_shape = variant_matches::result_body_shape(core, pure_functions, base, available)?;
     comparison_record_fields(core, &base_shape)?.remove(field)
 }
 
@@ -2817,6 +2972,11 @@ fn comparison_operand_shape(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<ComparisonOperandShape> {
     match expression {
+        CoreExpr::Fold { .. } => state_fold::state(core, pure_functions, expression, available)
+            .map(|ty| ComparisonOperandShape::Coordinate(ty.to_owned())),
+        CoreExpr::Match { scrutinee, arms } => {
+            variant_matches::shape(core, pure_functions, scrutinee, arms, available)
+        }
         // Lists are not comparison operands in v1.
         CoreExpr::List { .. } => None,
         CoreExpr::Record { fields } => fields
@@ -2857,6 +3017,26 @@ fn join_conditional_shapes(
 ) -> Option<ComparisonOperandShape> {
     if depth > MAX_CORE_TYPE_DEPTH {
         return None;
+    }
+    // Preserve declared list item coordinates before structural joins erase
+    // record names. This also applies to fields of anonymous record results.
+    if let (ComparisonOperandShape::Coordinate(left), ComparisonOperandShape::Coordinate(right)) =
+        (left, right)
+    {
+        if matches!(resolved_core_type(core, left), Some(CoreType::List { .. })) {
+            if let Some(coordinate) = join_conditional_coordinates(core, left, right) {
+                return Some(ComparisonOperandShape::Coordinate(coordinate));
+            }
+        }
+    }
+    match (left, right) {
+        (ComparisonOperandShape::EmptyList, ComparisonOperandShape::EmptyList) => {
+            return Some(ComparisonOperandShape::EmptyList)
+        }
+        (ComparisonOperandShape::EmptyList, other) | (other, ComparisonOperandShape::EmptyList) => {
+            return comparison_list_shape(core, other).map(|_| other.clone());
+        }
+        _ => {}
     }
     match (
         comparison_record_fields(core, left),
@@ -2967,7 +3147,7 @@ fn comparison_record_fields(
 ) -> Option<BTreeMap<String, ComparisonOperandShape>> {
     match shape {
         ComparisonOperandShape::Record(fields) => Some(fields.clone()),
-        ComparisonOperandShape::List { .. } => None,
+        ComparisonOperandShape::List { .. } | ComparisonOperandShape::EmptyList => None,
         ComparisonOperandShape::Coordinate(coordinate) => {
             let CoreType::Record { fields } = resolved_core_type(core, coordinate)? else {
                 return None;
@@ -2990,7 +3170,7 @@ fn comparison_list_shape(
 ) -> Option<(ComparisonOperandShape, u64)> {
     match shape {
         ComparisonOperandShape::List { item, max } => Some((item.as_ref().clone(), *max)),
-        ComparisonOperandShape::Record(_) => None,
+        ComparisonOperandShape::Record(_) | ComparisonOperandShape::EmptyList => None,
         ComparisonOperandShape::Coordinate(coordinate) => {
             let CoreType::List { item, max } = resolved_core_type(core, coordinate)? else {
                 return None;
@@ -3453,6 +3633,20 @@ fn predicate_references_step_output(
 
 fn expr_references_step_output(expr: &CoreExpr, step_outputs: &BTreeSet<String>) -> bool {
     match expr {
+        CoreExpr::Fold { initial, .. } => expr_references_step_output(initial, step_outputs),
+        CoreExpr::Match { scrutinee, arms } => {
+            expr_references_step_output(scrutinee, step_outputs)
+                || arms.iter().any(|arm| {
+                    let mut outer = step_outputs.clone();
+                    if let Some(binder) = &arm.binder {
+                        outer.remove(&binder.id);
+                    }
+                    expr_references_step_output(&arm.body, &outer)
+                })
+        }
+        CoreExpr::Variant { payload, .. } => payload
+            .as_ref()
+            .is_some_and(|value| expr_references_step_output(value, step_outputs)),
         CoreExpr::Local { reference } => step_outputs.contains(&reference.id),
         CoreExpr::Const(_) => false,
         CoreExpr::Record { fields } => fields

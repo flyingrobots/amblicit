@@ -35,6 +35,7 @@ use sha2::{Digest, Sha256};
 
 const COMMON_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-common.cddl");
 const CORE_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-core.cddl");
+const PRE_FOLD_CORE_CDDL: &[u8] = include_bytes!("../../../fixtures/core/pre-fold-core.cddl");
 const LAWPACK_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-lawpack.cddl");
 const LAWPACK_ADAPTER_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-lawpack-adapter.cddl");
 const TARGET_PROFILE_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-target-profile.cddl");
@@ -635,10 +636,10 @@ fn structured_iterable_schema_refuses_empty_aggregates() {
 #[test]
 fn published_target_ir_binding_constructs_the_production_registry_and_validates_v3() {
     const PUBLISHED_CDDL: &[u8] = include_bytes!(
-        "../../../fixtures/provider-contracts/structured-control-v1/edict-provider-contracts.cddl"
+        "../../../fixtures/provider-contracts/bounded-state-fold-v1/edict-provider-contracts.cddl"
     );
     const PUBLISHED_MANIFEST: &[u8] =
-        include_bytes!("../../../fixtures/provider-contracts/structured-control-v1/manifest.json");
+        include_bytes!("../../../fixtures/provider-contracts/bounded-state-fold-v1/manifest.json");
 
     // The in-memory pack is exactly the published publication, so its typed
     // manifest carries the published domain bindings.
@@ -717,6 +718,7 @@ fn published_target_ir_binding_constructs_the_production_registry_and_validates_
 #[test]
 fn source_module_publication_is_reproduced_from_frozen_target_ir_schema() {
     let old = assemble_provider_contract_pack(ProviderContractPackInput {
+        core_cddl: PRE_FOLD_CORE_CDDL,
         target_ir_cddl: PRE_STRUCTURED_TARGET_IR_CDDL,
         ..input(canonical_target_profile_contract_resources())
     })
@@ -1781,7 +1783,7 @@ fn source_closure_contract_has_its_own_domain_and_closed_typed_wire() {
     pack.validate_domain(SOURCE_CLOSURE_DIGEST_DOMAIN, &value)
         .expect("source closure publication has a distinct typed domain");
     let old = assemble_provider_contract_pack(input_with(
-        CORE_CDDL,
+        PRE_FOLD_CORE_CDDL,
         PRE_STRUCTURED_TARGET_IR_CDDL,
         canonical_target_profile_contract_resources(),
     ))
@@ -1883,4 +1885,53 @@ fn source_closure_domain_enforces_typed_digest_and_module_count_boundaries() {
             Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
         );
     }
+}
+
+#[test]
+fn fold_contract_requires_new_schema_selection() {
+    let old = assemble_provider_contract_pack(ProviderContractPackInput {
+        core_cddl: PRE_FOLD_CORE_CDDL,
+        ..input(canonical_target_profile_contract_resources())
+    })
+    .expect("frozen structured-control pack");
+    assert_eq!(old.cddl_bytes(), include_bytes!("../../../fixtures/provider-contracts/structured-control-v1/edict-provider-contracts.cddl"));
+    assert_eq!(
+        old.manifest_bytes(),
+        include_bytes!("../../../fixtures/provider-contracts/structured-control-v1/manifest.json")
+    );
+    let source = "package iteration.state@1; type State = { done: Bool }; fn step(s: Bool) -> Bool { return !s; } fn run(s: Bool) -> Bool { return fold(s, step, 3u64); } intent runIntent(input: State) returns State profile p.read basis none budget <= p.small { let result = run(input.done); return { done: result }; }";
+    let context = CompilerContext::new()
+        .with_operation_profile("p.read", "continuum.profile.read-only/v1")
+        .with_budget(
+            "p.small",
+            CoreBudget {
+                max_steps: 65_536,
+                max_allocated_bytes: 1_048_576,
+                max_output_bytes: 65_536,
+            },
+        );
+    let baseline = source.replace("fold(s, step, 3u64)", "step(s)");
+    let baseline_core = compile_to_core(&parse_module(&baseline).unwrap(), &context).unwrap();
+    let baseline_value =
+        decode_canonical_cbor(&encode_core_module(&baseline_core).unwrap()).unwrap();
+    old.validate_domain(CORE_MODULE_DIGEST_DOMAIN, &baseline_value)
+        .expect("old publication accepts the non-fold control");
+    let core = compile_to_core(&parse_module(source).unwrap(), &context).unwrap();
+    let value = decode_canonical_cbor(&encode_core_module(&core).unwrap()).unwrap();
+    assert_eq!(
+        old.validate_domain(CORE_MODULE_DIGEST_DOMAIN, &value),
+        Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+    );
+    let current = assemble(canonical_target_profile_contract_resources());
+    assert_ne!(old.raw_sha256(), current.raw_sha256());
+    current
+        .validate_domain(CORE_MODULE_DIGEST_DOMAIN, &value)
+        .expect("new schema accepts fold Core");
+    let mut missing_step = value;
+    let run = map_value_mut(map_value_mut(&mut missing_step, "functions"), "run");
+    remove_map_field(map_value_mut(map_value_mut(run, "body"), "result"), "step");
+    assert_eq!(
+        current.validate_domain(CORE_MODULE_DIGEST_DOMAIN, &missing_step),
+        Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+    );
 }

@@ -20,16 +20,22 @@ use crate::core_ir::{
     CoreTypeReference, CoreValue, InputConstraint, InputConstraintSource, LocalRef, ResourceRef,
     CORE_API_VERSION, CORE_APPLICATION_INPUT_LOCAL_ID, MAX_CORE_TYPE_DEPTH,
 };
+mod byte_at;
 mod byte_concat;
 mod byte_count;
 mod byte_length;
 mod byte_slice;
 mod byte_utf8;
 mod list_literal;
+mod list_operations;
 mod return_budget;
 mod signature_diagnostic;
+mod source_fold;
 mod source_functions;
+mod source_matches;
 mod source_types;
+mod source_variants;
+mod source_work;
 mod target_pure_intrinsic;
 pub use signature_diagnostic::{
     EffectSignatureMismatch, SignatureMismatchPosition, SignaturePathSegment,
@@ -362,6 +368,8 @@ pub struct ResolvedIntent {
 /// Module after type checking and Core-ready local normalization.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypedModule {
+    /// Explicit capabilities discovered during source checking.
+    pub required_core_capabilities: Vec<String>,
     pub coordinate: String,
     pub imports: Vec<CoreImport>,
     pub types: BTreeMap<String, CoreType>,
@@ -524,7 +532,17 @@ pub fn lower_core(typed: &TypedModule) -> Result<CoreModule, Vec<CompilerError>>
         types: typed.types.clone(),
         functions: typed.functions.clone(),
         intents,
-        required_core_capabilities: Vec::new(),
+        required_core_capabilities: if typed
+            .types
+            .values()
+            .any(|ty| matches!(ty, CoreType::Variant { .. }))
+        {
+            let mut capabilities = typed.required_core_capabilities.clone();
+            capabilities.push("core.variant/v1".to_owned());
+            capabilities
+        } else {
+            typed.required_core_capabilities.clone()
+        },
     };
     match validate_core_module_type_integrity(&core) {
         Ok(_) => Ok(core),
@@ -711,6 +729,7 @@ enum TypeKind {
         max: u64,
     },
     Record(BTreeMap<String, TypeShape>),
+    Variant(BTreeMap<String, Option<TypeShape>>),
     ExternalActionRequest {
         settlement: Box<TypeShape>,
     },
@@ -746,6 +765,17 @@ impl TypeShape {
                 fields: fields
                     .iter()
                     .map(|(name, shape)| (name.clone(), shape.value_type_coord()))
+                    .collect(),
+            },
+            TypeKind::Variant(cases) => CoreType::Variant {
+                cases: cases
+                    .iter()
+                    .map(|(name, payload)| {
+                        (
+                            name.clone(),
+                            payload.as_ref().map(TypeShape::value_type_coord),
+                        )
+                    })
                     .collect(),
             },
             TypeKind::ExternalActionRequest { settlement } => CoreType::ExternalActionRequest {
@@ -1003,6 +1033,10 @@ struct EffectBindingProfile {
 
 #[derive(Debug, Clone)]
 struct TypeChecker<'a> {
+    core_capabilities: BTreeSet<String>,
+    list_work_pass: list_operations::WorkPass,
+    match_depth: usize,
+    match_in_intent: bool,
     resolved: &'a ResolvedModule,
     function_signatures: BTreeMap<String, source_functions::Signature>,
     function_costs: BTreeMap<String, HelperCost>,
@@ -1010,6 +1044,12 @@ struct TypeChecker<'a> {
     target_pure_intrinsic_costs: BTreeMap<usize, HelperCost>,
     source_predicate_costs: BTreeMap<usize, HelperCost>,
     source_value_bounds: BTreeMap<usize, (u64, u64)>,
+    source_loop_frames: BTreeMap<usize, HelperCost>,
+    source_block_frames: BTreeMap<usize, HelperCost>,
+    source_match_binder_frames: BTreeMap<usize, HelperCost>,
+    source_reason_shorthand_costs: BTreeMap<usize, HelperCost>,
+    source_obstruction_frames: BTreeMap<String, HelperCost>,
+    source_cost_frame: HelperCost,
     /// Byte maximum of every operand coordinate a `count` call resolved, so the
     /// addition proof can bound named coordinates without a type table.
     count_operand_maxima: BTreeMap<String, u64>,
@@ -1031,12 +1071,22 @@ impl<'a> TypeChecker<'a> {
     fn new(resolved: &'a ResolvedModule) -> Self {
         Self {
             resolved,
+            core_capabilities: BTreeSet::new(),
+            list_work_pass: list_operations::WorkPass::Discover,
+            match_depth: 0,
+            match_in_intent: false,
             function_signatures: BTreeMap::new(),
             function_costs: BTreeMap::new(),
             source_expression_costs: BTreeMap::new(),
             target_pure_intrinsic_costs: BTreeMap::new(),
             source_predicate_costs: BTreeMap::new(),
             source_value_bounds: BTreeMap::new(),
+            source_loop_frames: BTreeMap::new(),
+            source_block_frames: BTreeMap::new(),
+            source_match_binder_frames: BTreeMap::new(),
+            source_reason_shorthand_costs: BTreeMap::new(),
+            source_obstruction_frames: BTreeMap::new(),
+            source_cost_frame: HelperCost::default(),
             count_operand_maxima: BTreeMap::new(),
             local_bounds: BTreeMap::new(),
             input_proof_constraints: Vec::new(),
@@ -1063,7 +1113,15 @@ impl<'a> TypeChecker<'a> {
                 intents.push(typed);
             }
         }
+        // Capability discovery precedes full-module accounting. Recheck once so
+        // earlier intents/operands are also charged when a later call uses lists.
+        if !self.meters_list_work() && self.core_capabilities.contains("core.list/v1") {
+            let mut metered = Self::new(self.resolved);
+            metered.list_work_pass = list_operations::WorkPass::Meter;
+            return metered.check();
+        }
         let module = TypedModule {
+            required_core_capabilities: self.core_capabilities.into_iter().collect(),
             coordinate: self.resolved.coordinate.clone(),
             imports: self.resolved.imports.clone(),
             types: self.core_types,
@@ -1085,15 +1143,7 @@ impl<'a> TypeChecker<'a> {
         match &decl.body {
             TypeExpr::Record(fields) => self.record_shape(&coord, fields, decl.span),
             TypeExpr::Ref(ty) => self.type_ref_shape(ty, decl.span),
-            TypeExpr::Variant(_) => {
-                self.errors.push(error(
-                    CompilerStage::TypeCheck,
-                    CompilerErrorKind::UnsupportedSourceShape,
-                    "variant type declarations are outside the current lowerable subset",
-                    decl.span,
-                ));
-                None
-            }
+            TypeExpr::Variant(cases) => self.variant_shape(&coord, cases, decl.span),
         }
     }
 
@@ -1330,6 +1380,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn check_intent(&mut self, intent: &ResolvedIntent) -> Option<TypedIntent> {
+        self.match_in_intent = false;
         self.input_proof_constraints.clear();
         self.local_bounds.clear();
         let recorded_costs = self.source_expression_costs.len();
@@ -1347,7 +1398,11 @@ impl<'a> TypeChecker<'a> {
         let param = &source.params[0];
         let input_shape = self.type_ref_shape(&param.ty, param.span)?;
         let output_shape = self.type_ref_shape(&source.returns, source.span)?;
-        self.check_helper_cost_budget(intent)?;
+        // The complete list-work pass needs the typed loop binders recorded
+        // while checking the body; its budget gate runs immediately afterward.
+        if !self.meters_list_work() {
+            self.check_helper_cost_budget(intent)?;
+        }
         let input_binding = LocalRef {
             id: CORE_APPLICATION_INPUT_LOCAL_ID.to_owned(),
             alpha_name: "$arg0".to_owned(),
@@ -1406,6 +1461,7 @@ impl<'a> TypeChecker<'a> {
         if !self.resolved.source_functions.is_empty()
             || self.source_expression_costs.len() > recorded_costs
             || self.target_pure_intrinsic_costs.len() > recorded_intrinsics
+            || self.meters_list_work()
         {
             self.check_helper_cost_budget(intent)?;
         }
@@ -1449,24 +1505,36 @@ impl<'a> TypeChecker<'a> {
 
     fn check_helper_cost_budget(&mut self, intent: &ResolvedIntent) -> Option<HelperCost> {
         let mut cost = self.helper_cost_for_block(&intent.source.body)?;
-        for clause in &intent.source.clauses {
-            let clause_cost = match clause {
-                IntentClause::Basis(Some(expr)) => self.helper_cost_for_expr(expr)?,
-                IntentClause::Where(predicates) => {
-                    self.helper_cost_for_exprs_at(predicates, intent.source.span)?
+        let clauses =
+            self.with_source_block_frame(&intent.source.body, intent.source.span, |this| {
+                let mut cost = HelperCost::default();
+                for clause in &intent.source.clauses {
+                    let clause_cost = match clause {
+                        IntentClause::Basis(Some(expr)) => this.helper_cost_for_expr(expr)?,
+                        IntentClause::Where(predicates) => {
+                            this.helper_cost_for_exprs_at(predicates, intent.source.span)?
+                        }
+                        IntentClause::Profile(_)
+                        | IntentClause::Implements(_)
+                        | IntentClause::Basis(None)
+                        | IntentClause::Footprint(_)
+                        | IntentClause::Budget(_) => HelperCost::default(),
+                    };
+                    cost = this.checked_helper_cost_add(cost, clause_cost, intent.source.span)?;
                 }
-                IntentClause::Profile(_)
-                | IntentClause::Implements(_)
-                | IntentClause::Basis(None)
-                | IntentClause::Footprint(_)
-                | IntentClause::Budget(_) => HelperCost::default(),
-            };
-            cost = self.checked_helper_cost_add(cost, clause_cost, intent.source.span)?;
-        }
-        if !self.resolved.source_functions.is_empty() {
+                Some(cost)
+            })?;
+        cost = self.checked_helper_cost_add(cost, clauses, intent.source.span)?;
+        if !self.resolved.source_functions.is_empty()
+            || self.match_in_intent
+            || self.meters_list_work()
+        {
             let input =
                 self.type_ref_shape(&intent.source.params[0].ty, intent.source.params[0].span)?;
             let output = self.type_ref_shape(&intent.source.returns, intent.source.span)?;
+            // Classify unsupported intent results before helper accounting's
+            // conservative encoded bound can conflate them with overflow.
+            self.check_return_budget(intent, &output)?;
             let frame = self.source_intent_frame_cost(&input, &output, intent.source.span)?;
             cost = self.checked_helper_cost_add(cost, frame, intent.source.span)?;
         }
@@ -1489,12 +1557,14 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn helper_cost_for_block(&mut self, block: &Block) -> Option<HelperCost> {
-        let mut cost = HelperCost::default();
-        for stmt in &block.stmts {
-            let stmt_cost = self.helper_cost_for_stmt(stmt)?;
-            cost = self.checked_helper_cost_add(cost, stmt_cost, block.span)?;
-        }
-        Some(cost)
+        self.with_source_block_frame(block, block.span, |this| {
+            let mut cost = HelperCost::default();
+            for stmt in &block.stmts {
+                let stmt_cost = this.helper_cost_for_stmt(stmt)?;
+                cost = this.checked_helper_cost_add(cost, stmt_cost, block.span)?;
+            }
+            Some(cost)
+        })
     }
 
     fn helper_cost_for_stmt(&mut self, stmt: &Stmt) -> Option<HelperCost> {
@@ -1529,11 +1599,7 @@ impl<'a> TypeChecker<'a> {
                 predicate,
                 arm,
                 span,
-            } => {
-                let predicate_cost = self.helper_cost_for_expr(predicate)?;
-                let arm_cost = self.helper_cost_for_require_arm(arm)?;
-                self.checked_helper_cost_add(predicate_cost, arm_cost, *span)
-            }
+            } => self.helper_cost_for_requirement(predicate, arm, *span),
             Stmt::Guarantee {
                 predicate,
                 obstruction,
@@ -1560,7 +1626,26 @@ impl<'a> TypeChecker<'a> {
                     Some(ElseClause::If(stmt)) => self.helper_cost_for_stmt(stmt)?,
                     None => HelperCost::default(),
                 };
-                self.checked_helper_cost_add(cond_cost, then_cost.component_max(else_cost), *span)
+                let cost = self.checked_helper_cost_add(
+                    cond_cost,
+                    then_cost.component_max(else_cost),
+                    *span,
+                )?;
+                if self.meters_list_work() {
+                    // The selected statement block returns null; the enclosing
+                    // branch is also a Core node, even when its body is empty.
+                    self.checked_helper_cost_add(
+                        cost,
+                        HelperCost {
+                            steps: 3,
+                            allocated_bytes: 64,
+                            output_bytes: 0,
+                        },
+                        *span,
+                    )
+                } else {
+                    Some(cost)
+                }
             }
             Stmt::For {
                 iter,
@@ -1568,27 +1653,49 @@ impl<'a> TypeChecker<'a> {
                 body,
                 span,
                 ..
-            } => {
-                let iter_cost = self.helper_cost_for_expr(iter)?;
-                let body_cost = self.helper_cost_for_block(body)?;
-                let Some(factor) = self.helper_cost_loop_bound(bound) else {
-                    self.errors.push(error(
-                        CompilerStage::TypeCheck,
-                        CompilerErrorKind::MissingContextFact,
-                        "bounded-loop helper cost requires a resolvable loop bound",
-                        *span,
-                    ));
-                    return None;
-                };
-                let body_cost = self.checked_helper_cost_mul(body_cost, factor, *span)?;
-                let loop_cost = HelperCost {
-                    steps: factor,
-                    ..HelperCost::default()
-                };
-                let body_and_loop = self.checked_helper_cost_add(body_cost, loop_cost, *span)?;
-                self.checked_helper_cost_add(iter_cost, body_and_loop, *span)
-            }
+            } => self.helper_cost_for_loop(iter, bound, body, *span),
         }
+    }
+
+    fn helper_cost_for_loop(
+        &mut self,
+        iter: &Expr,
+        bound: &BoundRef,
+        body: &Block,
+        span: Span,
+    ) -> Option<HelperCost> {
+        let iter_cost = self.helper_cost_for_expr(iter)?;
+        let body_cost = self.helper_cost_for_block(body)?;
+        let Some(factor) = self.helper_cost_loop_bound(bound) else {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::MissingContextFact,
+                "bounded-loop helper cost requires a resolvable loop bound",
+                span,
+            ));
+            return None;
+        };
+        if self.meters_list_work() {
+            let frame = *self.source_loop_frames.get(&expression_identity(iter))?;
+            let iteration = self.checked_helper_cost_add(body_cost, frame, span)?;
+            let repeated = self.checked_helper_cost_mul(iteration, factor, span)?;
+            let total = self.checked_helper_cost_add(iter_cost, repeated, span)?;
+            return self.checked_helper_cost_add(
+                total,
+                HelperCost {
+                    steps: 1,
+                    ..HelperCost::default()
+                },
+                span,
+            );
+        }
+        let body_cost = self.checked_helper_cost_mul(body_cost, factor, span)?;
+        let loop_cost = HelperCost {
+            steps: factor,
+            ..HelperCost::default()
+        };
+        let body_and_loop = self.checked_helper_cost_add(body_cost, loop_cost, span)?;
+        self.checked_helper_cost_add(iter_cost, body_and_loop, span)
     }
 
     fn helper_cost_for_binding(
@@ -1615,6 +1722,14 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn helper_cost_for_expr(&mut self, expr: &Expr) -> Option<HelperCost> {
+        if let Expr::Call {
+            callee, args, span, ..
+        } = expr
+        {
+            if matches!(callee.as_ref(), Expr::Ident { name, .. } if name == "fold") {
+                return self.fold_cost(expr, args, *span);
+            }
+        }
         let children = match expr {
             Expr::Ident { .. }
             | Expr::Int { .. }
@@ -1648,7 +1763,7 @@ impl<'a> TypeChecker<'a> {
                         RecordEntry::Field { value, .. } | RecordEntry::Spread(value) => {
                             self.helper_cost_for_expr(value)?
                         }
-                        RecordEntry::Shorthand { .. } => HelperCost::default(),
+                        RecordEntry::Shorthand { .. } => self.source_reason_shorthand_cost(entry),
                     };
                     cost = self.checked_helper_cost_add(cost, entry_cost, *span)?;
                 }
@@ -1689,14 +1804,7 @@ impl<'a> TypeChecker<'a> {
                 scrutinee,
                 arms,
                 span,
-            } => {
-                let scrutinee_cost = self.helper_cost_for_expr(scrutinee)?;
-                let mut arm_cost = HelperCost::default();
-                for arm in arms {
-                    arm_cost = arm_cost.component_max(self.helper_cost_for_expr(&arm.body)?);
-                }
-                self.checked_helper_cost_add(scrutinee_cost, arm_cost, *span)
-            }
+            } => self.helper_cost_for_match(scrutinee, arms, *span),
         }?;
         let span = expr_span(expr);
         let own = self.recorded_own_cost(expr, span)?;
@@ -1806,13 +1914,15 @@ impl<'a> TypeChecker<'a> {
     ) -> Option<HelperCost> {
         // Keep the original borrowed expressions: their immutable AST identity
         // keys type/cost summaries, while spans remain diagnostics only.
-        let mut statement_cost = HelperCost::default();
-        for statement in &block.stmts {
-            let cost = self.helper_cost_for_stmt(statement)?;
-            statement_cost = self.checked_helper_cost_add(statement_cost, cost, block.span)?;
-        }
-        let value_cost = self.helper_cost_for_expr(&block.value)?;
-        self.checked_helper_cost_add(statement_cost, value_cost, block.span)
+        self.with_source_block_frame(block, block.span, |this| {
+            let mut statement_cost = HelperCost::default();
+            for statement in &block.stmts {
+                let cost = this.helper_cost_for_stmt(statement)?;
+                statement_cost = this.checked_helper_cost_add(statement_cost, cost, block.span)?;
+            }
+            let value_cost = this.helper_cost_for_expr(&block.value)?;
+            this.checked_helper_cost_add(statement_cost, value_cost, block.span)
+        })
     }
 
     fn helper_cost_for_handler(
@@ -1832,6 +1942,25 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    fn helper_cost_for_requirement(
+        &mut self,
+        predicate: &Expr,
+        arm: &RequireElseArm,
+        span: Span,
+    ) -> Option<HelperCost> {
+        let predicate_cost = self.helper_cost_for_expr(predicate)?;
+        let arm_cost = self.helper_cost_for_require_arm(arm)?;
+        let cost = self.checked_helper_cost_add(predicate_cost, arm_cost, span)?;
+        self.checked_helper_cost_add(
+            cost,
+            HelperCost {
+                steps: u64::from(self.meters_list_work()),
+                ..HelperCost::default()
+            },
+            span,
+        )
+    }
+
     fn helper_cost_for_require_arm(&mut self, arm: &RequireElseArm) -> Option<HelperCost> {
         match arm {
             RequireElseArm::Terminal(target) => self.helper_cost_for_target(Some(target)),
@@ -1843,7 +1972,7 @@ impl<'a> TypeChecker<'a> {
                         RecordEntry::Field { value, .. } | RecordEntry::Spread(value) => {
                             self.helper_cost_for_expr(value)?
                         }
-                        RecordEntry::Shorthand { .. } => HelperCost::default(),
+                        RecordEntry::Shorthand { .. } => self.source_reason_shorthand_cost(entry),
                     };
                     payload = self.checked_helper_cost_add(payload, entry_cost, arm.span)?;
                 }
@@ -1921,6 +2050,7 @@ impl<'a> TypeChecker<'a> {
         }
 
         if let Some(result) = state.result {
+            self.record_source_block_frame(&source.body, locals.iter(), env, source.span)?;
             Some(CoreBlock {
                 locals: locals.clone(),
                 nodes: state.nodes,
@@ -2151,6 +2281,8 @@ impl<'a> TypeChecker<'a> {
         state.local_index = nested_state.local_index;
         state.obstruction_index = nested_state.obstruction_index;
         state.accumulated_steps = nested_state.accumulated_steps;
+        let _ =
+            self.record_source_block_frame(block, nested_locals.iter(), &nested_env, block.span);
         CoreBlock {
             locals: nested_locals,
             nodes: nested_state.nodes,
@@ -2207,6 +2339,13 @@ impl<'a> TypeChecker<'a> {
         };
 
         let binder_shape = item.as_ref().clone();
+        if self.meters_list_work() {
+            let Some(frame) = self.source_loop_frame_cost(&binder_shape, span) else {
+                return;
+            };
+            self.source_loop_frames
+                .insert(expression_identity(iter), frame);
+        }
         let binder = next_local(&mut state.local_index, binder_shape.coord.clone());
         let mut nested_env = env.clone();
         nested_env.insert(var.to_owned(), (binder.clone(), binder_shape));
@@ -2229,6 +2368,12 @@ impl<'a> TypeChecker<'a> {
         state.local_index = nested_state.local_index;
         state.obstruction_index = nested_state.obstruction_index;
         state.accumulated_steps = nested_state.accumulated_steps;
+        if self
+            .record_source_block_frame(body, nested_locals.iter(), &nested_env, span)
+            .is_none()
+        {
+            return;
+        }
         state.nodes.push(CoreNode::For {
             binder,
             iter: iter_value.expr,
@@ -2724,7 +2869,7 @@ impl<'a> TypeChecker<'a> {
                         accepted = false;
                         // A repeated key does not resolve its shorthand name.
                     }
-                    let Some((local, _)) = env.get(name) else {
+                    let Some((local, shape)) = env.get(name) else {
                         if !env.poisoned.contains(name) {
                             self.errors.push(error(
                                 CompilerStage::TypeCheck,
@@ -2736,6 +2881,7 @@ impl<'a> TypeChecker<'a> {
                         accepted = false;
                         continue;
                     };
+                    self.record_source_reason_shorthand(entry, shape, *span)?;
                     fields.insert(
                         name.clone(),
                         CoreExpr::Local {
@@ -3279,6 +3425,7 @@ impl<'a> TypeChecker<'a> {
         if self.errors.len() != error_count {
             return None;
         }
+        self.record_source_block_frame(block, nested_locals.iter(), &nested_env, block.span)?;
         Some((
             CoreBlock {
                 locals: nested_locals,
@@ -3347,6 +3494,12 @@ impl<'a> TypeChecker<'a> {
         ) else {
             return;
         };
+        if self
+            .record_source_effect_frame(stmt.value, &binding_shape, &obstruction_map, stmt.span)
+            .is_none()
+        {
+            return;
+        }
         state.nodes.push(CoreNode::Effect {
             binding: local.clone(),
             effect,
@@ -3657,10 +3810,19 @@ impl<'a> TypeChecker<'a> {
                 ));
                 return None;
             };
+            self.record_source_obstruction_frame(&payload_shape, arm.span)?;
             payload_shape.value_type_coord()
         } else {
             // Legacy facts carry no failure-payload authority and this source
             // subset cannot read the binder. Preserve that erasure as Unit.
+            self.source_obstruction_frames.insert(
+                "Unit".to_owned(),
+                HelperCost {
+                    steps: 2,
+                    allocated_bytes: 64,
+                    output_bytes: 0,
+                },
+            );
             "Unit".to_owned()
         };
         let binder = LocalRef {
@@ -3950,7 +4112,13 @@ impl<'a> TypeChecker<'a> {
                 ..
             } => {
                 let left = self.check_predicate(lhs, env);
+                let prefix = self.input_proof_constraints.len();
+                if let Some(left) = &left {
+                    self.input_proof_constraints
+                        .push(CorePredicate::Not(Box::new(left.clone())));
+                }
                 let right = self.check_predicate(rhs, env);
+                self.input_proof_constraints.truncate(prefix);
                 Some(CorePredicate::Any(vec![left?, right?]))
             }
             Expr::Binary { op, lhs, rhs, .. } => {
@@ -3966,7 +4134,11 @@ impl<'a> TypeChecker<'a> {
                     None
                 }
             }
-            Expr::Ident { .. } | Expr::Field { .. } | Expr::Call { .. } | Expr::If { .. } => {
+            Expr::Ident { .. }
+            | Expr::Field { .. }
+            | Expr::Call { .. }
+            | Expr::If { .. }
+            | Expr::Match { .. } => {
                 let expected = TypeShape::canonical_structural(TypeKind::Bool)?;
                 // Check the operand on its own terms before applying the
                 // predicate requirement; nested typing failures stay distinct.
@@ -4000,7 +4172,7 @@ impl<'a> TypeChecker<'a> {
                 None
             }
         }?;
-        if !self.resolved.source_functions.is_empty() {
+        if self.records_source_cost(expr) {
             self.record_source_predicate_cost(expr)?;
         }
         Some(checked)
@@ -4181,29 +4353,25 @@ impl<'a> TypeChecker<'a> {
             } => self.check_unsigned_subtraction(lhs, rhs, env, expected, *span),
             Expr::Record { entries, span } => self.check_record(entries, env, expected, *span),
             Expr::List { items, span } => self.check_list_literal(items, env, expected, *span),
-            Expr::Call {
-                callee,
-                type_args,
-                args,
+            Expr::Call { .. } => self.check_call_expression(expr, env, expectation),
+            Expr::Match {
+                scrutinee,
+                arms,
                 span,
-            } => match callee.as_ref() {
-                Expr::Ident { name, .. } if name == "len" => {
-                    self.check_byte_length(type_args, args, env, *span)
-                }
-                Expr::Ident { name, .. } if name == "isUtf8" => {
-                    self.check_byte_utf8(type_args, args, env, *span, expr)
-                }
-                Expr::Ident { name, .. } if name == "count" => {
-                    self.check_byte_count(type_args, args, env, *span, expr)
-                }
-                Expr::Ident { name, .. } if name == "slice" => {
-                    self.check_byte_slice(type_args, args, env, *span)
-                }
-                _ if self.target_pure_intrinsic(callee).is_some() => {
-                    self.check_target_pure_intrinsic(expr, env, expectation)
-                }
-                _ => self.check_pure_call(callee, type_args, args, env, expectation, *span),
-            },
+            } => self.check_variant_match(scrutinee, arms, env, expected, *span),
+            Expr::VariantLit {
+                ty_path,
+                case,
+                payload,
+                span,
+            } => self.check_variant_constructor(
+                ty_path,
+                case,
+                payload.as_deref(),
+                env,
+                expected,
+                *span,
+            ),
             Expr::If {
                 cond,
                 then,
@@ -4223,11 +4391,7 @@ impl<'a> TypeChecker<'a> {
                 ..
             }
             | Expr::Unary { op: UnOp::Not, .. } => self.check_predicate_value(expr, env),
-            Expr::Binary { .. }
-            | Expr::Digest { .. }
-            | Expr::IfYield { .. }
-            | Expr::VariantLit { .. }
-            | Expr::Match { .. } => {
+            Expr::Binary { .. } | Expr::Digest { .. } | Expr::IfYield { .. } => {
                 self.errors.push(error(
                     CompilerStage::TypeCheck,
                     CompilerErrorKind::UnsupportedSourceShape,
@@ -4237,12 +4401,72 @@ impl<'a> TypeChecker<'a> {
                 None
             }
         };
-        if !self.resolved.source_functions.is_empty() {
+        if self.records_source_cost(expr) {
             if let Some(value) = &checked {
                 self.record_source_expression_cost(expr, &value.ty)?;
             }
         }
         checked
+    }
+
+    fn meters_list_work(&self) -> bool {
+        self.list_work_pass == list_operations::WorkPass::Meter
+    }
+
+    fn records_source_cost(&self, expr: &Expr) -> bool {
+        self.meters_list_work()
+            || !self.resolved.source_functions.is_empty()
+            || self.match_depth > 0
+            || matches!(expr, Expr::Match { .. })
+    }
+
+    fn check_call_expression(
+        &mut self,
+        expr: &Expr,
+        env: &LocalEnvironment,
+        expectation: EffectOutputExpectation<'_>,
+    ) -> Option<TypedValue> {
+        let Expr::Call {
+            callee,
+            type_args,
+            args,
+            span,
+        } = expr
+        else {
+            return None;
+        };
+        match callee.as_ref() {
+            Expr::Ident { name, .. }
+                if matches!(
+                    name.as_str(),
+                    "listLen" | "listAt" | "listAppend" | "listConcat"
+                ) =>
+            {
+                self.check_list_operation(name, type_args, args, env, *span)
+            }
+            Expr::Ident { name, .. } if name == "fold" => {
+                self.check_fold(type_args, args, env, *span)
+            }
+            Expr::Ident { name, .. } if name == "len" => {
+                self.check_byte_length(type_args, args, env, *span)
+            }
+            Expr::Ident { name, .. } if name == "isUtf8" => {
+                self.check_byte_utf8(type_args, args, env, *span, expr)
+            }
+            Expr::Ident { name, .. } if name == "at" => {
+                self.check_byte_at(type_args, args, env, *span)
+            }
+            Expr::Ident { name, .. } if name == "count" => {
+                self.check_byte_count(type_args, args, env, *span, expr)
+            }
+            Expr::Ident { name, .. } if name == "slice" => {
+                self.check_byte_slice(type_args, args, env, *span)
+            }
+            _ if self.target_pure_intrinsic(callee).is_some() => {
+                self.check_target_pure_intrinsic(expr, env, expectation)
+            }
+            _ => self.check_pure_call(callee, type_args, args, env, expectation, *span),
+        }
     }
 
     fn check_predicate_value(&mut self, expr: &Expr, env: &LocalEnvironment) -> Option<TypedValue> {
@@ -4973,24 +5197,34 @@ impl<'a> TypeChecker<'a> {
         };
         let (then_value, else_value) = match expected {
             None if is_bare_integer_literal(then) => {
-                let else_value =
-                    self.check_expr_with_effect_expectation(els, env, else_expectation);
+                let else_value = self.check_conditional_arm(
+                    els,
+                    env,
+                    else_expectation,
+                    predicate.as_ref(),
+                    false,
+                );
                 let then_value = else_value
                     .as_ref()
                     .and_then(|value| self.check_expr_with_expected(then, env, Some(&value.ty)));
                 (then_value, else_value)
             }
             None if is_bare_integer_literal(els) => {
-                let then_value =
-                    self.check_expr_with_effect_expectation(then, env, then_expectation);
+                let then_value = self.check_conditional_arm(
+                    then,
+                    env,
+                    then_expectation,
+                    predicate.as_ref(),
+                    true,
+                );
                 let else_value = then_value
                     .as_ref()
                     .and_then(|value| self.check_expr_with_expected(els, env, Some(&value.ty)));
                 (then_value, else_value)
             }
             Some(_) | None => (
-                self.check_expr_with_effect_expectation(then, env, then_expectation),
-                self.check_expr_with_effect_expectation(els, env, else_expectation),
+                self.check_conditional_arm(then, env, then_expectation, predicate.as_ref(), true),
+                self.check_conditional_arm(els, env, else_expectation, predicate.as_ref(), false),
             ),
         };
 
@@ -5033,6 +5267,27 @@ impl<'a> TypeChecker<'a> {
             },
             ty,
         })
+    }
+
+    fn check_conditional_arm(
+        &mut self,
+        expr: &Expr,
+        env: &LocalEnvironment,
+        expectation: EffectOutputExpectation<'_>,
+        predicate: Option<&CorePredicate>,
+        truth: bool,
+    ) -> Option<TypedValue> {
+        let before = self.input_proof_constraints.len();
+        if let Some(predicate) = predicate {
+            self.input_proof_constraints.push(if truth {
+                predicate.clone()
+            } else {
+                CorePredicate::Not(Box::new(predicate.clone()))
+            });
+        }
+        let checked = self.check_expr_with_effect_expectation(expr, env, expectation);
+        self.input_proof_constraints.truncate(before);
+        checked
     }
 
     fn check_expr_with_intrinsic_effect_context(
@@ -5810,6 +6065,11 @@ fn collect_imported_type_shape_closure(
                 collect_imported_type_shape_closure(field, type_shapes, closure);
             }
         }
+        TypeKind::Variant(cases) => {
+            for payload in cases.values().flatten() {
+                collect_imported_type_shape_closure(payload, type_shapes, closure);
+            }
+        }
         TypeKind::Nominal { representation, .. }
         | TypeKind::List {
             item: representation,
@@ -5895,6 +6155,7 @@ fn builtin_integer_width(name: &str) -> Option<&'static str> {
     match name {
         "I32" => Some("I32"),
         "I64" => Some("I64"),
+        "U8" => Some("U8"),
         "U32" => Some("U32"),
         "U64" => Some("U64"),
         _ => None,
@@ -5905,6 +6166,7 @@ const fn integer_suffix_width(suffix: IntSuffix) -> &'static str {
     match suffix {
         IntSuffix::I32 => "I32",
         IntSuffix::I64 => "I64",
+        IntSuffix::U8 => "U8",
         IntSuffix::U32 => "U32",
         IntSuffix::U64 => "U64",
     }

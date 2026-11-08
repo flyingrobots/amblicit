@@ -3833,3 +3833,43 @@ fn linked_modules_prepare_each_authenticated_lawpack_alias() {
         vec![LawpackAdapterFailureKind::SourceImportMismatch]
     );
 }
+
+#[test]
+fn fold_work_uses_authenticated_imported_helper_budget() {
+    let (original, facts) = exact_u64_pure_helper_application_with_source(
+        "examples.fold_cost@1",
+        "fn step(s: U64) -> U64 { return hello.identityU64(s); } fn run(s: U64) -> U64 { return fold(s, step, 3u64); }",
+        "run(input.value)",
+    );
+    // The validated identityBudget is 16 steps / 512 bytes. A step adds
+    // entry + parameter/result checks (3), argument and result evaluation
+    // (4 / 128), then iteration overhead (1): 24 steps / 640 bytes.
+    // The surrounding one-field operation costs 34 steps / 1108 bytes.
+    for (steps, bytes, accepted) in [(106, 3028, true), (105, 3028, false), (106, 3027, false)] {
+        let mut core = original.clone();
+        let budget = &mut core
+            .intents
+            .get_mut("apply")
+            .unwrap()
+            .core_evaluation_budget;
+        budget.max_steps = steps;
+        budget.max_allocated_bytes = bytes;
+        let report = lower_to_target_ir(&core, &facts);
+        if accepted {
+            assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+        } else {
+            assert_eq!(
+                report.status,
+                TargetLoweringStatus::Unsupported,
+                "{report:?}"
+            );
+            assert_eq!(report.failures.len(), 1);
+            assert_eq!(
+                report.failures[0].kind,
+                amblicit_syntax::TargetLoweringFailureKind::InvalidCoreIdentity
+            );
+            assert_eq!(report.failures[0].intent.as_deref(), Some("apply"));
+            assert!(report.artifact.is_none());
+        }
+    }
+}

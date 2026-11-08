@@ -85,3 +85,14 @@ binding belong to Echo.
 - General expression evaluation.
 - External effects or model execution.
 - Application-specific callbacks.
+
+## Variant output boundary
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| RESULT-PROJ-REQ-013 | implemented | Variant-bearing outputs cannot mint or verify result-projection authority until a canonical application-result encoding contract exists. Native Target artifacts and internal variant bindings remain separate. | issue #261 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| RESULT-PROJ-TP-028 | implemented | Unsupported variant output | RESULT-PROJ-REQ-013 | Variant-typed source leaves with direct, record and list output types refuse OutputShapeMismatch in emission and independent verification of caller-encoded candidates; scalar-output controls retain projections. | variant_valued_result_projection_emission_refuses_direct_and_nested_values, variant_valued_result_projection_verifier_refuses_caller_encoded_candidates | crates/amblicit-syntax/tests/variant_constructors.rs | Native Target lowering remains Lowered with a per-intent projection failure. |
+| RESULT-PROJ-TP-029 | planned | Unsupported match leaf | RESULT-PROJ-REQ-007 | Direct match leaves refuse UnsupportedExpression while an equivalent supported scalar local retains ordinary projection authority. | - | - | Dedicated match witness pending; existing call-expression rejection does not establish this case. |

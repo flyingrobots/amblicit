@@ -1,5 +1,15 @@
 # Core IR Test Plan
 
+## Bounded list operation identity (#289)
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| COREIR-REQ-034 | implemented | List operations use typed generic Core calls and require `core.list/v1`; canonical bytes retain operation, operand coordinates, operands and capability. Missing capability refuses before encoding. | issue #289 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COREIR-TP-045 | implemented | List identity | COREIR-REQ-034 | Repeat compilation preserves bytes; operand/operation changes alter identity; stripping the capability refuses structured Core integrity. | bounded_list_capability_is_required_for_canonical_encoding, bounded_list_identity_changes_with_operands_and_unknown_capabilities_refuse, bounded_lists_accumulate_through_invariant_fold_state | crates/amblicit-syntax/tests/bounded_list_operations.rs | Unknown capabilities remain explicit target refusals. |
+
 Status: current verification design for the Core semantic model, CDDL schema,
 canonical encoder, and reviewed Core golden artifacts.
 
@@ -168,3 +178,35 @@ Out of scope:
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | COREIR-TP-039 | implemented | Function identity | COREIR-REQ-030 | Alpha-renamed parameters/locals encode identically; body changes and added unused definitions move identity; function-free Core has no new map. | source_function_local_alpha_renaming_preserves_semantic_identity, source_function_body_and_unused_definition_change_identity, function_free_core_omits_the_new_table | crates/amblicit-syntax/tests/source_functions.rs | Malformed public Core cases also run in this suite; existing golden fixtures remain unchanged. |
 | COREIR-TP-040 | implemented | Public function graph integrity | COREIR-REQ-030 | Forged captures, forward local references and recursive functions refuse canonical encoding or Target admission. | public_core_function_scope_and_cycle_checks_do_not_trust_the_compiler | crates/amblicit-syntax/tests/source_functions.rs | Tests mutate compiler-produced Core. |
+
+
+## Variant expressions
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| COREIR-REQ-031 | implemented | Variant expressions carry an exact type reference, case and optional payload under the existing Core schema. Integrity checks reject unknown/nonvariant types, invalid cases and wrong payload presence; all expression walkers descend into payloads under existing scope/depth budgets. | docs/abi/edict-core.cddl |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COREIR-TP-041 | implemented | Variant expressions | COREIR-REQ-031 | Invalid constructor metadata cannot canonicalize; Target independently checks payload types; Core integrity checks payload scope; nested payloads do not hide helper calls or graph-depth violations. | raw_constructor_metadata_is_checked_before_canonical_encoding, variant_payloads_cannot_hide_capture_cycle_or_graph_depth, target_rechecks_constructor_payload_types_and_exact_union_identity, target_rejects_union_identity_substitution_through_helper_calls, target_totality_checks_reach_guarded_lookups_in_variant_payloads | crates/amblicit-syntax/tests/variant_constructors.rs | Core reference integrity and Target expression typing remain distinct judgments. |
+
+## Match expression identity and scope
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| COREIR-REQ-032 | implemented | Match expressions retain the scrutinee and lexical arm binders in canonical identity; integrity and function graph validation visit every arm. Structural integrity remains distinct from Target match typing. | docs/abi/edict-core.cddl |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COREIR-TP-042 | implemented | Match identity | COREIR-REQ-032 | Canonical arms retain their binder references, renamed source binders preserve bytes and recursive calls hidden in arms refuse. | variant_matches_preserve_scrutinee_and_arm_local_payloads, variant_matches_are_alpha_stable, match_arms_cannot_hide_recursive_calls | crates/amblicit-syntax/tests/variant_matches.rs | Does not prove every malformed caller-owned Core boundary. |
+| COREIR-TP-043 | planned | Match integrity negatives | COREIR-REQ-032 | Empty and duplicate arms, malformed case names, invalid binder types and empty identities fail at the Core integrity boundary; valid structural mutations reach Target typing. | - | - | Separate Core rejection from Target-only rejection. |
+
+## Bounded state fold
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| COREIR-REQ-033 | implemented | Fold canonical identity retains initial, helper, bound and state type; capability/signature/cycle validation is independent of source compilation. | docs/abi/edict-core.cddl |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COREIR-TP-044 | implemented | Fold identity and authority | COREIR-REQ-033 | All fold fields survive encoding; missing capability or invalid helper/state metadata fails InvalidDefinition at the fold result; a zero bound does not hide recursion. | bounded_fold_preserves_initial_state_static_step_and_iteration_bound, fold_core_requires_capability_and_declared_step_state, zero_bound_does_not_hide_recursive_step_authority | crates/amblicit-syntax/tests/bounded_state_fold.rs | Initial value typing is checked by Target separately. |

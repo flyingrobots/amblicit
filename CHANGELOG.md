@@ -16,6 +16,119 @@ versions still track specification maturity rather than a released product.
   request (#277). Callers that match on `ParseErrorKind` exhaustively must add
   the new variant.
 
+- Add `listLen`, proof-checked `listAt`, capacity-preserving `listAppend` and
+  bounded `listConcat` for immutable authored worklists under `core.list/v1`.
+  Source and native Target independently validate types, guards and checked work
+  budgets, including invariant fold accumulation and nested/nominal elements.
+  List-capable modules account for record-shorthand reads and all intents.
+  Byte primitives and result-projection limits retain their existing meanings;
+  executable provider/runtime support remains Echo #946.
+
+- Admit explicitly required target pure intrinsics through public application
+  builds. Catalog locations stay inside the provider package; the selected,
+  adapter-bound profile supplies their pin. Invalid contracts fail before
+  publication, and validated facts reach both Core compilation and Target IR
+  lowering. Provider/runtime execution remains a separate requirement.
+
+- Fix native Target fold cost checking after an effect. Nullary obstruction
+  annotations retain their existing authority semantics and receive bounded
+  label/binder charges instead of being mistaken for pure helper calls. Ordinary
+  expressions and malformed annotations still require valid authority.
+
+- Add first-order bounded state iteration `fold(initial, step, N)` through source
+  closures, explicit Core and native Target validation. Provider/runtime execution
+  remains downstream. The reserved name, new Core variant and new TypedModule
+  capability field require consumers to update; the fold-capable schema is a
+  separate digest-selected publication.
+
+- Preserve folds through authenticated source-closure compilation. Resolve local
+  and imported source step helpers with hygienic function identity while retaining
+  callback and dynamic-bound refusals.
+
+- Derive sized target-intrinsic operand bounds from the independently validated
+  fold state, so a bounded byte accumulator can be passed directly to a costed
+  intrinsic instead of being refused as unestablished work.
+
+- Report structured compiler errors for malformed direct intent folds during
+  cost preflight instead of silently omitting the invalid intent.
+
+- Independently bound Core evaluation steps and storage in fold-capable modules.
+  Native Target counts ordinary/transitive helpers, nested folds, state validation
+  and iteration overhead, rejects arithmetic overflow and exact-budget overruns,
+  and uses only validated adapter budgets for imported helper work. Unsupported
+  accounting shapes refuse instead of contributing zero. Provider/runtime
+  execution and effect admission remain separate.
+
+- Reserve `fold` as a prelude name. The new `CoreExpr::Fold` variant and
+  `TypedModule::required_core_capabilities` field require downstream exhaustive
+  Rust consumers to update. Initial values keep the language's existing
+  structural-record and nominal-variant compatibility rules. Provider/runtime
+  execution and runtime admission remain separate gates.
+
+- Publish the fold-capable provider contract pack separately from existing
+  digest-pinned packs. Preserve the earlier publication bytes and reproduce them
+  with the frozen pre-fold Core schema. Schema acceptance is not runtime support.
+
+- Accept fold initial values whose bounds fit the declared step state, including
+  empty bytes for a bounded byte accumulator. The step parameter and return type
+  remain invariant, and oversized initial values still refuse. Native Target
+  validation is distinct from provider/runtime execution.
+
+- Add exhaustive nonrecursive variant matching to source/Core and native Target
+  validation, including arm-local payloads and direct-match dispatch budgets.
+  Bare integer arms infer their width from typed peers in either arm order.
+  Native Target rejects incompatible match results in untyped metadata while
+  preserving compatible empty/nonempty list and record alternatives. Intrinsic
+  cost accounting uses the largest bound across match arguments, including lists.
+  Recover scalar fields from matched records even when sibling fields hold lists.
+  Provider/runtime matching remains separate.
+
+- Add acyclic source variant declarations and checked constructors with exact
+  case and optional-payload identity through canonical Core and native Target IR.
+  Aliases and source-module coordinates retain their original type identity;
+  distinct same-shaped variants cannot substitute at helper arguments or returns.
+  Duplicate/zero-case sets, unresolved payloads, cycles and excessive expansion
+  refuse. Staged checking preserves duplicate diagnostics and reports independent
+  unresolved payloads without emitting partial types.
+- Bound variant helper storage conservatively, including metadata and the largest
+  payload. Exact allocation/step boundaries are tested. Variant-valued intent
+  outputs refuse `UnsupportedSourceShape` with or without helpers; genuine
+  arithmetic overflow remains `InvalidBound`.
+- Require the hash-significant `core.variant/v1` capability for variant-bearing
+  Core, including unused declarations. Target independently rejects missing
+  metadata as `InvalidCoreIdentity` and unknown capabilities as
+  `UnsupportedCoreCapability`.
+- Refuse variant-bearing application-result projections during emission and
+  independent verification. Internal variant computation can still lower to
+  native Target IR. The CLI displays constructor type, case and optional payload.
+  Recursive variants, provider/runtime matching and variant-valued
+  application-result encoding remain separate implementation work.
+
+- Add `at(bytes, index) -> U8` with a strict proof that the U64 index is below
+  the exact operand's length. Conditional and short-circuit guards stay scoped
+  to the expressions they dominate; Target independently rechecks untrusted
+  Core, including forged bounds and helper guards. `at` survives source-module
+  linking and is now a protected prelude name. Provider/runtime
+  execution remains a separate gate. The shared expression-level conditional
+  proof scope also admits proven positive-arm subtraction, addition and slicing;
+  their opposite arms remain unproven. Statement branches and `require` do not
+  contribute new proof facts.
+
+- Authored `U8` scalar values and `u8` literals now preserve the existing Core
+  unsigned-byte domain, including context-typed values and source-helper
+  results through authenticated source-module linking. Out-of-range, negative
+  and cross-width values refuse before Core. Functions, parameters and locals
+  cannot shadow the U8 prelude name.
+  TextMate and Tree-sitter recognize the suffix as one numeric token. Byte
+  lookup is available through `at`; U8 arithmetic and participant runtime support
+  remain separate.
+
+- Pin the capability-denied provider host to Wasmtime 48.0.8, fixing
+  RUSTSEC-2026-0422, RUSTSEC-2026-0423 and RUSTSEC-2026-0424 without
+  changing its enabled features or adding advisory exceptions. Regenerate the
+  source-bound provider fixture inventory and its Rust guest components with
+  the pinned fixture toolchain.
+
 - **Breaking:** stage 3 of the Amblicit rename renames the source extension
   and the editor grammars. Source files use `.amblicit` in place of `.edict`.
   A CLI directory input now selects only `.amblicit` files by default: the

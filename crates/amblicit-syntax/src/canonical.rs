@@ -1493,6 +1493,46 @@ fn core_expr_value(expr: &CoreExpr) -> Result<CanonicalValue, CanonicalError> {
             map([("kind", text("local")), ("ref", local_ref_value(reference))])
         }
         CoreExpr::Const(value) => map([("kind", text("const")), ("value", core_value(value)?)]),
+        CoreExpr::Variant { ty, case, payload } => {
+            let mut fields = vec![
+                ("kind", text("variant")),
+                ("type", text(ty)),
+                ("case", text(case)),
+            ];
+            if let Some(payload) = payload {
+                fields.push(("payload", core_expr_value(payload)?));
+            }
+            map(fields)
+        }
+        CoreExpr::Fold {
+            initial,
+            step,
+            bound,
+            state_type,
+        } => map([
+            ("kind", text("fold")),
+            ("initial", core_expr_value(initial)?),
+            ("step", text(step)),
+            ("bound", CanonicalValue::Integer(i128::from(*bound))),
+            ("stateType", text(state_type)),
+        ]),
+        CoreExpr::Match { scrutinee, arms } => map([
+            ("kind", text("match")),
+            ("scrutinee", core_expr_value(scrutinee)?),
+            (
+                "arms",
+                array_results(arms.iter().map(|arm| {
+                    let mut fields = vec![
+                        ("case", text(&arm.case)),
+                        ("body", core_expr_value(&arm.body)?),
+                    ];
+                    if let Some(binder) = &arm.binder {
+                        fields.push(("binder", local_ref_value(binder)));
+                    }
+                    Ok(map(fields))
+                }))?,
+            ),
+        ]),
         CoreExpr::Record { fields } => map([
             ("kind", text("record")),
             (

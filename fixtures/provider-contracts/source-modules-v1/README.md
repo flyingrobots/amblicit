@@ -4,7 +4,7 @@ This publication adds `source-closure` and `edict.source-closure/v1` to the
 [self-contained source-function contract pack](../source-functions-v1/README.md).
 The old CDDL and manifest pair remain byte-identical. This pair is preserved
 as an exact publication; the current generator writes the separate
-[structured-control publication](../structured-control-v1/README.md), and
+[bounded-state-fold publication](../bounded-state-fold-v1/README.md), and
 tests reassemble this pair from the frozen pre-v3 Target IR schema.
 
 The new root validates the closed canonical source-closure envelope, bounded

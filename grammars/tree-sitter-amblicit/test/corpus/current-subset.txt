@@ -680,3 +680,76 @@ intent describe(input: shape.DescribeInput)
               (expression
                 (qualified_identifier
                   (identifier))))))))))
+
+==================
+unsigned byte scalar
+==================
+
+package bytes.scalar@1;
+type Input = { value: U8, };
+type Output = { value: U8, };
+intent probe(input: Input) returns Output
+  profile p.read basis none budget <= p.small
+{
+  let value: U8 = 255u8;
+  return { value };
+}
+
+---
+
+(source_file
+  (package_declaration
+    (package_reference
+      (qualified_identifier
+        (identifier)
+        (identifier))
+      (version)))
+  (type_declaration
+    (type_identifier)
+    (record_type
+      (field_declaration
+        (identifier)
+        (type_reference
+          (qualified_identifier
+            (identifier))))))
+  (type_declaration
+    (type_identifier)
+    (record_type
+      (field_declaration
+        (identifier)
+        (type_reference
+          (qualified_identifier
+            (identifier))))))
+  (intent_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (type_reference
+          (qualified_identifier
+            (identifier)))))
+    (type_reference
+      (qualified_identifier
+        (identifier)))
+    (intent_clause
+      (qualified_identifier
+        (identifier)
+        (identifier)))
+    (intent_clause)
+    (intent_clause
+      (qualified_identifier
+        (identifier)
+        (identifier)))
+    (block
+      (let_statement
+        (identifier)
+        (type_reference
+          (qualified_identifier
+            (identifier)))
+        (expression
+          (number)))
+      (return_statement
+        (expression
+          (record_literal
+            (shorthand_entry
+              (identifier))))))))
