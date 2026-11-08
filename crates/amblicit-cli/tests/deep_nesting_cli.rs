@@ -278,15 +278,16 @@ fn function_with_body(body: &str) -> String {
 }
 
 /// Shapes inside a source function body, with the compiler diagnostic each
-/// one gets at any depth above zero (`None` for a shape that compiles).
-/// Parentheses build no node, so the compiler sees a leaf; lists, records and
-/// negation are refused at the root; calls, the binary chain and the field
-/// chain are walked (see `type_check_walks_a_tree_at_the_deepest_common_depth`).
-/// The kinds are today's reasons for refusing each shape in a `U64` function
-/// (a list or record is not a `U64`; `-` applies only to a literal; source
-/// `U64` addition is unsupported; `value` has no field `value`; nested calls
-/// pass the compiler's depth bound), not facts about nesting: if one of those
-/// language rules changes, update the kind here.
+/// one gets at the depth this file projects them (`DEEPEST_COMMON_NESTING`;
+/// `None` for a shape that compiles). Parentheses build no node, so the
+/// compiler sees a leaf; lists, records and negation are refused at the root;
+/// calls, the binary chain and the field chain are walked (see
+/// `type_check_walks_a_tree_at_the_deepest_common_depth`). The kinds are
+/// today's reasons for refusing each shape in a `U64` function (a list or
+/// record is not a `U64`; `-` applies only to a literal; source `U64`
+/// addition is unsupported; `value` has no field `value`; more than 128
+/// nested calls exceed the compiler's depth bound), not facts about nesting:
+/// if one of those language rules changes, update the kind here.
 fn function_shapes(n: usize) -> Vec<(&'static str, String, Option<&'static str>)> {
     vec![
         (
@@ -467,6 +468,25 @@ fn type_check_walks_a_tree_at_the_deepest_common_depth() {
         "expression(".repeat(n),
         ")".repeat(n)
     ));
+    let output = project(&["diagnostics"], &[("deep.amblicit", &source)]);
+    let diagnostics = project_diagnostics(&records(&output.stdout));
+    assert_eq!(diagnostics.len(), 1, "{}", describe(&output));
+    assert_eq!(diagnostics[0]["kind"], "InvalidBound", "{}", diagnostics[0]);
+}
+
+#[test]
+fn check_accepts_a_source_function_that_project_refuses() {
+    // `check` stops after parsing and surface validation, so a source function
+    // nested past the compiler's depth bound but within the parser's limit
+    // passes `check` and is refused by `project`.
+    let source = function_with_body(&format!(
+        "{}value{}",
+        "expression(".repeat(DEEPEST_COMMON_NESTING),
+        ")".repeat(DEEPEST_COMMON_NESTING)
+    ));
+    let output = check(&[("deep.amblicit", &source)]);
+    assert_eq!(output.status.code(), Some(0), "{}", describe(&output));
+    assert!(output.stderr.is_empty(), "{}", describe(&output));
     let output = project(&["diagnostics"], &[("deep.amblicit", &source)]);
     let diagnostics = project_diagnostics(&records(&output.stdout));
     assert_eq!(diagnostics.len(), 1, "{}", describe(&output));

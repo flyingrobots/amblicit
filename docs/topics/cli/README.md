@@ -13,14 +13,15 @@ only JSONL records on stdout and stderr. Stdin is bounded before request parsing
 the default cap is 8 MiB, and `AMBLICIT_CLI_MAX_STDIN_BYTES` may override that cap
 with a positive byte count. Over-limit input is rejected with an `InputTooLarge`
 CLI diagnostic and exit `2`. [CLI-REQ-001, CLI-REQ-010] Deeply nested source
-is refused with a `NestingTooDeep` parse diagnostic and exit `1`: nested in a
-`let` statement, 255 nested parentheses, `!`, `-`, calls, lists, records,
-types or `else if` arms are refused, and 256 chained operators, field accesses,
-`()` calls, ternaries or nested `if` statements (see the
-[syntax shelf](../syntax/README.md), SYNTAX-REQ-018, for the table). The
-binary runs each request on its own 64 MiB thread, so the result does not
-depend on the platform's main-thread stack; if that thread cannot be started,
-the binary reports a `RequestThread` CLI diagnostic and exits `2`.
+is refused with a `NestingTooDeep` parse diagnostic and exit `1`. The limit is
+256 levels, counting the enclosing statement and expression; nested in a `let`
+statement around an identifier or a scalar literal, 255 nested parentheses, `!`, `-`, calls such as `f(f(x))`, lists,
+records or `else if` arms are refused, as are 256 chained operators, field
+accesses, chained calls such as `f()()`, ternaries or nested `if` statements
+(see the [syntax shelf](../syntax/README.md), SYNTAX-REQ-018, for the full
+table). The binary runs each request on its own 64 MiB thread, so the result
+does not depend on the platform's main-thread stack; if that thread cannot be
+started, the binary reports a `RequestThread` CLI diagnostic and exits `2`.
 [CLI-REQ-021]
 
 The binary takes no positional arguments. The only accepted flags are

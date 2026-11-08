@@ -91,29 +91,33 @@ impl ParseErrorKind {
 ///
 /// | Shape | Deepest accepted | First refused |
 /// | --- | --- | --- |
-/// | parentheses, `!`, `-`, nested calls, lists, records, types, `else if` | 254 | 255 |
-/// | operator chains, field chains, call chains, ternaries, nested `if` | 255 | 256 |
+/// | parentheses, `!`, `-`, nested calls, lists, records, `match` scrutinees and arm bodies, variant payloads, types, `else if` | 254 | 255 |
+/// | operator chains, field chains, call chains, ternaries, nested `if`, `for` bodies | 255 | 256 |
+/// | type-call arguments | 253 | 254 |
+/// | effect `if` with yield blocks | 127 | 128 |
 ///
 /// The first row spends two levels outside its own nesting: the statement
 /// and the `let` expression (for a type, the leaf type; for `else if`, the
 /// condition). The second row spends one: the operator, field and call
 /// chains are bounded by height, which only the statement adds above them
 /// (`expr` adds height only for a ternary), while ternaries in a `let` and
-/// nested `if` statements nest without the `let` expression's extra level and
-/// reach the depth bound one level later. `else if` recurses into itself
-/// directly; an `if` nested in a block is a statement.
+/// nested `if` and `for` statements nest without the `let` expression's
+/// extra level. Type-call arguments also spend their leaf type, and each
+/// effect `if` spends two levels per nesting (its `let` statement and the
+/// statement in its yield block). `else if` recurses into itself directly; an
+/// `if` nested in a block is a statement.
 ///
-/// The counts assume a leaf that adds nothing of its own: in the first row an
-/// identifier, a literal or a comparison; in the second row an identifier or
-/// a literal, since a field access or comparison is itself one level of
-/// height. A leaf that nests, such as `-1` or `f(x)`, spends its own levels.
+/// The counts assume a simple innermost leaf: an identifier or a scalar
+/// literal such as `true` or `1`. A leaf that nests or builds a node of its
+/// own, such as `-1`, `f(x)`, `[]`, a field access or a comparison, spends its
+/// own levels.
 ///
 /// The limit bounds the parser's recursion; it does not size the thread.
 /// From #277's measurement of the parser before this limit (about 4.3 KiB per
 /// level in release), reaching the limit needs an estimated 1.1 MiB of stack
-/// in a release build and several times that in debug, so on a 1 MiB thread
-/// the parser overflows before reaching the limit in either profile, and on
-/// a 2 MiB spawned thread in a debug build. The `amblicit` binary runs each
+/// in a release build and several times that in debug, so a 1 MiB thread is
+/// expected to overflow before the parser reaches the limit in either
+/// profile, and so is a 2 MiB spawned thread in a debug build. The `amblicit` binary runs each
 /// request on a 64 MiB thread, and this crate's own tests parse to the limit
 /// on a 64 MiB thread; library callers parsing untrusted sources should give
 /// the parsing thread a comparable stack (amblicit#301).
@@ -255,6 +259,98 @@ fn stmt_contains_return(stmt: &Stmt) -> bool {
     }
 }
 
+/// For each token index, whether a `<` there opens type-call arguments by
+/// shape (see `Parser::has_type_call_shape`), computed in one pass.
+///
+/// Angle brackets are matched with a stack, restricted to runs of tokens that
+/// can appear in type arguments (names, `.`, `,`, `=`, and an integer after
+/// `=`); any other token ends the run and closes every open `<` without a
+/// match. When a `>` closes a `<`, the tokens between them are checked
+/// against the type-argument grammar, a comma-separated list of either a
+/// path with optional nested arguments or a `name = bound` refinement, where
+/// a nested `<` must itself have been accepted. Inner regions close first and
+/// are skipped by the outer check, so every token is examined a bounded
+/// number of times. The `<` has the shape when its arguments are accepted and
+/// its `>` is immediately followed by `(`.
+fn type_call_shapes(tokens: &[Token]) -> Vec<bool> {
+    let mut matching: Vec<Option<usize>> = vec![None; tokens.len()];
+    let mut arguments_ok = vec![false; tokens.len()];
+    let mut shapes = vec![false; tokens.len()];
+    let mut open: Vec<usize> = Vec::new();
+    for (idx, token) in tokens.iter().enumerate() {
+        match &token.kind {
+            TokenKind::Lt => open.push(idx),
+            TokenKind::Gt => {
+                if let Some(lt) = open.pop() {
+                    matching[lt] = Some(idx);
+                    arguments_ok[lt] = type_arguments_ok(tokens, &matching, &arguments_ok, lt, idx);
+                    shapes[lt] = arguments_ok[lt]
+                        && tokens.get(idx + 1).is_some_and(|next| {
+                            next.kind == TokenKind::LParen && token.span.end == next.span.start
+                        });
+                }
+            }
+            TokenKind::Ident(_) | TokenKind::Dot | TokenKind::Comma | TokenKind::Eq => {}
+            TokenKind::Int { .. } if idx > 0 && tokens[idx - 1].kind == TokenKind::Eq => {}
+            _ => open.clear(),
+        }
+    }
+    shapes
+}
+
+/// Whether the tokens strictly between the `<` at `lt` and its matching `>`
+/// at `gt` form type arguments: `argument (, argument)*`, where an argument is
+/// `name (. name)*` followed by nothing, by `= bound` (a refinement, whose
+/// bound is an integer or a dotted path), or by nested arguments `<...>` that
+/// were already accepted. Nested regions are jumped over via `matching`.
+fn type_arguments_ok(
+    tokens: &[Token],
+    matching: &[Option<usize>],
+    arguments_ok: &[bool],
+    lt: usize,
+    gt: usize,
+) -> bool {
+    let is_name = |idx: usize| matches!(tokens[idx].kind, TokenKind::Ident(_));
+    let path_end = |mut idx: usize| {
+        while idx + 1 < gt && tokens[idx].kind == TokenKind::Dot && is_name(idx + 1) {
+            idx += 2;
+        }
+        idx
+    };
+    let mut idx = lt + 1;
+    loop {
+        if idx >= gt || !is_name(idx) {
+            return false;
+        }
+        idx = path_end(idx + 1);
+        match &tokens[idx].kind {
+            TokenKind::Eq => {
+                idx += 1;
+                if idx >= gt {
+                    return false;
+                }
+                match &tokens[idx].kind {
+                    TokenKind::Int { .. } => idx += 1,
+                    TokenKind::Ident(_) => idx = path_end(idx + 1),
+                    _ => return false,
+                }
+            }
+            TokenKind::Lt => match matching[idx] {
+                Some(inner_gt) if inner_gt < gt && arguments_ok[idx] => idx = inner_gt + 1,
+                _ => return false,
+            },
+            _ => {}
+        }
+        if idx == gt {
+            return true;
+        }
+        if tokens[idx].kind != TokenKind::Comma {
+            return false;
+        }
+        idx += 1;
+    }
+}
+
 struct Parser {
     tokens: Vec<Token>,
     idx: usize,
@@ -263,15 +359,20 @@ struct Parser {
     /// Tallest syntax tree recorded in the current [`Parser::measured`]
     /// height scope.
     height: usize,
+    /// For each token index, whether a `<` there opens the shape of type-call
+    /// arguments; see [`Parser::has_type_call_shape`].
+    type_call_shapes: Vec<bool>,
 }
 
 impl Parser {
     fn new(tokens: Vec<Token>) -> Self {
+        let type_call_shapes = type_call_shapes(&tokens);
         Self {
             tokens,
             idx: 0,
             depth: 0,
             height: 0,
+            type_call_shapes,
         }
     }
 
@@ -309,17 +410,24 @@ impl Parser {
     // and exist only to be wrapped: call the production, never the body.
     //
     // Speculative parsing (`try_type_call_args`) returns a nesting refusal only
-    // when the tokens from the `<` have the shape of type-call arguments
-    // (`has_type_call_shape`, a loop that spends no recursion); otherwise the
-    // source is a comparison and the speculation backtracks. See the doc there.
+    // when the tokens from the `<` are type-call arguments by shape
+    // (`has_type_call_shape`, decided once per parse without recursion);
+    // otherwise the source is a comparison and the speculation backtracks.
+    // See the doc there.
     //
-    // Tests (crates/amblicit-syntax/tests/parse_nesting.rs unless noted): a
-    // new recursive shape belongs in `recursion_past_the_limit_is_refused`, in
-    // `every_shape_has_the_documented_boundary` with its exact boundary, and in
-    // `shapes()` (crates/amblicit-cli/tests/deep_nesting_cli.rs). A new
+    // Tests (crates/amblicit-syntax/tests/parse_nesting.rs): a new recursive
+    // shape belongs in `recursion_past_the_limit_is_refused` and, with its
+    // exact boundary, in `every_shape_has_the_documented_boundary`; between
+    // them those two cover every recursive shape the parser has. A new
     // node-building production also belongs in
-    // `height_composes_through_every_node_building_production`, which is the
-    // test that fails when its `composite` is missing.
+    // `height_composes_through_every_node_building_production`, which fails
+    // when its `composite` is missing. The `type_ref` and `else if`
+    // composites sit under a depth guard at every level, so depth decides
+    // those shapes first and no height test can observe them; they are kept
+    // so that the height of a type or an `if` chain stays correct for any
+    // caller of `measured`. The CLI suite
+    // (`shapes()` in crates/amblicit-cli/tests/deep_nesting_cli.rs) witnesses
+    // a representative set end to end through the binary.
 
     fn nesting_too_deep<T>(&self) -> Result<T, ParseError> {
         self.err_kind(
@@ -1811,34 +1919,26 @@ impl Parser {
         Ok(Some(args))
     }
 
-    /// Whether the tokens from the `<` at `lt` have the shape of type-call
-    /// arguments: angle brackets that balance using only tokens a type
-    /// argument can contain (names, `.`, `,`, and `name = bound` refinements),
-    /// with the closing `>` immediately followed by `(`. The scan is a loop,
-    /// so it spends no recursion. It accepts a superset of well-formed type
-    /// arguments; a source it accepts that would not parse as types even
-    /// without the limit (such as `f<1>(x)`) is refused for nesting rather
-    /// than read as a comparison, and only when it nests at the limit.
+    /// Whether the tokens from the `<` at `lt` are type-call arguments by
+    /// shape: they follow the type-argument grammar (paths with optional
+    /// nested arguments, and `name = bound` refinements) up to the matching
+    /// `>`, and that `>` is immediately followed by `(`. The answers for every
+    /// `<` are computed once when the parser is built (`type_call_shapes`), so
+    /// deciding costs neither recursion nor a rescan.
+    ///
+    /// A nesting refusal that this lets stand never refuses a source the
+    /// parser accepts without the limit. A refusal on entry happens at the
+    /// depth limit, where the relational reading's own parenthesised operand
+    /// would be refused too. A refusal inside the arguments is a nested type
+    /// refused, so the arguments contain a nested `<...>`, which the grammar
+    /// requires to be followed by `,` or `>`; the relational reading of `> ,`
+    /// or `> >` fails. The shape is a little more permissive than the
+    /// type parser (it does not know that `Option` takes exactly one
+    /// argument); where it accepts what the type parser would reject, the
+    /// source fails both readings and the refusal only replaces a syntax
+    /// error's kind.
     fn has_type_call_shape(&self, lt: usize) -> bool {
-        let mut open = 0usize;
-        let mut idx = lt;
-        loop {
-            match &self.tokens[idx].kind {
-                TokenKind::Lt => open += 1,
-                TokenKind::Gt => {
-                    open -= 1;
-                    if open == 0 {
-                        let next = &self.tokens[idx + 1];
-                        return next.kind == TokenKind::LParen
-                            && self.tokens[idx].span.end == next.span.start;
-                    }
-                }
-                TokenKind::Ident(_) | TokenKind::Dot | TokenKind::Comma | TokenKind::Eq => {}
-                TokenKind::Int { .. } if self.tokens[idx - 1].kind == TokenKind::Eq => {}
-                _ => return false,
-            }
-            idx += 1;
-        }
+        self.type_call_shapes[lt]
     }
 
     fn digest_value_lit(&mut self) -> Result<Expr, ParseError> {

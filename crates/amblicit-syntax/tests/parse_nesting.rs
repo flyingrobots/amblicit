@@ -94,6 +94,15 @@ fn recursion_past_the_limit_is_refused() {
             let_expr(&format!("{}true{}", "(".repeat(n), ")".repeat(n))),
         ),
         ("not", let_expr(&format!("{}true", "!".repeat(n)))),
+        ("negation", let_expr(&format!("{}1", "-".repeat(n)))),
+        (
+            "calls",
+            let_expr(&format!("{}true{}", "f(".repeat(n), ")".repeat(n))),
+        ),
+        (
+            "ternaries",
+            let_expr(&format!("{}true", "if true then true else ".repeat(n))),
+        ),
         (
             "lists",
             let_expr(&format!("{}true{}", "[".repeat(n), "]".repeat(n))),
@@ -178,17 +187,10 @@ fn nested_yield_blocks(n: usize) -> String {
 /// given nesting, and the deepest nesting it is accepted at.
 type BoundaryRow = (&'static str, fn(usize) -> String, usize);
 
-#[test]
-fn every_shape_has_the_documented_boundary() {
-    // The table in `MAX_SOURCE_NESTING_DEPTH`'s doc and the syntax README. The
-    // first row spends two levels outside its own nesting (the statement and
-    // the `let` expression, or for types the leaf type, for `else if` the
-    // condition), so it stops at `MAX - 2`. The second row spends one: the
-    // chains are bounded by height, which only the statement adds above them,
-    // and ternaries and nested `if` nest without the `let` expression's level.
+/// The rows of the boundary table whose context spends two levels.
+fn depth_bounded_rows() -> Vec<BoundaryRow> {
     let depth_row = MAX_SOURCE_NESTING_DEPTH - 2;
-    let height_row = MAX_SOURCE_NESTING_DEPTH - 1;
-    let rows: [BoundaryRow; 14] = [
+    vec![
         (
             "parentheses",
             |k| let_expr(&format!("{}true{}", "(".repeat(k), ")".repeat(k))),
@@ -220,6 +222,33 @@ fn every_shape_has_the_documented_boundary() {
             depth_row,
         ),
         (
+            "match scrutinees",
+            |k| {
+                let_expr(&format!(
+                    "{}input.ok{}",
+                    "match ".repeat(k),
+                    " { Yes => true }".repeat(k)
+                ))
+            },
+            depth_row,
+        ),
+        (
+            "match arm bodies",
+            |k| {
+                let_expr(&format!(
+                    "{}true{}",
+                    "match input.ok { Yes => ".repeat(k),
+                    " }".repeat(k)
+                ))
+            },
+            depth_row,
+        ),
+        (
+            "variant payloads",
+            |k| let_expr(&format!("{}true{}", "Kind::Yes(".repeat(k), ")".repeat(k))),
+            depth_row,
+        ),
+        (
             "types",
             |k| {
                 intent_with_body(&format!(
@@ -235,6 +264,13 @@ fn every_shape_has_the_documented_boundary() {
             |k| intent_with_body(&format!("if true {{}}{}", " else if true {}".repeat(k))),
             depth_row,
         ),
+    ]
+}
+
+/// The rows of the boundary table whose leaf or form spends its own levels.
+fn rows_with_their_own_overhead() -> Vec<BoundaryRow> {
+    let depth_row = MAX_SOURCE_NESTING_DEPTH - 2;
+    vec![
         // `<` starts a speculative type-call parse one level deeper. At the
         // boundary that speculation is refused for nesting, and because the
         // tokens are not type-call arguments, the relational reading, which
@@ -250,6 +286,34 @@ fn every_shape_has_the_documented_boundary() {
             },
             depth_row,
         ),
+        // The leaf type of the type arguments spends one more level.
+        (
+            "type-call arguments",
+            |k| {
+                let_expr(&format!(
+                    "f<{}Bool{}>(true)",
+                    "Option<".repeat(k),
+                    ">".repeat(k)
+                ))
+            },
+            MAX_SOURCE_NESTING_DEPTH - 3,
+        ),
+        // Each effect `if` spends two levels: its `let` statement and the
+        // statement inside its yield block.
+        (
+            "yield blocks",
+            |k| intent_with_body(&nested_yield_blocks(k)),
+            (MAX_SOURCE_NESTING_DEPTH - 2) / 2,
+        ),
+    ]
+}
+
+/// The rows of the boundary table whose context spends one level: chains
+/// bounded by height, and statements and ternaries that nest without the
+/// `let` expression's level.
+fn height_bounded_rows() -> Vec<BoundaryRow> {
+    let height_row = MAX_SOURCE_NESTING_DEPTH - 1;
+    vec![
         (
             "binary chain",
             |k| let_expr(&format!("true{}", " || true".repeat(k))),
@@ -275,7 +339,32 @@ fn every_shape_has_the_documented_boundary() {
             |k| intent_with_body(&format!("{}{}", "if true {\n".repeat(k), "}\n".repeat(k))),
             height_row,
         ),
-    ];
+        (
+            "for bodies",
+            |k| {
+                intent_with_body(&format!(
+                    "{}{}",
+                    "for item in input.ok bounded p.limit {\n".repeat(k),
+                    "}\n".repeat(k)
+                ))
+            },
+            height_row,
+        ),
+    ]
+}
+
+#[test]
+fn every_shape_has_the_documented_boundary() {
+    // The table in `MAX_SOURCE_NESTING_DEPTH`'s doc and the syntax README. The
+    // first row spends two levels outside its own nesting (the statement and
+    // the `let` expression, or for types the leaf type, for `else if` the
+    // condition), so it stops at `MAX - 2`. The second row spends one: the
+    // chains are bounded by height, which only the statement adds above them,
+    // and ternaries and nested `if` nest without the `let` expression's level.
+    let rows = depth_bounded_rows()
+        .into_iter()
+        .chain(rows_with_their_own_overhead())
+        .chain(height_bounded_rows());
     for (shape, source, deepest) in rows {
         assert_parses(shape, source(deepest));
         assert_nesting_refused(shape, source(deepest + 1));
@@ -381,6 +470,53 @@ fn deep_type_arguments_keep_their_kind_wherever_they_sit() {
 }
 
 #[test]
+fn balanced_comparisons_are_not_mistaken_for_type_calls() {
+    // These comparisons balance their angle brackets before an adjacent `(`,
+    // so they look like type calls by bracket count alone. Their speculative
+    // type reading is refused for nesting, but `b < c > d` is not a type
+    // argument (a nested `<...>` must be followed by `,` or `>`), so they are
+    // read as comparisons and parse wherever that reading fits.
+    let n = MAX_SOURCE_NESTING_DEPTH - 3;
+    assert_parses(
+        "balanced comparison at the limit",
+        let_expr(&format!(
+            "{}a < b < c > d >(e){}",
+            "(".repeat(n),
+            ")".repeat(n)
+        )),
+    );
+    let names = |prefix: &str, count: usize, separator: &str| {
+        (1..=count)
+            .map(|i| format!("{prefix}{i}"))
+            .collect::<Vec<_>>()
+            .join(separator)
+    };
+    let deep_balanced = format!("a<{}>{}>(e)", names("b", 57, "<"), names("c", 56, ">"));
+    assert_parses(
+        "deeply balanced comparison",
+        let_expr(&format!(
+            "{}{deep_balanced}{}",
+            "(".repeat(198),
+            ")".repeat(198)
+        )),
+    );
+}
+
+#[test]
+fn many_comparisons_at_the_limit_parse() {
+    // Every argument's `<` here is refused on entry, and every one of those
+    // refusals asks whether the tokens from that `<` form type-call
+    // arguments. The answers are computed once per parse, so a long argument
+    // list costs linear time rather than one rescan of the rest per argument.
+    let arguments = vec!["input < input"; 20_000].join(", ");
+    let n = MAX_SOURCE_NESTING_DEPTH - 3;
+    assert_parses(
+        "comparisons in call arguments at the limit",
+        let_expr(&format!("{}g({arguments}){}", "(".repeat(n), ")".repeat(n))),
+    );
+}
+
+#[test]
 fn a_malformed_deep_comparison_reports_its_syntax_error() {
     // The speculative type reading of this comparison is refused for nesting,
     // but its tokens are not type-call arguments, so the source is read as a
@@ -397,10 +533,10 @@ fn a_malformed_deep_comparison_reports_its_syntax_error() {
 
 #[test]
 fn a_type_call_at_the_limit_is_still_refused() {
-    // At the depth where a relational leaf still parses, a real type call is
-    // refused with `NestingTooDeep`: its speculative parse backtracks, and the
-    // relational reading then needs one more level for the parenthesised
-    // argument list.
+    // At 254 parentheses, where a relational leaf still parses, the type
+    // call's speculative parse is refused on entry, and because its tokens
+    // have the shape of type-call arguments the refusal stands. One
+    // parenthesis fewer, the type arguments fit and the call parses.
     let n = MAX_SOURCE_NESTING_DEPTH - 2;
     for call in ["f<Bool>(true)", "f<Bool>()"] {
         assert_parses(

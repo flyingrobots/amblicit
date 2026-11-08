@@ -78,25 +78,35 @@ programs, prove bounds, or itself lower to Core IR. [SYNTAX-REQ-001]
   also re-exported as `amblicit::diagnostic::MAX_SOURCE_NESTING_DEPTH`). Past
   it, parsing stops with `NestingTooDeep`, including inside type-call
   arguments. The parser counts both its recursion depth and the height of the
-  tree it builds, so loop-built chains are bounded too. For a source nested in
-  a `let` statement, the first row below spends two levels outside its own
-  nesting (the statement and the `let` expression) and the second row one
-  (chains are bounded by height, which only the statement adds; ternaries and
-  nested `if` nest without the `let` expression's level):
+  tree it builds, so loop-built chains are bounded too. The 256 includes the
+  levels a source's context spends, so for a source nested in a `let`
+  statement the counts a user sees are:
 
   | Shape | Deepest accepted | First refused |
   | --- | --- | --- |
-  | parentheses, `!`, `-`, nested calls, lists, records, types, `else if` | 254 | 255 |
-  | operator chains, field chains, call chains, ternaries, nested `if` | 255 | 256 |
+  | parentheses, `!`, `-`, nested calls, lists, records, `match` scrutinees and arm bodies, variant payloads, types, `else if` | 254 | 255 |
+  | operator chains, field chains, call chains, ternaries, nested `if`, `for` bodies | 255 | 256 |
+  | type-call arguments | 253 | 254 |
+  | effect `if` with yield blocks | 127 | 128 |
 
-  The counts assume a leaf that adds nothing of its own: in the first row an
-  identifier, a literal or a comparison; in the second row an identifier or a
-  literal (a field access or a comparison is itself one level of height). A
-  leaf that nests, such as `-1` or `f(x)`, spends its own levels. Every row is
-  a committed test (SYNTAX-TP-028). A comparison is never refused because the
-  parser first tries to read its `<` as the start of type-call arguments: that
-  speculative reading reports a nesting refusal only when the tokens really
-  form type-call arguments. [SYNTAX-REQ-018]
+  The first row spends two levels outside its own nesting (the statement and
+  the `let` expression; for a type, the leaf type; for `else if`, the
+  condition). The second row spends one: chains are bounded by height, which
+  only the statement adds above them, and ternaries, nested `if` and `for`
+  nest without the `let` expression's level. Type-call arguments also spend
+  their leaf type, and each effect `if` spends two levels per nesting. The
+  counts assume a simple innermost leaf: an identifier or a scalar literal
+  such as `true` or `1`. A leaf that nests or builds a node of its own, such
+  as `-1`, `f(x)`, `[]`, a field access or a comparison, spends its own levels.
+  Every row is a committed test (SYNTAX-TP-028).
+
+  The parser reads `<` speculatively as the start of type-call arguments. If
+  that reading is refused for nesting, the refusal is reported only when the
+  tokens up to the matching `>` follow the type-argument grammar and that `>`
+  is directly followed by `(`; otherwise the `<` is read as a comparison. A
+  source that parses without the limit is therefore never refused because of
+  this speculation; comparisons are bounded like any other operator chain.
+  [SYNTAX-REQ-018]
 - The limit sits above the compiler's source-function depth bound (128 nested
   levels, refused as `InvalidBound` during type checking), so a source
   function between the two depths is still refused by that more specific
@@ -110,8 +120,8 @@ The limit bounds recursion, not the thread. #277 measured the parser before
 this limit at about 4.3 KiB of stack per level in a release build and several
 times that in debug. From that measurement, reaching the limit needs an
 estimated 1.1 MiB in release, so a 1 MiB thread is expected to overflow before
-the parser reaches the limit in either profile, and a 2 MiB spawned thread in
-a debug build. The `amblicit` binary runs each request on a 64 MiB thread, and
+the parser reaches the limit in either profile, and so is a 2 MiB spawned
+thread in a debug build. The `amblicit` binary runs each request on a 64 MiB thread, and
 this crate's tests parse to the limit on a 64 MiB thread; a library caller
 parsing untrusted sources should give the parsing thread a comparable stack
 (tracked in issue #301).
