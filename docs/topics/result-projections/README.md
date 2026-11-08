@@ -114,7 +114,7 @@ arms and reasons, effect obstruction arms, child-block local declarations and
 null results, and exact table coverage. The flat v1/v2 path does not compare
 obstruction arms. The Target order judgment enforces fresh instruction, binding
 and loop-binder identities and lexical availability through both arms;
-match-arm binders are not checked for freshness there. Missing or changed
+match-arm binders are not checked for freshness there (#304). Missing or changed
 nested instructions refuse with `CoreTargetMismatch` even when they do not
 contribute to the final result. A v3 artifact whose header lacks a valid
 structured execution order refuses with subject `<intent>.structuredHeader`.
