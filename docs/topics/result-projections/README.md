@@ -17,6 +17,10 @@ matching Target IR artifact, and an intent name. The emitter requires:
   judgment, including unused definitions, every graph-carried reference, and
   the fully expanded named-type depth of each occurrence;
 - the intent to exist in both artifacts;
+- for an explicitly selected `echo.span-ir/v3` artifact, the Core/order
+  correspondence described in
+  [Structured Target v3 bodies](#structured-target-v3-bodies), with result
+  sources limited to the root block;
 - the Target IR semantic closure to equal the complete Core-derived closure,
   including the exact Core coordinate, canonical Core digest, and every
   digest-locked lawpack;
@@ -93,6 +97,61 @@ Echo bytes and digest under
 `fixtures/lawpack/hello-echo/` are reproduced only by
 `cargo xtask lawpack-goldens`. [RESULT-PROJ-REQ-003]
 
+## Structured Target v3 bodies
+
+An adapter selects `echo.span-ir/v3` explicitly, through the same selection
+paths as v2 (see [Target IR](../target-ir/README.md)). Under v3 an intent body
+may contain literal-bounded loops and statement branches. Every intent in a v3
+artifact takes the structured path described here, including an intent with no
+loop or branch. [RESULT-PROJ-REQ-014]
+
+Before selecting projection sources, `emit_result_projection` and
+`verify_result_projection` check Core/order correspondence: the Core body's
+nested instructions must match the Target `executionOrder` tree node for node.
+The check compares control identity and placement, loop binder, iterable and
+bound, branch predicate, instruction order and payloads, requirement failure
+arms and reasons, effect obstruction arms, child-block local declarations and
+null results, and exact table coverage. The flat v1/v2 path does not compare
+obstruction arms. The Target order judgment enforces fresh instruction, binding
+and loop-binder identities and lexical availability through both arms;
+match-arm binders are not checked for freshness there (#304). Missing or changed
+nested instructions refuse with `CoreTargetMismatch` even when they do not
+contribute to the final result. A v3 artifact whose header lacks a valid
+structured execution order refuses with subject `<intent>.structuredHeader`.
+[RESULT-PROJ-REQ-014]
+
+Emission and verification share this one correspondence matcher. Verification
+is independent of the emitted bytes and the claimed digest, not of the matcher.
+[RESULT-PROJ-REQ-005] [RESULT-PROJ-REQ-014]
+
+Only the application input and pure/effect bindings introduced directly in the
+root block are result sources. A nested instruction stays in the Target tables
+for execution, but its local or step result is unavailable after that loop or
+branch. The order judgment already refuses a Core result that reads a nested
+local; root-only source selection additionally refuses a hostile projection
+that names a child binding or step. Root bindings keep their original table
+identities, including indices that follow nested instructions. No
+iteration-result list or branch-result join is added to the projection
+language. [RESULT-PROJ-REQ-014]
+
+This correspondence check has no adapter or runtime authority, and it makes two
+deliberate exceptions to exact payload matching. An adapter may rename
+obstruction keys while retaining their Core arm bindings and values, and a
+step's `target_intrinsic` is not compared. This check validates neither that
+obstruction-key mapping nor the target intrinsic. No Echo provider lowerer or
+verifier admits v3 at Echo `089c849f`, so a future v3 provider must validate
+both before execution; structured provider support is tracked by Echo #947. Projection admission does not establish effect-budget feasibility
+or successful execution. The existing application builder
+independently verifies the projection and binds its exact bytes into provider
+inputs. A public build of a structured operation therefore still fails today, at
+the provider, which admits only v1 and v2 at that revision.
+[RESULT-PROJ-REQ-007] [RESULT-PROJ-REQ-014]
+
+A Core/order mismatch under v3 refuses with `CoreTargetMismatch` and subject
+`<intent>.structuredControl`. Under v1 and v2 the same subject means that the
+operation contains a loop or branch the selected domain cannot represent.
+[RESULT-PROJ-REQ-008] [RESULT-PROJ-REQ-014]
+
 ## Independent Verification
 
 `verify_result_projection` does not call the emitter or trust the claimed
@@ -152,6 +211,8 @@ contract.
 ## Deferred
 
 - Runtime evaluation of a verified projection.
+- Provider admission and runtime execution of structured v3 intents
+  (Echo #947).
 - Durable binding of evaluated result bytes to an Echo Action, Tick, outcome,
   Receipt, or recovery record.
 - Additional expression forms beyond records and bounded source field paths.
