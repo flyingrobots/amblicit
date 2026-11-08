@@ -74,7 +74,7 @@ jobs:
           cargo +stable test -p amblicit-cli
           windows_lawpack_build_fails_closed_before_document_io
           -- --nocapture
-      - name: Deep source nesting holds on the 1 MiB default main thread
+      - name: Deep source nesting is refused, not aborted, under the 1 MiB default main thread
         run: cargo +stable test -p amblicit-cli --test deep_nesting_cli
 
   supply-chain:

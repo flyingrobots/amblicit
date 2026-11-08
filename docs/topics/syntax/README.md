@@ -75,28 +75,40 @@ programs, prove bounds, or itself lower to Core IR. [SYNTAX-REQ-001]
 - Negative coverage asserts stable `ParseErrorKind` values rather than message
   prose or stdout/stderr. [SYNTAX-REQ-010]
 - Source nesting is bounded by the public `MAX_SOURCE_NESTING_DEPTH` (256
-  recursion levels). The parser counts both its own recursion and the height
-  of the tree it builds, including the operator, field and call chains that it
-  parses with a loop, and past either bound parsing stops with
-  `NestingTooDeep`, including inside the speculative parse of type-call
-  arguments. The two bounds have different overheads: the enclosing statement
-  and the `let` expression each spend one recursion level, so a source's own
-  nesting is accepted up to 254 levels (254 nested parentheses parse, 255 are
-  refused, whatever the innermost leaf), while only the statement adds height
-  above an operator chain, so chains are accepted up to 255 operators (256 are
-  refused). The limit sits above the compiler's source-function depth bound
-  (128 nested calls, refused as `InvalidBound` during type checking), so a
-  source function between the two depths is still refused by that more
-  specific diagnostic under `project` and `build`; `check` stops after parsing
-  and surface validation. (Implementation: the nesting-limit rule above the
-  helpers in `crates/amblicit-syntax/src/parser.rs`.) [SYNTAX-REQ-018]
+  recursion levels, also re-exported as `amblicit::diagnostic::MAX_SOURCE_NESTING_DEPTH`).
+  Past it, parsing stops with `NestingTooDeep`, including inside type-call
+  arguments. The parser counts both its recursion and the height of the tree
+  it builds, so loop-built chains are bounded too, and the two have different
+  overheads for a source:
 
-The limit bounds recursion, not the thread. Reaching it costs about 1.1 MiB of
-stack in a release build (256 levels at about 4.4 KiB) and several times that
-in debug, so a 1 MiB thread cannot reach it in either profile and a 2 MiB
-spawned thread cannot in a debug build. The `amblicit` binary runs each request
-on a 64 MiB thread; a library caller parsing untrusted sources on a small thread
-must size that thread itself (tracked in issue #301).
+  | Shape | Deepest accepted | First refused |
+  | --- | --- | --- |
+  | parentheses, `!`, `-`, calls, lists, records, types, `else if` | 254 | 255 |
+  | operator, field and call chains, ternaries, nested `if` | 255 | 256 |
+
+  The counts are for an atomic innermost leaf (an identifier, a literal or a
+  comparison); a leaf that nests on its own, such as `-1` or `f(x)`, spends
+  its own levels. A comparison parses wherever its relational reading fits:
+  when the parser reads `<` speculatively as the start of type-call arguments
+  and that reading is refused for nesting, the refusal is reported only if
+  the relational reading fails too.
+
+  The limit sits above the compiler's source-function depth bound (128,
+  refused as `InvalidBound` during type checking), so a source function
+  between the two depths is still refused by that more specific diagnostic
+  under `project` and `build`; `check` stops after parsing and surface
+  validation. (Implementation: the nesting-limit rule above the helpers in
+  `crates/amblicit-syntax/src/parser.rs`.) [SYNTAX-REQ-018]
+
+The limit bounds recursion, not the thread. From #277's measurement of the
+parser before this limit (about 4.3 KiB per level in a release build), reaching
+the limit needs an estimated 1.1 MiB of stack in release and several times
+that in debug: on a 1 MiB thread the parser overflows before it reaches the
+limit in either profile, and on a 2 MiB spawned thread in a debug build. The
+`amblicit` binary runs each request on a 64 MiB thread, and this crate's tests
+parse to the limit on a 64 MiB thread; a library caller parsing untrusted
+sources should give the parsing thread a comparable stack (tracked in issue
+#301).
 
 ## Deferred
 

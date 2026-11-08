@@ -10,20 +10,22 @@ use std::process::{Command, Output, Stdio};
 use amblicit_syntax::{MAX_CANONICAL_NESTING_DEPTH, MAX_SOURCE_NESTING_DEPTH};
 use serde_json::{json, Value};
 
-/// Recursion levels a shape spends outside its own nesting: the statement,
-/// the `let` (or `return`) expression and, for the ternary and type shapes,
-/// one more for the innermost leaf. Every shape at `MAX - 3` is accepted;
-/// parentheses are accepted up to `MAX - 2`.
-const SHAPE_OVERHEAD_LEVELS: usize = 3;
-
-/// The deepest nesting every shape in this file is accepted at.
-const JUST_UNDER_THE_LIMIT: usize = MAX_SOURCE_NESTING_DEPTH - SHAPE_OVERHEAD_LEVELS;
+/// The deepest nesting every shape in this file is accepted at, measured per
+/// shape: parentheses, `!`, `-`, calls, lists, records, types and `else if`
+/// are accepted at `MAX - 2` and refused one level deeper, because the
+/// statement and the `let` expression each spend a depth level; ternaries,
+/// the three chains and nested `if` are accepted one level deeper still,
+/// because their bound is height, which the `let` expression does not spend.
+/// The exact boundaries are pinned in `crates/amblicit-syntax/tests/parse_nesting.rs`.
+const DEEPEST_COMMON_NESTING: usize = MAX_SOURCE_NESTING_DEPTH - 2;
 
 /// The deepest nested-call source function whose Core module the canonical
-/// encoder accepts: each Core call costs two canonical nesting levels and the
-/// module around the function costs six, against `MAX_CANONICAL_NESTING_DEPTH`.
-/// Between this depth and the compiler's own bound of 128 nested calls, `core`
-/// and `digests` emission fails as a `CoreDigest` CLI failure (amblicit#302).
+/// encoder accepts, measured (see `project_encodes_the_deepest_calls_the_pipeline_accepts`,
+/// which pins it from both sides): each Core call costs two canonical
+/// nesting levels, and the module around the function costs the rest of
+/// `MAX_CANONICAL_NESTING_DEPTH`. Between this depth and the compiler's own
+/// bound of 128 nested calls, `core` and `digests` emission fails as a
+/// `CoreDigest` CLI failure (amblicit#302).
 const DEEPEST_ENCODABLE_CALL_NESTING: usize = (MAX_CANONICAL_NESTING_DEPTH - 6) / 2;
 
 const VALID_SOURCE: &str = r#"package examples.hello@1;
@@ -280,7 +282,12 @@ fn function_with_body(body: &str) -> String {
 /// one gets at any depth above zero (`None` for a shape that compiles).
 /// Parentheses build no node, so the compiler sees a leaf; lists, records and
 /// negation are refused at the root; calls, the binary chain and the field
-/// chain are walked (see `type_check_walks_a_tree_just_under_the_limit`).
+/// chain are walked (see `type_check_walks_a_tree_at_the_deepest_common_depth`).
+/// The kinds are today's reasons for refusing each shape in a `U64` function
+/// (a list or record is not a `U64`; `-` applies only to a literal; source
+/// `U64` addition is unsupported; `value` has no field `value`; nested calls
+/// pass the compiler's depth bound), not facts about nesting: if one of those
+/// language rules changes, update the kind here.
 fn function_shapes(n: usize) -> Vec<(&'static str, String, Option<&'static str>)> {
     vec![
         (
@@ -369,10 +376,10 @@ fn nesting_beyond_the_limit_is_a_parse_diagnostic_not_an_abort() {
 }
 
 #[test]
-fn nesting_just_under_the_limit_checks_clean() {
+fn nesting_at_the_deepest_common_depth_checks_clean() {
     // Every shape checks clean: `check` stops after parsing and surface
-    // validation, and `JUST_UNDER_THE_LIMIT` is within every shape's bound.
-    for (shape, source) in shapes(JUST_UNDER_THE_LIMIT) {
+    // validation, and `DEEPEST_COMMON_NESTING` is within every shape's bound.
+    for (shape, source) in shapes(DEEPEST_COMMON_NESTING) {
         let output = check(&[("deep.amblicit", &source)]);
         assert_eq!(
             output.status.code(),
@@ -385,15 +392,15 @@ fn nesting_just_under_the_limit_checks_clean() {
 }
 
 #[test]
-fn project_just_under_the_limit_does_not_abort() {
+fn project_at_the_deepest_common_depth_does_not_abort() {
     // `check` stops after parsing. `project` hands the accepted tree to the
-    // compiler, which refuses every node-building source function deeper than
-    // 128 (its own graph depth bound) inside `type_check`, so Core integrity
-    // and canonical encoding never see these trees. This witness proves that
+    // compiler, which refuses every node-building source-function body deeper
+    // than 128 (its own graph depth bound) inside `type_check`, so Core
+    // integrity and canonical encoding never see these trees. This witness proves that
     // the compiler reaches its own diagnostic for each shape, in a debug
     // build, without aborting; `project` exits 0 whatever the compiler says,
     // so the diagnostic kind and error count are what is asserted.
-    for (shape, source, expected) in function_shapes(JUST_UNDER_THE_LIMIT) {
+    for (shape, source, expected) in function_shapes(DEEPEST_COMMON_NESTING) {
         let output = project(&["diagnostics"], &[("deep.amblicit", &source)]);
         assert_eq!(
             output.status.code(),
@@ -416,12 +423,12 @@ fn project_just_under_the_limit_does_not_abort() {
 }
 
 #[test]
-fn type_check_walks_a_tree_just_under_the_limit() {
+fn type_check_walks_a_tree_at_the_deepest_common_depth() {
     // A root refusal and a deep walk both end in one diagnostic; the span
     // tells them apart. These left-spine shapes are refused at their
     // innermost leaf, so the span covers that leaf alone, which the checker
     // can only reach by walking every level above it.
-    let n = JUST_UNDER_THE_LIMIT;
+    let n = DEEPEST_COMMON_NESTING;
     let leaves = [
         (
             "binary chain",
@@ -455,7 +462,7 @@ fn type_check_walks_a_tree_just_under_the_limit() {
         );
     }
     // Nested calls are refused by the compiler's own depth bound, which it
-    // reaches only by walking past 128 levels; the span is the whole body.
+    // reaches only by walking past 128 levels.
     let source = function_with_body(&format!(
         "{}value{}",
         "expression(".repeat(n),
@@ -493,8 +500,27 @@ fn project_encodes_the_deepest_calls_the_pipeline_accepts() {
         describe(&output)
     );
     let core = core.unwrap_or_else(|| panic!("core record: {}", describe(&output)));
+    // The review tree carries no `state` or `digest` key of its own, so each
+    // occurs once, as the record's field.
+    assert_eq!(core.matches(r#""state":"#).count(), 1, "{core}");
     assert!(core.contains(r#""state":"available""#), "{core}");
+    assert_eq!(core.matches(r#""digest":"#).count(), 1, "{core}");
     assert!(core.contains(r#""digest":"sha256:"#), "{core}");
+
+    let output = project(
+        &["diagnostics", "core", "digests"],
+        &[("deep.amblicit", &calls(DEEPEST_ENCODABLE_CALL_NESTING + 1))],
+    );
+    assert_eq!(output.status.code(), Some(2), "{}", describe(&output));
+    let stderr = records(&output.stderr);
+    assert!(
+        stderr
+            .iter()
+            .any(|record| record["kind"] == "CoreDigest"
+                && record["message"] == "NestingLimitExceeded"),
+        "one level deeper fails canonical encoding (amblicit#302): {}",
+        describe(&output)
+    );
 
     let output = project(&["diagnostics"], &[("deep.amblicit", &calls(128))]);
     assert_eq!(output.status.code(), Some(0), "{}", describe(&output));
@@ -515,8 +541,8 @@ fn the_limit_holds_on_a_small_main_thread_stack() {
     // reach the limit in a debug build.
     let source = let_expr(&format!(
         "{}true{}",
-        "(".repeat(JUST_UNDER_THE_LIMIT),
-        ")".repeat(JUST_UNDER_THE_LIMIT)
+        "(".repeat(DEEPEST_COMMON_NESTING),
+        ")".repeat(DEEPEST_COMMON_NESTING)
     ));
     let output = check_on_small_main_thread(&[("deep.amblicit", &source)]);
     assert_eq!(output.status.code(), Some(0), "{}", describe(&output));

@@ -181,11 +181,12 @@ fn recursive_shapes_have_an_exact_depth_boundary() {
     // each, so a source's own nesting is accepted up to `MAX - 2` levels and
     // refused at `MAX - 1`.
     let n = MAX_SOURCE_NESTING_DEPTH - 2;
-    let shapes: [SourceShape; 3] = [
+    let shapes: [SourceShape; 4] = [
         ("parentheses", |k| {
             let_expr(&format!("{}true{}", "(".repeat(k), ")".repeat(k)))
         }),
         ("not", |k| let_expr(&format!("{}true", "!".repeat(k)))),
+        ("negation", |k| let_expr(&format!("{}1", "-".repeat(k)))),
         // `<` starts a speculative type-call parse one level deeper. At the
         // boundary that speculation is refused on entry, which must read as
         // "not a type call" so the relational reading, which spends no level,
@@ -204,6 +205,50 @@ fn recursive_shapes_have_an_exact_depth_boundary() {
         assert_parses(shape, source(n));
         assert_nesting_refused(shape, source(n + 1));
     }
+}
+
+#[test]
+fn a_type_call_at_the_limit_is_still_refused() {
+    // At the depth where a relational leaf still parses, a real type call is
+    // refused with `NestingTooDeep`: its speculative parse backtracks, and the
+    // relational reading then needs one more level for the parenthesised
+    // argument list.
+    let n = MAX_SOURCE_NESTING_DEPTH - 2;
+    for call in ["f<Bool>(true)", "f<Bool>()"] {
+        assert_parses(
+            call,
+            let_expr(&format!("{}{call}{}", "(".repeat(n - 1), ")".repeat(n - 1))),
+        );
+        assert_nesting_refused(
+            call,
+            let_expr(&format!("{}{call}{}", "(".repeat(n), ")".repeat(n))),
+        );
+    }
+}
+
+#[test]
+fn comparison_chains_parse_wherever_their_relational_reading_fits() {
+    // Each `<` of `a < b < c`, read speculatively as type arguments, costs a
+    // depth level that the relational reading does not. The comparison must
+    // parse at every depth where the relational reading fits, including just
+    // below the boundary, where the speculation is refused inside its type
+    // arguments rather than on entry.
+    let leaf = "input.ok < input.ok < input.ok";
+    let wrapped = |n: usize| let_expr(&format!("{}{leaf}{}", "(".repeat(n), ")".repeat(n)));
+    for n in MAX_SOURCE_NESTING_DEPTH - 5..=MAX_SOURCE_NESTING_DEPTH - 2 {
+        assert_parses("comparison chain in parentheses", wrapped(n));
+    }
+    assert_nesting_refused(
+        "comparison chain in parentheses",
+        wrapped(MAX_SOURCE_NESTING_DEPTH - 1),
+    );
+    // A long comparison chain is bounded by height, like any operator chain,
+    // although its speculative type reading would nest one level per `<`. Its
+    // operands are bare names: a field access such as `input.ok` is itself
+    // one level of height.
+    let chain = |k: usize| let_expr(&format!("input{}", " < input".repeat(k)));
+    assert_parses("comparison chain", chain(MAX_SOURCE_NESTING_DEPTH - 1));
+    assert_nesting_refused("comparison chain", chain(MAX_SOURCE_NESTING_DEPTH));
 }
 
 #[test]

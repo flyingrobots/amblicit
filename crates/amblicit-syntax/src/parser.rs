@@ -84,27 +84,35 @@ impl ParseErrorKind {
 /// instead of recursing further, including inside the speculative parse of
 /// type-call arguments.
 ///
-/// The two bounds have different overheads. Depth: the enclosing statement
-/// and the `let` expression each spend one recursion level, so a source's own
-/// nesting is accepted up to `MAX - 2` levels (254 nested parentheses parse;
-/// 255 are refused, whatever the innermost leaf). Height: only the statement
-/// adds a level above an operator chain, because `expr` adds height only for
-/// a ternary, so chains are accepted up to `MAX - 1` operators (255 parse;
-/// 256 are refused).
+/// The two bounds have different overheads:
+///
+/// | Shape | Deepest accepted | First refused |
+/// | --- | --- | --- |
+/// | parentheses, `!`, `-`, calls, lists, records, types, `else if` | 254 | 255 |
+/// | operator, field and call chains, ternaries, nested `if` | 255 | 256 |
+///
+/// The counts are for an atomic innermost leaf (an identifier, a literal or a
+/// comparison); a leaf that nests on its own, such as `-1` or `f(x)`, spends
+/// its own levels. Depth is spent by the enclosing statement and by the `let`
+/// expression, one level each; height is spent only by the statement,
+/// because `expr` adds height only for a ternary.
 ///
 /// The limit bounds the parser's recursion; it does not size the thread.
-/// Reaching it costs about 1.1 MiB of stack in a release build (256 levels at
-/// about 4.4 KiB) and several times that in debug, so a 1 MiB thread cannot
-/// reach it in either profile and a 2 MiB spawned thread cannot in a debug
-/// build. The `amblicit` binary runs requests on a thread sized for the
-/// limit; library callers parsing untrusted sources on small threads must do
-/// the same (amblicit#301).
+/// From #277's measurement of the parser before this limit (about 4.3 KiB per
+/// level in release), reaching the limit needs an estimated 1.1 MiB of stack
+/// in a release build and several times that in debug, so on a 1 MiB thread
+/// the parser overflows before reaching the limit in either profile, and on
+/// a 2 MiB spawned thread in a debug build. The `amblicit` binary runs each
+/// request on a 64 MiB thread, and this crate's own tests parse to the limit
+/// on a 64 MiB thread; library callers parsing untrusted sources should give
+/// the parsing thread a comparable stack (amblicit#301).
 ///
-/// The limit sits above the compiler's source-function depth bound (128
-/// nested calls, refused as `InvalidBound` during type checking), so a source
-/// function between the two depths is still refused by that more specific
-/// diagnostic under `project` and `build`; `check` stops after parsing and
-/// surface validation.
+/// The limit sits above the compiler's source-function depth bound: the
+/// compiler walks each source-function body with a depth limit of 128 and
+/// refuses deeper bodies as `InvalidBound` during type checking (witnessed
+/// for 129 nested calls). A source function between the two depths is
+/// therefore refused by that more specific diagnostic under `project` and
+/// `build`; `check` stops after parsing and surface validation.
 pub const MAX_SOURCE_NESTING_DEPTH: usize = 256;
 
 /// A parse failure: a stable kind, message, plus the source span where it was
@@ -244,6 +252,10 @@ struct Parser {
     /// Tallest syntax tree recorded in the current [`Parser::measured`]
     /// height scope.
     height: usize,
+    /// A nesting refusal that a speculative type-call parse backtracked past
+    /// inside the current [`Parser::expr`], reported if that expression then
+    /// fails to parse.
+    swallowed_nesting: Option<ParseError>,
 }
 
 impl Parser {
@@ -253,6 +265,7 @@ impl Parser {
             idx: 0,
             depth: 0,
             height: 0,
+            swallowed_nesting: None,
         }
     }
 
@@ -271,26 +284,31 @@ impl Parser {
     // wrap that call in `guarded`.
     //
     // Height (`composite`, or `measured` plus `record_height`): every tree
-    // node is counted exactly once, by the `composite` that wraps the
-    // production building it. The wrap sits at the chokepoint when one
-    // exists: `stmt` counts every statement, including `if`, `for` and the
-    // `else` block; `expr` counts the ternary; `let_rhs` counts the
-    // branch-yield form, whose `YieldBlock` is not a separate level. It sits
-    // inside the production otherwise: `match_expr`, `list_literal`,
-    // `record_literal`, `type_ref`, `unary` and `else if`. The two loop-built
-    // chains (`binop_left`, `postfix`) measure each step by hand. Parentheses
-    // allocate nothing and add nothing. A new node-building production MUST
-    // be counted once: do not add a `composite` to a statement form (`stmt`
-    // already counts it); do add one to a new `primary` form, or the height
-    // bound silently under-counts. The `::` arm of `postfix` turns the field
-    // chain it has already counted into a type path, so the count there is an
-    // upper bound on the tree it builds.
+    // node is counted exactly once, by one `composite` around the call that
+    // builds it. `stmt` wraps every statement body, so the parts of a
+    // statement (`if` and `for` blocks, an `else` block) add no level of their
+    // own; `expr` wraps the ternary; `let_rhs` wraps the branch-yield form,
+    // whose `YieldBlock` is not a separate level; `type_ref`, `match_expr`,
+    // `list_literal` and `record_literal` wrap their own bodies; and the
+    // `unary` and `else if` self-calls wrap the recursive call together with
+    // its guard. The two loop-built chains (`binop_left`, `postfix`) measure
+    // each step by hand. Parentheses allocate nothing and add nothing. A new
+    // node-building production MUST be counted once: do not add a `composite`
+    // to a statement form (`stmt` already counts it); do add one to a new
+    // `primary` form, or the height bound silently under-counts. The `::` arm
+    // of `postfix` turns the field chain it has already counted into a type
+    // path, so the count there is an upper bound on the tree it builds.
     //
     // The `*_body` functions are the unwrapped bodies of their productions
     // and exist only to be wrapped: call the production, never the body.
     //
-    // Speculative parsing (`try_type_call_args`) must propagate a nesting
-    // refusal instead of backtracking past it, so the refusal keeps its kind.
+    // Speculative parsing (`try_type_call_args`) never propagates a nesting
+    // refusal: it backtracks and records it, and the enclosing `expr` reports
+    // it only if the relational reading of `<` fails too. See the doc there.
+    //
+    // Tests: a new recursive shape belongs in `recursion_past_the_limit_is_refused`
+    // (crates/amblicit-syntax/tests/parse_nesting.rs) and in `shapes()`
+    // (crates/amblicit-cli/tests/deep_nesting_cli.rs).
 
     fn nesting_too_deep<T>(&self) -> Result<T, ParseError> {
         self.err_kind(
@@ -1447,12 +1465,23 @@ impl Parser {
         // expression position is the pure ternary (`if p then a else b`). The
         // effectful branch-yield form is *not* a general expression — it is
         // handled separately in `let_rhs`.
-        self.guarded(|parser| {
+        let outer = self.swallowed_nesting.take();
+        let result = self.guarded(|parser| {
             if parser.at_kw("if") {
                 return parser.composite(Self::if_ternary);
             }
             parser.logic_or()
-        })
+        });
+        // A speculative type-call parse inside this expression was refused for
+        // nesting and backtracked into the relational reading of `<`. If that
+        // reading also fails, the source was too deep, not malformed.
+        let swallowed = std::mem::replace(&mut self.swallowed_nesting, outer);
+        match (result, swallowed) {
+            (Err(error), Some(nesting)) if error.kind != ParseErrorKind::NestingTooDeep => {
+                Err(nesting)
+            }
+            (result, _) => result,
+        }
     }
 
     /// Pure conditional expression: `if predicate then expr else expr`.
@@ -1634,7 +1663,8 @@ impl Parser {
                     // `<` is ambiguous (generics vs comparison). Only treat it as
                     // a type-call when `<type-args>` is immediately followed by
                     // `(`; otherwise backtrack and let `relational` handle `<`.
-                    let (type_args, type_args_height) = self.measured(Self::try_type_call_args)?;
+                    let (type_args, type_args_height) =
+                        self.measured(|parser| Ok(parser.try_type_call_args()))?;
                     let Some(type_args) = type_args else {
                         break;
                     };
@@ -1735,32 +1765,29 @@ impl Parser {
 
     /// Try to parse `<type-args>` that is immediately followed by `(` (a
     /// type-call). On any mismatch, restore the cursor and return `None` so the
-    /// caller can treat `<` as the relational operator. A nesting refusal from
-    /// inside the type arguments is not a mismatch: it is returned as the
-    /// error, so deep type arguments are reported as `NestingTooDeep` rather
-    /// than as a relational syntax error. A refusal on entry, when the parser
-    /// is already at the limit, is a mismatch: the relational reading needs no
-    /// further level, so it is still tried.
-    fn try_type_call_args(&mut self) -> Result<Option<Vec<TypeRef>>, ParseError> {
+    /// caller can treat `<` as the relational operator.
+    ///
+    /// A nesting refusal is also a backtrack: whether it arose on entry or
+    /// inside the type arguments, the parser's depth cannot tell deep type
+    /// arguments from a comparison chain read as type arguments (each `<` of
+    /// `a < b < c` read as a type costs a level that the relational reading
+    /// does not). The refusal is recorded instead, and the enclosing
+    /// [`Parser::expr`] reports it only if the relational reading fails too,
+    /// so deep type arguments keep the `NestingTooDeep` kind and comparisons
+    /// parse exactly as they would without the limit.
+    fn try_type_call_args(&mut self) -> Option<Vec<TypeRef>> {
         let save = self.idx;
         self.idx += 1; // consume '<'
         let mut args = Vec::new();
         loop {
-            // `guarded` increments the depth only after admitting the call, so
-            // `depth == MAX` here means `type_ref` was refused on entry, not
-            // inside the arguments. An on-entry refusal is the relational
-            // reading's turn, which spends no level.
             let t = match self.type_ref() {
                 Ok(t) => t,
-                Err(error)
-                    if error.kind == ParseErrorKind::NestingTooDeep
-                        && self.depth < MAX_SOURCE_NESTING_DEPTH =>
-                {
-                    return Err(error)
-                }
-                Err(_) => {
+                Err(error) => {
+                    if error.kind == ParseErrorKind::NestingTooDeep {
+                        self.swallowed_nesting.get_or_insert(error);
+                    }
                     self.idx = save;
-                    return Ok(None);
+                    return None;
                 }
             };
             args.push(t);
@@ -1771,16 +1798,16 @@ impl Parser {
         }
         if *self.peek() != TokenKind::Gt {
             self.idx = save;
-            return Ok(None);
+            return None;
         }
         self.idx += 1; // consume '>'
         if *self.peek() != TokenKind::LParen
             || self.tokens[self.idx - 1].span.end != self.peek_span().start
         {
             self.idx = save;
-            return Ok(None);
+            return None;
         }
-        Ok(Some(args))
+        Some(args)
     }
 
     fn digest_value_lit(&mut self) -> Result<Expr, ParseError> {
