@@ -296,12 +296,15 @@ domains, so an ordered or structured document cannot drop its required
 `executionOrder` by claiming the phased kind. Prior publications are
 unchanged, including their unrestricted phased domain.
 Result projections admit a v3 intent whose result uses the application input
-or root-scope pure/effect bindings, after checking the complete nested Core/order
-correspondence; loop and branch locals cannot become result sources (see
-[result projections](../result-projections/README.md)). The public
-application-build route therefore binds a verified v3 projection into provider
-inputs. Echo's provider checks the Target IR domain exactly and refuses v3; this
-is compiler evidence only, with no runtime loop or branch execution.
+or root-scope pure/effect bindings, after checking Core/order correspondence
+(the Core body's nested instructions must match the Target `executionOrder`
+tree node for node); loop and branch locals cannot become result sources (see
+[result projections](../result-projections/README.md#structured-target-v3-bodies)).
+The public application-build route therefore binds a verified v3 projection
+into provider inputs. As of Echo `089c849f`, Echo's provider checks the Target
+IR domain exactly and admits only v1 and v2, so a public build of a structured
+operation still fails at the provider; structured support is tracked by Echo
+#947. This is compiler evidence only, with no runtime loop or branch execution.
 Issue #267 asks that the loop bound be charged against an effect budget; Edict
 declares no effect budget today (`targetBudget` is unimplemented), so the bound
 is preserved as Core data and the Core step budget is unchanged. [TIR-REQ-060]

@@ -8,12 +8,14 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
-- Admit compiler-owned result projections for explicitly selected structured
-  Target v3 operations. Projection emission and independent verification match
-  nested Core/order correspondence and retain only root-scope result sources;
-  loop and branch locals cannot escape into application output. Public
-  application builds can bind the verified projection into provider inputs;
-  provider and runtime structured-effect support remains Echo #947.
+- Admit compiler-owned result projections for structured Target v3
+  operations, selected when an adapter declares `echo.span-ir/v3`. Projection
+  emission and independent verification require the Core body's nested
+  instructions to match the Target `executionOrder` tree node for node, and
+  retain only root-scope result sources; loop and branch locals cannot escape
+  into application output. The application builder's existing projection
+  binding now accepts these operations, but a public build still fails at
+  Echo's provider, which refuses v3 until Echo #947.
 
 - Add `listLen`, proof-checked `listAt`, capacity-preserving `listAppend` and
   bounded `listConcat` for immutable authored worklists under `core.list/v1`.
