@@ -24,8 +24,9 @@ pub(super) fn resolve_sources(
             format!("{intent_name}.structuredControl"),
         )
     };
-    // This existing independent order judgment enforces unique identities,
-    // table coverage, literal bounds and lexical availability in every arm.
+    // This existing independent order judgment enforces unique instruction,
+    // binding and loop-binder identities (not Match-arm binders), table
+    // coverage, literal bounds and lexical availability in every arm.
     if !crate::target_ir::execution_order::intent_has_valid_execution_order(
         ECHO_STRUCTURED_SPAN_IR_DOMAIN,
         target,

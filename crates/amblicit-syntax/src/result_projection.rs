@@ -437,7 +437,7 @@ impl<'a> ProjectionSemantics<'a> {
                 ) {
                     return Err(failure(
                         ResultProjectionFailureKind::CoreTargetMismatch,
-                        intent_name,
+                        format!("{intent_name}.structuredHeader"),
                     ));
                 }
                 structured::resolve_sources(core_intent, target_intent, intent_name, &input)?

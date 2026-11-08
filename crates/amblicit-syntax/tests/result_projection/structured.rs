@@ -3,14 +3,19 @@
 use super::*;
 use amblicit_syntax::{CoreValue, TargetIrOrderEntry, ECHO_STRUCTURED_SPAN_IR_DOMAIN};
 
-const STRUCTURED_SOURCE: &str =
+pub(super) const STRUCTURED_SOURCE: &str =
     include_str!("../../../../fixtures/lawpack/hello-echo/create-greetings.amblicit");
-const INTENT: &str = "createGreeting";
+pub(super) const INTENT: &str = "createGreeting";
 
 fn lowering() -> (CoreModule, TargetLoweringReport) {
+    lower_structured(STRUCTURED_SOURCE)
+}
+
+/// Lower one source under the explicitly selected structured v3 domain.
+pub(super) fn lower_structured(source: &str) -> (CoreModule, TargetLoweringReport) {
     let bundle = decode_lawpack_bundle(MANIFEST_BYTES, EXPORTS_BYTES).expect("lawpack");
     let adapter = decode_lawpack_adapter(&bundle, "echo.dpo@1", ADAPTER_BYTES).expect("adapter");
-    let module = parse_module(STRUCTURED_SOURCE).expect("structured source parses");
+    let module = parse_module(source).expect("structured source parses");
     let preparation = prepare_lawpack_compilation(&module, &bundle, &adapter).expect("prepare");
     let core = amblicit_syntax::compile_to_core(&module, preparation.compiler_context())
         .expect("structured source compiles");
@@ -21,12 +26,12 @@ fn lowering() -> (CoreModule, TargetLoweringReport) {
     (core, report)
 }
 
-fn pair() -> (CoreModule, TargetIrArtifact) {
+pub(super) fn pair() -> (CoreModule, TargetIrArtifact) {
     let (core, report) = lowering();
     (core, report.artifact.expect("structured Target"))
 }
 
-fn order_mut(target: &mut TargetIrArtifact) -> &mut Vec<TargetIrOrderEntry> {
+pub(super) fn order_mut(target: &mut TargetIrArtifact) -> &mut Vec<TargetIrOrderEntry> {
     target
         .intents
         .get_mut(INTENT)
@@ -83,7 +88,11 @@ fn structured_source_emits_and_independently_verifies_root_result_sources() {
     assert_eq!(target.intents[INTENT].pure_bindings.len(), 3);
 }
 
-fn refuses(core: &CoreModule, target: &TargetIrArtifact, projection: &ResultProjectionArtifact) {
+pub(super) fn refuses(
+    core: &CoreModule,
+    target: &TargetIrArtifact,
+    projection: &ResultProjectionArtifact,
+) {
     assert_eq!(
         emit_result_projection(core, target, INTENT)
             .expect_err("emit must refuse")
