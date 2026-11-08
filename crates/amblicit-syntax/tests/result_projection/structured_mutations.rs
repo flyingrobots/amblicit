@@ -228,7 +228,7 @@ fn empty_body_loop_refuses_a_binder_only_change() {
     for (label, mutate) in binder_changes {
         let mut changed = target.clone();
         mutate(&core, &mut changed);
-        assert!(loop_mut(&mut changed).body.is_empty());
+        assert_eq!(loop_mut(&mut changed).body, [] as [TargetIrOrderEntry; 0]);
         println!("mutation: {label}");
         refuses(&core, &changed, projection);
     }
