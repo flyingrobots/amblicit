@@ -8,13 +8,20 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
-- The parser now refuses source nesting deeper than the public
-  `MAX_SOURCE_NESTING_DEPTH` (256) with the new parse diagnostic kind
-  `NestingTooDeep`. Before, a source of a few hundred nested parentheses, or
-  a long chain such as `a || b || ...`, could overflow the stack and abort
-  `amblicit` with no output, losing the response for every input in the
-  request (#277). Callers that match on `ParseErrorKind` exhaustively must add
-  the new variant.
+- **Breaking (Rust API):** `ParseErrorKind` gains `NestingTooDeep`; an
+  exhaustive `match` on it outside `amblicit-syntax` must add the arm. The
+  parser now refuses source nesting deeper than the public
+  `amblicit_syntax::MAX_SOURCE_NESTING_DEPTH` (256 recursion levels; a
+  source's own nesting is accepted up to 254 levels) with that kind, counting
+  both its recursion and the height of the tree it builds, so long operator,
+  field and call chains are bounded too. Before, a source of a few hundred
+  nested parentheses aborted `amblicit check` with a stack overflow and no
+  output, losing the response for every input in the request (#277). The
+  limit bounds the parser's recursion; it does not size the thread: the
+  `amblicit` binary now runs each request on a thread with a 64 MiB stack so
+  the limit holds on every platform's default main thread, while a library
+  caller parsing untrusted sources on a small thread (2 MiB spawned, debug
+  build) must still provide a larger stack (#301).
 
 - Add `listLen`, proof-checked `listAt`, capacity-preserving `listAppend` and
   bounded `listConcat` for immutable authored worklists under `core.list/v1`.

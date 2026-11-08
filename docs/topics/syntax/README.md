@@ -74,16 +74,26 @@ programs, prove bounds, or itself lower to Core IR. [SYNTAX-REQ-001]
   names. [SYNTAX-REQ-009] [EDICT-LANG-RECORD-SHORTHAND-001]
 - Negative coverage asserts stable `ParseErrorKind` values rather than message
   prose or stdout/stderr. [SYNTAX-REQ-010]
-- Source nesting is bounded by the public `MAX_SOURCE_NESTING_DEPTH` (256).
-  The parser counts both its own recursion (parentheses, unary operators,
-  calls, list and record literals, `match`, ternaries, statements, `else if`
-  and types) and the height of the tree it builds, including operator, field
-  and call chains that it parses with a loop. Past either bound, parsing stops
-  with `NestingTooDeep` instead of exhausting the thread stack. The limit sits
-  above the Core graph depth of 128, so sources between the two still reach
-  the compiler's `InvalidBound` diagnostic. The parser's stack use up to the
-  limit depends on the build profile: a debug build needs several MiB, more
-  than a default 2 MiB spawned thread provides. [SYNTAX-REQ-018]
+- Source nesting is bounded by the public `MAX_SOURCE_NESTING_DEPTH` (256
+  recursion levels). The parser counts both its own recursion, at the `expr`,
+  `stmt` and `type_ref` chokepoints plus the directly self-recursive `unary`
+  and `else if`, and the height of the tree it builds, including the operator,
+  field and call chains that it parses with a loop. Past either bound, parsing
+  stops with `NestingTooDeep`, including inside the speculative parse of
+  type-call arguments. The enclosing statement and expression each spend one
+  level, so a source's own nesting is accepted up to 254 levels (254 nested
+  parentheses parse, 255 are refused) and operator chains up to 255 operators.
+  The limit sits above the compiler's source-function depth bound (128 nested
+  calls), so a source function between the two depths is still refused by the
+  compiler's more specific `InvalidBound` diagnostic under `project` and
+  `build`; `check` stops after parsing and surface validation. [SYNTAX-REQ-018]
+
+The limit bounds recursion, not the thread. Each level costs stack according to
+the build profile (about 4.4 KiB in release, several times that in debug), so
+reaching the limit needs more than a 1 MiB main thread or a 2 MiB spawned
+thread provides in a debug build. The `amblicit` binary runs each request on a
+64 MiB thread; a library caller parsing untrusted sources on a small thread must
+size that thread itself (tracked in issue #301).
 
 ## Deferred
 

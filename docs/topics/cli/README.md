@@ -12,7 +12,11 @@ The `amblicit` binary reads compiler requests from stdin as JSONL records. It em
 only JSONL records on stdout and stderr. Stdin is bounded before request parsing:
 the default cap is 8 MiB, and `AMBLICIT_CLI_MAX_STDIN_BYTES` may override that cap
 with a positive byte count. Over-limit input is rejected with an `InputTooLarge`
-CLI diagnostic and exit `2`. [CLI-REQ-001, CLI-REQ-010]
+CLI diagnostic and exit `2`. [CLI-REQ-001, CLI-REQ-010] Source nesting is
+bounded by the parser at `MAX_SOURCE_NESTING_DEPTH` (see the
+[syntax shelf](../syntax/README.md), SYNTAX-REQ-018); a deeper source is a
+`NestingTooDeep` parse diagnostic, and the binary runs each request on a 64 MiB
+thread so that bound holds on every platform's default main-thread stack.
 
 The binary takes no positional arguments. The only accepted flags are
 `--help`/`-h` and `--version`/`-V`, which emit a single `edict.cli.info/v1`

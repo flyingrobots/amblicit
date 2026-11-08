@@ -1,8 +1,8 @@
 //! Process-boundary witnesses for source nesting (amblicit#277).
 //!
-//! Each case runs the normal `amblicit` binary on its default main-thread
-//! stack. A stack overflow aborts the child, which fails the assertion here
-//! instead of the test harness.
+//! Each case runs the normal `amblicit` binary as a child process. A stack
+//! overflow aborts the child, which fails the assertion here instead of the
+//! test harness.
 
 use std::io::Write;
 use std::process::{Command, Output, Stdio};
@@ -44,8 +44,10 @@ fn let_expr(expr: &str) -> String {
     intent_with_body(&format!("  let x = {expr};"))
 }
 
-/// Every source shape whose nesting the parser either recurses into or builds
-/// into a deeper syntax tree without recursing.
+/// Thirteen source shapes covering each guarded chokepoint (`expr`, `stmt`,
+/// `type_ref`), each directly self-recursive production (`unary`, `else if`)
+/// and each loop-built chain (operators, fields, calls); see the nesting-limit
+/// rule in `crates/amblicit-syntax/src/parser.rs`.
 fn shapes(n: usize) -> Vec<(&'static str, String)> {
     vec![
         (
@@ -98,13 +100,8 @@ fn shapes(n: usize) -> Vec<(&'static str, String)> {
     ]
 }
 
-fn check(sources: &[(&str, &str)]) -> Output {
-    let mut request = json!({
-        "schema": "edict.compiler.settings/v1",
-        "type": "compilerSettings",
-        "operation": "check",
-    })
-    .to_string();
+fn request(settings: &Value, sources: &[(&str, &str)]) -> String {
+    let mut request = settings.to_string();
     for (name, source) in sources {
         request.push('\n');
         request.push_str(
@@ -119,7 +116,39 @@ fn check(sources: &[(&str, &str)]) -> Output {
         );
     }
     request.push('\n');
-    let mut child = Command::new(env!("CARGO_BIN_EXE_amblicit"))
+    request
+}
+
+fn check_settings() -> Value {
+    json!({
+        "schema": "edict.compiler.settings/v1",
+        "type": "compilerSettings",
+        "operation": "check",
+    })
+}
+
+/// `project` with the compiler context CLI-TP-040 uses, so the compiler, Core
+/// and canonical stages run on the source.
+fn project_settings() -> Value {
+    json!({
+        "schema": "edict.compiler.settings/v1",
+        "type": "compilerSettings",
+        "operation": "project",
+        "emit": ["diagnostics"],
+        "compilerContext": {
+            "operationProfiles": [{"source": "p.read", "core": "continuum.profile.read-only/v1"}],
+            "budgets": [{"source": "p.small", "budget": {
+                "maxSteps": 4096, "maxAllocatedBytes": u64::MAX, "maxOutputBytes": u64::MAX
+            }}]
+        }
+    })
+}
+
+/// Run `command` on `request`. The stdin cap override is removed so a
+/// developer's environment cannot shrink the cap below these 20,000-token
+/// sources.
+fn run_request(command: &mut Command, request: &str) -> Output {
+    let mut child = command
         .env_remove(amblicit_cli::MAX_STDIN_BYTES_ENV)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -133,6 +162,91 @@ fn check(sources: &[(&str, &str)]) -> Output {
         .write_all(request.as_bytes())
         .expect("write jsonl stdin");
     child.wait_with_output().expect("collect output")
+}
+
+fn check(sources: &[(&str, &str)]) -> Output {
+    run_request(
+        &mut Command::new(env!("CARGO_BIN_EXE_amblicit")),
+        &request(&check_settings(), sources),
+    )
+}
+
+fn project(sources: &[(&str, &str)]) -> Output {
+    run_request(
+        &mut Command::new(env!("CARGO_BIN_EXE_amblicit")),
+        &request(&project_settings(), sources),
+    )
+}
+
+/// The main-thread stack a POSIX shell gives the binary when `ulimit -s` is
+/// set to 1 MiB: the smallest default main-thread stack among the platforms
+/// the binary is built for.
+#[cfg(unix)]
+const SMALL_MAIN_THREAD_STACK_KIB: usize = 1024;
+
+/// Run `check` in a child whose main thread has a 1 MiB stack.
+#[cfg(unix)]
+fn check_on_small_main_thread(sources: &[(&str, &str)]) -> Output {
+    let mut command = Command::new("sh");
+    command
+        .arg("-c")
+        .arg(format!(
+            "ulimit -s {SMALL_MAIN_THREAD_STACK_KIB} && exec \"$0\"",
+        ))
+        .arg(env!("CARGO_BIN_EXE_amblicit"));
+    run_request(&mut command, &request(&check_settings(), sources))
+}
+
+/// A module whose source function `nested` holds `body`, as CLI-TP-040 shapes
+/// it, so `project` type-checks and lowers the expression.
+fn function_with_body(body: &str) -> String {
+    format!(
+        "package functions.deep@1;\n\
+         fn expression(value: U64) -> U64 {{ return value; }}\n\
+         fn nested(value: U64) -> U64 {{ return {body}; }}\n\
+         type Input = {{ value: U64, other: U64, }};\n\
+         type Output = {{ value: U64, }};\n\
+         intent evaluate(input: Input) returns Output profile p.read basis none budget <= p.small {{\n\
+         return {{ value: input.value }};\n}}"
+    )
+}
+
+/// Node-building shapes inside a source function body.
+fn function_shapes(n: usize) -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "calls",
+            function_with_body(&format!(
+                "{}value{}",
+                "expression(".repeat(n),
+                ")".repeat(n)
+            )),
+        ),
+        (
+            "parentheses",
+            function_with_body(&format!("{}value{}", "(".repeat(n), ")".repeat(n))),
+        ),
+        (
+            "lists",
+            function_with_body(&format!("{}value{}", "[".repeat(n), "]".repeat(n))),
+        ),
+        (
+            "records",
+            function_with_body(&format!("{}value{}", "{ value: ".repeat(n), " }".repeat(n))),
+        ),
+        (
+            "negation",
+            function_with_body(&format!("{}value", "-".repeat(n))),
+        ),
+        (
+            "binary chain",
+            function_with_body(&format!("value{}", " + value".repeat(n))),
+        ),
+        (
+            "field chain",
+            function_with_body(&format!("value{}", ".value".repeat(n))),
+        ),
+    ]
 }
 
 fn records(bytes: &[u8]) -> Vec<Value> {
@@ -174,25 +288,83 @@ fn nesting_beyond_the_limit_is_a_parse_diagnostic_not_an_abort() {
 }
 
 #[test]
-fn nesting_at_the_limit_completes_without_aborting() {
+fn nesting_just_under_the_limit_completes_without_aborting() {
     // Recursive shapes also spend a few levels on the statement and the
-    // enclosing `let` expression, so they sit just under the limit.
+    // enclosing `let` expression, so they sit just under the limit. Every
+    // shape checks clean: `check` stops after parsing and surface validation.
     for (shape, source) in shapes(MAX_SOURCE_NESTING_DEPTH - 4) {
         let output = check(&[("deep.amblicit", &source)]);
-        assert!(
-            matches!(output.status.code(), Some(0 | 1)),
+        assert_eq!(
+            output.status.code(),
+            Some(0),
             "{shape}: {}",
             describe(&output)
         );
-        let stderr = records(&output.stderr);
+        assert!(output.stderr.is_empty(), "{shape}: {}", describe(&output));
+    }
+}
+
+#[test]
+fn project_just_under_the_limit_completes_without_aborting() {
+    // `check` stops after parsing and surface validation. `project` runs the
+    // compiler, Core integrity and canonical stages on the tree the parser
+    // accepted, so this is the witness that those stages survive the limit.
+    for (shape, source) in function_shapes(MAX_SOURCE_NESTING_DEPTH - 4) {
+        let output = project(&[("deep.amblicit", &source)]);
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{shape}: {}",
+            describe(&output)
+        );
+        let stdout = records(&output.stdout);
+        let status = stdout
+            .iter()
+            .find(|record| record["type"] == "status")
+            .unwrap_or_else(|| panic!("{shape}: status record: {}", describe(&output)));
+        assert_eq!(status["checked"], 1, "{shape}: {status}");
+        let refused_for_nesting = stdout
+            .iter()
+            .filter(|record| record["type"] == "diagnostics")
+            .flat_map(|record| {
+                record["diagnostics"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default()
+            })
+            .any(|diagnostic| diagnostic["kind"] == "NestingTooDeep");
         assert!(
-            stderr
-                .iter()
-                .all(|record| record["kind"] != "NestingTooDeep"),
+            !refused_for_nesting,
             "{shape} within the limit must not be refused for nesting: {}",
             describe(&output)
         );
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn the_limit_holds_on_a_small_main_thread_stack() {
+    // The binary must not depend on the platform's default main-thread stack:
+    // Windows gives the main thread 1 MiB, far less than the parser needs to
+    // reach the limit in a debug build.
+    let source = let_expr(&format!(
+        "{}true{}",
+        "(".repeat(MAX_SOURCE_NESTING_DEPTH - 4),
+        ")".repeat(MAX_SOURCE_NESTING_DEPTH - 4)
+    ));
+    let output = check_on_small_main_thread(&[("deep.amblicit", &source)]);
+    assert_eq!(output.status.code(), Some(0), "{}", describe(&output));
+    let deep = let_expr(&format!("{}true{}", "(".repeat(20_000), ")".repeat(20_000)));
+    let output = check_on_small_main_thread(&[("deep.amblicit", &deep)]);
+    assert_eq!(output.status.code(), Some(1), "{}", describe(&output));
+    let stderr = records(&output.stderr);
+    assert!(
+        stderr
+            .iter()
+            .any(|record| record["type"] == "diagnostic" && record["kind"] == "NestingTooDeep"),
+        "{}",
+        describe(&output)
+    );
 }
 
 #[test]

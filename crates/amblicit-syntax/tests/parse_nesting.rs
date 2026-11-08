@@ -116,9 +116,77 @@ fn recursion_past_the_limit_is_refused() {
                 ">".repeat(n)
             )),
         ),
+        (
+            "type-call type arguments",
+            // Type arguments are parsed speculatively; the parentheses spend
+            // the depth so that the refusal happens inside that speculation.
+            let_expr(&format!(
+                "{}f<{}Bool{}>(true){}",
+                "(".repeat(n - 64),
+                "Option<".repeat(64),
+                ">".repeat(64),
+                ")".repeat(n - 64)
+            )),
+        ),
+        (
+            "match scrutinees",
+            let_expr(&format!(
+                "{}input.ok{}",
+                "match ".repeat(n),
+                " { Yes => true }".repeat(n)
+            )),
+        ),
+        (
+            "match arm bodies",
+            let_expr(&format!(
+                "{}true{}",
+                "match input.ok { Yes => ".repeat(n),
+                " }".repeat(n)
+            )),
+        ),
+        (
+            "variant payloads",
+            let_expr(&format!("{}true{}", "Kind::Yes(".repeat(n), ")".repeat(n))),
+        ),
+        (
+            "for bodies",
+            intent_with_body(&format!(
+                "{}{}",
+                "for item in input.ok bounded p.limit {\n".repeat(n),
+                "}\n".repeat(n)
+            )),
+        ),
+        ("yield blocks", intent_with_body(&nested_yield_blocks(n))),
     ];
     for (shape, source) in cases {
         assert_nesting_refused(shape, source);
+    }
+}
+
+/// `n` effect-yield blocks, each holding the next as a statement.
+fn nested_yield_blocks(n: usize) -> String {
+    let mut body = "let x0 = true;".to_owned();
+    for _ in 0..n {
+        body = format!("let x = if true {{ {body} yield true; }} else {{ yield true; }};");
+    }
+    body
+}
+
+#[test]
+fn recursive_shapes_have_an_exact_depth_boundary() {
+    // The enclosing statement and the `let` right-hand side each spend one
+    // recursion level, so a source's own nesting is accepted up to `MAX - 2`
+    // levels and refused at `MAX - 1`.
+    let n = MAX_SOURCE_NESTING_DEPTH - 2;
+    let shapes: [ChainShape; 2] = [
+        ("parentheses", |k| {
+            let_expr(&format!("{}true{}", "(".repeat(k), ")".repeat(k)))
+        }),
+        ("not", |k| let_expr(&format!("{}true", "!".repeat(k)))),
+    ];
+    for (shape, source) in shapes {
+        assert_parses(shape, source(n));
+        assert_nesting_refused(shape, source(n + 1));
     }
 }
 
@@ -142,7 +210,10 @@ fn ordinary_nesting_still_parses() {
 #[test]
 fn a_huge_chain_is_refused_without_building_it() {
     // Half a mebibyte of `|| true` would make a tree far taller than any
-    // recursive later stage could walk; the parser stops at the limit.
+    // recursive later stage could walk; the parser stops at the limit. This
+    // runs on the default test thread: had the 65,536-node tree been built,
+    // dropping it would itself overflow, so surviving here is the witness
+    // that it was not.
     let source = let_expr(&format!("true{}", " || true".repeat(65_536)));
     let error = parse_module(&source).expect_err("huge chain");
     assert_eq!(error.kind, ParseErrorKind::NestingTooDeep);

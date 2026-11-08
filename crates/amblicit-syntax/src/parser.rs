@@ -74,15 +74,29 @@ impl ParseErrorKind {
     }
 }
 
-/// The deepest source nesting the parser accepts.
+/// The deepest source nesting the parser accepts, in recursion levels.
 ///
-/// It bounds two things: how deeply the parser recurses (parentheses, unary
-/// operators, nested literals, statements and types), and the height of the
-/// syntax tree it builds, including operator, field and call chains that it
-/// parses with a loop. Past either bound, parsing stops with
-/// [`ParseErrorKind::NestingTooDeep`] instead of exhausting the thread stack.
-/// The limit sits above the Core graph depth (128), so sources between the two
-/// still reach the compiler's more specific `InvalidBound` diagnostic.
+/// It bounds two things: how deeply the parser recurses (through `expr`,
+/// `stmt` and `type_ref`, plus `unary` and `else if`, which recurse into
+/// themselves directly), and the height of the syntax tree it builds,
+/// including the operator, field and call chains that it parses with a loop.
+/// Past either bound, parsing stops with [`ParseErrorKind::NestingTooDeep`]
+/// instead of recursing further. The enclosing statement and expression each
+/// spend one level, so a source's own nesting is accepted up to `MAX - 2`
+/// levels (254 nested parentheses parse; 255 are refused) and operator chains
+/// up to `MAX - 1` operators.
+///
+/// The limit bounds the parser's recursion; it does not size the thread. Each
+/// level costs stack according to the build profile (about 4.4 KiB in release
+/// and several times that in debug), so reaching the limit needs more than a
+/// 1 MiB main thread or a 2 MiB spawned thread provides in a debug build. The
+/// `amblicit` binary runs requests on a thread sized for the limit; library
+/// callers parsing untrusted sources on small threads must do the same.
+///
+/// The limit sits above the compiler's source-function depth bound (128
+/// nested calls), so a source function between the two depths is still
+/// refused by the compiler's more specific `InvalidBound` diagnostic under
+/// `project` and `build`; `check` stops after parsing and surface validation.
 pub const MAX_SOURCE_NESTING_DEPTH: usize = 256;
 
 /// A parse failure: a stable kind, message, plus the source span where it was
@@ -219,7 +233,8 @@ struct Parser {
     idx: usize,
     /// Active recursion through the parser's self-recursive productions.
     depth: usize,
-    /// Tallest syntax tree recorded in the current [`Parser::measured`] frame.
+    /// Tallest syntax tree recorded in the current [`Parser::measured`]
+    /// height scope.
     height: usize,
 }
 
@@ -234,6 +249,29 @@ impl Parser {
     }
 
     // --- nesting limits (MAX_SOURCE_NESTING_DEPTH) ---
+    //
+    // Two bounds, applied at fixed places. Keep them there when adding
+    // productions.
+    //
+    // Depth (`guarded`): recursion is counted at three chokepoints, `expr`,
+    // `stmt` and `type_ref`, plus the two productions that recurse into
+    // themselves without passing a chokepoint: `unary` -> `unary` and
+    // `if_stmt` -> `if_stmt` (`else if`). A production that only recurses
+    // *through* a chokepoint (lists, records, `match`, call arguments,
+    // ternaries, variant payloads, obstruction payloads, yield blocks) must not
+    // add a guard of its own. A new production that calls itself directly MUST
+    // wrap that call in `guarded`.
+    //
+    // Height (`composite`, or `measured` plus `record_height`): every
+    // production that allocates a boxed tree node is a `composite` of its
+    // children, except the two loop-built chains (`binop_left`, `postfix`),
+    // which measure each step by hand. Parentheses allocate nothing and add
+    // nothing. A new node-building production MUST be a `composite`, or the
+    // height bound silently under-counts. The `::` arm of `postfix` keeps the
+    // height of the path it consumed, so the count is an upper bound there.
+    //
+    // Speculative parsing (`try_type_call_args`) must propagate a nesting
+    // refusal instead of backtracking past it, so the refusal keeps its kind.
 
     fn nesting_too_deep<T>(&self) -> Result<T, ParseError> {
         self.err_kind(
@@ -257,7 +295,7 @@ impl Parser {
         result
     }
 
-    /// Parse in a fresh height frame and return the height of the tallest
+    /// Parse in a fresh height scope and return the height of the tallest
     /// tree recorded inside it (0 for leaves).
     fn measured<T>(
         &mut self,
@@ -269,7 +307,8 @@ impl Parser {
         result.map(|value| (value, height))
     }
 
-    /// Record a tree of `height` in the current frame, refusing past the limit.
+    /// Record a tree of `height` in the current height scope, refusing past
+    /// the limit.
     fn record_height(&mut self, height: usize) -> Result<(), ParseError> {
         if height > MAX_SOURCE_NESTING_DEPTH {
             return self.nesting_too_deep();
@@ -774,10 +813,10 @@ impl Parser {
     }
 
     fn type_ref(&mut self) -> Result<TypeRef, ParseError> {
-        self.guarded(|parser| parser.composite(Self::type_ref_unguarded))
+        self.guarded(|parser| parser.composite(Self::type_ref_body))
     }
 
-    fn type_ref_unguarded(&mut self) -> Result<TypeRef, ParseError> {
+    fn type_ref_body(&mut self) -> Result<TypeRef, ParseError> {
         let name = self.ident()?;
         match name.as_str() {
             "String" => Ok(TypeRef::StringTy(self.maybe_scalar_refine()?)),
@@ -1000,10 +1039,10 @@ impl Parser {
     }
 
     fn stmt(&mut self) -> Result<Stmt, ParseError> {
-        self.guarded(|parser| parser.composite(Self::stmt_unguarded))
+        self.guarded(|parser| parser.composite(Self::stmt_body))
     }
 
-    fn stmt_unguarded(&mut self) -> Result<Stmt, ParseError> {
+    fn stmt_body(&mut self) -> Result<Stmt, ParseError> {
         let start = self.peek_span().start;
         if self.eat_kw("let") {
             let name = self.binder()?;
@@ -1576,8 +1615,7 @@ impl Parser {
                     // `<` is ambiguous (generics vs comparison). Only treat it as
                     // a type-call when `<type-args>` is immediately followed by
                     // `(`; otherwise backtrack and let `relational` handle `<`.
-                    let (type_args, type_args_height) =
-                        self.measured(|parser| Ok(parser.try_type_call_args()))?;
+                    let (type_args, type_args_height) = self.measured(Self::try_type_call_args)?;
                     let Some(type_args) = type_args else {
                         break;
                     };
@@ -1630,10 +1668,10 @@ impl Parser {
 
     /// `match scrutinee { Case (binder)? => expr, ... }` (at least one arm).
     fn match_expr(&mut self) -> Result<Expr, ParseError> {
-        self.composite(Self::match_expr_unmeasured)
+        self.composite(Self::match_expr_body)
     }
 
-    fn match_expr_unmeasured(&mut self) -> Result<Expr, ParseError> {
+    fn match_expr_body(&mut self) -> Result<Expr, ParseError> {
         let start = self.peek_span().start;
         self.expect_kw("match")?;
         let scrutinee = self.expr()?;
@@ -1678,15 +1716,21 @@ impl Parser {
 
     /// Try to parse `<type-args>` that is immediately followed by `(` (a
     /// type-call). On any mismatch, restore the cursor and return `None` so the
-    /// caller can treat `<` as the relational operator.
-    fn try_type_call_args(&mut self) -> Option<Vec<TypeRef>> {
+    /// caller can treat `<` as the relational operator. A nesting refusal is
+    /// not a mismatch: it is returned as the error, so deep type arguments are
+    /// reported as `NestingTooDeep` rather than as a relational syntax error.
+    fn try_type_call_args(&mut self) -> Result<Option<Vec<TypeRef>>, ParseError> {
         let save = self.idx;
         self.idx += 1; // consume '<'
         let mut args = Vec::new();
         loop {
-            let Ok(t) = self.type_ref() else {
-                self.idx = save;
-                return None;
+            let t = match self.type_ref() {
+                Ok(t) => t,
+                Err(error) if error.kind == ParseErrorKind::NestingTooDeep => return Err(error),
+                Err(_) => {
+                    self.idx = save;
+                    return Ok(None);
+                }
             };
             args.push(t);
             if self.eat(&TokenKind::Comma) {
@@ -1696,16 +1740,16 @@ impl Parser {
         }
         if *self.peek() != TokenKind::Gt {
             self.idx = save;
-            return None;
+            return Ok(None);
         }
         self.idx += 1; // consume '>'
         if *self.peek() != TokenKind::LParen
             || self.tokens[self.idx - 1].span.end != self.peek_span().start
         {
             self.idx = save;
-            return None;
+            return Ok(None);
         }
-        Some(args)
+        Ok(Some(args))
     }
 
     fn digest_value_lit(&mut self) -> Result<Expr, ParseError> {
@@ -1771,10 +1815,10 @@ impl Parser {
     }
 
     fn list_literal(&mut self) -> Result<Expr, ParseError> {
-        self.composite(Self::list_literal_unmeasured)
+        self.composite(Self::list_literal_body)
     }
 
-    fn list_literal_unmeasured(&mut self) -> Result<Expr, ParseError> {
+    fn list_literal_body(&mut self) -> Result<Expr, ParseError> {
         let start = self.peek_span().start;
         self.expect(&TokenKind::LBracket)?;
         let mut items = Vec::new();
@@ -1792,10 +1836,10 @@ impl Parser {
     }
 
     fn record_literal(&mut self) -> Result<Expr, ParseError> {
-        self.composite(Self::record_literal_unmeasured)
+        self.composite(Self::record_literal_body)
     }
 
-    fn record_literal_unmeasured(&mut self) -> Result<Expr, ParseError> {
+    fn record_literal_body(&mut self) -> Result<Expr, ParseError> {
         let start = self.peek_span().start;
         self.expect(&TokenKind::LBrace)?;
         let mut entries = Vec::new();
