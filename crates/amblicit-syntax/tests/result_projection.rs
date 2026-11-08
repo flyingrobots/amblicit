@@ -2,6 +2,8 @@
 
 #[path = "result_projection/structured.rs"]
 mod structured;
+#[path = "result_projection/structured_hostile.rs"]
+mod structured_hostile;
 #[path = "result_projection/structured_mutations.rs"]
 mod structured_mutations;
 
