@@ -10,18 +10,24 @@ versions still track specification maturity rather than a released product.
 
 - **Breaking (Rust API):** `ParseErrorKind` gains `NestingTooDeep`; an
   exhaustive `match` on it outside `amblicit-syntax` must add the arm. The
-  parser now refuses source nesting deeper than the public
-  `amblicit_syntax::MAX_SOURCE_NESTING_DEPTH` (256 recursion levels; a
-  source's own nesting is accepted up to 254 levels) with that kind, counting
-  both its recursion and the height of the tree it builds, so long operator,
-  field and call chains are bounded too. Before, a source of a few hundred
-  nested parentheses aborted `amblicit check` with a stack overflow and no
-  output, losing the response for every input in the request (#277). The
-  limit bounds the parser's recursion; it does not size the thread: the
-  `amblicit` binary now runs each request on a thread with a 64 MiB stack so
-  the limit holds on every platform's default main thread, while a library
-  caller parsing untrusted sources on a small thread (2 MiB spawned, debug
-  build) must still provide a larger stack (#301).
+  new public constant `MAX_SOURCE_NESTING_DEPTH` is exported by
+  `amblicit_syntax` and re-exported by `amblicit::diagnostic`.
+  - Behaviour: the parser refuses source nesting deeper than
+    `MAX_SOURCE_NESTING_DEPTH` (256 recursion levels) with `NestingTooDeep`,
+    counting both its recursion and the height of the tree it builds. A
+    source's own nesting is accepted up to 254 levels (254 nested parentheses
+    parse, 255 are refused) and operator, field and call chains up to 255
+    operators; type-call arguments nested past the limit are refused with the
+    same kind.
+  - Fix: before, a source of a few hundred nested parentheses aborted
+    `amblicit check` with a stack overflow and no output, losing the response
+    for every input in the request (#277). The `amblicit` binary now runs each
+    request on its own 64 MiB thread, so the bound holds on every platform's
+    default main thread, including Windows' 1 MiB.
+  - Caveat: the limit bounds recursion, not the thread. Reaching it costs
+    about 1.1 MiB of stack in a release build and several times that in debug,
+    so a library caller that parses untrusted sources on a small thread must
+    give that thread a larger stack (#301).
 
 - Add `listLen`, proof-checked `listAt`, capacity-preserving `listAppend` and
   bounded `listConcat` for immutable authored worklists under `core.list/v1`.

@@ -7,8 +7,24 @@
 use std::io::Write;
 use std::process::{Command, Output, Stdio};
 
-use amblicit_syntax::MAX_SOURCE_NESTING_DEPTH;
+use amblicit_syntax::{MAX_CANONICAL_NESTING_DEPTH, MAX_SOURCE_NESTING_DEPTH};
 use serde_json::{json, Value};
+
+/// Recursion levels a shape spends outside its own nesting: the statement,
+/// the `let` (or `return`) expression and, for the ternary and type shapes,
+/// one more for the innermost leaf. Every shape at `MAX - 3` is accepted;
+/// parentheses are accepted up to `MAX - 2`.
+const SHAPE_OVERHEAD_LEVELS: usize = 3;
+
+/// The deepest nesting every shape in this file is accepted at.
+const JUST_UNDER_THE_LIMIT: usize = MAX_SOURCE_NESTING_DEPTH - SHAPE_OVERHEAD_LEVELS;
+
+/// The deepest nested-call source function whose Core module the canonical
+/// encoder accepts: each Core call costs two canonical nesting levels and the
+/// module around the function costs six, against `MAX_CANONICAL_NESTING_DEPTH`.
+/// Between this depth and the compiler's own bound of 128 nested calls, `core`
+/// and `digests` emission fails as a `CoreDigest` CLI failure (amblicit#302).
+const DEEPEST_ENCODABLE_CALL_NESTING: usize = (MAX_CANONICAL_NESTING_DEPTH - 6) / 2;
 
 const VALID_SOURCE: &str = r#"package examples.hello@1;
 
@@ -127,14 +143,15 @@ fn check_settings() -> Value {
     })
 }
 
-/// `project` with the compiler context CLI-TP-040 uses, so the compiler, Core
-/// and canonical stages run on the source.
-fn project_settings() -> Value {
+/// `project` with the compiler context CLI-TP-040 uses, so `type_check` and,
+/// when it passes, `lower_core` with Core integrity run on the source; `emit`
+/// decides whether the Core module is also canonically encoded.
+fn project_settings(emit: &[&str]) -> Value {
     json!({
         "schema": "edict.compiler.settings/v1",
         "type": "compilerSettings",
         "operation": "project",
-        "emit": ["diagnostics"],
+        "emit": emit,
         "compilerContext": {
             "operationProfiles": [{"source": "p.read", "core": "continuum.profile.read-only/v1"}],
             "budgets": [{"source": "p.small", "budget": {
@@ -171,11 +188,59 @@ fn check(sources: &[(&str, &str)]) -> Output {
     )
 }
 
-fn project(sources: &[(&str, &str)]) -> Output {
+fn project(emit: &[&str], sources: &[(&str, &str)]) -> Output {
     run_request(
         &mut Command::new(env!("CARGO_BIN_EXE_amblicit")),
-        &request(&project_settings(), sources),
+        &request(&project_settings(emit), sources),
     )
+}
+
+/// The `diagnostics` entries of a `project` run's stdout records.
+fn project_diagnostics(stdout: &[Value]) -> Vec<Value> {
+    stdout
+        .iter()
+        .filter(|record| record["type"] == "diagnostics")
+        .flat_map(|record| {
+            record["diagnostics"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
+fn status_record<'a>(records: &'a [Value], output: &Output) -> &'a Value {
+    records
+        .iter()
+        .find(|record| record["type"] == "status")
+        .unwrap_or_else(|| panic!("status record: {}", describe(output)))
+}
+
+/// Split a projection's stdout into its parsed records and the raw `core`
+/// line. The `core` record embeds the Core review tree, which at the depths
+/// this file projects nests past `serde_json`'s default recursion limit when
+/// parsed back here; the CLI's writer has no such limit, so the line is kept
+/// whole and read for its `state` and `digest` fields.
+fn projection_records(stdout: &[u8]) -> (Vec<Value>, Option<String>) {
+    let mut records = Vec::new();
+    let mut core = None;
+    for line in String::from_utf8(stdout.to_vec())
+        .expect("UTF-8 JSONL")
+        .lines()
+    {
+        if line.contains(r#""type":"core""#) {
+            core = Some(line.to_owned());
+        } else {
+            records.push(serde_json::from_str(line).expect("JSONL record"));
+        }
+    }
+    (records, core)
+}
+
+/// Byte offset of `nested`'s body in [`function_with_body`].
+fn function_body_offset(source: &str) -> usize {
+    let marker = "fn nested(value: U64) -> U64 { return ";
+    source.find(marker).expect("nested function") + marker.len()
 }
 
 /// The main-thread stack a POSIX shell gives the binary when `ulimit -s` is
@@ -211,8 +276,12 @@ fn function_with_body(body: &str) -> String {
     )
 }
 
-/// Node-building shapes inside a source function body.
-fn function_shapes(n: usize) -> Vec<(&'static str, String)> {
+/// Shapes inside a source function body, with the compiler diagnostic each
+/// one gets at any depth above zero (`None` for a shape that compiles).
+/// Parentheses build no node, so the compiler sees a leaf; lists, records and
+/// negation are refused at the root; calls, the binary chain and the field
+/// chain are walked (see `type_check_walks_a_tree_just_under_the_limit`).
+fn function_shapes(n: usize) -> Vec<(&'static str, String, Option<&'static str>)> {
     vec![
         (
             "calls",
@@ -221,30 +290,37 @@ fn function_shapes(n: usize) -> Vec<(&'static str, String)> {
                 "expression(".repeat(n),
                 ")".repeat(n)
             )),
+            Some("InvalidBound"),
         ),
         (
             "parentheses",
             function_with_body(&format!("{}value{}", "(".repeat(n), ")".repeat(n))),
+            None,
         ),
         (
             "lists",
             function_with_body(&format!("{}value{}", "[".repeat(n), "]".repeat(n))),
+            Some("TypeMismatch"),
         ),
         (
             "records",
             function_with_body(&format!("{}value{}", "{ value: ".repeat(n), " }".repeat(n))),
+            Some("TypeMismatch"),
         ),
         (
             "negation",
             function_with_body(&format!("{}value", "-".repeat(n))),
+            Some("UnsupportedSourceShape"),
         ),
         (
             "binary chain",
             function_with_body(&format!("value{}", " + value".repeat(n))),
+            Some("UnsupportedSourceShape"),
         ),
         (
             "field chain",
             function_with_body(&format!("value{}", ".value".repeat(n))),
+            Some("TypeMismatch"),
         ),
     ]
 }
@@ -274,8 +350,13 @@ fn nesting_beyond_the_limit_is_a_parse_diagnostic_not_an_abort() {
         let output = check(&[("deep.amblicit", &source)]);
         let refused = output.status.code() == Some(1) && {
             let stderr = records(&output.stderr);
-            let diagnostic = stderr.iter().find(|record| record["type"] == "diagnostic");
-            diagnostic.is_some_and(|d| d["stage"] == "parse" && d["kind"] == "NestingTooDeep")
+            let diagnostics: Vec<&Value> = stderr
+                .iter()
+                .filter(|record| record["type"] == "diagnostic")
+                .collect();
+            diagnostics.len() == 1
+                && diagnostics[0]["stage"] == "parse"
+                && diagnostics[0]["kind"] == "NestingTooDeep"
                 && stderr
                     .iter()
                     .any(|record| record["type"] == "status" && record["exitCode"] == 1)
@@ -288,11 +369,10 @@ fn nesting_beyond_the_limit_is_a_parse_diagnostic_not_an_abort() {
 }
 
 #[test]
-fn nesting_just_under_the_limit_completes_without_aborting() {
-    // Recursive shapes also spend a few levels on the statement and the
-    // enclosing `let` expression, so they sit just under the limit. Every
-    // shape checks clean: `check` stops after parsing and surface validation.
-    for (shape, source) in shapes(MAX_SOURCE_NESTING_DEPTH - 4) {
+fn nesting_just_under_the_limit_checks_clean() {
+    // Every shape checks clean: `check` stops after parsing and surface
+    // validation, and `JUST_UNDER_THE_LIMIT` is within every shape's bound.
+    for (shape, source) in shapes(JUST_UNDER_THE_LIMIT) {
         let output = check(&[("deep.amblicit", &source)]);
         assert_eq!(
             output.status.code(),
@@ -305,12 +385,16 @@ fn nesting_just_under_the_limit_completes_without_aborting() {
 }
 
 #[test]
-fn project_just_under_the_limit_completes_without_aborting() {
-    // `check` stops after parsing and surface validation. `project` runs the
-    // compiler, Core integrity and canonical stages on the tree the parser
-    // accepted, so this is the witness that those stages survive the limit.
-    for (shape, source) in function_shapes(MAX_SOURCE_NESTING_DEPTH - 4) {
-        let output = project(&[("deep.amblicit", &source)]);
+fn project_just_under_the_limit_does_not_abort() {
+    // `check` stops after parsing. `project` hands the accepted tree to the
+    // compiler, which refuses every node-building source function deeper than
+    // 128 (its own graph depth bound) inside `type_check`, so Core integrity
+    // and canonical encoding never see these trees. This witness proves that
+    // the compiler reaches its own diagnostic for each shape, in a debug
+    // build, without aborting; `project` exits 0 whatever the compiler says,
+    // so the diagnostic kind and error count are what is asserted.
+    for (shape, source, expected) in function_shapes(JUST_UNDER_THE_LIMIT) {
+        let output = project(&["diagnostics"], &[("deep.amblicit", &source)]);
         assert_eq!(
             output.status.code(),
             Some(0),
@@ -318,27 +402,109 @@ fn project_just_under_the_limit_completes_without_aborting() {
             describe(&output)
         );
         let stdout = records(&output.stdout);
-        let status = stdout
-            .iter()
-            .find(|record| record["type"] == "status")
-            .unwrap_or_else(|| panic!("{shape}: status record: {}", describe(&output)));
-        assert_eq!(status["checked"], 1, "{shape}: {status}");
-        let refused_for_nesting = stdout
-            .iter()
-            .filter(|record| record["type"] == "diagnostics")
-            .flat_map(|record| {
-                record["diagnostics"]
-                    .as_array()
-                    .cloned()
-                    .unwrap_or_default()
-            })
-            .any(|diagnostic| diagnostic["kind"] == "NestingTooDeep");
-        assert!(
-            !refused_for_nesting,
-            "{shape} within the limit must not be refused for nesting: {}",
+        let status = status_record(&stdout, &output);
+        let diagnostics = project_diagnostics(&stdout);
+        let kinds: Vec<&Value> = diagnostics.iter().map(|d| &d["kind"]).collect();
+        if let Some(kind) = expected {
+            assert_eq!(status["errors"], 1, "{shape}: {status}");
+            assert_eq!(kinds, [kind], "{shape}: {}", describe(&output));
+        } else {
+            assert_eq!(status["errors"], 0, "{shape}: {status}");
+            assert!(kinds.is_empty(), "{shape}: {}", describe(&output));
+        }
+    }
+}
+
+#[test]
+fn type_check_walks_a_tree_just_under_the_limit() {
+    // A root refusal and a deep walk both end in one diagnostic; the span
+    // tells them apart. These left-spine shapes are refused at their
+    // innermost leaf, so the span covers that leaf alone, which the checker
+    // can only reach by walking every level above it.
+    let n = JUST_UNDER_THE_LIMIT;
+    let leaves = [
+        (
+            "binary chain",
+            function_with_body(&format!("value{}", " + value".repeat(n))),
+            "value + value",
+        ),
+        (
+            "field chain",
+            function_with_body(&format!("value{}", ".value".repeat(n))),
+            "value.value",
+        ),
+    ];
+    for (shape, source, leaf) in leaves {
+        let output = project(&["diagnostics"], &[("deep.amblicit", &source)]);
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{shape}: {}",
             describe(&output)
         );
+        let diagnostics = project_diagnostics(&records(&output.stdout));
+        assert_eq!(diagnostics.len(), 1, "{shape}: {}", describe(&output));
+        let span = &diagnostics[0]["span"];
+        let start = function_body_offset(&source);
+        assert_eq!(span["start"], start, "{shape}: {}", diagnostics[0]);
+        assert_eq!(
+            span["end"],
+            start + leaf.len(),
+            "{shape}: {}",
+            diagnostics[0]
+        );
     }
+    // Nested calls are refused by the compiler's own depth bound, which it
+    // reaches only by walking past 128 levels; the span is the whole body.
+    let source = function_with_body(&format!(
+        "{}value{}",
+        "expression(".repeat(n),
+        ")".repeat(n)
+    ));
+    let output = project(&["diagnostics"], &[("deep.amblicit", &source)]);
+    let diagnostics = project_diagnostics(&records(&output.stdout));
+    assert_eq!(diagnostics.len(), 1, "{}", describe(&output));
+    assert_eq!(diagnostics[0]["kind"], "InvalidBound", "{}", diagnostics[0]);
+}
+
+#[test]
+fn project_encodes_the_deepest_calls_the_pipeline_accepts() {
+    // The deepest node-building tree that reaches Core integrity and canonical
+    // encoding is bounded by those stages, not by the parser: `type_check` and
+    // `lower_core` accept 128 nested calls, and canonical encoding accepts 61
+    // (amblicit#302 tracks the gap between them).
+    let calls = |n: usize| {
+        function_with_body(&format!(
+            "{}value{}",
+            "expression(".repeat(n),
+            ")".repeat(n)
+        ))
+    };
+    let output = project(
+        &["diagnostics", "core", "digests"],
+        &[("deep.amblicit", &calls(DEEPEST_ENCODABLE_CALL_NESTING))],
+    );
+    assert_eq!(output.status.code(), Some(0), "{}", describe(&output));
+    let (stdout, core) = projection_records(&output.stdout);
+    assert_eq!(
+        status_record(&stdout, &output)["errors"],
+        0,
+        "{}",
+        describe(&output)
+    );
+    let core = core.unwrap_or_else(|| panic!("core record: {}", describe(&output)));
+    assert!(core.contains(r#""state":"available""#), "{core}");
+    assert!(core.contains(r#""digest":"sha256:"#), "{core}");
+
+    let output = project(&["diagnostics"], &[("deep.amblicit", &calls(128))]);
+    assert_eq!(output.status.code(), Some(0), "{}", describe(&output));
+    let stdout = records(&output.stdout);
+    assert_eq!(
+        status_record(&stdout, &output)["errors"],
+        0,
+        "{}",
+        describe(&output)
+    );
 }
 
 #[cfg(unix)]
@@ -349,8 +515,8 @@ fn the_limit_holds_on_a_small_main_thread_stack() {
     // reach the limit in a debug build.
     let source = let_expr(&format!(
         "{}true{}",
-        "(".repeat(MAX_SOURCE_NESTING_DEPTH - 4),
-        ")".repeat(MAX_SOURCE_NESTING_DEPTH - 4)
+        "(".repeat(JUST_UNDER_THE_LIMIT),
+        ")".repeat(JUST_UNDER_THE_LIMIT)
     ));
     let output = check_on_small_main_thread(&[("deep.amblicit", &source)]);
     assert_eq!(output.status.code(), Some(0), "{}", describe(&output));

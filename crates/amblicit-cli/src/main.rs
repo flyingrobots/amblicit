@@ -185,8 +185,8 @@ impl CliFailure {
 /// reaches that limit only after spending stack on every level, several MiB in
 /// a debug build. Platform defaults for the main thread range from 1 MiB
 /// (Windows) to 8 MiB, so the binary runs the request on its own thread, sized
-/// for the limit and the compiler stages that walk the accepted tree
-/// (SYNTAX-REQ-018, CLI-TP-061).
+/// for the limit and for `type_check`'s walk of a tree the parser accepts
+/// (SYNTAX-REQ-018, CLI-REQ-021, CLI-TP-061).
 const REQUEST_THREAD_STACK_BYTES: usize = 64 * 1024 * 1024;
 
 fn main() {

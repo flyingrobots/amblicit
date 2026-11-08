@@ -81,22 +81,30 @@ impl ParseErrorKind {
 /// themselves directly), and the height of the syntax tree it builds,
 /// including the operator, field and call chains that it parses with a loop.
 /// Past either bound, parsing stops with [`ParseErrorKind::NestingTooDeep`]
-/// instead of recursing further. The enclosing statement and expression each
-/// spend one level, so a source's own nesting is accepted up to `MAX - 2`
-/// levels (254 nested parentheses parse; 255 are refused) and operator chains
-/// up to `MAX - 1` operators.
+/// instead of recursing further, including inside the speculative parse of
+/// type-call arguments.
 ///
-/// The limit bounds the parser's recursion; it does not size the thread. Each
-/// level costs stack according to the build profile (about 4.4 KiB in release
-/// and several times that in debug), so reaching the limit needs more than a
-/// 1 MiB main thread or a 2 MiB spawned thread provides in a debug build. The
-/// `amblicit` binary runs requests on a thread sized for the limit; library
-/// callers parsing untrusted sources on small threads must do the same.
+/// The two bounds have different overheads. Depth: the enclosing statement
+/// and the `let` expression each spend one recursion level, so a source's own
+/// nesting is accepted up to `MAX - 2` levels (254 nested parentheses parse;
+/// 255 are refused, whatever the innermost leaf). Height: only the statement
+/// adds a level above an operator chain, because `expr` adds height only for
+/// a ternary, so chains are accepted up to `MAX - 1` operators (255 parse;
+/// 256 are refused).
+///
+/// The limit bounds the parser's recursion; it does not size the thread.
+/// Reaching it costs about 1.1 MiB of stack in a release build (256 levels at
+/// about 4.4 KiB) and several times that in debug, so a 1 MiB thread cannot
+/// reach it in either profile and a 2 MiB spawned thread cannot in a debug
+/// build. The `amblicit` binary runs requests on a thread sized for the
+/// limit; library callers parsing untrusted sources on small threads must do
+/// the same (amblicit#301).
 ///
 /// The limit sits above the compiler's source-function depth bound (128
-/// nested calls), so a source function between the two depths is still
-/// refused by the compiler's more specific `InvalidBound` diagnostic under
-/// `project` and `build`; `check` stops after parsing and surface validation.
+/// nested calls, refused as `InvalidBound` during type checking), so a source
+/// function between the two depths is still refused by that more specific
+/// diagnostic under `project` and `build`; `check` stops after parsing and
+/// surface validation.
 pub const MAX_SOURCE_NESTING_DEPTH: usize = 256;
 
 /// A parse failure: a stable kind, message, plus the source span where it was
@@ -262,13 +270,24 @@ impl Parser {
     // add a guard of its own. A new production that calls itself directly MUST
     // wrap that call in `guarded`.
     //
-    // Height (`composite`, or `measured` plus `record_height`): every
-    // production that allocates a boxed tree node is a `composite` of its
-    // children, except the two loop-built chains (`binop_left`, `postfix`),
-    // which measure each step by hand. Parentheses allocate nothing and add
-    // nothing. A new node-building production MUST be a `composite`, or the
-    // height bound silently under-counts. The `::` arm of `postfix` keeps the
-    // height of the path it consumed, so the count is an upper bound there.
+    // Height (`composite`, or `measured` plus `record_height`): every tree
+    // node is counted exactly once, by the `composite` that wraps the
+    // production building it. The wrap sits at the chokepoint when one
+    // exists: `stmt` counts every statement, including `if`, `for` and the
+    // `else` block; `expr` counts the ternary; `let_rhs` counts the
+    // branch-yield form, whose `YieldBlock` is not a separate level. It sits
+    // inside the production otherwise: `match_expr`, `list_literal`,
+    // `record_literal`, `type_ref`, `unary` and `else if`. The two loop-built
+    // chains (`binop_left`, `postfix`) measure each step by hand. Parentheses
+    // allocate nothing and add nothing. A new node-building production MUST
+    // be counted once: do not add a `composite` to a statement form (`stmt`
+    // already counts it); do add one to a new `primary` form, or the height
+    // bound silently under-counts. The `::` arm of `postfix` turns the field
+    // chain it has already counted into a type path, so the count there is an
+    // upper bound on the tree it builds.
+    //
+    // The `*_body` functions are the unwrapped bodies of their productions
+    // and exist only to be wrapped: call the production, never the body.
     //
     // Speculative parsing (`try_type_call_args`) must propagate a nesting
     // refusal instead of backtracking past it, so the refusal keeps its kind.
@@ -1716,17 +1735,29 @@ impl Parser {
 
     /// Try to parse `<type-args>` that is immediately followed by `(` (a
     /// type-call). On any mismatch, restore the cursor and return `None` so the
-    /// caller can treat `<` as the relational operator. A nesting refusal is
-    /// not a mismatch: it is returned as the error, so deep type arguments are
-    /// reported as `NestingTooDeep` rather than as a relational syntax error.
+    /// caller can treat `<` as the relational operator. A nesting refusal from
+    /// inside the type arguments is not a mismatch: it is returned as the
+    /// error, so deep type arguments are reported as `NestingTooDeep` rather
+    /// than as a relational syntax error. A refusal on entry, when the parser
+    /// is already at the limit, is a mismatch: the relational reading needs no
+    /// further level, so it is still tried.
     fn try_type_call_args(&mut self) -> Result<Option<Vec<TypeRef>>, ParseError> {
         let save = self.idx;
         self.idx += 1; // consume '<'
         let mut args = Vec::new();
         loop {
+            // `guarded` increments the depth only after admitting the call, so
+            // `depth == MAX` here means `type_ref` was refused on entry, not
+            // inside the arguments. An on-entry refusal is the relational
+            // reading's turn, which spends no level.
             let t = match self.type_ref() {
                 Ok(t) => t,
-                Err(error) if error.kind == ParseErrorKind::NestingTooDeep => return Err(error),
+                Err(error)
+                    if error.kind == ParseErrorKind::NestingTooDeep
+                        && self.depth < MAX_SOURCE_NESTING_DEPTH =>
+                {
+                    return Err(error)
+                }
                 Err(_) => {
                     self.idx = save;
                     return Ok(None);

@@ -29,6 +29,7 @@ pub mod diagnostic {
         CanonicalError, CanonicalErrorKind, CompilerError, CompilerErrorKind, CompilerStage,
         ParseError, ParseErrorKind, ResultProjectionFailure, ResultProjectionFailureKind,
         SemanticError, SemanticErrorKind, Span, TargetLoweringFailure, TargetLoweringFailureKind,
+        MAX_SOURCE_NESTING_DEPTH,
     };
 }
 

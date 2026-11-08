@@ -17,8 +17,8 @@ fn parse_on_witness_stack(source: String) -> Result<(), ParseError> {
         .expect("parser does not panic")
 }
 
-/// A named source builder for a chain of the given length.
-type ChainShape = (&'static str, fn(usize) -> String);
+/// A named source builder for a shape of the given size.
+type SourceShape = (&'static str, fn(usize) -> String);
 
 fn intent_with_body(body: &str) -> String {
     format!(
@@ -53,8 +53,10 @@ fn assert_parses(shape: &str, source: String) {
 fn chains_built_without_recursion_have_an_exact_height_boundary() {
     // `k` operators build a tree `k` tall, and the enclosing `let` statement
     // is one more level, so `MAX - 1` operators is the deepest accepted chain.
+    // Height, unlike depth, is not spent by the `let` right-hand side: `expr`
+    // adds height only for a ternary.
     let n = MAX_SOURCE_NESTING_DEPTH - 1;
-    let shapes: [ChainShape; 3] = [
+    let shapes: [SourceShape; 3] = [
         ("binary chain", |k| {
             let_expr(&format!("true{}", " || true".repeat(k)))
         }),
@@ -174,15 +176,29 @@ fn nested_yield_blocks(n: usize) -> String {
 
 #[test]
 fn recursive_shapes_have_an_exact_depth_boundary() {
-    // The enclosing statement and the `let` right-hand side each spend one
-    // recursion level, so a source's own nesting is accepted up to `MAX - 2`
-    // levels and refused at `MAX - 1`.
+    // Depth, unlike height (see the chain boundary test above), is spent by
+    // the enclosing statement and by the `let` right-hand side, one level
+    // each, so a source's own nesting is accepted up to `MAX - 2` levels and
+    // refused at `MAX - 1`.
     let n = MAX_SOURCE_NESTING_DEPTH - 2;
-    let shapes: [ChainShape; 2] = [
+    let shapes: [SourceShape; 3] = [
         ("parentheses", |k| {
             let_expr(&format!("{}true{}", "(".repeat(k), ")".repeat(k)))
         }),
         ("not", |k| let_expr(&format!("{}true", "!".repeat(k)))),
+        // `<` starts a speculative type-call parse one level deeper. At the
+        // boundary that speculation is refused on entry, which must read as
+        // "not a type call" so the relational reading, which spends no level,
+        // still parses. This leaf drives the speculation to its last branch:
+        // `input.ok` parses as a type path and the `>` is consumed before the
+        // adjacent-`(` test fails.
+        ("relational leaf", |k| {
+            let_expr(&format!(
+                "{}input.ok < input.ok > input.ok{}",
+                "(".repeat(k),
+                ")".repeat(k)
+            ))
+        }),
     ];
     for (shape, source) in shapes {
         assert_parses(shape, source(n));
@@ -208,12 +224,12 @@ fn ordinary_nesting_still_parses() {
 }
 
 #[test]
-fn a_huge_chain_is_refused_without_building_it() {
+fn a_huge_chain_is_refused_on_a_default_test_thread() {
     // Half a mebibyte of `|| true` would make a tree far taller than any
-    // recursive later stage could walk; the parser stops at the limit. This
-    // runs on the default test thread: had the 65,536-node tree been built,
-    // dropping it would itself overflow, so surviving here is the witness
-    // that it was not.
+    // recursive later stage could walk; the parser stops at the limit. The
+    // asserted kind is the proof of refusal. Running on the default test
+    // thread is strong evidence, not proof, that the tree was never built:
+    // dropping 65,536 boxed nodes would most likely overflow that thread.
     let source = let_expr(&format!("true{}", " || true".repeat(65_536)));
     let error = parse_module(&source).expect_err("huge chain");
     assert_eq!(error.kind, ParseErrorKind::NestingTooDeep);

@@ -75,25 +75,28 @@ programs, prove bounds, or itself lower to Core IR. [SYNTAX-REQ-001]
 - Negative coverage asserts stable `ParseErrorKind` values rather than message
   prose or stdout/stderr. [SYNTAX-REQ-010]
 - Source nesting is bounded by the public `MAX_SOURCE_NESTING_DEPTH` (256
-  recursion levels). The parser counts both its own recursion, at the `expr`,
-  `stmt` and `type_ref` chokepoints plus the directly self-recursive `unary`
-  and `else if`, and the height of the tree it builds, including the operator,
-  field and call chains that it parses with a loop. Past either bound, parsing
-  stops with `NestingTooDeep`, including inside the speculative parse of
-  type-call arguments. The enclosing statement and expression each spend one
-  level, so a source's own nesting is accepted up to 254 levels (254 nested
-  parentheses parse, 255 are refused) and operator chains up to 255 operators.
-  The limit sits above the compiler's source-function depth bound (128 nested
-  calls), so a source function between the two depths is still refused by the
-  compiler's more specific `InvalidBound` diagnostic under `project` and
-  `build`; `check` stops after parsing and surface validation. [SYNTAX-REQ-018]
+  recursion levels). The parser counts both its own recursion and the height
+  of the tree it builds, including the operator, field and call chains that it
+  parses with a loop, and past either bound parsing stops with
+  `NestingTooDeep`, including inside the speculative parse of type-call
+  arguments. The two bounds have different overheads: the enclosing statement
+  and the `let` expression each spend one recursion level, so a source's own
+  nesting is accepted up to 254 levels (254 nested parentheses parse, 255 are
+  refused, whatever the innermost leaf), while only the statement adds height
+  above an operator chain, so chains are accepted up to 255 operators (256 are
+  refused). The limit sits above the compiler's source-function depth bound
+  (128 nested calls, refused as `InvalidBound` during type checking), so a
+  source function between the two depths is still refused by that more
+  specific diagnostic under `project` and `build`; `check` stops after parsing
+  and surface validation. (Implementation: the nesting-limit rule above the
+  helpers in `crates/amblicit-syntax/src/parser.rs`.) [SYNTAX-REQ-018]
 
-The limit bounds recursion, not the thread. Each level costs stack according to
-the build profile (about 4.4 KiB in release, several times that in debug), so
-reaching the limit needs more than a 1 MiB main thread or a 2 MiB spawned
-thread provides in a debug build. The `amblicit` binary runs each request on a
-64 MiB thread; a library caller parsing untrusted sources on a small thread must
-size that thread itself (tracked in issue #301).
+The limit bounds recursion, not the thread. Reaching it costs about 1.1 MiB of
+stack in a release build (256 levels at about 4.4 KiB) and several times that
+in debug, so a 1 MiB thread cannot reach it in either profile and a 2 MiB
+spawned thread cannot in a debug build. The `amblicit` binary runs each request
+on a 64 MiB thread; a library caller parsing untrusted sources on a small thread
+must size that thread itself (tracked in issue #301).
 
 ## Deferred
 
