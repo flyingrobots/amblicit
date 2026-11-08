@@ -74,41 +74,47 @@ programs, prove bounds, or itself lower to Core IR. [SYNTAX-REQ-001]
   names. [SYNTAX-REQ-009] [EDICT-LANG-RECORD-SHORTHAND-001]
 - Negative coverage asserts stable `ParseErrorKind` values rather than message
   prose or stdout/stderr. [SYNTAX-REQ-010]
-- Source nesting is bounded by the public `MAX_SOURCE_NESTING_DEPTH` (256
-  recursion levels, also re-exported as `amblicit::diagnostic::MAX_SOURCE_NESTING_DEPTH`).
-  Past it, parsing stops with `NestingTooDeep`, including inside type-call
-  arguments. The parser counts both its recursion and the height of the tree
-  it builds, so loop-built chains are bounded too, and the two have different
-  overheads for a source:
+- Source nesting is bounded by the public `MAX_SOURCE_NESTING_DEPTH` (256,
+  also re-exported as `amblicit::diagnostic::MAX_SOURCE_NESTING_DEPTH`). Past
+  it, parsing stops with `NestingTooDeep`, including inside type-call
+  arguments. The parser counts both its recursion depth and the height of the
+  tree it builds, so loop-built chains are bounded too. For a source nested in
+  a `let` statement, the first row below spends two levels outside its own
+  nesting (the statement and the `let` expression) and the second row one
+  (chains are bounded by height, which only the statement adds; ternaries and
+  nested `if` nest without the `let` expression's level):
 
   | Shape | Deepest accepted | First refused |
   | --- | --- | --- |
-  | parentheses, `!`, `-`, calls, lists, records, types, `else if` | 254 | 255 |
-  | operator, field and call chains, ternaries, nested `if` | 255 | 256 |
+  | parentheses, `!`, `-`, nested calls, lists, records, types, `else if` | 254 | 255 |
+  | operator chains, field chains, call chains, ternaries, nested `if` | 255 | 256 |
 
-  The counts are for an atomic innermost leaf (an identifier, a literal or a
-  comparison); a leaf that nests on its own, such as `-1` or `f(x)`, spends
-  its own levels. A comparison parses wherever its relational reading fits:
-  when the parser reads `<` speculatively as the start of type-call arguments
-  and that reading is refused for nesting, the refusal is reported only if
-  the relational reading fails too.
-
-  The limit sits above the compiler's source-function depth bound (128,
-  refused as `InvalidBound` during type checking), so a source function
-  between the two depths is still refused by that more specific diagnostic
-  under `project` and `build`; `check` stops after parsing and surface
-  validation. (Implementation: the nesting-limit rule above the helpers in
+  The counts assume a leaf that adds nothing of its own: in the first row an
+  identifier, a literal or a comparison; in the second row an identifier or a
+  literal (a field access or a comparison is itself one level of height). A
+  leaf that nests, such as `-1` or `f(x)`, spends its own levels. Every row is
+  a committed test (SYNTAX-TP-028). A comparison is never refused because the
+  parser first tries to read its `<` as the start of type-call arguments: that
+  speculative reading reports a nesting refusal only when the tokens really
+  form type-call arguments. [SYNTAX-REQ-018]
+- The limit sits above the compiler's source-function depth bound (128 nested
+  levels, refused as `InvalidBound` during type checking), so a source
+  function between the two depths is still refused by that more specific
+  diagnostic under `project` and `build`. `check` stops after parsing and
+  surface validation, so it accepts such a function: a source can pass
+  `check` and still be refused by `project`. (Implementation: the
+  nesting-limit rule above the helpers in
   `crates/amblicit-syntax/src/parser.rs`.) [SYNTAX-REQ-018]
 
-The limit bounds recursion, not the thread. From #277's measurement of the
-parser before this limit (about 4.3 KiB per level in a release build), reaching
-the limit needs an estimated 1.1 MiB of stack in release and several times
-that in debug: on a 1 MiB thread the parser overflows before it reaches the
-limit in either profile, and on a 2 MiB spawned thread in a debug build. The
-`amblicit` binary runs each request on a 64 MiB thread, and this crate's tests
-parse to the limit on a 64 MiB thread; a library caller parsing untrusted
-sources should give the parsing thread a comparable stack (tracked in issue
-#301).
+The limit bounds recursion, not the thread. #277 measured the parser before
+this limit at about 4.3 KiB of stack per level in a release build and several
+times that in debug. From that measurement, reaching the limit needs an
+estimated 1.1 MiB in release, so a 1 MiB thread is expected to overflow before
+the parser reaches the limit in either profile, and a 2 MiB spawned thread in
+a debug build. The `amblicit` binary runs each request on a 64 MiB thread, and
+this crate's tests parse to the limit on a 64 MiB thread; a library caller
+parsing untrusted sources should give the parsing thread a comparable stack
+(tracked in issue #301).
 
 ## Deferred
 

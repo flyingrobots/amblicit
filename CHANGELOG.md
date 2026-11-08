@@ -13,21 +13,25 @@ versions still track specification maturity rather than a released product.
   new public constant `MAX_SOURCE_NESTING_DEPTH` (256) is exported by
   `amblicit_syntax` and re-exported by `amblicit::diagnostic`.
 
-- Refuse sources nested past `MAX_SOURCE_NESTING_DEPTH` with the parse
-  diagnostic `NestingTooDeep`, instead of aborting `amblicit` with a stack
-  overflow and no output, which lost the response for every input in the
-  request (#277). 254 nested parentheses, brackets, calls or unary operators
-  around an atomic leaf parse and 255 are refused; 255 chained operators,
-  field accesses or calls parse and 256 are refused. Chains of 256 or more,
-  which the parser built with a loop and accepted before, are now refused.
-  The `amblicit` binary runs each request on its own 64 MiB thread, so the
-  result no longer depends on the platform's main-thread stack (1 MiB on
-  Windows); if that thread cannot be started, it reports a new
-  `RequestThread` CLI diagnostic and exits 2. The limit bounds recursion,
-  not the thread: a library caller that parses untrusted sources on its own
-  thread should give that thread a stack comparable to the binary's 64 MiB,
-  because on a 2 MiB spawned thread a debug build overflows before reaching
-  the limit (#301).
+- **Breaking (source):** sources nested past `MAX_SOURCE_NESTING_DEPTH` are
+  refused with the parse diagnostic `NestingTooDeep`. Nested in a `let`
+  statement around a simple leaf (an identifier or a literal), 254 nested
+  parentheses, `!`, `-`, nested calls, lists, records, `Option<...>` types or
+  `else if` arms parse and 255 are refused; 255 chained operators, field
+  accesses or `()` calls, ternaries or nested `if` statements parse and 256 are
+  refused. Chains of 256 or more, which the parser built with a loop and
+  accepted before, are now refused.
+
+- Stop `amblicit check` from aborting on a source of a few hundred nested
+  parentheses with a stack overflow and no output, which lost the
+  response for every input in the request (#277). The `amblicit` binary runs
+  each request on its own 64 MiB thread, so the result no longer depends on
+  the platform's main-thread stack (1 MiB on Windows); if that thread cannot
+  be started, it reports a new `RequestThread` CLI diagnostic and exits 2.
+  The limit bounds recursion, not the thread: a library caller that parses
+  untrusted sources on its own thread should give that thread a stack
+  comparable to the binary's 64 MiB. From #277's measurement, a 2 MiB spawned
+  thread is expected to overflow before the limit in a debug build (#301).
 
 - Add `listLen`, proof-checked `listAt`, capacity-preserving `listAppend` and
   bounded `listConcat` for immutable authored worklists under `core.list/v1`.

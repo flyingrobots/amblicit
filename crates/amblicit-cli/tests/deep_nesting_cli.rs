@@ -10,13 +10,12 @@ use std::process::{Command, Output, Stdio};
 use amblicit_syntax::{MAX_CANONICAL_NESTING_DEPTH, MAX_SOURCE_NESTING_DEPTH};
 use serde_json::{json, Value};
 
-/// The deepest nesting every shape in this file is accepted at, measured per
-/// shape: parentheses, `!`, `-`, calls, lists, records, types and `else if`
-/// are accepted at `MAX - 2` and refused one level deeper, because the
-/// statement and the `let` expression each spend a depth level; ternaries,
-/// the three chains and nested `if` are accepted one level deeper still,
-/// because their bound is height, which the `let` expression does not spend.
-/// The exact boundaries are pinned in `crates/amblicit-syntax/tests/parse_nesting.rs`.
+/// The deepest nesting every shape in this file is accepted at. Parentheses,
+/// `!`, `-`, calls, lists, records, types and `else if` are accepted at
+/// `MAX - 2` and refused one level deeper; the chains, ternaries and nested
+/// `if` are accepted one level deeper still. The exact boundary of every shape
+/// is pinned by `every_shape_has_the_documented_boundary` in
+/// `crates/amblicit-syntax/tests/parse_nesting.rs`.
 const DEEPEST_COMMON_NESTING: usize = MAX_SOURCE_NESTING_DEPTH - 2;
 
 /// The deepest nested-call source function whose Core module the canonical

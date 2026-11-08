@@ -84,18 +84,29 @@ impl ParseErrorKind {
 /// instead of recursing further, including inside the speculative parse of
 /// type-call arguments.
 ///
-/// The two bounds have different overheads:
+/// The two bounds have different overheads. For a source nested inside a
+/// `let` statement of an intent or function body, every row of this table is
+/// pinned by `every_shape_has_the_documented_boundary`
+/// (`crates/amblicit-syntax/tests/parse_nesting.rs`):
 ///
 /// | Shape | Deepest accepted | First refused |
 /// | --- | --- | --- |
-/// | parentheses, `!`, `-`, calls, lists, records, types, `else if` | 254 | 255 |
-/// | operator, field and call chains, ternaries, nested `if` | 255 | 256 |
+/// | parentheses, `!`, `-`, nested calls, lists, records, types, `else if` | 254 | 255 |
+/// | operator chains, field chains, call chains, ternaries, nested `if` | 255 | 256 |
 ///
-/// The counts are for an atomic innermost leaf (an identifier, a literal or a
-/// comparison); a leaf that nests on its own, such as `-1` or `f(x)`, spends
-/// its own levels. Depth is spent by the enclosing statement and by the `let`
-/// expression, one level each; height is spent only by the statement,
-/// because `expr` adds height only for a ternary.
+/// The first row spends two levels outside its own nesting: the statement
+/// and the `let` expression (for a type, the leaf type; for `else if`, the
+/// condition). The second row spends one: the operator, field and call
+/// chains are bounded by height, which only the statement adds above them
+/// (`expr` adds height only for a ternary), while ternaries in a `let` and
+/// nested `if` statements nest without the `let` expression's extra level and
+/// reach the depth bound one level later. `else if` recurses into itself
+/// directly; an `if` nested in a block is a statement.
+///
+/// The counts assume a leaf that adds nothing of its own: in the first row an
+/// identifier, a literal or a comparison; in the second row an identifier or
+/// a literal, since a field access or comparison is itself one level of
+/// height. A leaf that nests, such as `-1` or `f(x)`, spends its own levels.
 ///
 /// The limit bounds the parser's recursion; it does not size the thread.
 /// From #277's measurement of the parser before this limit (about 4.3 KiB per
@@ -252,10 +263,6 @@ struct Parser {
     /// Tallest syntax tree recorded in the current [`Parser::measured`]
     /// height scope.
     height: usize,
-    /// A nesting refusal that a speculative type-call parse backtracked past
-    /// inside the current [`Parser::expr`], reported if that expression then
-    /// fails to parse.
-    swallowed_nesting: Option<ParseError>,
 }
 
 impl Parser {
@@ -265,7 +272,6 @@ impl Parser {
             idx: 0,
             depth: 0,
             height: 0,
-            swallowed_nesting: None,
         }
     }
 
@@ -302,13 +308,18 @@ impl Parser {
     // The `*_body` functions are the unwrapped bodies of their productions
     // and exist only to be wrapped: call the production, never the body.
     //
-    // Speculative parsing (`try_type_call_args`) never propagates a nesting
-    // refusal: it backtracks and records it, and the enclosing `expr` reports
-    // it only if the relational reading of `<` fails too. See the doc there.
+    // Speculative parsing (`try_type_call_args`) returns a nesting refusal only
+    // when the tokens from the `<` have the shape of type-call arguments
+    // (`has_type_call_shape`, a loop that spends no recursion); otherwise the
+    // source is a comparison and the speculation backtracks. See the doc there.
     //
-    // Tests: a new recursive shape belongs in `recursion_past_the_limit_is_refused`
-    // (crates/amblicit-syntax/tests/parse_nesting.rs) and in `shapes()`
-    // (crates/amblicit-cli/tests/deep_nesting_cli.rs).
+    // Tests (crates/amblicit-syntax/tests/parse_nesting.rs unless noted): a
+    // new recursive shape belongs in `recursion_past_the_limit_is_refused`, in
+    // `every_shape_has_the_documented_boundary` with its exact boundary, and in
+    // `shapes()` (crates/amblicit-cli/tests/deep_nesting_cli.rs). A new
+    // node-building production also belongs in
+    // `height_composes_through_every_node_building_production`, which is the
+    // test that fails when its `composite` is missing.
 
     fn nesting_too_deep<T>(&self) -> Result<T, ParseError> {
         self.err_kind(
@@ -1465,23 +1476,12 @@ impl Parser {
         // expression position is the pure ternary (`if p then a else b`). The
         // effectful branch-yield form is *not* a general expression — it is
         // handled separately in `let_rhs`.
-        let outer = self.swallowed_nesting.take();
-        let result = self.guarded(|parser| {
+        self.guarded(|parser| {
             if parser.at_kw("if") {
                 return parser.composite(Self::if_ternary);
             }
             parser.logic_or()
-        });
-        // A speculative type-call parse inside this expression was refused for
-        // nesting and backtracked into the relational reading of `<`. If that
-        // reading also fails, the source was too deep, not malformed.
-        let swallowed = std::mem::replace(&mut self.swallowed_nesting, outer);
-        match (result, swallowed) {
-            (Err(error), Some(nesting)) if error.kind != ParseErrorKind::NestingTooDeep => {
-                Err(nesting)
-            }
-            (result, _) => result,
-        }
+        })
     }
 
     /// Pure conditional expression: `if predicate then expr else expr`.
@@ -1663,8 +1663,7 @@ impl Parser {
                     // `<` is ambiguous (generics vs comparison). Only treat it as
                     // a type-call when `<type-args>` is immediately followed by
                     // `(`; otherwise backtrack and let `relational` handle `<`.
-                    let (type_args, type_args_height) =
-                        self.measured(|parser| Ok(parser.try_type_call_args()))?;
+                    let (type_args, type_args_height) = self.measured(Self::try_type_call_args)?;
                     let Some(type_args) = type_args else {
                         break;
                     };
@@ -1767,27 +1766,29 @@ impl Parser {
     /// type-call). On any mismatch, restore the cursor and return `None` so the
     /// caller can treat `<` as the relational operator.
     ///
-    /// A nesting refusal is also a backtrack: whether it arose on entry or
-    /// inside the type arguments, the parser's depth cannot tell deep type
-    /// arguments from a comparison chain read as type arguments (each `<` of
-    /// `a < b < c` read as a type costs a level that the relational reading
-    /// does not). The refusal is recorded instead, and the enclosing
-    /// [`Parser::expr`] reports it only if the relational reading fails too,
-    /// so deep type arguments keep the `NestingTooDeep` kind and comparisons
-    /// parse exactly as they would without the limit.
-    fn try_type_call_args(&mut self) -> Option<Vec<TypeRef>> {
+    /// A nesting refusal inside the speculation is decided by the tokens, not
+    /// by the depth at which it happened: reading `a < b < c` as type
+    /// arguments costs a level per `<` that the relational reading does not,
+    /// so the depth cannot tell deep type arguments from a comparison. The
+    /// refusal is returned only when [`Parser::has_type_call_shape`] finds
+    /// that the tokens from this `<` really form type-call arguments; any
+    /// other source is a comparison, and the speculation backtracks.
+    fn try_type_call_args(&mut self) -> Result<Option<Vec<TypeRef>>, ParseError> {
         let save = self.idx;
         self.idx += 1; // consume '<'
         let mut args = Vec::new();
         loop {
             let t = match self.type_ref() {
                 Ok(t) => t,
-                Err(error) => {
-                    if error.kind == ParseErrorKind::NestingTooDeep {
-                        self.swallowed_nesting.get_or_insert(error);
-                    }
+                Err(error)
+                    if error.kind == ParseErrorKind::NestingTooDeep
+                        && self.has_type_call_shape(save) =>
+                {
+                    return Err(error);
+                }
+                Err(_) => {
                     self.idx = save;
-                    return None;
+                    return Ok(None);
                 }
             };
             args.push(t);
@@ -1798,16 +1799,46 @@ impl Parser {
         }
         if *self.peek() != TokenKind::Gt {
             self.idx = save;
-            return None;
+            return Ok(None);
         }
         self.idx += 1; // consume '>'
         if *self.peek() != TokenKind::LParen
             || self.tokens[self.idx - 1].span.end != self.peek_span().start
         {
             self.idx = save;
-            return None;
+            return Ok(None);
         }
-        Some(args)
+        Ok(Some(args))
+    }
+
+    /// Whether the tokens from the `<` at `lt` have the shape of type-call
+    /// arguments: angle brackets that balance using only tokens a type
+    /// argument can contain (names, `.`, `,`, and `name = bound` refinements),
+    /// with the closing `>` immediately followed by `(`. The scan is a loop,
+    /// so it spends no recursion. It accepts a superset of well-formed type
+    /// arguments; a source it accepts that would not parse as types even
+    /// without the limit (such as `f<1>(x)`) is refused for nesting rather
+    /// than read as a comparison, and only when it nests at the limit.
+    fn has_type_call_shape(&self, lt: usize) -> bool {
+        let mut open = 0usize;
+        let mut idx = lt;
+        loop {
+            match &self.tokens[idx].kind {
+                TokenKind::Lt => open += 1,
+                TokenKind::Gt => {
+                    open -= 1;
+                    if open == 0 {
+                        let next = &self.tokens[idx + 1];
+                        return next.kind == TokenKind::LParen
+                            && self.tokens[idx].span.end == next.span.start;
+                    }
+                }
+                TokenKind::Ident(_) | TokenKind::Dot | TokenKind::Comma | TokenKind::Eq => {}
+                TokenKind::Int { .. } if self.tokens[idx - 1].kind == TokenKind::Eq => {}
+                _ => return false,
+            }
+            idx += 1;
+        }
     }
 
     fn digest_value_lit(&mut self) -> Result<Expr, ParseError> {
