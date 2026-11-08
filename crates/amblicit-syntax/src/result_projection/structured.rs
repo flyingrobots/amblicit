@@ -175,8 +175,9 @@ impl BodyMatch<'_> {
                 self.target.steps.get(index).is_some_and(|target| {
                     &target.id == id && target.id == format!("{}.step.{index}", self.intent_name)
                         && &target.binding == binding && &target.effect == effect && &target.input == input
-                        // Adapters can rename failure keys. Their mapping authority is
-                        // checked by the provider; the Core arm values must survive.
+                        // Adapters can rename failure keys; this check does not
+                        // validate that mapping, which a v3 provider must. The Core
+                        // arm values must survive.
                         && arms_match(obstruction_map, &target.obstruction_arms)
                         && target.obstruction_failures.iter().eq(target.obstruction_arms.keys())
                 })
