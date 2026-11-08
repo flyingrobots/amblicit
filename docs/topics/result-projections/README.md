@@ -138,13 +138,13 @@ This correspondence check has no adapter or runtime authority, and it makes two
 deliberate exceptions to exact payload matching. An adapter may rename
 obstruction keys while retaining their Core arm bindings and values, and a
 step's `target_intrinsic` is not compared. This check validates neither that
-obstruction-key mapping nor the target intrinsic. No Echo provider admits v3
-at Echo `089c849f`; a v3 provider (Echo #947) must validate both before
-execution. Projection admission does not establish effect-budget feasibility
+obstruction-key mapping nor the target intrinsic. No Echo provider lowerer or
+verifier admits v3 at Echo `089c849f`, so a future v3 provider must validate
+both before execution; structured provider support is tracked by Echo #947. Projection admission does not establish effect-budget feasibility
 or successful execution. The existing application builder
 independently verifies the projection and binds its exact bytes into provider
 inputs. A public build of a structured operation therefore still fails today, at
-the provider: Echo's provider admits only v1 and v2 until Echo #947 lands.
+the provider, which admits only v1 and v2 at that revision.
 [RESULT-PROJ-REQ-007] [RESULT-PROJ-REQ-014]
 
 A Core/order mismatch under v3 refuses with `CoreTargetMismatch` and subject

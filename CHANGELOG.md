@@ -15,7 +15,8 @@ versions still track specification maturity rather than a released product.
   retain only root-scope result sources; loop and branch locals cannot escape
   into application output. The application builder's existing projection
   binding now accepts these operations, but a public build still fails at
-  Echo's provider, which refuses v3 until Echo #947.
+  Echo's provider, which refuses v3; structured provider support is tracked
+  by Echo #947.
 
 - Add `listLen`, proof-checked `listAt`, capacity-preserving `listAppend` and
   bounded `listConcat` for immutable authored worklists under `core.list/v1`.
