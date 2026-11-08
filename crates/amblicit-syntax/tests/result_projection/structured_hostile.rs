@@ -300,3 +300,34 @@ fn structured_projection_refuses_a_statement_branch_given_a_value_binding() {
         *core_branch_binding_mut(body) = Some(local);
     });
 }
+
+#[test]
+fn structured_projection_accepts_a_canonically_equal_failure_list() {
+    let (core, target) = pair();
+    let honest = emit_result_projection(&core, &target, INTENT).expect("honest emission");
+    let mut changed = target.clone();
+    let step = nested_step_mut(&mut changed);
+    let label = step
+        .obstruction_failures
+        .first()
+        .cloned()
+        .expect("fixture step has an obstruction failure");
+    step.obstruction_failures.push(label);
+    assert_ne!(changed, target, "the failure list must actually change");
+    assert_eq!(
+        amblicit_syntax::encode_target_ir_artifact(&changed).expect("encode changed"),
+        amblicit_syntax::encode_target_ir_artifact(&target).expect("encode honest"),
+        "canonical encoding treats the failure list as a set",
+    );
+    let emitted = emit_result_projection(&core, &changed, INTENT)
+        .expect("a canonically equal Target must emit");
+    assert_eq!(emitted.canonical_bytes(), honest.canonical_bytes());
+    verify_result_projection(
+        &core,
+        &changed,
+        INTENT,
+        honest.canonical_bytes(),
+        honest.digest(),
+    )
+    .expect("a canonically equal Target must verify");
+}

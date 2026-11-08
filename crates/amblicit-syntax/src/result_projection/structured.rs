@@ -179,7 +179,10 @@ impl BodyMatch<'_> {
                         // validate that mapping, which a v3 provider must. The Core
                         // arm values must survive.
                         && arms_match(obstruction_map, &target.obstruction_arms)
-                        && target.obstruction_failures.iter().eq(target.obstruction_arms.keys())
+                        // Canonical encoding writes the failure list as a sorted set, so
+                        // order and duplicates are not part of the artifact's identity.
+                        && target.obstruction_failures.iter().collect::<BTreeSet<_>>()
+                            == target.obstruction_arms.keys().collect::<BTreeSet<_>>()
                 })
             }
             (CoreNode::Require { predicate, arm }, TargetIrOrderEntry::Instruction(id)) => {
