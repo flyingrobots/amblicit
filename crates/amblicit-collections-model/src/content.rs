@@ -2,7 +2,10 @@
 
 use std::collections::BTreeSet;
 
-use super::{Action, BTreeMap, Candidate, Failure, FailureKind, Meter, Payload, Place, Snapshot};
+use super::{
+    Action, BTreeMap, Candidate, Failure, FailureKind, FailureSubject, Meter, Payload, Place,
+    Snapshot,
+};
 
 pub(crate) const MAX_CONTENT_NODES: usize = 64;
 pub(crate) const MAX_CONTENT_LINKS: usize = 4;
@@ -12,7 +15,7 @@ pub(crate) const MAX_CONTENT_LINKS: usize = 4;
 pub struct ContentId(pub u8);
 
 /// The semantic kind a content reference expects.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ContentKind {
     Leaf,
     Branch,
@@ -71,8 +74,11 @@ impl Candidate {
                 }
             }
         }
-        if !conflicts.is_empty() {
-            return Err(self.meter.failure(FailureKind::ContentIntegrity));
+        if let Some(id) = conflicts.into_iter().next() {
+            return Err(self
+                .meter
+                .failure(FailureKind::ContentIntegrity)
+                .at(FailureSubject::Content(id)));
         }
         if !self.ensures.is_empty() {
             for (id, value) in &basis.contents {
@@ -101,7 +107,9 @@ pub(crate) fn validate_proposal(
             .is_some_and(|old| old != value)
             || current.get(id).is_some_and(|old| old != value)
         {
-            return Err(meter.failure(FailureKind::ContentIntegrity));
+            return Err(meter
+                .failure(FailureKind::ContentIntegrity)
+                .at(FailureSubject::Content(*id)));
         }
         if !current.contains_key(id) {
             new_ids.insert(*id);

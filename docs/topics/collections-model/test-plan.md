@@ -33,7 +33,7 @@ gate and model conformance are still pending.
 | COLL-TP-011 | implemented | Move fails at destination | COLL-REQ-001, COLL-REQ-003 | Source membership and stable owner remain intact; no partial changes | failed_move_preserves_source_membership_and_stable_owner | crates/amblicit-collections-model/tests/conformance.rs | Model only; no Jedit planner imported |
 | COLL-TP-012 | implemented | Same-value replacement | COLL-REQ-003 | Payload equality holds but prior observation evidence becomes stale | same_value_replacement_still_invalidates_prior_write_evidence | crates/amblicit-collections-model/tests/conformance.rs | Model only; not an Echo write receipt |
 | COLL-TP-013 | implemented | Nonmatching scans and nested work exhaust bounds | COLL-REQ-002, COLL-REQ-004 | Actual inspections consume shared work, exact bounds pass, one-short refuses | nested_traversals_charge_all_inspections, nested_work_does_not_reset_the_operation_budget, nested_scan_coverage_is_shared | crates/amblicit-collections-model/tests/nested_evaluation.rs | Nonmatching scan work persists across group boundaries, 13 units succeed and 12 refuse |
-| COLL-TP-014 | planned | Multiple failures are simultaneously possible | COLL-REQ-004 | Declared phase and canonical-subject precedence selects a stable outcome | - | - | Independent fixture; no runtime claim |
+| COLL-TP-014 | implemented | Multiple failures are simultaneously possible | COLL-REQ-004 | Declared phase and canonical-subject precedence selects a stable outcome; whole-operation attribution survives grouping | duplicate_attribution_uses_the_least_place_in_either_request_order, domain_order_is_place_order_instead_of_request_or_kind_order, conflict_reports_the_first_canonical_support_fact_before_domains, integrity_precedes_missing_closure_and_names_the_conflicting_id | crates/amblicit-collections-model/tests/failure_attribution.rs | Small public-API fixtures; explicit kind/subject oracles, not compiler source spans |
 | COLL-TP-015 | implemented | New ensured parent names a new child | COLL-REQ-005 | Complete candidate closure permits either order, missing, cyclic, or mistyped links refuse | a_new_parent_can_precede_its_new_child, a_new_child_can_precede_its_new_parent, a_missing_child_refuses_the_complete_proposal, a_content_cycle_refuses, a_child_of_the_wrong_kind_refuses | crates/amblicit-collections-model/tests/immutable_content.rs | Symbolic typed closure, not production hashing |
 | COLL-TP-016 | implemented | Attempt mutation of immutable content | COLL-REQ-005 | Mutable place operations cannot address content, different content or kind under one ID is integrity failure | content_kind_cannot_change_under_one_identity, mutable_place_operations_do_not_address_content, conflicting_concurrent_ensures_refuse_the_second_admission | crates/amblicit-collections-model/tests/content_admission.rs | Separate immutable namespace, append-only publication |
 | COLL-TP-017 | implemented | Remove children and their nonempty owner together | COLL-REQ-001, COLL-REQ-003 | Snapshot NotEmpty refuses in either request order without changing state | removing_children_does_not_satisfy_snapshot_emptiness | crates/amblicit-collections-model/tests/conformance.rs | Model only; candidate emptiness is insufficient |
@@ -47,6 +47,32 @@ gate and model conformance are still pending.
 | COLL-TP-025 | implemented | Exact whole-operation work budget | COLL-REQ-004 | Empty-root add costs 12 units; budget 11 refuses at the final evidence update with nine units spent and no state change | whole_operation_budget_includes_atomic_admission | crates/amblicit-collections-model/tests/conformance.rs | Explicit cost oracle specified before the meter; no Echo gas claim |
 
 ## Validation boundary
+
+Failure-attribution fixtures specify logical subjects and phase precedence
+before implementation. The initial scaffold retained the old decisions and
+reported every subject as `Operation`: 19 assertions failed and the foreign-basis
+control passed. The normalized-duplicate work case also failed on its category:
+an early duplicate hid the work required to select the canonical duplicate.
+Twenty public-API cases now pass. Their logical subject is attached to the
+whole-operation refusal; no compiler source-span adapter is present.
+
+Twelve bounded calibration mutations were each detected by their designated
+behavior assertion: first duplicate instead of least duplicate, ensure before
+exclusive normalization, largest conflicting content ID, reversed domain order,
+content before membership, domains before corroboration, omitted origin check,
+largest overfull collection, authored edge order, capacity before owner survival,
+closure before integrity, and reversed support order. Each run cleaned only this
+crate's shared target artifacts before compiling. Original sources were restored
+and all 98 focused cases plus strict Clippy passed afterward. This calibration
+covers the selected failure-precedence rules, not the still-planned capacity,
+empty-range, ownership, generated-trace, or deeper content calibration work.
+
+Verbatim evidence, exact source hashes, original/mutated source pairs, and the
+finite TypeScript driver are retained outside Git. The initial calibration
+driver failed during Node type stripping, before executing a model test; that
+setup failure is retained separately and is not behavioral RED. The successful
+focused command is `cargo +1.96.0 test -p amblicit-collections-model --test
+failure_attribution --locked`; the restored suite uses `--tests --locked`.
 
 Immutable-content fixtures use the symbolic-ID contract and exact costs
 in `collections-reference-v1.md`. A leaf ensure costs six, two identical leaf

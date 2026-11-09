@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::{Content, ContentId, Failure, FailureKind, Meter};
+use super::{Content, ContentId, Failure, FailureKind, FailureSubject, Meter};
 
 struct Closure<'a> {
     basis: &'a BTreeMap<ContentId, Content>,
@@ -25,8 +25,9 @@ pub(crate) fn validate(
         meter,
     };
     // Both maps are bounded; each effective node is charged and traversed once.
-    for id in basis.keys().chain(proposed.keys()) {
-        closure.visit(*id)?;
+    let roots: BTreeSet<_> = basis.keys().chain(proposed.keys()).copied().collect();
+    for id in roots {
+        closure.visit(id)?;
     }
     Ok(())
 }
@@ -36,7 +37,11 @@ impl Closure<'_> {
         self.proposed
             .get(&id)
             .or_else(|| self.basis.get(&id))
-            .ok_or_else(|| self.meter.failure(FailureKind::ContentMissing))
+            .ok_or_else(|| {
+                self.meter
+                    .failure(FailureKind::ContentMissing)
+                    .at(FailureSubject::Content(id))
+            })
     }
 
     fn visit(&mut self, id: ContentId) -> Result<(), Failure> {
@@ -44,17 +49,24 @@ impl Closure<'_> {
             return Ok(());
         }
         if self.active.contains(&id) {
-            return Err(self.meter.failure(FailureKind::ContentCycle));
+            return Err(self
+                .meter
+                .failure(FailureKind::ContentCycle)
+                .at(FailureSubject::Content(id)));
         }
         self.meter.charge(1)?;
         let edge_count = self.content(id)?.references().len();
         self.meter.charge(edge_count)?;
-        let references = self.content(id)?.references().to_vec();
+        let mut references = self.content(id)?.references().to_vec();
+        references.sort_unstable_by_key(|reference| (reference.id, reference.kind));
         self.active.insert(id);
         // At most 64 nodes and four outgoing edges each, checked before entry.
         for reference in references {
             if self.content(reference.id)?.kind() != reference.kind {
-                return Err(self.meter.failure(FailureKind::ContentType));
+                return Err(self
+                    .meter
+                    .failure(FailureKind::ContentType)
+                    .at(FailureSubject::Content(reference.id)));
             }
             self.visit(reference.id)?;
         }

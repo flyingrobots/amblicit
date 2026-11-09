@@ -3,8 +3,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
-    bounds, content, Action, Candidate, Failure, FailureKind, Meter, Payload, Place, Receipt,
-    Snapshot, Support, World,
+    bounds, content, Action, Candidate, Failure, FailureKind, FailureSubject, Meter, Payload,
+    Place, Receipt, Snapshot, Support, World,
 };
 
 struct Members {
@@ -27,7 +27,9 @@ impl World {
         for (key, version) in &candidate.support {
             meter.charge(1)?;
             if self.state.version(key) != *version {
-                return Err(meter.failure(FailureKind::Conflict));
+                return Err(meter
+                    .failure(FailureKind::Conflict)
+                    .at(FailureSubject::Support(key.clone())));
             }
         }
         let members = prepare_members(&self.state, &candidate, &mut meter)?;
@@ -147,15 +149,19 @@ fn validate_members(
             .owner_place()
             .is_some_and(|owner| !entries.contains_key(&owner))
         {
-            return Err(meter.failure(FailureKind::OwnerSurvival));
+            return Err(meter
+                .failure(FailureKind::OwnerSurvival)
+                .at(FailureSubject::Place(place.clone())));
         }
         let count = counts.entry(&place.collection).or_insert(0_u16);
         *count = count
             .checked_add(1)
             .ok_or_else(|| meter.failure(FailureKind::ModelBound))?;
     }
-    if counts.values().any(|count| *count > capacity) {
-        return Err(meter.failure(FailureKind::Capacity));
+    if let Some((collection, _)) = counts.into_iter().find(|(_, count)| *count > capacity) {
+        return Err(meter
+            .failure(FailureKind::Capacity)
+            .at(FailureSubject::Collection(collection.clone())));
     }
     Ok(())
 }

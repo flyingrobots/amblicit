@@ -22,8 +22,11 @@ meters, and complete-candidate validation. Their depth and total node count are
 bounded before copying. Immutable ensures coalesce exact content while retaining
 work spent, validate typed acyclic closure against the captured basis plus the
 complete proposal, and publish jointly with mutable changes. Weak mutable names
-remain inert data. Outcome/wire contracts and corpus calibration remain
-incomplete. This checkpoint is not a conforming model or a compiler/runtime
+remain inert data. Refusals identify their logical subject and use declared
+phase/identity precedence. Regrouping a complete candidate does not change the
+selected duplicate place; all normalization work remains charged. Wire contracts
+and complete corpus calibration remain incomplete. This checkpoint is not a
+conforming model or a compiler/runtime
 collections capability.
 
 Read the [draft contract](../../design/collections-reference-v1.md) for place

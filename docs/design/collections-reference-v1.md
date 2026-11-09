@@ -4,7 +4,7 @@ Status: **draft contract and implementation plan** for
 [issue #290](https://github.com/flyingrobots/amblicit/issues/290). The executable
 model currently checks capacity, duplicate exclusive mutations, snapshot
 slot/range observations, ownership, operation work/scan limits, nested evaluation,
-and typed immutable ensures. The complete
+typed immutable ensures, and structured failure subjects/precedence. The complete
 conformance corpus is not implemented yet.
 This document does not
 add a compiler capability or claim that an Echo provider accepts collections.
@@ -267,17 +267,51 @@ above and shares the same operation meter.
 
 ### Failure ordering
 
-The model will name each failure category and its boundary. Tests must settle
-the precedence explicitly before implementation: unavailable observations;
-work exhaustion at the performed step; invalid/ambiguous candidate shape;
-stale observation support; domain obstructions and owner survival; capacity;
-content integrity. Within a phase, a canonical subject order selects the
-failure, independent of hash-map iteration or equivalent patch grouping.
+`Failure.subject` identifies an `Operation`, `Place`, `Collection`,
+`Support` fact, or immutable `Content` ID. It is diagnostic data, not authority.
+Every refusal from `prepare` or `admit` belongs to that whole operation, even
+when its subject is one member. A source adapter must attach the enclosing
+operation's source location; it must not turn a capacity or closure refusal
+into a catchable result at an individual `add` or `ensure` site. The standalone
+model has no source files, spans, or compiler adapter.
 
-This ordering is a proposed decision, not implemented behavior. Its fixture
-oracle must cover multiple simultaneous failures, including failures across
-phases. Integrity failures must not be relabeled as ordinary absence or
-capacity errors.
+Preparation has this precedence:
+
+1. Structural envelope preflight (`Operation`).
+2. Evaluation in authored depth-first request order. An unavailable owner names
+   its `Place`; incomplete traversal names its `Collection`. Work exhaustion
+   always names `Operation` and immediately stops the performed step.
+3. Exclusive-mutation normalization, selecting the least duplicate `Place`
+   after charging every mutation. It precedes immutable ensure normalization.
+4. Ensure normalization, selecting the least conflicting `Content` ID after
+   charging every ensure. Repeated identical ensures still spend work.
+
+Admission first checks world origin (`Operation`), then corroborates support in
+the derived `Support` order: slots, ranges, owners, children, with canonical
+identity order inside each variant. A conflict names that exact support fact.
+Next come mutation domains in canonical place order, the final membership
+bound, owner survival in canonical child-place order, capacity in canonical
+collection order, content integrity in content-ID order, content bounds, typed
+acyclic closure, history bounds, and the final publication reservation.
+Domain and owner-survival failures name the affected member `Place`; capacity
+names the offending `Collection`; content integrity names its `Content` ID.
+
+Closure visits the union of basis/proposal roots in content-ID order and each
+node's references in `(target ID, expected kind)` order. It reports the first
+failed step of that canonical depth-first traversal: missing or mistyped target,
+or re-entered active node, as `Content`. This traversal order is explicit; it
+does not promise the globally least bad target across unvisited subgraphs.
+Branch values retain their original reference sequence for integrity equality.
+
+Every metered phase can stop at `WorkExhausted` before discovering a later
+obstruction. Model/history bounds name `Operation`. Therefore equivalent
+grouping preserves logical obstruction selection when both evaluations finish,
+but can consume different work and exhaust at a different step. Constructor
+and place-builder errors are outside operation attribution: constructor input
+duplicates use input order, then canonical membership validation; bounds name
+`Operation`. Initial orphan and duplicate errors name `Place`, capacity names
+`Collection`. The public-API fixtures in `failure_attribution.rs` exercise these
+subjects and precedence rules; they do not establish compiler source mapping.
 
 ## Evidence required to finish this issue
 

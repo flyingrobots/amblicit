@@ -1,6 +1,9 @@
 //! Finite model envelope and validated initial membership.
 
-use super::{Action, BTreeMap, Failure, FailureKind, Payload, Place, Snapshot, Support, World};
+use super::{
+    Action, BTreeMap, Failure, FailureKind, FailureSubject, Payload, Place, Snapshot, Support,
+    World,
+};
 
 pub(crate) const MAX_MEMBERS: usize = 64;
 pub(crate) const MAX_ACTIONS: usize = 64;
@@ -9,7 +12,11 @@ pub(crate) const MAX_MUTATING_COMMITS: u64 = 128;
 const MAX_EVALUATION_DEPTH: usize = 4;
 
 pub(crate) fn failure(kind: FailureKind) -> Failure {
-    Failure { kind, work_used: 0 }
+    Failure {
+        kind,
+        work_used: 0,
+        subject: super::FailureSubject::Operation,
+    }
 }
 
 pub(crate) fn requests(actions: &[Action]) -> Result<(), Failure> {
@@ -48,9 +55,10 @@ fn initial_entries(
         if members.len() >= MAX_MEMBERS {
             return Err(failure(FailureKind::ModelBound));
         }
-        if members.insert(place, payload).is_some() {
-            return Err(failure(FailureKind::AlreadyPresent));
+        if members.contains_key(&place) {
+            return Err(failure(FailureKind::AlreadyPresent).at(FailureSubject::Place(place)));
         }
+        members.insert(place, payload);
     }
     let mut counts = BTreeMap::new();
     for place in members.keys() {
@@ -59,7 +67,7 @@ fn initial_entries(
             .owner_place()
             .is_some_and(|owner| !members.contains_key(&owner))
         {
-            return Err(failure(FailureKind::OwnerMissing));
+            return Err(failure(FailureKind::OwnerMissing).at(FailureSubject::Place(place.clone())));
         }
         // At most MAX_MEMBERS entries can reach this loop, so the count fits u16.
         let count = counts.entry(&place.collection).or_insert(0_u16);
@@ -67,7 +75,8 @@ fn initial_entries(
             .checked_add(1)
             .ok_or_else(|| failure(FailureKind::ModelBound))?;
         if *count > capacity {
-            return Err(failure(FailureKind::Capacity));
+            return Err(failure(FailureKind::Capacity)
+                .at(FailureSubject::Collection(place.collection.clone())));
         }
     }
     Ok(members)
