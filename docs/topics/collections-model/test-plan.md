@@ -83,9 +83,9 @@ largest overfull collection, authored edge order, capacity before owner survival
 closure before integrity, and reversed support order. Each run cleaned only this
 crate's shared target artifacts before compiling. Original sources were restored
 and all 98 focused cases plus strict Clippy passed afterward. This calibration
-covers the selected failure-precedence rules. Capacity, empty-range, and
-owner-survival calibration are recorded with the generated corpus below;
-deeper content calibration remains required.
+covers the selected failure-precedence rules. Content calibration and the
+capacity, empty-range, and owner-survival corpus calibration are recorded below.
+These bounded campaigns do not establish exhaustive assertion calibration.
 
 Verbatim evidence, exact source hashes, original/mutated source pairs, and the
 finite TypeScript driver are retained outside Git. The initial calibration
@@ -111,8 +111,30 @@ The first immutable-content RED run failed 13 behavior assertions and passed the
 mutable-capacity control. The publication suite's initial RED run stopped at its
 11 seed-publication assertions. Those failures demonstrate the missing public
 ensure path, not calibration of deeper concurrent/closure assertions. All 25
-content cases now execute their assertions successfully; targeted mutation
-calibration of the deeper assertions remains required before completion.
+content cases now execute their assertions successfully.
+
+Seventeen later content mutations each fail a designated behavior assertion:
+ignore live identity conflicts, accept a changed kind, use the live closure
+basis, drop captured content, republish identical content, erase content during
+mutable writes, allow a 65th node, reject a 64th node, reject four links, allow
+five links, refuse an idempotent ensure after history exhaustion, admit new
+content after exhaustion, skip edge kinds, skip cycle detection, publish content
+before member validation, publish members before content validation, and charge
+publication work after writing. Seed publication succeeds for the selected
+later-behavior checks. The exact-limit cases deliberately fail at their primary
+preparation/admission operation. Unrelated failures in a mutation run do not
+count as calibration of later assertions.
+
+The three early-publication faults retain the expected refusal category but fail
+the final exact-snapshot comparison. This demonstrates why a refusal kind alone
+cannot establish atomicity. The focused command is `cargo +1.96.0 test -p
+amblicit-collections-model --test content_admission --test immutable_content
+--locked --no-fail-fast`. The driver restores all three affected source files
+and invalidates this package's artifacts between variants. The restored
+124-test model suite and strict Clippy pass. Verbatim diagnostics, original and
+mutated source pairs, source hashes, and the bounded TypeScript driver are
+retained outside Git. These selected failures do not establish exhaustive
+mutation coverage or production content correctness.
 
 Nested evaluation uses explicit request groups. Groups retain the same basis,
 work meter, scan count, and whole-candidate normalizer. Each group entry costs

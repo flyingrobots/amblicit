@@ -30,7 +30,9 @@ agreement carries metadata and grants no authority. A bounded generated corpus
 compares mutable schedules with an independent array/history oracle. Deliberate
 capacity, empty-range, and owner-survival omissions each produce a reduced
 counterexample; the three minimal traces also run as permanent regression cases.
-Deeper content calibration and the full acceptance gates remain incomplete.
+Seventeen selected content faults also fail their designated behavior assertions,
+including three partial-publication faults caught by exact snapshot comparisons.
+Broader assertion calibration and the full acceptance gates remain incomplete.
 This checkpoint is not a conforming model or a compiler/runtime collections
 capability.
 
