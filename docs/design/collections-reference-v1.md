@@ -2,7 +2,8 @@
 
 Status: **draft contract and implementation plan** for
 [issue #290](https://github.com/flyingrobots/amblicit/issues/290). The executable
-model and conformance evidence are not implemented yet. This document does not
+model currently checks capacity and duplicate exclusive mutations; the complete
+conformance corpus is not implemented yet. This document does not
 add a compiler capability or claim that an Echo provider accepts collections.
 
 ## Purpose and boundary

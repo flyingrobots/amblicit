@@ -2,6 +2,7 @@
 members = [
   "crates/amblicit",
   "crates/amblicit-cli",
+  "crates/amblicit-collections-model",
   "crates/amblicit-provider-host-wasmtime",
   "crates/amblicit-provider-schema",
   "crates/amblicit-syntax",

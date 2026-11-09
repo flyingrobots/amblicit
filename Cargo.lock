@@ -64,6 +64,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "amblicit-collections-model"
+version = "0.1.0"
+
+[[package]]
 name = "amblicit-provider-host-wasmtime"
 version = "0.11.0-alpha.1"
 dependencies = [
