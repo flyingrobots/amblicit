@@ -12,9 +12,10 @@ whole-candidate validation rejects missing owners and orphaned children.
 Observation, normalization, admission, and copying share an operation work
 budget. Traversals share a scan limit; incomplete coverage cannot establish
 absence. It has no production compiler consumers.
-Immutable content, outcome precedence, nested evaluation, and structural bounds
-on model inputs and retained history are not yet
-implemented. This checkpoint is not a conforming model or a compiler/runtime
+Initial membership, request count, owner depth, and mutating history have fixed
+model limits. Constructors refuse invalid membership; exhausted history permits
+read-only corroboration. Immutable content, outcome precedence, and nested
+evaluation are not yet implemented. This checkpoint is not a conforming model or a compiler/runtime
 collections capability.
 
 Read the [draft contract](../../design/collections-reference-v1.md) for place

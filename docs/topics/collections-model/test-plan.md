@@ -48,6 +48,18 @@ gate and model conformance are still pending.
 
 ## Validation boundary
 
+Structural-bound cases are specified before their implementation. V1 admits at
+most 64 live members, 64 requests per operation, four owner-path components,
+and 128 successful mutating admissions per world. Constructors reject duplicate
+places, orphaned members, and over-capacity collections. Model bounds are distinct
+from operation work exhaustion; a refused candidate preserves all live state.
+
+| ID | Status | Scenario | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COLL-TP-026 | implemented | Exact structural limits and one beyond | COLL-REQ-001, COLL-REQ-004 | 64 members and requests pass, 65 refuse, depth four passes, depth five refuses before copying | initial_state_preserves_exactly_sixty_four_members, initial_state_refuses_a_sixty_fifth_member, sixty_four_requests_keep_their_observations, a_sixty_fifth_request_refuses_before_evaluation, adding_a_sixty_fifth_live_member_is_atomic_refusal, four_owner_components_are_representable, a_fifth_owner_component_refuses, a_fifth_owner_collection_refuses | crates/amblicit-collections-model/tests/structural_bounds.rs | Fixed small-model envelope, not production limits |
+| COLL-TP-027 | implemented | Invalid initial world | COLL-REQ-001, COLL-REQ-003 | Duplicate place, missing owner and collection over capacity return distinct typed failures | initial_state_refuses_duplicate_places, initial_state_refuses_an_orphan, initial_state_refuses_collection_over_capacity, initial_state_accepts_a_child_before_its_owner | crates/amblicit-collections-model/tests/structural_bounds.rs | Constructor input establishes model invariants |
+| COLL-TP-028 | implemented | Finite version history | COLL-REQ-002, COLL-REQ-004 | Admission 128 succeeds, 129 refuses without state change, read-only corroboration still succeeds | the_one_hundred_twenty_ninth_mutation_refuses, read_only_admission_survives_exhausted_mutation_history, refused_operations_do_not_consume_mutation_history | crates/amblicit-collections-model/tests/structural_bounds.rs | Refused operations do not advance history |
+
 RED/GREEN evidence must name the actual command, source revision, fixture, and
 failure. Setup failures do not establish behavioral RED. Mutation calibration
 must show that each broken interpretation is caught by a relevant independent

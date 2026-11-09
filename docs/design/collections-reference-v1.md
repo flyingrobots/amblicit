@@ -138,6 +138,33 @@ durability, recovery, or production-authority witness.
 
 ## Deterministic outcomes
 
+### Structural envelope
+
+The reference model uses a fixed small-state envelope: at most 64 live members
+across all collections, 64 requests in one operation, four components in an
+owner path, and 128 successful mutating admissions in one world. These numbers
+bound the conformance model, not the compiler language or an Echo resource limit.
+Initial membership and snapshots are constructed outside operation work
+accounting; their sizes are bounded independently.
+
+`World::new` returns a structured failure instead of publishing invalid initial
+state. It consumes no more than 65 input members, rejects duplicate places,
+requires every immediate owner to exist, and checks collection capacity after
+collecting membership. A child may appear before its owner in the input.
+`Place::child` and `Place::children` refuse depth five before copying the path.
+Request count is checked before evaluation. Admission validates the final live
+member count, so remove-plus-add remains possible at the limit.
+
+Every successful mutating admission advances history, including same-value
+replacement. Refusals and read-only corroboration do not consume that history.
+After 128 mutations the world still admits read-only candidates, but refuses
+another mutation with `ModelBound` before changing state. Retaining at most four
+initial support tokens per member and four changed tokens per request gives a
+conservative bound of 33,024 retained version entries: `64 * 4 + 128 * 64 * 4`.
+The model retains tombstones within that envelope; it does not evict evidence
+and accidentally make an old reading current. This is a count bound, not a
+claim about allocator bytes or production retention policy.
+
 ### Reference work units
 
 The fixtures specified these costs before the meter was implemented. These are
@@ -163,10 +190,9 @@ owned collection spend 12 preparation units and corroborate three distinct
 tokens, totaling 15. Their physical scan count is two against one shared limit.
 A scan-limit refusal is incomplete observation, never established absence.
 Successful model receipts and failures retain the work actually spent; a
-refused step does not execute or consume additional work. Structural limits on
-initial state, request count, owner depth, and retained version history remain
-unfinished. These operation costs therefore do not yet establish a completely
-bounded model. Nested evaluation also remains outside the current scaffold.
+refused step does not execute or consume additional work. The structural
+envelope bounds initial state, request count, owner depth, and retained history.
+Nested evaluation and immutable content remain outside the current scaffold.
 
 ### Failure ordering
 

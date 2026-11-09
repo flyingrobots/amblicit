@@ -1,10 +1,12 @@
 //! Draft standalone collections model. Production crates do not depend on it.
 //!
 //! Capacity, exclusive mutations, snapshot observations, and ownership are
-//! implemented, with shared operation work and scan limits. Structural input
-//! bounds and immutable content remain planned; this is not a conforming evaluator.
+//! implemented, with shared operation work/scan limits and a finite state/history
+//! envelope. Immutable content remains planned; this is not a conforming evaluator.
 
 use std::collections::{BTreeMap, BTreeSet};
+
+mod bounds;
 
 /// A tuple path: each component is an owning-collection field and storage key.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -69,19 +71,28 @@ impl Place {
         }
     }
 
-    #[must_use]
-    pub fn child(&self, field: u8, key: u8) -> Self {
+    /// Construct a place in an owned collection.
+    ///
+    /// # Errors
+    /// Returns `ModelBound` when the owner path exceeds the model envelope.
+    pub fn child(&self, field: u8, key: u8) -> Result<Self, Failure> {
+        if self.collection.owner.len() >= bounds::MAX_OWNER_DEPTH {
+            return Err(bounds::failure(FailureKind::ModelBound));
+        }
         let mut owner = self.collection.owner.clone();
         owner.push((self.collection.field, self.key));
-        Self {
+        Ok(Self {
             collection: Collection { owner, field },
             key,
-        }
+        })
     }
 
-    #[must_use]
-    pub fn children(&self, field: u8) -> Collection {
-        self.child(field, 0).collection
+    /// Select an owned collection without changing its membership.
+    ///
+    /// # Errors
+    /// Returns `ModelBound` when the owner path exceeds the model envelope.
+    pub fn children(&self, field: u8) -> Result<Collection, Failure> {
+        self.child(field, 0).map(|place| place.collection)
     }
 }
 
@@ -288,28 +299,6 @@ pub struct World {
 
 impl World {
     #[must_use]
-    pub fn new(capacity: u16, entries: impl IntoIterator<Item = (Place, Payload)>) -> Self {
-        let entries: BTreeMap<Place, Payload> = entries.into_iter().collect();
-        let mut versions = BTreeMap::new();
-        for place in entries.keys() {
-            versions.insert(Support::Slot(place.clone()), 1);
-            versions.insert(Support::Range(place.collection.clone()), 1);
-            versions.insert(Support::Owner(place.clone()), 1);
-            if let Some(owner) = place.collection.owner_place() {
-                versions.insert(Support::Children(owner), 1);
-            }
-        }
-        Self {
-            state: Snapshot {
-                capacity,
-                entries,
-                epoch: 1,
-                versions,
-            },
-        }
-    }
-
-    #[must_use]
     pub fn snapshot(&self) -> Snapshot {
         self.state.clone()
     }
@@ -336,6 +325,9 @@ impl World {
             return Ok(Receipt {
                 work_used: meter.used,
             });
+        }
+        if self.state.epoch > bounds::MAX_MUTATING_COMMITS {
+            return Err(meter.failure(FailureKind::ModelBound));
         }
         self.state.validate_domains(&candidate, &mut meter)?;
         meter.charge(self.state.entries.len())?;
@@ -370,6 +362,9 @@ impl World {
                 }
                 Action::Get(_) | Action::Iter(_, _) => {}
             }
+        }
+        if proposed.len() > bounds::MAX_MEMBERS {
+            return Err(meter.failure(FailureKind::ModelBound));
         }
         let mut counts = BTreeMap::new();
         for place in proposed.keys() {
@@ -414,6 +409,9 @@ impl World {
 /// Returns a typed observation failure, exhausted work, incomplete scan coverage,
 /// or duplicate exclusive mutation. A failed observation yields no candidate.
 pub fn prepare(basis: &Snapshot, actions: &[Action], limits: Limits) -> Result<Candidate, Failure> {
+    if actions.len() > bounds::MAX_ACTIONS {
+        return Err(bounds::failure(FailureKind::ModelBound));
+    }
     let mut candidate = Candidate {
         actions: vec![],
         readings: vec![],

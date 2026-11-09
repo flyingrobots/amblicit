@@ -7,7 +7,7 @@ use amblicit_collections_model::{
 // to the evaluator or by a serialized copy of its output.
 #[test]
 fn whole_candidate_capacity_refuses_two_adds_into_one_slot() {
-    let mut world = World::new(1, []);
+    let mut world = new_world(1, []);
     let before = world.snapshot();
     let candidate = prepare(
         &before,
@@ -27,7 +27,7 @@ fn whole_candidate_capacity_refuses_two_adds_into_one_slot() {
 fn full_collection_can_exchange_members_atomically() {
     let old = Place::root(0, 1);
     let new = Place::root(0, 2);
-    let mut world = World::new(1, [(old.clone(), Payload(10))]);
+    let mut world = new_world(1, [(old.clone(), Payload(10))]);
     let candidate = prepare(
         &world.snapshot(),
         &[Action::Add(new.clone(), Payload(20)), Action::Remove(old)],
@@ -40,7 +40,7 @@ fn full_collection_can_exchange_members_atomically() {
 
 #[test]
 fn canonical_aliases_refuse_even_identical_mutations() {
-    let world = World::new(2, []);
+    let world = new_world(2, []);
     let first_description = Place::root(0, 1);
     let alias = Place::root(0, 1);
     let failure = prepare(
@@ -58,7 +58,7 @@ fn canonical_aliases_refuse_even_identical_mutations() {
 #[test]
 fn remove_then_add_is_still_two_exclusive_mutations() {
     let place = Place::root(0, 1);
-    let world = World::new(2, [(place.clone(), Payload(10))]);
+    let world = new_world(2, [(place.clone(), Payload(10))]);
     let failure = prepare(
         &world.snapshot(),
         &[
@@ -75,7 +75,7 @@ fn remove_then_add_is_still_two_exclusive_mutations() {
 fn same_key_in_different_fields_is_not_an_alias() {
     let left = Place::root(0, 1);
     let right = Place::root(1, 1);
-    let mut world = World::new(1, []);
+    let mut world = new_world(1, []);
     let candidate = prepare(
         &world.snapshot(),
         &[
@@ -99,7 +99,7 @@ fn apply(world: &mut World, actions: &[Action]) {
 
 #[test]
 fn competing_adds_conflict_on_the_observed_cardinality() {
-    let mut world = World::new(1, []);
+    let mut world = new_world(1, []);
     let basis = world.snapshot();
     let first = prepare(
         &basis,
@@ -123,7 +123,7 @@ fn competing_adds_conflict_on_the_observed_cardinality() {
 fn buffered_add_and_remove_do_not_change_reads() {
     let old = Place::root(0, 1);
     let new = Place::root(0, 2);
-    let mut world = World::new(1, [(old.clone(), Payload(10))]);
+    let mut world = new_world(1, [(old.clone(), Payload(10))]);
     let candidate = prepare(
         &world.snapshot(),
         &[
@@ -145,7 +145,7 @@ fn buffered_add_and_remove_do_not_change_reads() {
 
 #[test]
 fn empty_iteration_keeps_range_support_and_detects_insertion() {
-    let mut world = World::new(2, []);
+    let mut world = new_world(2, []);
     let collection = Collection::root(0);
     let candidate = prepare(
         &world.snapshot(),
@@ -170,7 +170,7 @@ fn empty_iteration_keeps_range_support_and_detects_insertion() {
 fn excluded_payloads_still_support_a_filtered_reading() {
     let selected = Place::root(0, 1);
     let excluded = Place::root(0, 2);
-    let mut world = World::new(
+    let mut world = new_world(
         2,
         [
             (selected.clone(), Payload(7)),
@@ -203,7 +203,7 @@ fn excluded_payloads_still_support_a_filtered_reading() {
 #[test]
 fn place_reuse_does_not_refresh_old_observations() {
     let place = Place::root(0, 1);
-    let mut world = World::new(1, [(place.clone(), Payload(10))]);
+    let mut world = new_world(1, [(place.clone(), Payload(10))]);
     let stale = prepare(
         &world.snapshot(),
         &[Action::Remove(place.clone())],
@@ -222,7 +222,7 @@ fn place_reuse_does_not_refresh_old_observations() {
 fn unrelated_collection_changes_need_not_conflict() {
     let left = Place::root(0, 1);
     let right = Place::root(1, 1);
-    let mut world = World::new(1, []);
+    let mut world = new_world(1, []);
     let first = prepare(
         &world.snapshot(),
         &[Action::Add(left.clone(), Payload(10))],
@@ -240,9 +240,9 @@ fn unrelated_collection_changes_need_not_conflict() {
 #[test]
 fn parent_removal_and_child_insertion_conflict_in_both_schedules() {
     let parent = Place::root(0, 1);
-    let child = parent.child(0, 1);
+    let child = parent.child(0, 1).unwrap();
     for insert_first in [false, true] {
-        let mut world = World::new(2, [(parent.clone(), Payload(10))]);
+        let mut world = new_world(2, [(parent.clone(), Payload(10))]);
         let removal = prepare(
             &world.snapshot(),
             &[Action::Remove(parent.clone())],
@@ -283,9 +283,9 @@ fn parent_removal_and_child_insertion_conflict_in_both_schedules() {
 #[test]
 fn removing_children_does_not_satisfy_snapshot_emptiness() {
     let parent = Place::root(0, 1);
-    let child = parent.child(0, 1);
+    let child = parent.child(0, 1).unwrap();
     for parent_first in [false, true] {
-        let mut world = World::new(
+        let mut world = new_world(
             2,
             [(parent.clone(), Payload(10)), (child.clone(), Payload(20))],
         );
@@ -309,8 +309,8 @@ fn removing_children_does_not_satisfy_snapshot_emptiness() {
 #[test]
 fn a_new_owner_cannot_be_populated_in_the_same_candidate() {
     let parent = Place::root(0, 1);
-    let child = parent.child(0, 1);
-    let mut world = World::new(2, []);
+    let child = parent.child(0, 1).unwrap();
+    let mut world = new_world(2, []);
     let before = world.snapshot();
     let candidate = prepare(
         &before,
@@ -331,8 +331,8 @@ fn a_new_owner_cannot_be_populated_in_the_same_candidate() {
 #[test]
 fn an_empty_owner_cannot_be_removed_while_adding_a_child() {
     let parent = Place::root(0, 1);
-    let child = parent.child(0, 1);
-    let mut world = World::new(2, [(parent.clone(), Payload(10))]);
+    let child = parent.child(0, 1).unwrap();
+    let mut world = new_world(2, [(parent.clone(), Payload(10))]);
     let before = world.snapshot();
     let candidate = prepare(
         &before,
@@ -351,8 +351,8 @@ fn an_empty_owner_cannot_be_removed_while_adding_a_child() {
 fn replacing_and_copying_payloads_preserve_structural_ownership() {
     let parent = Place::root(0, 1);
     let copy = Place::root(0, 2);
-    let child = parent.child(0, 1);
-    let mut world = World::new(
+    let child = parent.child(0, 1).unwrap();
+    let mut world = new_world(
         2,
         [(parent.clone(), Payload(10)), (child.clone(), Payload(20))],
     );
@@ -374,7 +374,7 @@ fn replacing_and_copying_payloads_preserve_structural_ownership() {
     );
     let read = prepare(
         &world.snapshot(),
-        &[Action::Get(copy.child(0, 1))],
+        &[Action::Get(copy.child(0, 1).unwrap())],
         Limits::default(),
     )
     .unwrap();
@@ -385,7 +385,7 @@ fn replacing_and_copying_payloads_preserve_structural_ownership() {
 fn entry_keys_are_authoritative_even_when_payloads_name_other_keys() {
     let first = Place::root(0, 1);
     let second = Place::root(0, 2);
-    let mut world = World::new(
+    let mut world = new_world(
         2,
         [(first.clone(), Payload(2)), (second.clone(), Payload(1))],
     );
@@ -412,11 +412,11 @@ fn entry_keys_are_authoritative_even_when_payloads_name_other_keys() {
 #[test]
 fn failed_move_preserves_source_membership_and_stable_owner() {
     let owner = Place::root(0, 1);
-    let child = owner.child(0, 1);
+    let child = owner.child(0, 1).unwrap();
     let source = Place::root(1, 1);
     let destination = Place::root(2, 1);
     // Payloads are opaque data: 1/2 describe the owner's application location.
-    let mut world = World::new(
+    let mut world = new_world(
         1,
         [
             (owner.clone(), Payload(1)),
@@ -446,7 +446,7 @@ fn failed_move_preserves_source_membership_and_stable_owner() {
 #[test]
 fn same_value_replacement_still_invalidates_prior_write_evidence() {
     let place = Place::root(0, 1);
-    let mut world = World::new(1, [(place.clone(), Payload(10))]);
+    let mut world = new_world(1, [(place.clone(), Payload(10))]);
     let reading = prepare(
         &world.snapshot(),
         &[Action::Get(place.clone())],
@@ -476,13 +476,13 @@ fn member_obstructions_do_not_mean_unavailable_observation() {
             FailureKind::NotFound,
         ),
     ] {
-        let mut world = World::new(2, [(existing.clone(), Payload(10))]);
+        let mut world = new_world(2, [(existing.clone(), Payload(10))]);
         let before = world.snapshot();
         let candidate = prepare(&before, &[action], Limits::default()).unwrap();
         assert_eq!(world.admit(candidate).unwrap_err().kind, expected);
         assert_eq!(world.snapshot(), before);
     }
-    let world = World::new(2, []);
+    let world = new_world(2, []);
     let reading = prepare(
         &world.snapshot(),
         &[Action::Get(missing.clone())],
@@ -492,7 +492,7 @@ fn member_obstructions_do_not_mean_unavailable_observation() {
     assert_eq!(reading.readings(), &[Reading::Get(None)]);
     let unavailable = prepare(
         &world.snapshot(),
-        &[Action::Get(missing.child(0, 1))],
+        &[Action::Get(missing.child(0, 1).unwrap())],
         Limits::default(),
     )
     .unwrap_err();
@@ -502,7 +502,7 @@ fn member_obstructions_do_not_mean_unavailable_observation() {
 #[test]
 fn whole_operation_budget_includes_atomic_admission() {
     for work in [11, 12] {
-        let mut world = World::new(1, []);
+        let mut world = new_world(1, []);
         let before = world.snapshot();
         let candidate = prepare(
             &before,
@@ -528,7 +528,7 @@ fn whole_operation_budget_includes_atomic_admission() {
 
 #[test]
 fn nonmatching_entries_consume_work_and_scan_coverage() {
-    let mut world = World::new(
+    let mut world = new_world(
         3,
         [
             (Place::root(0, 1), Payload(1)),
@@ -554,16 +554,16 @@ fn nonmatching_entries_consume_work_and_scan_coverage() {
 #[test]
 fn owned_traversals_share_one_operation_scan_limit() {
     let parent = Place::root(0, 1);
-    let mut world = World::new(
+    let mut world = new_world(
         1,
         [
             (parent.clone(), Payload(10)),
-            (parent.child(0, 1), Payload(20)),
+            (parent.child(0, 1).unwrap(), Payload(20)),
         ],
     );
     let actions = [
-        Action::Iter(parent.children(0), Predicate::All),
-        Action::Iter(parent.children(0), Predicate::All),
+        Action::Iter(parent.children(0).unwrap(), Predicate::All),
+        Action::Iter(parent.children(0).unwrap(), Predicate::All),
     ];
     let incomplete =
         prepare(&world.snapshot(), &actions, Limits { work: 15, scan: 1 }).unwrap_err();
@@ -575,7 +575,7 @@ fn owned_traversals_share_one_operation_scan_limit() {
 
 #[test]
 fn exhausted_work_cannot_be_used_as_an_absence_witness() {
-    let world = World::new(1, []);
+    let world = new_world(1, []);
     let failure = prepare(
         &world.snapshot(),
         &[Action::Get(Place::root(0, 1))],
@@ -584,4 +584,8 @@ fn exhausted_work_cannot_be_used_as_an_absence_witness() {
     .unwrap_err();
     assert_eq!(failure.kind, FailureKind::WorkExhausted);
     assert_eq!(failure.work_used(), 0);
+}
+
+fn new_world(capacity: u16, entries: impl IntoIterator<Item = (Place, Payload)>) -> World {
+    World::new(capacity, entries).expect("valid initial membership")
 }
