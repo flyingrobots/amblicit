@@ -236,3 +236,265 @@ fn unrelated_collection_changes_need_not_conflict() {
         &[(left, Payload(10)), (right, Payload(20))].into()
     );
 }
+
+#[test]
+fn parent_removal_and_child_insertion_conflict_in_both_schedules() {
+    let parent = Place::root(0, 1);
+    let child = parent.child(0, 1);
+    for insert_first in [false, true] {
+        let mut world = World::new(2, [(parent.clone(), Payload(10))]);
+        let removal = prepare(
+            &world.snapshot(),
+            &[Action::Remove(parent.clone())],
+            Limits::default(),
+        )
+        .unwrap();
+        let insertion = prepare(
+            &world.snapshot(),
+            &[Action::Add(child.clone(), Payload(20))],
+            Limits::default(),
+        )
+        .unwrap();
+        assert!(removal
+            .support()
+            .contains_key(&Support::Children(parent.clone())));
+        assert!(insertion
+            .support()
+            .contains_key(&Support::Owner(parent.clone())));
+        let stale = if insert_first {
+            world.admit(insertion).unwrap();
+            removal
+        } else {
+            world.admit(removal).unwrap();
+            insertion
+        };
+        let after_first = world.snapshot();
+        assert_eq!(world.admit(stale).unwrap_err().kind, FailureKind::Conflict);
+        assert_eq!(world.snapshot(), after_first);
+        let expected = if insert_first {
+            [(parent.clone(), Payload(10)), (child.clone(), Payload(20))].into()
+        } else {
+            [].into()
+        };
+        assert_eq!(world.snapshot().entries(), &expected);
+    }
+}
+
+#[test]
+fn removing_children_does_not_satisfy_snapshot_emptiness() {
+    let parent = Place::root(0, 1);
+    let child = parent.child(0, 1);
+    for parent_first in [false, true] {
+        let mut world = World::new(
+            2,
+            [(parent.clone(), Payload(10)), (child.clone(), Payload(20))],
+        );
+        let before = world.snapshot();
+        let mut actions = [
+            Action::Remove(child.clone()),
+            Action::Remove(parent.clone()),
+        ];
+        if parent_first {
+            actions.reverse();
+        }
+        let candidate = prepare(&before, &actions, Limits::default()).unwrap();
+        assert_eq!(
+            world.admit(candidate).unwrap_err().kind,
+            FailureKind::NotEmpty
+        );
+        assert_eq!(world.snapshot(), before);
+    }
+}
+
+#[test]
+fn a_new_owner_cannot_be_populated_in_the_same_candidate() {
+    let parent = Place::root(0, 1);
+    let child = parent.child(0, 1);
+    let mut world = World::new(2, []);
+    let before = world.snapshot();
+    let candidate = prepare(
+        &before,
+        &[
+            Action::Add(parent, Payload(10)),
+            Action::Add(child, Payload(20)),
+        ],
+        Limits::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        world.admit(candidate).unwrap_err().kind,
+        FailureKind::OwnerMissing
+    );
+    assert_eq!(world.snapshot(), before);
+}
+
+#[test]
+fn an_empty_owner_cannot_be_removed_while_adding_a_child() {
+    let parent = Place::root(0, 1);
+    let child = parent.child(0, 1);
+    let mut world = World::new(2, [(parent.clone(), Payload(10))]);
+    let before = world.snapshot();
+    let candidate = prepare(
+        &before,
+        &[Action::Remove(parent), Action::Add(child, Payload(20))],
+        Limits::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        world.admit(candidate).unwrap_err().kind,
+        FailureKind::OwnerSurvival
+    );
+    assert_eq!(world.snapshot(), before);
+}
+
+#[test]
+fn replacing_and_copying_payloads_preserve_structural_ownership() {
+    let parent = Place::root(0, 1);
+    let copy = Place::root(0, 2);
+    let child = parent.child(0, 1);
+    let mut world = World::new(
+        2,
+        [(parent.clone(), Payload(10)), (child.clone(), Payload(20))],
+    );
+    apply(
+        &mut world,
+        &[
+            Action::Replace(parent.clone(), Payload(30)),
+            Action::Add(copy.clone(), Payload(30)),
+        ],
+    );
+    assert_eq!(
+        world.snapshot().entries(),
+        &[
+            (parent, Payload(30)),
+            (copy.clone(), Payload(30)),
+            (child, Payload(20))
+        ]
+        .into()
+    );
+    let read = prepare(
+        &world.snapshot(),
+        &[Action::Get(copy.child(0, 1))],
+        Limits::default(),
+    )
+    .unwrap();
+    assert_eq!(read.readings(), &[Reading::Get(None)]);
+}
+
+#[test]
+fn entry_keys_are_authoritative_even_when_payloads_name_other_keys() {
+    let first = Place::root(0, 1);
+    let second = Place::root(0, 2);
+    let mut world = World::new(
+        2,
+        [(first.clone(), Payload(2)), (second.clone(), Payload(1))],
+    );
+    let candidate = prepare(
+        &world.snapshot(),
+        &[
+            Action::Iter(Collection::root(0), Predicate::All),
+            Action::Remove(first.clone()),
+        ],
+        Limits::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        candidate.readings(),
+        &[Reading::Entries(vec![
+            (first, Payload(2)),
+            (second.clone(), Payload(1)),
+        ])]
+    );
+    world.admit(candidate).unwrap();
+    assert_eq!(world.snapshot().entries(), &[(second, Payload(1))].into());
+}
+
+#[test]
+fn failed_move_preserves_source_membership_and_stable_owner() {
+    let owner = Place::root(0, 1);
+    let child = owner.child(0, 1);
+    let source = Place::root(1, 1);
+    let destination = Place::root(2, 1);
+    // Payloads are opaque data: 1/2 describe the owner's application location.
+    let mut world = World::new(
+        1,
+        [
+            (owner.clone(), Payload(1)),
+            (child, Payload(7)),
+            (source.clone(), Payload(1)),
+            (destination, Payload(9)),
+        ],
+    );
+    let before = world.snapshot();
+    let candidate = prepare(
+        &before,
+        &[
+            Action::Replace(owner, Payload(2)),
+            Action::Remove(source),
+            Action::Add(Place::root(2, 2), Payload(1)),
+        ],
+        Limits::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        world.admit(candidate).unwrap_err().kind,
+        FailureKind::Capacity
+    );
+    assert_eq!(world.snapshot(), before);
+}
+
+#[test]
+fn same_value_replacement_still_invalidates_prior_write_evidence() {
+    let place = Place::root(0, 1);
+    let mut world = World::new(1, [(place.clone(), Payload(10))]);
+    let reading = prepare(
+        &world.snapshot(),
+        &[Action::Get(place.clone())],
+        Limits::default(),
+    )
+    .unwrap();
+    apply(&mut world, &[Action::Replace(place.clone(), Payload(10))]);
+    assert_eq!(world.snapshot().entries(), &[(place, Payload(10))].into());
+    assert_eq!(
+        world.admit(reading).unwrap_err().kind,
+        FailureKind::Conflict
+    );
+}
+
+#[test]
+fn member_obstructions_do_not_mean_unavailable_observation() {
+    let existing = Place::root(0, 1);
+    let missing = Place::root(0, 2);
+    for (action, expected) in [
+        (
+            Action::Add(existing.clone(), Payload(20)),
+            FailureKind::AlreadyPresent,
+        ),
+        (Action::Remove(missing.clone()), FailureKind::NotFound),
+        (
+            Action::Replace(missing.clone(), Payload(20)),
+            FailureKind::NotFound,
+        ),
+    ] {
+        let mut world = World::new(2, [(existing.clone(), Payload(10))]);
+        let before = world.snapshot();
+        let candidate = prepare(&before, &[action], Limits::default()).unwrap();
+        assert_eq!(world.admit(candidate).unwrap_err().kind, expected);
+        assert_eq!(world.snapshot(), before);
+    }
+    let world = World::new(2, []);
+    let reading = prepare(
+        &world.snapshot(),
+        &[Action::Get(missing.clone())],
+        Limits::default(),
+    )
+    .unwrap();
+    assert_eq!(reading.readings(), &[Reading::Get(None)]);
+    let unavailable = prepare(
+        &world.snapshot(),
+        &[Action::Get(missing.child(0, 1))],
+        Limits::default(),
+    )
+    .unwrap_err();
+    assert_eq!(unavailable.kind, FailureKind::Unavailable);
+}

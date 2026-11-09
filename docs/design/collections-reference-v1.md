@@ -2,8 +2,8 @@
 
 Status: **draft contract and implementation plan** for
 [issue #290](https://github.com/flyingrobots/amblicit/issues/290). The executable
-model currently checks capacity, duplicate exclusive mutations, and snapshot
-slot/range observations; the complete conformance corpus is not implemented yet.
+model currently checks capacity, duplicate exclusive mutations, snapshot
+slot/range observations, and ownership; the complete conformance corpus is not implemented yet.
 This document does not
 add a compiler capability or claim that an Echo provider accepts collections.
 
