@@ -3,9 +3,11 @@
 This shelf owns the collections reference contract and its conformance plan.
 The contract and executable model are under development in
 [issue #290](https://github.com/flyingrobots/amblicit/issues/290). The standalone
-`amblicit-collections-model` crate currently checks whole-candidate capacity and
-rejects duplicate exclusive mutations. It has no production compiler consumers.
-The remaining laws, observation support, and model-wide bounds are not yet
+`amblicit-collections-model` crate currently checks whole-candidate capacity,
+rejects duplicate exclusive mutations, and corroborates slot/range observations
+against current state. Reads use the starting snapshot, including empty and
+filtered traversals. It has no production compiler consumers.
+The remaining laws, ownership support, and model-wide bounds are not yet
 implemented. This checkpoint is not a conforming model or a compiler/runtime
 collections capability.
 

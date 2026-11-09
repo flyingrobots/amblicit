@@ -1,18 +1,58 @@
 //! Draft standalone collections model. Production crates do not depend on it.
 //!
-//! Whole-candidate capacity and exclusive mutations are implemented. The other
-//! contract laws remain planned; this is not yet a conforming evaluator.
+//! Capacity, exclusive mutations, and snapshot observations are implemented.
+//! Ownership and work bounds remain planned; this is not a conforming evaluator.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 /// A tuple path: each component is an owning-collection field and storage key.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Place(Vec<(u8, u8)>);
+pub struct Place {
+    collection: Collection,
+    key: u8,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Collection {
+    owner: Vec<(u8, u8)>,
+    field: u8,
+}
+
+impl Collection {
+    #[must_use]
+    pub fn root(field: u8) -> Self {
+        Self {
+            owner: vec![],
+            field,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Support {
+    Slot(Place),
+    Range(Collection),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Predicate {
+    All,
+    Equal(Payload),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Reading {
+    Get(Option<Payload>),
+    Entries(Vec<(Place, Payload)>),
+}
 
 impl Place {
     #[must_use]
     pub fn root(field: u8, key: u8) -> Self {
-        Self(vec![(field, key)])
+        Self {
+            collection: Collection::root(field),
+            key,
+        }
     }
 }
 
@@ -24,6 +64,8 @@ pub struct Payload(pub i64);
 pub struct Snapshot {
     capacity: u16,
     entries: BTreeMap<Place, Payload>,
+    epoch: u64,
+    versions: BTreeMap<Support, u64>,
 }
 
 impl Snapshot {
@@ -31,12 +73,19 @@ impl Snapshot {
     pub fn entries(&self) -> &BTreeMap<Place, Payload> {
         &self.entries
     }
+
+    fn version(&self, key: &Support) -> u64 {
+        self.versions.get(key).copied().unwrap_or(0)
+    }
 }
 
 #[derive(Clone, Debug)]
 pub enum Action {
     Add(Place, Payload),
     Remove(Place),
+    Replace(Place, Payload),
+    Get(Place),
+    Iter(Collection, Predicate),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -58,6 +107,9 @@ impl Default for Limits {
 pub enum FailureKind {
     Capacity,
     DuplicateMutation,
+    Conflict,
+    Unavailable,
+    ModelBound,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -68,6 +120,20 @@ pub struct Failure {
 #[derive(Clone, Debug)]
 pub struct Candidate {
     actions: Vec<Action>,
+    readings: Vec<Reading>,
+    support: BTreeMap<Support, u64>,
+}
+
+impl Candidate {
+    #[must_use]
+    pub fn readings(&self) -> &[Reading] {
+        &self.readings
+    }
+
+    #[must_use]
+    pub fn support(&self) -> &BTreeMap<Support, u64> {
+        &self.support
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -78,10 +144,18 @@ pub struct World {
 impl World {
     #[must_use]
     pub fn new(capacity: u16, entries: impl IntoIterator<Item = (Place, Payload)>) -> Self {
+        let entries: BTreeMap<Place, Payload> = entries.into_iter().collect();
+        let mut versions = BTreeMap::new();
+        for place in entries.keys() {
+            versions.insert(Support::Slot(place.clone()), 1);
+            versions.insert(Support::Range(place.collection.clone()), 1);
+        }
         Self {
             state: Snapshot {
                 capacity,
-                entries: entries.into_iter().collect(),
+                entries,
+                epoch: 1,
+                versions,
             },
         }
     }
@@ -94,26 +168,40 @@ impl World {
     /// Apply a whole candidate atomically when its resulting counts fit.
     ///
     /// # Errors
-    /// Returns `Capacity` if any collection's final count exceeds its bound.
+    /// Returns `Conflict` for stale evidence, `Capacity` for an oversized final
+    /// collection, or `ModelBound` when the model's version counter is exhausted.
     pub fn admit(&mut self, candidate: Candidate) -> Result<(), Failure> {
+        for (key, version) in candidate.support {
+            if self.state.version(&key) != version {
+                return Err(Failure {
+                    kind: FailureKind::Conflict,
+                });
+            }
+        }
         let mut proposed = self.state.entries.clone();
+        let mut touched = BTreeSet::new();
         for action in candidate.actions {
             match action {
                 Action::Add(place, payload) => {
+                    touched.insert(Support::Slot(place.clone()));
+                    touched.insert(Support::Range(place.collection.clone()));
                     proposed.insert(place, payload);
                 }
                 Action::Remove(place) => {
+                    touched.insert(Support::Slot(place.clone()));
+                    touched.insert(Support::Range(place.collection.clone()));
                     proposed.remove(&place);
                 }
+                Action::Replace(place, payload) => {
+                    touched.insert(Support::Slot(place.clone()));
+                    proposed.insert(place, payload);
+                }
+                Action::Get(_) | Action::Iter(_, _) => {}
             }
         }
         let mut counts = BTreeMap::new();
         for place in proposed.keys() {
-            let mut collection = place.0.clone();
-            if let Some((_, key)) = collection.last_mut() {
-                *key = 0;
-            }
-            *counts.entry(collection).or_insert(0_usize) += 1;
+            *counts.entry(&place.collection).or_insert(0_usize) += 1;
         }
         if counts
             .values()
@@ -123,7 +211,16 @@ impl World {
                 kind: FailureKind::Capacity,
             });
         }
-        self.state.entries = proposed;
+        if !touched.is_empty() {
+            let epoch = self.state.epoch.checked_add(1).ok_or(Failure {
+                kind: FailureKind::ModelBound,
+            })?;
+            for key in touched {
+                self.state.versions.insert(key, epoch);
+            }
+            self.state.epoch = epoch;
+            self.state.entries = proposed;
+        }
         Ok(())
     }
 }
@@ -133,20 +230,71 @@ impl World {
 /// # Errors
 /// Returns `DuplicateMutation` for two exclusive requests at the same place.
 pub fn prepare(
-    _basis: &Snapshot,
+    basis: &Snapshot,
     actions: &[Action],
     _limits: Limits,
 ) -> Result<Candidate, Failure> {
     let mut places = BTreeSet::new();
     for action in actions {
-        let (Action::Add(place, _) | Action::Remove(place)) = action;
+        let place = match action {
+            Action::Add(place, _) | Action::Remove(place) | Action::Replace(place, _) => place,
+            Action::Get(_) | Action::Iter(_, _) => continue,
+        };
         if !places.insert(place) {
             return Err(Failure {
                 kind: FailureKind::DuplicateMutation,
             });
         }
     }
-    Ok(Candidate {
+    let mut candidate = Candidate {
         actions: actions.to_vec(),
-    })
+        readings: vec![],
+        support: BTreeMap::new(),
+    };
+    for action in actions {
+        match action {
+            Action::Add(place, _) | Action::Remove(place) => {
+                candidate.observe(basis, Support::Slot(place.clone()));
+                candidate.observe(basis, Support::Range(place.collection.clone()));
+            }
+            Action::Replace(place, _) => {
+                candidate.observe(basis, Support::Slot(place.clone()));
+            }
+            Action::Get(place) => {
+                candidate.observe(basis, Support::Slot(place.clone()));
+                candidate
+                    .readings
+                    .push(Reading::Get(basis.entries.get(place).copied()));
+            }
+            Action::Iter(collection, predicate) => {
+                candidate.observe(basis, Support::Range(collection.clone()));
+                let start = Place {
+                    collection: collection.clone(),
+                    key: 0,
+                };
+                let end = Place {
+                    collection: collection.clone(),
+                    key: u8::MAX,
+                };
+                let mut entries = vec![];
+                for (place, payload) in basis.entries.range(start..=end) {
+                    candidate.observe(basis, Support::Slot(place.clone()));
+                    if matches!(predicate, Predicate::All)
+                        || matches!(predicate, Predicate::Equal(value) if value == payload)
+                    {
+                        entries.push((place.clone(), *payload));
+                    }
+                }
+                candidate.readings.push(Reading::Entries(entries));
+            }
+        }
+    }
+    Ok(candidate)
+}
+
+impl Candidate {
+    fn observe(&mut self, basis: &Snapshot, key: Support) {
+        let version = basis.version(&key);
+        self.support.insert(key, version);
+    }
 }
