@@ -26,10 +26,13 @@ remain inert data. Refusals identify their logical subject and use declared
 phase/identity precedence. Regrouping a complete candidate does not change the
 selected duplicate place; all normalization work remains charged. A pure contract
 negotiator checks version, semantic digest, and required/offered features. Its
-agreement carries metadata and grants no authority. Complete corpus calibration
-remains incomplete. This checkpoint is not a
-conforming model or a compiler/runtime
-collections capability.
+agreement carries metadata and grants no authority. A bounded generated corpus
+compares mutable schedules with an independent array/history oracle. Deliberate
+capacity, empty-range, and owner-survival omissions each produce a reduced
+counterexample; the three minimal traces also run as permanent regression cases.
+Deeper content calibration and the full acceptance gates remain incomplete.
+This checkpoint is not a conforming model or a compiler/runtime collections
+capability.
 
 Read the [draft contract](../../design/collections-reference-v1.md) for place
 identity, ownership, snapshot reads, complete candidates, and admission.

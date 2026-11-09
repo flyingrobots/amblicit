@@ -14,7 +14,7 @@ gate and model conformance are still pending.
 | COLL-REQ-003 | planned | Normalize and validate the whole candidate before atomic admission | docs/design/collections-reference-v1.md |
 | COLL-REQ-004 | planned | Bound actual work and retain distinct deterministic outcomes | docs/design/collections-reference-v1.md |
 | COLL-REQ-005 | planned | Typed immutable content closure and evidence-preserving ensures | docs/design/collections-reference-v1.md |
-| COLL-REQ-006 | planned | Corpus detects omitted capacity, range, and owner guards | docs/design/collections-reference-v1.md |
+| COLL-REQ-006 | implemented | Corpus detects omitted capacity, range, and owner guards | docs/design/collections-reference-v1.md |
 | COLL-REQ-007 | planned | Versioned artifact shapes, exact semantic binding, and feature agreement confer no authority | docs/design/collections-wire-v1.md |
 
 ## Cases
@@ -41,10 +41,10 @@ gate and model conformance are still pending.
 | COLL-TP-018 | implemented | New owner plus child; empty owner removal plus child | COLL-REQ-001, COLL-REQ-003 | New-owner population is unsupported; owner-survival violation refuses atomically | a_new_owner_cannot_be_populated_in_the_same_candidate, an_empty_owner_cannot_be_removed_while_adding_a_child | crates/amblicit-collections-model/tests/conformance.rs | Model only; separate structured failure kinds |
 | COLL-TP-019 | implemented | Absent, unavailable, incomplete, and conflicting observations | COLL-REQ-002, COLL-REQ-004 | Distinct structured outcomes; failed coverage yields no candidate | member_obstructions_do_not_mean_unavailable_observation, nonmatching_entries_consume_work_and_scan_coverage, exhausted_work_cannot_be_used_as_an_absence_witness, empty_iteration_keeps_range_support_and_detects_insertion | crates/amblicit-collections-model/tests/conformance.rs | Model only; unavailable owner is distinct from absent slot |
 | COLL-TP-020 | implemented | Filter excludes an inspected payload | COLL-REQ-002 | Changing that payload invalidates the selection evidence | excluded_payloads_still_support_a_filtered_reading | crates/amblicit-collections-model/tests/conformance.rs | Model only; a result filter does not erase observation support |
-| COLL-TP-021 | planned | Disable capacity validation | COLL-REQ-006 | Last-slot/exchange fixtures expose an invalid accepted state | - | - | Independent fixture; no runtime claim |
-| COLL-TP-022 | planned | Drop empty-range support | COLL-REQ-006 | Empty-read/insertion fixture exposes incorrectly admitted stale selection | - | - | Independent fixture; no runtime claim |
-| COLL-TP-023 | planned | Omit owner-survival validation | COLL-REQ-006 | Empty-owner removal plus child produces a counterexample | - | - | Independent fixture; no runtime claim |
-| COLL-TP-024 | planned | Bounded generated traces | COLL-REQ-001, COLL-REQ-003, COLL-REQ-006 | Independent state/ownership/capacity invariants; reproducible minimized counterexample on disagreement | - | - | Independent fixture; no runtime claim |
+| COLL-TP-021 | implemented | Disable capacity validation | COLL-REQ-006 | Generated overfull proposals expose invalid accepted state and retain a minimized capacity counterexample | bounded_trace_corpus_preserves_collection_laws, minimized_capacity_trace_refuses_without_publication | crates/amblicit-collections-model/tests/trace_corpus.rs | Controlled model mutation; independent array cardinality oracle |
+| COLL-TP-022 | implemented | Drop empty-range support | COLL-REQ-006 | Generated empty-read/insertion schedules expose incorrectly admitted stale selection | bounded_trace_corpus_preserves_collection_laws, minimized_empty_range_trace_rejects_nonmatching_insertion | crates/amblicit-collections-model/tests/trace_corpus.rs | Controlled model mutation; interference derived from committed requests, not model support |
+| COLL-TP-023 | implemented | Omit owner-survival validation | COLL-REQ-006 | Empty-owner removal plus child produces a minimized orphan counterexample | bounded_trace_corpus_preserves_collection_laws, minimized_ownership_trace_refuses_orphan_publication | crates/amblicit-collections-model/tests/trace_corpus.rs | Controlled model mutation; independent parent relation |
+| COLL-TP-024 | implemented | Bounded generated traces | COLL-REQ-001, COLL-REQ-003, COLL-REQ-006 | Independent state/ownership/capacity, fixed-basis readings, refusal atomicity, and history interference; reproducible deletion-minimal counterexample on disagreement | bounded_trace_corpus_preserves_collection_laws | crates/amblicit-collections-model/tests/trace_corpus.rs | Six places, three collections, two actors; mutable subset only |
 | COLL-TP-025 | implemented | Exact whole-operation work budget | COLL-REQ-004 | Empty-root add costs 12 units; budget 11 refuses at the final evidence update with nine units spent and no state change | whole_operation_budget_includes_atomic_admission | crates/amblicit-collections-model/tests/conformance.rs | Explicit cost oracle specified before the meter; no Echo gas claim |
 
 ## Validation boundary
@@ -83,8 +83,9 @@ largest overfull collection, authored edge order, capacity before owner survival
 closure before integrity, and reversed support order. Each run cleaned only this
 crate's shared target artifacts before compiling. Original sources were restored
 and all 98 focused cases plus strict Clippy passed afterward. This calibration
-covers the selected failure-precedence rules, not the still-planned capacity,
-empty-range, ownership, generated-trace, or deeper content calibration work.
+covers the selected failure-precedence rules. Capacity, empty-range, and
+owner-survival calibration are recorded with the generated corpus below;
+deeper content calibration remains required.
 
 Verbatim evidence, exact source hashes, original/mutated source pairs, and the
 finite TypeScript driver are retained outside Git. The initial calibration
@@ -146,6 +147,50 @@ failure. Setup failures do not establish behavioral RED. Mutation calibration
 must show that each broken interpretation is caught by a relevant independent
 oracle, rather than by an unrelated setup or parser failure.
 
-Generated traces will have explicit state, step, seed, storage, and wall-time
-limits. The required repository gate remains `cargo xtask verify`; local
+Generated mutable traces use seeds 159, 296, 290, and 201400007, printed by the
+guarded launch command before test execution. Each seed generates 64 cases:
+capacity, empty-range scheduling, owner survival, and random-walk families.
+Every case uses six places across three collections, two actors, at most 24
+steps and four requests per preparation. Capacity is one or two; payloads are
+small signed integers. Preparation replaces that actor's prior pending attempt;
+commit without a pending attempt is a no-op schedule step. Limits remain high
+enough for this envelope; exact work/scan exhaustion is tested separately.
+
+The oracle uses a six-element optional-value array and committed request history.
+It independently calculates fixed-basis readings, request domains, interference,
+and final membership. It never calls model support or validation helpers. After
+each admission it checks capacity, ownership, exact expected membership, and
+full-snapshot equality on refusal. This is a finite sequential schedule explorer,
+not a production concurrent runtime or immutable-content generator.
+
+For a disagreement, delete initial members, schedule steps, and individual
+requests while preserving the same violation class. The reducer permits at
+most 16,384 trial replays and reports whether no single deletion remains. This
+is deletion-minimality in the stated reduction space, not globally shortest
+input or proof over all schedules. Retain the original seed/case and complete
+reduced trace. Tests perform no file/network I/O; output is captured by the
+guarded runner's bounded log. Each case has at most 126 removable elements, so
+the restart-on-success reduction plus final fixed-point check fits the declared
+replay bound. The guarded suite has a 120-second timeout.
+
+The three omitted guards each failed both the generated-corpus assertion and
+their named replay assertion. Seed 159 cases 0, 1, and 2 reduced to the retained
+fixtures in `tests/traces/regressions.rs`, after 12, 11, and 11 replay trials.
+The capacity trace adds a second member to a capacity-one collection. The range
+trace inserts a payload excluded by the original empty selection, which still
+invalidates that reading. The ownership trace removes an empty owner while
+adding its child. Removing any single retained member, step, or request no
+longer exposes the same violation in a valid trace.
+
+The focused RED command is `cargo +1.96.0 test -p amblicit-collections-model
+--test trace_corpus --locked` against each deliberately mutated model. Restored
+sources pass `cargo +1.96.0 test -p amblicit-collections-model --tests --locked`:
+124 tests, including 256 generated traces and the three replay fixtures.
+Strict package Clippy also passes. Each mutation and the restored run invalidated
+this package's cached artifacts. Original/mutated sources, reduced output,
+source manifests, and the finite TypeScript calibration driver are retained
+outside Git. These three detected mutations establish their named oracles;
+they do not establish complete assertion calibration or exhaustive scheduling.
+
+The required repository gate remains `cargo xtask verify`; local
 execution uses the shared guarded Docker worker and project resource budget.
