@@ -3,7 +3,8 @@
 Status: **draft contract and implementation plan** for
 [issue #290](https://github.com/flyingrobots/amblicit/issues/290). The executable
 model currently checks capacity, duplicate exclusive mutations, snapshot
-slot/range observations, ownership, and operation work/scan limits. The complete
+slot/range observations, ownership, operation work/scan limits, nested evaluation,
+and typed immutable ensures. The complete
 conformance corpus is not implemented yet.
 This document does not
 add a compiler capability or claim that an Echo provider accepts collections.
@@ -154,6 +155,52 @@ durability, recovery, or production-authority witness.
 
 ## Deterministic outcomes
 
+### Immutable-content model
+
+The conformance model uses explicit symbolic `ContentId(u8)` values,
+not digest computation. `Content` is a leaf payload, an ordered branch of typed
+content references, or a weak mutable place name. A reference names both an ID
+and an expected content kind. A weak name remains data even when its mutable
+target is absent; closure validation never resolves it as an immutable edge.
+
+`Ensure(id, content)` proposes presence of exact immutable content. Identical
+ensures coalesce into one normalized obligation without refunding work. Two
+different values or kinds under the same ID are `ContentIntegrity`. Existing
+content is append-only; mutable place operations cannot address this namespace.
+
+Each candidate retains the immutable-content basis needed for closure. A new
+parent may name a newly ensured child in either request order. Missing children,
+wrong reference kinds, and cycles refuse with `ContentMissing`, `ContentType`,
+and `ContentCycle`. Content added by another operation after preparation cannot
+repair a missing child in the candidate's basis. Concurrent identical ensures
+can both succeed while only the first publishes content. Conflicting concurrent
+ensures refuse the later admission without changing either namespace.
+
+The model permits 64 immutable nodes and four references per branch, separately
+from the mutable-member bound. Branch lengths are checked before copying. The
+effective basis-plus-proposal graph is bounded before closure traversal; each
+node is visited once and each ordered edge is checked. A world with exhausted
+mutation history may corroborate an identical existing ensure, but cannot
+publish new content. A receipt reports the number of newly published content
+nodes; a candidate exposes its normalized obligations for conformance checks.
+
+The fixtures fixed this work schedule before implementation. An ensure request
+costs one visit, then one unit plus its reference count for copying its value,
+then the same one-plus-reference-count charge for normalization. Retaining the
+content basis costs one unit plus its reference count per existing node. At
+admission, each normalized obligation costs one integrity check, each effective
+graph node costs one visit, each of its edges costs one precharged inspection,
+and each newly published content node costs one publication unit. Existing
+identical nodes cost no publication units. All charges precede the work or
+publication they cover. Therefore an empty-world leaf ensure costs six units;
+two identical leaf ensures cost nine while publishing one node; a one-edge new
+parent plus its new leaf costs 15. Budgets one short must refuse atomically.
+
+Immutable and mutable proposals are validated and charged before either is
+published. A failure in either namespace preserves the entire world. These
+fixtures establish model behavior only; the production identity law remains
+owned by issue #260.
+
 ### Structural envelope
 
 The reference model uses a fixed small-state envelope: at most 64 live members
@@ -215,7 +262,8 @@ envelope bounds initial state, request count, group and owner depth, and retaine
 history. Two nested traversals of one root member, first excluded and then
 selected under two groups, cost 11 preparation units and two corroborations.
 Work budget 12 refuses admission; scan limit one refuses during the second
-traversal with eight units spent. Immutable content remains unimplemented.
+traversal with eight units spent. Immutable-content work follows the schedule
+above and shares the same operation meter.
 
 ### Failure ordering
 

@@ -25,6 +25,10 @@ fn request_nodes(actions: &[Action], remaining: &mut usize, depth: usize) -> Res
         *remaining = remaining
             .checked_sub(1)
             .ok_or_else(|| failure(FailureKind::ModelBound))?;
+        if matches!(action, Action::Ensure(_, value) if value.references().len() > super::content::MAX_CONTENT_LINKS)
+        {
+            return Err(failure(FailureKind::ModelBound));
+        }
         if let Action::Group(children) = action {
             let next_depth = depth
                 .checked_add(1)
@@ -98,6 +102,7 @@ impl World {
                 origin: super::origin::Origin::new(),
                 capacity,
                 entries,
+                contents: BTreeMap::new(),
                 epoch: 1,
                 versions,
             },

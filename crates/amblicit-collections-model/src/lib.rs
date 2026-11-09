@@ -2,12 +2,18 @@
 //!
 //! Capacity, exclusive mutations, snapshot observations, and ownership are
 //! implemented, with shared operation work/scan limits and a finite state/history
-//! envelope. Immutable content remains planned; this is not a conforming evaluator.
+//! envelope. Typed immutable ensures preserve closure and atomic publication.
+//! Outcome/wire contracts and corpus calibration remain incomplete.
 
 use std::collections::{BTreeMap, BTreeSet};
 
+mod admission;
 mod bounds;
+mod content;
+mod content_closure;
 mod origin;
+
+pub use content::{Content, ContentId, ContentKind, ContentRef};
 
 /// A tuple path: each component is an owning-collection field and storage key.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -106,11 +112,18 @@ pub struct Snapshot {
     origin: origin::Origin,
     capacity: u16,
     entries: BTreeMap<Place, Payload>,
+    contents: BTreeMap<ContentId, Content>,
     epoch: u64,
     versions: BTreeMap<Support, u64>,
 }
 
 impl Snapshot {
+    /// Immutable content established in this snapshot.
+    #[must_use]
+    pub fn contents(&self) -> &BTreeMap<ContentId, Content> {
+        &self.contents
+    }
+
     #[must_use]
     pub fn entries(&self) -> &BTreeMap<Place, Payload> {
         &self.entries
@@ -168,6 +181,8 @@ impl Snapshot {
 
 #[derive(Clone, Debug)]
 pub enum Action {
+    /// Propose exact immutable content presence.
+    Ensure(ContentId, Content),
     /// Evaluate nested requests within the same operation.
     Group(Vec<Action>),
     Add(Place, Payload),
@@ -181,7 +196,7 @@ impl Action {
     fn mutation_place(&self) -> Option<&Place> {
         match self {
             Self::Add(place, _) | Self::Remove(place) | Self::Replace(place, _) => Some(place),
-            Self::Get(_) | Self::Iter(_, _) | Self::Group(_) => None,
+            Self::Get(_) | Self::Iter(_, _) | Self::Group(_) | Self::Ensure(_, _) => None,
         }
     }
 }
@@ -216,6 +231,10 @@ pub enum FailureKind {
     NotFound,
     WorkExhausted,
     Incomplete,
+    ContentIntegrity,
+    ContentMissing,
+    ContentType,
+    ContentCycle,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -270,6 +289,8 @@ impl Meter {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Receipt {
     pub work_used: u32,
+    /// Newly published immutable nodes; identical existing ensures add none.
+    pub content_added: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -280,9 +301,17 @@ pub struct Candidate {
     readings: Vec<Reading>,
     support: BTreeMap<Support, u64>,
     meter: Meter,
+    ensures: BTreeMap<ContentId, Content>,
+    content_basis: BTreeMap<ContentId, Content>,
 }
 
 impl Candidate {
+    /// Coalesced immutable obligations; repeated work remains charged.
+    #[must_use]
+    pub fn ensures(&self) -> &BTreeMap<ContentId, Content> {
+        &self.ensures
+    }
+
     #[must_use]
     pub fn work_used(&self) -> u32 {
         self.meter.used
@@ -309,109 +338,6 @@ impl World {
     pub fn snapshot(&self) -> Snapshot {
         self.state.clone()
     }
-
-    /// Apply a whole candidate atomically when its resulting counts fit.
-    ///
-    /// # Errors
-    /// Returns `BasisMismatch` for another world's evidence, `Conflict` for stale
-    /// evidence, a membership or ownership failure
-    /// for an obstructed mutation; `Capacity` for an oversized final collection;
-    /// or `ModelBound` when the model's version counter is exhausted.
-    pub fn admit(&mut self, candidate: Candidate) -> Result<Receipt, Failure> {
-        let mut meter = candidate.meter;
-        if candidate.origin != self.state.origin {
-            return Err(meter.failure(FailureKind::BasisMismatch));
-        }
-        for (key, version) in &candidate.support {
-            meter.charge(1)?;
-            if self.state.version(key) != *version {
-                return Err(meter.failure(FailureKind::Conflict));
-            }
-        }
-        if candidate
-            .actions
-            .iter()
-            .all(|action| action.mutation_place().is_none())
-        {
-            return Ok(Receipt {
-                work_used: meter.used,
-            });
-        }
-        if self.state.epoch > bounds::MAX_MUTATING_COMMITS {
-            return Err(meter.failure(FailureKind::ModelBound));
-        }
-        self.state.validate_domains(&candidate, &mut meter)?;
-        meter.charge(self.state.entries.len())?;
-        let mut proposed = self.state.entries.clone();
-        let mut touched = BTreeSet::new();
-        for action in candidate.actions {
-            if action.mutation_place().is_some() {
-                meter.charge(1)?;
-            }
-            match action {
-                Action::Add(place, payload) => {
-                    touched.insert(Support::Slot(place.clone()));
-                    touched.insert(Support::Range(place.collection.clone()));
-                    touched.insert(Support::Owner(place.clone()));
-                    if let Some(owner) = place.collection.owner_place() {
-                        touched.insert(Support::Children(owner));
-                    }
-                    proposed.insert(place, payload);
-                }
-                Action::Remove(place) => {
-                    touched.insert(Support::Slot(place.clone()));
-                    touched.insert(Support::Range(place.collection.clone()));
-                    touched.insert(Support::Owner(place.clone()));
-                    if let Some(owner) = place.collection.owner_place() {
-                        touched.insert(Support::Children(owner));
-                    }
-                    proposed.remove(&place);
-                }
-                Action::Replace(place, payload) => {
-                    touched.insert(Support::Slot(place.clone()));
-                    proposed.insert(place, payload);
-                }
-                Action::Get(_) | Action::Iter(_, _) | Action::Group(_) => {}
-            }
-        }
-        if proposed.len() > bounds::MAX_MEMBERS {
-            return Err(meter.failure(FailureKind::ModelBound));
-        }
-        let mut counts = BTreeMap::new();
-        for place in proposed.keys() {
-            meter.charge(1)?;
-            if place
-                .collection
-                .owner_place()
-                .is_some_and(|owner| !proposed.contains_key(&owner))
-            {
-                return Err(meter.failure(FailureKind::OwnerSurvival));
-            }
-            *counts.entry(&place.collection).or_insert(0_usize) += 1;
-        }
-        if counts
-            .values()
-            .any(|count| *count > usize::from(self.state.capacity))
-        {
-            return Err(meter.failure(FailureKind::Capacity));
-        }
-        if !touched.is_empty() {
-            let epoch = self
-                .state
-                .epoch
-                .checked_add(1)
-                .ok_or_else(|| meter.failure(FailureKind::ModelBound))?;
-            meter.charge(touched.len())?;
-            for key in touched {
-                self.state.versions.insert(key, epoch);
-            }
-            self.state.epoch = epoch;
-            self.state.entries = proposed;
-        }
-        Ok(Receipt {
-            work_used: meter.used,
-        })
-    }
 }
 
 /// Construct an inert proposal from requests on one fixed snapshot.
@@ -422,6 +348,8 @@ impl World {
 pub fn prepare(basis: &Snapshot, actions: &[Action], limits: Limits) -> Result<Candidate, Failure> {
     bounds::requests(actions)?;
     let mut candidate = Candidate {
+        ensures: BTreeMap::new(),
+        content_basis: BTreeMap::new(),
         origin: basis.origin.clone(),
         actions: vec![],
         readings: vec![],
@@ -442,6 +370,7 @@ pub fn prepare(basis: &Snapshot, actions: &[Action], limits: Limits) -> Result<C
             }
         }
     }
+    candidate.normalize_content(basis)?;
     Ok(candidate)
 }
 
@@ -449,6 +378,9 @@ impl Candidate {
     fn evaluate(&mut self, basis: &Snapshot, actions: &[Action]) -> Result<(), Failure> {
         for action in actions {
             self.meter.charge(1)?;
+            if let Action::Ensure(_, value) = action {
+                value.charge_value(&mut self.meter)?;
+            }
             if !matches!(action, Action::Group(_)) {
                 self.actions.push(action.clone());
             }
@@ -459,6 +391,7 @@ impl Candidate {
 
     fn observe_action(&mut self, basis: &Snapshot, action: &Action) -> Result<(), Failure> {
         match action {
+            Action::Ensure(_, _) => {}
             Action::Group(children) => self.evaluate(basis, children)?,
             Action::Add(place, _) | Action::Remove(place) => {
                 self.observe_owner(
