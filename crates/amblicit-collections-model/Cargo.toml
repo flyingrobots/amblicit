@@ -1,0 +1,12 @@
+[package]
+name = "amblicit-collections-model"
+version = "0.1.0"
+description = "Bounded semantic reference model, independent of the production compiler"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
