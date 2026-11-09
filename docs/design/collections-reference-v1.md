@@ -1,19 +1,21 @@
 # Collections reference contract v1
 
-Status: **draft contract and implementation plan** for
+Status: **draft contract with an executable reference model** for
 [issue #290](https://github.com/flyingrobots/amblicit/issues/290). The executable
 model currently checks capacity, duplicate exclusive mutations, snapshot
 slot/range observations, ownership, operation work/scan limits, nested evaluation,
-typed immutable ensures, and structured failure subjects/precedence. The complete
-conformance corpus is not implemented yet.
-This document does not
-add a compiler capability or claim that an Echo provider accepts collections.
+typed immutable ensures, and structured failure subjects/precedence. Independent
+fixtures and bounded generated traces exercise these laws; three reduced
+counterexamples detect omitted capacity, empty-range support, and owner-survival
+checks. Acceptance still requires the remaining validation and independent review.
+This document does not add a compiler capability or claim that an Echo provider
+accepts collections.
 
 ## Purpose and boundary
 
 This contract gives subsequent compiler and runtime work one independently
 testable meaning for places, ownership, snapshot observations, and atomic
-candidates. The reference model will be a deterministic Rust workspace crate,
+candidates. The reference model is a deterministic Rust workspace crate,
 with no dependency from the production compiler or provider. It is an oracle
 for this bounded contract, not a replacement execution engine.
 
@@ -320,8 +322,9 @@ subjects and precedence rules; they do not establish compiler source mapping.
 
 The [conformance plan](../topics/collections-model/test-plan.md) retains all
 16 original rows plus snapshot-ownership and observation distinctions.
-Independent fixtures will supply initial state, operations, expected outcome,
-expected support, and expected resulting state before the implementation.
+Independent fixtures supply initial state, operations, expected outcome,
+expected support, and expected resulting state. Their expectations precede the
+implementation; the test plan records the scoped RED/GREEN evidence.
 
 The corpus must detect three deliberately broken interpretations: omitted
 capacity checks, omitted empty-range support, and omitted owner-survival

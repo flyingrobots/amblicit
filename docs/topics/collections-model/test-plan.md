@@ -76,6 +76,24 @@ workspace coverage floor or replace semantic assertion calibration. The seven
 unexecuted model functions are checked-arithmetic error closures behind the
 finite request, membership, history, and work-unit envelopes; those checks remain.
 
+At source checkpoint `18815d56011859df83cdde731b2937e15cef70d3`, the complete
+Linux workspace test run plus the twelve public `xtask` verification commands
+executes 43,042 of 49,575 source lines (86.82%). The test-only measurement is
+42,694 of 49,575 (86.12%). Both reports include inline test modules but exclude
+separate test files; neither measures doctests or branch coverage. All nine model
+source files and 89 existing source files are present. The existing files are
+unchanged from base `66bf6bac369f67e32ddaee099c3198bd30f885a1`; their measured
+coverage is 42,321 of 48,842 lines (86.65%). This is a candidate measurement,
+not an execution of the base revision. The workspace's 90% target remains unmet.
+Raw profiles, coverage maps, tool/source/object hashes, driver versions, and
+both measurements are retained losslessly outside Git.
+
+The whole workspace also passes `cargo +1.96.0 test --workspace --all-features
+--release --locked`, including doctests. Exact-checkpoint
+[CI run 42561511241](https://github.com/flyingrobots/amblicit/actions/runs/42561511241)
+passes both pinned `cargo-deny` checks: the root workspace and the provider guest
+workspace. These checks do not replace acceptance or independent review.
+
 The 22 contract-agreement fixtures were written against a no-check scaffold;
 all 22 failed at behavior assertions before implementation. The completed checker
 passes them alongside the 98 prior model cases. Its output is checked metadata,
