@@ -48,6 +48,10 @@ gate and model conformance are still pending.
 
 ## Validation boundary
 
+| ID | Status | Scenario | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COLL-TP-029 | implemented | Different worlds reuse numeric versions | COLL-REQ-002 | Candidate from another world refuses even when membership or versions are equal, same-world snapshot clones remain admissible | a_reading_from_another_world_cannot_be_corroborated, equal_membership_does_not_transfer_mutation_authority, an_empty_candidate_still_belongs_to_its_world, cloning_a_snapshot_preserves_its_origin | crates/amblicit-collections-model/tests/basis_binding.rs | Model origin binding is distinct from production wire identity |
+
 Structural-bound cases are specified before their implementation. V1 admits at
 most 64 live members, 64 requests per operation, four owner-path components,
 and 128 successful mutating admissions per world. Constructors reject duplicate

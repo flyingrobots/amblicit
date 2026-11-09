@@ -12,6 +12,9 @@ whole-candidate validation rejects missing owners and orphaned children.
 Observation, normalization, admission, and copying share an operation work
 budget. Traversals share a scan limit; incomplete coverage cannot establish
 absence. It has no production compiler consumers.
+Snapshots and candidates retain a private world origin. Admission refuses
+cross-world evidence even when numeric versions match; snapshot copies keep
+their origin. This is an in-process model boundary, not a persisted identity.
 Initial membership, request count, owner depth, and mutating history have fixed
 model limits. Constructors refuse invalid membership; exhausted history permits
 read-only corroboration. Immutable content, outcome precedence, and nested

@@ -71,6 +71,7 @@ impl World {
         }
         Ok(Self {
             state: Snapshot {
+                origin: super::origin::Origin::new(),
                 capacity,
                 entries,
                 epoch: 1,

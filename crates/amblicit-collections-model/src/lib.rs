@@ -7,6 +7,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 mod bounds;
+mod origin;
 
 /// A tuple path: each component is an owning-collection field and storage key.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -102,6 +103,7 @@ pub struct Payload(pub i64);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Snapshot {
+    origin: origin::Origin,
     capacity: u16,
     entries: BTreeMap<Place, Payload>,
     epoch: u64,
@@ -202,6 +204,7 @@ pub enum FailureKind {
     Capacity,
     DuplicateMutation,
     Conflict,
+    BasisMismatch,
     Unavailable,
     ModelBound,
     NotEmpty,
@@ -268,7 +271,9 @@ pub struct Receipt {
 }
 
 #[derive(Clone, Debug)]
+#[must_use]
 pub struct Candidate {
+    origin: origin::Origin,
     actions: Vec<Action>,
     readings: Vec<Reading>,
     support: BTreeMap<Support, u64>,
@@ -292,7 +297,7 @@ impl Candidate {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct World {
     state: Snapshot,
 }
@@ -306,11 +311,15 @@ impl World {
     /// Apply a whole candidate atomically when its resulting counts fit.
     ///
     /// # Errors
-    /// Returns `Conflict` for stale evidence; a membership or ownership failure
+    /// Returns `BasisMismatch` for another world's evidence, `Conflict` for stale
+    /// evidence, a membership or ownership failure
     /// for an obstructed mutation; `Capacity` for an oversized final collection;
     /// or `ModelBound` when the model's version counter is exhausted.
     pub fn admit(&mut self, candidate: Candidate) -> Result<Receipt, Failure> {
         let mut meter = candidate.meter;
+        if candidate.origin != self.state.origin {
+            return Err(meter.failure(FailureKind::BasisMismatch));
+        }
         for (key, version) in &candidate.support {
             meter.charge(1)?;
             if self.state.version(key) != *version {
@@ -413,6 +422,7 @@ pub fn prepare(basis: &Snapshot, actions: &[Action], limits: Limits) -> Result<C
         return Err(bounds::failure(FailureKind::ModelBound));
     }
     let mut candidate = Candidate {
+        origin: basis.origin.clone(),
         actions: vec![],
         readings: vec![],
         support: BTreeMap::new(),

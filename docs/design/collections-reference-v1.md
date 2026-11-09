@@ -61,6 +61,16 @@ that place; it does not prove occupant continuity. Incarnation-sensitive
 references are outside this version. Stored names are weak data: resolution
 against mutable state is an explicit read that may establish absence.
 
+Each model world owns a private live-origin handle. Snapshots and candidates
+retain that handle; admission first refuses `BasisMismatch` when it belongs to
+another world, even if the candidate is empty or both worlds have identical
+membership and version numbers. Snapshot cloning preserves the handle. Worlds
+cannot be cloned into independently mutable copies. Comparing handles uses
+object identity without exposing an address, serializing it, or ordering by it.
+This is the model's in-process authority boundary, not a production world ID,
+content digest, or wire basis encoding. Bounds and origin checks are constant
+preflight checks outside the reference work-unit schedule.
+
 An enduring object has a stable owner location. Moving it changes its location
 payload and membership records in one candidate; it does not relocate the
 object's owning collections. A member's payload excludes its owning
