@@ -128,8 +128,21 @@ covers the selected failure-precedence rules. Content calibration and the
 capacity, empty-range, and owner-survival corpus calibration are recorded below.
 These bounded campaigns do not establish exhaustive assertion calibration.
 
+Six additional mutable-law mutations are detected by their designated
+`conformance` fixtures: omit snapshot emptiness, permit a new owner and child
+together, erase children on payload replacement, skip evidence for an equal
+payload write, report payloads as traversal keys, and read buffered mutations.
+The first two fail their expected refusal; the equal-write fault fails the
+stale-reading refusal. The remaining faults fail exact state or reading
+comparisons. Each isolated command is `cargo +1.96.0 test -p
+amblicit-collections-model --test conformance --locked -- --exact TEST_NAME`.
+Before/after source pairs and verbatim diagnostics are retained outside Git.
+All 26 crate files match the source manifest after restoration, and all 124
+model tests pass in both debug and optimized profiles. This campaign calibrates
+these six mutable-law assertions; it does not establish exhaustive calibration.
+
 Verbatim evidence, exact source hashes, original/mutated source pairs, and the
-finite TypeScript driver are retained outside Git. The initial calibration
+finite TypeScript driver are retained outside Git. The initial failure-attribution
 driver failed during Node type stripping, before executing a model test; that
 setup failure is retained separately and is not behavioral RED. The successful
 focused command is `cargo +1.96.0 test -p amblicit-collections-model --test
