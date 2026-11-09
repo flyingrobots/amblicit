@@ -1,8 +1,8 @@
 //! Draft standalone collections model. Production crates do not depend on it.
 //!
 //! Capacity, exclusive mutations, snapshot observations, and ownership are
-//! implemented. Work bounds and immutable content remain planned; this is not
-//! yet a conforming evaluator.
+//! implemented, with shared operation work and scan limits. Structural input
+//! bounds and immutable content remain planned; this is not a conforming evaluator.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -78,6 +78,11 @@ impl Place {
             key,
         }
     }
+
+    #[must_use]
+    pub fn children(&self, field: u8) -> Collection {
+        self.child(field, 0).collection
+    }
 }
 
 /// Opaque application data; it contains no owning collections.
@@ -102,19 +107,24 @@ impl Snapshot {
         self.versions.get(key).copied().unwrap_or(0)
     }
 
-    fn has_children(&self, owner: &Place) -> bool {
-        self.entries
-            .keys()
-            .any(|place| place.collection.owner_place().as_ref() == Some(owner))
+    fn has_children(&self, owner: &Place, meter: &mut Meter) -> Result<bool, Failure> {
+        for place in self.entries.keys() {
+            meter.charge(1)?;
+            if place.collection.owner_place().as_ref() == Some(owner) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
-    fn validate_domains(&self, candidate: &Candidate) -> Result<(), Failure> {
+    fn validate_domains(&self, candidate: &Candidate, meter: &mut Meter) -> Result<(), Failure> {
         let mutations: BTreeMap<_, _> = candidate
             .actions
             .iter()
             .filter_map(|action| action.mutation_place().map(|place| (place, action)))
             .collect();
         for (place, action) in mutations {
+            meter.charge(1)?;
             let kind = match action {
                 Action::Add(_, _)
                     if place
@@ -130,11 +140,13 @@ impl Snapshot {
                 Action::Remove(_) | Action::Replace(_, _) if !self.entries.contains_key(place) => {
                     Some(FailureKind::NotFound)
                 }
-                Action::Remove(_) if self.has_children(place) => Some(FailureKind::NotEmpty),
+                Action::Remove(_) if self.has_children(place, meter)? => {
+                    Some(FailureKind::NotEmpty)
+                }
                 _ => None,
             };
             if let Some(kind) = kind {
-                return Err(Failure { kind });
+                return Err(meter.failure(kind));
             }
         }
         Ok(())
@@ -186,11 +198,62 @@ pub enum FailureKind {
     OwnerSurvival,
     AlreadyPresent,
     NotFound,
+    WorkExhausted,
+    Incomplete,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Failure {
     pub kind: FailureKind,
+    work_used: u32,
+}
+
+impl Failure {
+    #[must_use]
+    pub fn work_used(&self) -> u32 {
+        self.work_used
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Meter {
+    limits: Limits,
+    used: u32,
+    scans: u16,
+}
+
+impl Meter {
+    fn failure(&self, kind: FailureKind) -> Failure {
+        Failure {
+            kind,
+            work_used: self.used,
+        }
+    }
+
+    fn charge(&mut self, units: usize) -> Result<(), Failure> {
+        let units = u32::try_from(units).map_err(|_| self.failure(FailureKind::WorkExhausted))?;
+        let next = self
+            .used
+            .checked_add(units)
+            .filter(|next| *next <= self.limits.work)
+            .ok_or_else(|| self.failure(FailureKind::WorkExhausted))?;
+        self.used = next;
+        Ok(())
+    }
+
+    fn inspect(&mut self) -> Result<(), Failure> {
+        if self.scans >= self.limits.scan {
+            return Err(self.failure(FailureKind::Incomplete));
+        }
+        self.charge(1)?;
+        self.scans += 1;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Receipt {
+    pub work_used: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -198,9 +261,15 @@ pub struct Candidate {
     actions: Vec<Action>,
     readings: Vec<Reading>,
     support: BTreeMap<Support, u64>,
+    meter: Meter,
 }
 
 impl Candidate {
+    #[must_use]
+    pub fn work_used(&self) -> u32 {
+        self.meter.used
+    }
+
     #[must_use]
     pub fn readings(&self) -> &[Reading] {
         &self.readings
@@ -251,18 +320,31 @@ impl World {
     /// Returns `Conflict` for stale evidence; a membership or ownership failure
     /// for an obstructed mutation; `Capacity` for an oversized final collection;
     /// or `ModelBound` when the model's version counter is exhausted.
-    pub fn admit(&mut self, candidate: Candidate) -> Result<(), Failure> {
+    pub fn admit(&mut self, candidate: Candidate) -> Result<Receipt, Failure> {
+        let mut meter = candidate.meter;
         for (key, version) in &candidate.support {
+            meter.charge(1)?;
             if self.state.version(key) != *version {
-                return Err(Failure {
-                    kind: FailureKind::Conflict,
-                });
+                return Err(meter.failure(FailureKind::Conflict));
             }
         }
-        self.state.validate_domains(&candidate)?;
+        if candidate
+            .actions
+            .iter()
+            .all(|action| action.mutation_place().is_none())
+        {
+            return Ok(Receipt {
+                work_used: meter.used,
+            });
+        }
+        self.state.validate_domains(&candidate, &mut meter)?;
+        meter.charge(self.state.entries.len())?;
         let mut proposed = self.state.entries.clone();
         let mut touched = BTreeSet::new();
         for action in candidate.actions {
+            if action.mutation_place().is_some() {
+                meter.charge(1)?;
+            }
             match action {
                 Action::Add(place, payload) => {
                     touched.insert(Support::Slot(place.clone()));
@@ -291,14 +373,13 @@ impl World {
         }
         let mut counts = BTreeMap::new();
         for place in proposed.keys() {
+            meter.charge(1)?;
             if place
                 .collection
                 .owner_place()
                 .is_some_and(|owner| !proposed.contains_key(&owner))
             {
-                return Err(Failure {
-                    kind: FailureKind::OwnerSurvival,
-                });
+                return Err(meter.failure(FailureKind::OwnerSurvival));
             }
             *counts.entry(&place.collection).or_insert(0_usize) += 1;
         }
@@ -306,96 +387,54 @@ impl World {
             .values()
             .any(|count| *count > usize::from(self.state.capacity))
         {
-            return Err(Failure {
-                kind: FailureKind::Capacity,
-            });
+            return Err(meter.failure(FailureKind::Capacity));
         }
         if !touched.is_empty() {
-            let epoch = self.state.epoch.checked_add(1).ok_or(Failure {
-                kind: FailureKind::ModelBound,
-            })?;
+            let epoch = self
+                .state
+                .epoch
+                .checked_add(1)
+                .ok_or_else(|| meter.failure(FailureKind::ModelBound))?;
+            meter.charge(touched.len())?;
             for key in touched {
                 self.state.versions.insert(key, epoch);
             }
             self.state.epoch = epoch;
             self.state.entries = proposed;
         }
-        Ok(())
+        Ok(Receipt {
+            work_used: meter.used,
+        })
     }
 }
 
-/// Construct an inert proposal from requests.
+/// Construct an inert proposal from requests on one fixed snapshot.
 ///
 /// # Errors
-/// Returns `DuplicateMutation` for two exclusive requests at the same place.
-pub fn prepare(
-    basis: &Snapshot,
-    actions: &[Action],
-    _limits: Limits,
-) -> Result<Candidate, Failure> {
-    let mut places = BTreeSet::new();
-    for action in actions {
-        let place = match action {
-            Action::Add(place, _) | Action::Remove(place) | Action::Replace(place, _) => place,
-            Action::Get(_) | Action::Iter(_, _) => continue,
-        };
-        if !places.insert(place) {
-            return Err(Failure {
-                kind: FailureKind::DuplicateMutation,
-            });
-        }
-    }
+/// Returns a typed observation failure, exhausted work, incomplete scan coverage,
+/// or duplicate exclusive mutation. A failed observation yields no candidate.
+pub fn prepare(basis: &Snapshot, actions: &[Action], limits: Limits) -> Result<Candidate, Failure> {
     let mut candidate = Candidate {
-        actions: actions.to_vec(),
+        actions: vec![],
         readings: vec![],
         support: BTreeMap::new(),
+        meter: Meter {
+            limits,
+            used: 0,
+            scans: 0,
+        },
     };
     for action in actions {
-        match action {
-            Action::Add(place, _) | Action::Remove(place) => {
-                candidate.observe_owner(
-                    basis,
-                    &place.collection,
-                    matches!(action, Action::Remove(_)),
-                )?;
-                candidate.observe(basis, Support::Slot(place.clone()));
-                candidate.observe(basis, Support::Range(place.collection.clone()));
-                if matches!(action, Action::Remove(_)) {
-                    candidate.observe(basis, Support::Children(place.clone()));
-                }
-            }
-            Action::Replace(place, _) => {
-                candidate.observe_owner(basis, &place.collection, true)?;
-                candidate.observe(basis, Support::Slot(place.clone()));
-            }
-            Action::Get(place) => {
-                candidate.observe_owner(basis, &place.collection, true)?;
-                candidate.observe(basis, Support::Slot(place.clone()));
-                candidate
-                    .readings
-                    .push(Reading::Get(basis.entries.get(place).copied()));
-            }
-            Action::Iter(collection, predicate) => {
-                candidate.observe_owner(basis, collection, true)?;
-                candidate.observe(basis, Support::Range(collection.clone()));
-                let start = Place {
-                    collection: collection.clone(),
-                    key: 0,
-                };
-                let end = Place {
-                    collection: collection.clone(),
-                    key: u8::MAX,
-                };
-                let mut entries = vec![];
-                for (place, payload) in basis.entries.range(start..=end) {
-                    candidate.observe(basis, Support::Slot(place.clone()));
-                    if matches!(predicate, Predicate::All)
-                        || matches!(predicate, Predicate::Equal(value) if value == payload)
-                    {
-                        entries.push((place.clone(), *payload));
-                    }
-                }
-                candidate.readings.push(Reading::Entries(entries));
+        candidate.meter.charge(1)?;
+        candidate.actions.push(action.clone());
+        candidate.observe_action(basis, action)?;
+    }
+    let mut places = BTreeSet::new();
+    for action in &candidate.actions {
+        if let Some(place) = action.mutation_place() {
+            candidate.meter.charge(1)?;
+            if !places.insert(place) {
+                return Err(candidate.meter.failure(FailureKind::DuplicateMutation));
             }
         }
     }
@@ -403,6 +442,69 @@ pub fn prepare(
 }
 
 impl Candidate {
+    fn observe_action(&mut self, basis: &Snapshot, action: &Action) -> Result<(), Failure> {
+        match action {
+            Action::Add(place, _) | Action::Remove(place) => {
+                self.observe_owner(
+                    basis,
+                    &place.collection,
+                    matches!(action, Action::Remove(_)),
+                )?;
+                self.observe(basis, Support::Slot(place.clone()))?;
+                self.observe(basis, Support::Range(place.collection.clone()))?;
+                if matches!(action, Action::Remove(_)) {
+                    self.observe(basis, Support::Children(place.clone()))?;
+                }
+            }
+            Action::Replace(place, _) => {
+                self.observe_owner(basis, &place.collection, true)?;
+                self.observe(basis, Support::Slot(place.clone()))?;
+            }
+            Action::Get(place) => {
+                self.observe_owner(basis, &place.collection, true)?;
+                self.observe(basis, Support::Slot(place.clone()))?;
+                let value = basis.entries.get(place);
+                if value.is_some() {
+                    self.meter.charge(1)?;
+                }
+                self.readings.push(Reading::Get(value.copied()));
+            }
+            Action::Iter(collection, predicate) => self.iterate(basis, collection, *predicate)?,
+        }
+        Ok(())
+    }
+
+    fn iterate(
+        &mut self,
+        basis: &Snapshot,
+        collection: &Collection,
+        predicate: Predicate,
+    ) -> Result<(), Failure> {
+        self.observe_owner(basis, collection, true)?;
+        self.observe(basis, Support::Range(collection.clone()))?;
+        let start = Place {
+            collection: collection.clone(),
+            key: 0,
+        };
+        let end = Place {
+            collection: collection.clone(),
+            key: u8::MAX,
+        };
+        let mut entries = vec![];
+        for (place, payload) in basis.entries.range(start..=end) {
+            self.meter.inspect()?;
+            self.observe(basis, Support::Slot(place.clone()))?;
+            if matches!(predicate, Predicate::All)
+                || matches!(predicate, Predicate::Equal(value) if value == *payload)
+            {
+                self.meter.charge(1)?;
+                entries.push((place.clone(), *payload));
+            }
+        }
+        self.readings.push(Reading::Entries(entries));
+        Ok(())
+    }
+
     fn observe_owner(
         &mut self,
         basis: &Snapshot,
@@ -410,18 +512,18 @@ impl Candidate {
         require_present: bool,
     ) -> Result<(), Failure> {
         if let Some(owner) = collection.owner_place() {
+            self.observe(basis, Support::Owner(owner.clone()))?;
             if require_present && !basis.entries.contains_key(&owner) {
-                return Err(Failure {
-                    kind: FailureKind::Unavailable,
-                });
+                return Err(self.meter.failure(FailureKind::Unavailable));
             }
-            self.observe(basis, Support::Owner(owner));
         }
         Ok(())
     }
 
-    fn observe(&mut self, basis: &Snapshot, key: Support) {
+    fn observe(&mut self, basis: &Snapshot, key: Support) -> Result<(), Failure> {
+        self.meter.charge(1)?;
         let version = basis.version(&key);
         self.support.insert(key, version);
+        Ok(())
     }
 }

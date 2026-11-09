@@ -498,3 +498,90 @@ fn member_obstructions_do_not_mean_unavailable_observation() {
     .unwrap_err();
     assert_eq!(unavailable.kind, FailureKind::Unavailable);
 }
+
+#[test]
+fn whole_operation_budget_includes_atomic_admission() {
+    for work in [11, 12] {
+        let mut world = World::new(1, []);
+        let before = world.snapshot();
+        let candidate = prepare(
+            &before,
+            &[Action::Add(Place::root(0, 1), Payload(10))],
+            Limits { work, scan: 0 },
+        )
+        .unwrap();
+        assert_eq!(candidate.work_used(), 4);
+        if work == 12 {
+            assert_eq!(world.admit(candidate).unwrap().work_used, 12);
+            assert_eq!(
+                world.snapshot().entries(),
+                &[(Place::root(0, 1), Payload(10))].into()
+            );
+        } else {
+            let failure = world.admit(candidate).unwrap_err();
+            assert_eq!(failure.kind, FailureKind::WorkExhausted);
+            assert_eq!(failure.work_used(), 9);
+            assert_eq!(world.snapshot(), before);
+        }
+    }
+}
+
+#[test]
+fn nonmatching_entries_consume_work_and_scan_coverage() {
+    let mut world = World::new(
+        3,
+        [
+            (Place::root(0, 1), Payload(1)),
+            (Place::root(0, 2), Payload(2)),
+            (Place::root(0, 3), Payload(3)),
+        ],
+    );
+    let actions = [Action::Iter(
+        Collection::root(0),
+        Predicate::Equal(Payload(99)),
+    )];
+    let complete = prepare(&world.snapshot(), &actions, Limits { work: 12, scan: 3 }).unwrap();
+    assert_eq!(complete.readings(), &[Reading::Entries(vec![])]);
+    assert_eq!(complete.work_used(), 8);
+    assert_eq!(world.admit(complete).unwrap().work_used, 12);
+    let incomplete =
+        prepare(&world.snapshot(), &actions, Limits { work: 12, scan: 2 }).unwrap_err();
+    assert_eq!(incomplete.kind, FailureKind::Incomplete);
+    let exhausted = prepare(&world.snapshot(), &actions, Limits { work: 7, scan: 3 }).unwrap_err();
+    assert_eq!(exhausted.kind, FailureKind::WorkExhausted);
+}
+
+#[test]
+fn owned_traversals_share_one_operation_scan_limit() {
+    let parent = Place::root(0, 1);
+    let mut world = World::new(
+        1,
+        [
+            (parent.clone(), Payload(10)),
+            (parent.child(0, 1), Payload(20)),
+        ],
+    );
+    let actions = [
+        Action::Iter(parent.children(0), Predicate::All),
+        Action::Iter(parent.children(0), Predicate::All),
+    ];
+    let incomplete =
+        prepare(&world.snapshot(), &actions, Limits { work: 15, scan: 1 }).unwrap_err();
+    assert_eq!(incomplete.kind, FailureKind::Incomplete);
+    let complete = prepare(&world.snapshot(), &actions, Limits { work: 15, scan: 2 }).unwrap();
+    assert_eq!(complete.work_used(), 12);
+    assert_eq!(world.admit(complete).unwrap().work_used, 15);
+}
+
+#[test]
+fn exhausted_work_cannot_be_used_as_an_absence_witness() {
+    let world = World::new(1, []);
+    let failure = prepare(
+        &world.snapshot(),
+        &[Action::Get(Place::root(0, 1))],
+        Limits { work: 0, scan: 0 },
+    )
+    .unwrap_err();
+    assert_eq!(failure.kind, FailureKind::WorkExhausted);
+    assert_eq!(failure.work_used(), 0);
+}

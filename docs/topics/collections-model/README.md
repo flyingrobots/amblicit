@@ -9,8 +9,11 @@ against current state. Reads use the starting snapshot, including empty and
 filtered traversals. Owner lifetime and children-range evidence guard parent
 removal and child insertion. Payload replacement preserves structural ownership;
 whole-candidate validation rejects missing owners and orphaned children.
-It has no production compiler consumers.
-Immutable content, outcome precedence, and model-wide work bounds are not yet
+Observation, normalization, admission, and copying share an operation work
+budget. Traversals share a scan limit; incomplete coverage cannot establish
+absence. It has no production compiler consumers.
+Immutable content, outcome precedence, nested evaluation, and structural bounds
+on model inputs and retained history are not yet
 implemented. This checkpoint is not a conforming model or a compiler/runtime
 collections capability.
 

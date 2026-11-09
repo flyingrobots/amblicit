@@ -3,7 +3,8 @@
 Status: **draft contract and implementation plan** for
 [issue #290](https://github.com/flyingrobots/amblicit/issues/290). The executable
 model currently checks capacity, duplicate exclusive mutations, snapshot
-slot/range observations, and ownership; the complete conformance corpus is not implemented yet.
+slot/range observations, ownership, and operation work/scan limits. The complete
+conformance corpus is not implemented yet.
 This document does not
 add a compiler capability or claim that an Echo provider accepts collections.
 
@@ -136,6 +137,38 @@ receipt demonstrates its own transition only; it is not an Echo Tick, WAL,
 durability, recovery, or production-authority witness.
 
 ## Deterministic outcomes
+
+### Reference work units
+
+The fixtures specified these costs before the meter was implemented. These are
+bounded model steps, not an Echo gas schedule or a wall-clock prediction.
+One unit covers a bounded request copy, a support observation (including a
+repeat), a copied payload, an inspected traversal entry, an exclusive-request
+normalization, a corroborated support token, a mutation's domain check, a
+copied baseline member, a proposed mutation, a resulting member's invariant
+check, or one distinct updated version token. Removal additionally pays for
+every member inspected to establish owned-collection emptiness. Read-only
+admission corroborates support without copying application state.
+
+For an add to an empty root collection, preparation costs four units: request,
+slot observation, range observation, and normalization. Admission costs eight:
+two corroborations, domain check, proposed mutation, final-member check, and
+three version updates (slot, range, owner lifetime). The whole operation costs
+12; budget 11 must refuse before changing application state.
+
+Scanning three nonmatching root entries costs eight preparation units (request,
+range, three inspections, three slot observations) and four corroborations.
+A result filter does not reduce that work. Two traversals of a one-member
+owned collection spend 12 preparation units and corroborate three distinct
+tokens, totaling 15. Their physical scan count is two against one shared limit.
+A scan-limit refusal is incomplete observation, never established absence.
+Successful model receipts and failures retain the work actually spent; a
+refused step does not execute or consume additional work. Structural limits on
+initial state, request count, owner depth, and retained version history remain
+unfinished. These operation costs therefore do not yet establish a completely
+bounded model. Nested evaluation also remains outside the current scaffold.
+
+### Failure ordering
 
 The model will name each failure category and its boundary. Tests must settle
 the precedence explicitly before implementation: unavailable observations;
