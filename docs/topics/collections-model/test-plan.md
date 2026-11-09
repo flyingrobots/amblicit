@@ -15,6 +15,7 @@ gate and model conformance are still pending.
 | COLL-REQ-004 | planned | Bound actual work and retain distinct deterministic outcomes | docs/design/collections-reference-v1.md |
 | COLL-REQ-005 | planned | Typed immutable content closure and evidence-preserving ensures | docs/design/collections-reference-v1.md |
 | COLL-REQ-006 | planned | Corpus detects omitted capacity, range, and owner guards | docs/design/collections-reference-v1.md |
+| COLL-REQ-007 | planned | Versioned artifact shapes, exact semantic binding, and feature agreement confer no authority | docs/design/collections-wire-v1.md |
 
 ## Cases
 
@@ -47,6 +48,24 @@ gate and model conformance are still pending.
 | COLL-TP-025 | implemented | Exact whole-operation work budget | COLL-REQ-004 | Empty-root add costs 12 units; budget 11 refuses at the final evidence update with nine units spent and no state change | whole_operation_budget_includes_atomic_admission | crates/amblicit-collections-model/tests/conformance.rs | Explicit cost oracle specified before the meter; no Echo gas claim |
 
 ## Validation boundary
+
+| ID | Status | Scenario | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COLL-TP-035 | implemented | Negotiate required and offered collection contract headers | COLL-REQ-007 | Exact v1/version/semantic digest match, canonical feature sets, traversal dependency, explicit refusal of unsupported features; agreement is metadata only | matching_unknown_versions_are_still_unsupported, equal_versions_do_not_hide_different_semantics, a_known_but_unoffered_feature_refuses, malformed_required_header_precedes_malformed_offer | crates/amblicit-collections-model/tests/contract_agreement.rs | Pure reference agreement; production codec and target admission belong to downstream issues |
+
+The 22 contract-agreement fixtures were written against a no-check scaffold;
+all 22 failed at behavior assertions before implementation. The completed checker
+passes them alongside the 98 prior model cases. Its output is checked metadata,
+not a decoded wire body, published semantic digest, observation capability,
+candidate, or execution receipt. It has no world/provider/I/O access.
+Nine selected mutations were each detected by their designated behavior
+assertions: accepting an unknown version or semantic coordinate, ignoring the
+semantic digest, ignoring feature order, omitting traversal's prerequisite,
+checking the offer first, reversing missing-feature selection, granting unused
+offered features, and ignoring unknown features. The source was restored and
+the package cache invalidated before the 120-case suite and strict Clippy passed.
+Verbatim output, the finite TypeScript driver, and exact before/after sources
+are retained outside Git. This does not calibrate the downstream byte codec.
 
 Failure-attribution fixtures specify logical subjects and phase precedence
 before implementation. The initial scaffold retained the old decisions and

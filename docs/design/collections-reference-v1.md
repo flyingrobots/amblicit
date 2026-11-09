@@ -43,12 +43,15 @@ requiring access to the original document.
    identifies the offending place, collection, or content obligation; source
    adapters may attach a location without changing that attribution.
 4. **Versioned semantic capability.** `amblicit.collections/v1` names this
-   bounded semantic contract. It is not advertised by the current compiler
-   or target profile. Future consumers must explicitly negotiate a supported
-   artifact version; unknown versions must refuse before authority or writes
-   are granted. Future wire encodings must bind the version, basis, complete
-   support, declared limits, ordered requests, and normalized candidate.
-   The reference model's values are not executable provider packages.
+   bounded semantic contract. The [artifact contract](collections-wire-v1.md)
+   fixes description, reading, candidate, and outcome records using existing
+   canonical encoding. The pure reference negotiator checks exact version,
+   semantic digest, and feature agreement. It confers no authority. Production
+   codecs and compiler/provider registration are downstream work; this profile
+   is not advertised by current targets. Unknown versions must refuse. A
+   candidate artifact binds its version, basis, complete support, declared
+   limits, ordered requests, and normalized candidate. Model values are not
+   provider packages.
 
 ## Identity and state
 

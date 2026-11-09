@@ -24,8 +24,10 @@ work spent, validate typed acyclic closure against the captured basis plus the
 complete proposal, and publish jointly with mutable changes. Weak mutable names
 remain inert data. Refusals identify their logical subject and use declared
 phase/identity precedence. Regrouping a complete candidate does not change the
-selected duplicate place; all normalization work remains charged. Wire contracts
-and complete corpus calibration remain incomplete. This checkpoint is not a
+selected duplicate place; all normalization work remains charged. A pure contract
+negotiator checks version, semantic digest, and required/offered features. Its
+agreement carries metadata and grants no authority. Complete corpus calibration
+remains incomplete. This checkpoint is not a
 conforming model or a compiler/runtime
 collections capability.
 
@@ -33,6 +35,10 @@ Read the [draft contract](../../design/collections-reference-v1.md) for place
 identity, ownership, snapshot reads, complete candidates, and admission.
 The [test plan](test-plan.md) records the required independent oracles and
 keeps unfinished cases planned until their executable evidence exists.
+The [artifact contract](../../design/collections-wire-v1.md) fixes the wire
+records and consumer rejection obligations. Production codecs, schema
+registration, and capability advertisement belong to downstream compiler and
+provider issues; the metadata checker does not implement them.
 
 The intended model is deterministic and separate from production compilation
 and Echo execution. It must distinguish payload equality from write evidence,

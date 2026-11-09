@@ -3,8 +3,9 @@
 //! Capacity, exclusive mutations, snapshot observations, and ownership are
 //! implemented, with shared operation work/scan limits and a finite state/history
 //! envelope. Typed immutable ensures preserve closure and atomic publication.
-//! Refusals carry logical subjects with explicit phase precedence. Wire contracts
-//! and complete corpus calibration remain incomplete.
+//! Refusals carry logical subjects with explicit phase precedence. Contract
+//! agreement checks metadata only. Complete corpus calibration remains pending;
+//! production wire codecs and provider adoption are downstream work.
 
 use std::collections::BTreeMap;
 
@@ -12,6 +13,7 @@ mod admission;
 mod bounds;
 mod content;
 mod content_closure;
+pub mod contract;
 mod failure;
 mod origin;
 mod preparation;
