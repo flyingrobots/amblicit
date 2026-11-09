@@ -45,6 +45,14 @@ records and consumer rejection obligations. Production codecs, schema
 registration, and capability advertisement belong to downstream compiler and
 provider issues; the metadata checker does not implement them.
 
+The crate's [public reference](../../../crates/amblicit-collections-model/src/lib.rs)
+documents its in-memory boundaries and includes executable examples for
+fixed-basis reads and typed content publication. The
+[agreement example](../../../crates/amblicit-collections-model/src/contract.rs)
+shows how required/offered metadata produces agreement without granting
+authority. Run these examples with
+`cargo test -p amblicit-collections-model --doc --locked`.
+
 The intended model is deterministic and separate from production compilation
 and Echo execution. It must distinguish payload equality from write evidence,
 and model conformance from production and concurrency claims.

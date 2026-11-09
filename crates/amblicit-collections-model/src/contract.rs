@@ -2,6 +2,29 @@
 //!
 //! Agreement is neither decoding nor authorization. The module has no world,
 //! snapshot, candidate, provider, or I/O access.
+//!
+//! # Agree on metadata without granting authority
+//!
+//! The digest below is a fixture value. The checker compares the supplied bytes;
+//! it does not hash a semantic resource or establish target authenticity.
+//!
+//! ```
+//! use amblicit_collections_model::contract::{negotiate_contract, Feature, RawContract};
+//! # fn main() -> Result<(), amblicit_collections_model::contract::ContractError> {
+//! let digest = [7; 32];
+//! let required = RawContract {
+//!     api_version: "amblicit.collections.artifact/v1",
+//!     semantics_id: "amblicit.collections/v1",
+//!     semantics_digest: &digest,
+//!     features: &["slot"],
+//! };
+//! let offered = RawContract { features: &["content", "slot"], ..required };
+//! let agreement = negotiate_contract(required, offered)?;
+//! assert_eq!(agreement.features(), &[Feature::Slot]);
+//! assert_eq!(agreement.semantics_digest().as_bytes(), &digest);
+//! # Ok(())
+//! # }
+//! ```
 
 /// An unvalidated view of the common requirement/offer header fields.
 #[derive(Clone, Copy, Debug)]
@@ -103,6 +126,9 @@ impl ContractAgreement {
 }
 
 /// Check requirement first, offer second, then semantic identity and coverage.
+///
+/// Allocates space for at most three features per header and copies one 32-byte
+/// digest per checked header. It performs bounded comparisons, no hashing or I/O.
 ///
 /// # Errors
 /// Returns a structured contract refusal for unsupported, malformed, or

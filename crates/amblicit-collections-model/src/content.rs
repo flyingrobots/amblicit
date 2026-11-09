@@ -12,28 +12,39 @@ pub(crate) const MAX_CONTENT_LINKS: usize = 4;
 
 /// Frozen symbolic identity supplied by the fixture author.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ContentId(pub u8);
+pub struct ContentId(
+    /// Fixture coordinate; it is not computed from or authenticated against bytes.
+    pub u8,
+);
 
 /// The semantic kind a content reference expects.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ContentKind {
+    /// A scalar immutable payload without outgoing content links.
     Leaf,
+    /// An immutable ordered sequence of typed content links.
     Branch,
+    /// An inert name for a mutable place, without authority over that place.
     Name,
 }
 
 /// A typed immutable edge; its target must exist in the complete closure.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ContentRef {
+    /// Symbolic target identity resolved from the captured basis plus proposal.
     pub id: ContentId,
+    /// Required target kind, checked during complete closure validation.
     pub kind: ContentKind,
 }
 
 /// Immutable model data. Names remain weak data, not closure edges.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Content {
+    /// Immutable scalar data with no outgoing links.
     Leaf(Payload),
+    /// At most four typed links; admission requires their complete acyclic closure.
     Branch(Vec<ContentRef>),
+    /// A weak mutable name; admission neither reads nor creates its target.
     Name(Place),
 }
 
@@ -63,15 +74,16 @@ impl Candidate {
     pub(crate) fn normalize_content(&mut self, basis: &Snapshot) -> Result<(), Failure> {
         let mut conflicts = BTreeSet::new();
         for action in &self.actions {
-            if let Action::Ensure(id, value) = action {
-                value.charge_value(&mut self.meter)?;
-                if let Some(previous) = self.ensures.get(id) {
-                    if previous != value {
-                        conflicts.insert(*id);
-                    }
-                } else {
-                    self.ensures.insert(*id, value.clone());
+            let Action::Ensure(id, value) = action else {
+                continue;
+            };
+            value.charge_value(&mut self.meter)?;
+            if let Some(previous) = self.ensures.get(id) {
+                if previous != value {
+                    conflicts.insert(*id);
                 }
+            } else {
+                self.ensures.insert(*id, value.clone());
             }
         }
         if let Some(id) = conflicts.into_iter().next() {

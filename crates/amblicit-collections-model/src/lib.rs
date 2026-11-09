@@ -4,8 +4,59 @@
 //! implemented, with shared operation work/scan limits and a finite state/history
 //! envelope. Typed immutable ensures preserve closure and atomic publication.
 //! Refusals carry logical subjects with explicit phase precedence. Contract
-//! agreement checks metadata only. Complete corpus calibration remains pending;
-//! production wire codecs and provider adoption are downstream work.
+//! agreement checks metadata only. Production wire codecs and provider adoption
+//! are downstream work; this model does not establish their correctness.
+//!
+//! All APIs are synchronous and operate only in memory. They perform no I/O,
+//! persistence, or cryptographic authentication. Places and content IDs are
+//! symbolic fixture identities. Collections use ordered maps; requests and
+//! snapshots allocate within the fixed model envelope. Work units describe the
+//! reference cost schedule, not machine instructions or elapsed time.
+//!
+//! # Observe one snapshot, then admit the whole proposal
+//!
+//! Proposed writes do not change readings taken during preparation. Admission
+//! may still refuse if the world changed or the complete proposal is invalid.
+//!
+//! ```
+//! use amblicit_collections_model::{prepare, Action, Limits, Payload, Place, Reading, World};
+//! # fn main() -> Result<(), amblicit_collections_model::Failure> {
+//! let mut world = World::new(1, [])?;
+//! let place = Place::root(0, 7);
+//! let requests = [Action::Add(place.clone(), Payload(42)), Action::Get(place.clone())];
+//! let candidate = prepare(&world.snapshot(), &requests, Limits::default())?;
+//! assert_eq!(candidate.readings(), &[Reading::Get(None)]);
+//! world.admit(candidate)?;
+//! assert_eq!(world.snapshot().entries().get(&place), Some(&Payload(42)));
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Ensure a complete typed content closure
+//!
+//! A parent can precede its child because admission checks the complete proposal.
+//! These IDs are explicitly chosen fixture values, not hashes of content.
+//!
+//! ```
+//! use amblicit_collections_model::{
+//!     prepare, Action, Content, ContentId, ContentKind, ContentRef, Limits, Payload, World,
+//! };
+//! # fn main() -> Result<(), amblicit_collections_model::Failure> {
+//! let mut world = World::new(0, [])?;
+//! let parent = Content::Branch(vec![ContentRef { id: ContentId(2), kind: ContentKind::Leaf }]);
+//! let child = Content::Leaf(Payload(7));
+//! let requests = [
+//!     Action::Ensure(ContentId(1), parent.clone()),
+//!     Action::Ensure(ContentId(2), child.clone()),
+//! ];
+//! let candidate = prepare(&world.snapshot(), &requests, Limits::default())?;
+//! assert_eq!(world.admit(candidate)?.content_added, 2);
+//! assert_eq!(world.snapshot().contents(), &[(ContentId(1), parent), (ContentId(2), child)].into());
+//! # Ok(())
+//! # }
+//! ```
+
+#![deny(missing_docs)]
 
 use std::collections::BTreeMap;
 
@@ -29,6 +80,10 @@ pub struct Place {
     key: u8,
 }
 
+/// A named collection at the root or under a stable owning place.
+///
+/// Its identity contains the owner path and field, independent of payloads and
+/// current membership. Constructing a name does not establish that its owner exists.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Collection {
     owner: Vec<(u8, u8)>,
@@ -36,6 +91,7 @@ pub struct Collection {
 }
 
 impl Collection {
+    /// Name a root collection by field, with an empty owner path.
     #[must_use]
     pub fn root(field: u8) -> Self {
         Self {
@@ -56,27 +112,42 @@ impl Collection {
     }
 }
 
+/// A logical observation whose version must still match at admission.
+///
+/// Canonical ordering follows the variants below, then their place/collection
+/// identity. These model facts are neither persisted proofs nor wire capabilities.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Support {
+    /// Presence, absence, or payload at one place; same-value writes invalidate it.
     Slot(Place),
+    /// Membership of a collection, including an empty traversal's negative evidence.
     Range(Collection),
+    /// Lifetime of an owning place; payload replacement preserves this fact.
     Owner(Place),
+    /// Membership of collections directly owned by a place, used for emptiness.
     Children(Place),
 }
 
+/// Pure payload selection; excluded entries still consume inspection work.
 #[derive(Clone, Copy, Debug)]
 pub enum Predicate {
+    /// Select every inspected entry.
     All,
+    /// Select only entries with this scalar payload.
     Equal(Payload),
 }
 
+/// A successful snapshot reading, independent of buffered mutations.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Reading {
+    /// Optional payload at a place; `None` is established absence, not unavailable access.
     Get(Option<Payload>),
+    /// Selected entries in canonical place order, using authoritative storage keys.
     Entries(Vec<(Place, Payload)>),
 }
 
 impl Place {
+    /// Name a slot in a root collection without observing or creating membership.
     #[must_use]
     pub fn root(field: u8, key: u8) -> Self {
         Self {
@@ -112,8 +183,15 @@ impl Place {
 
 /// Opaque application data; it contains no owning collections.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Payload(pub i64);
+pub struct Payload(
+    /// Scalar fixture value, with no interpretation as a storage key or authority.
+    pub i64,
+);
 
+/// An immutable, owned copy of one world's membership, content, and evidence.
+///
+/// Cloning preserves the private world origin and copies bounded state. It does
+/// not refresh observations after later admissions or create a persistent snapshot.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Snapshot {
     origin: origin::Origin,
@@ -131,6 +209,7 @@ impl Snapshot {
         &self.contents
     }
 
+    /// Borrow the snapshot's mutable members in canonical place order.
     #[must_use]
     pub fn entries(&self) -> &BTreeMap<Place, Payload> {
         &self.entries
@@ -186,16 +265,25 @@ impl Snapshot {
     }
 }
 
+/// A request evaluated against one fixed snapshot to form a complete candidate.
+///
+/// Request construction itself neither observes nor mutates a world. Exclusive
+/// mutations of the same place refuse even when their payloads are identical.
 #[derive(Clone, Debug)]
 pub enum Action {
     /// Propose exact immutable content presence.
     Ensure(ContentId, Content),
     /// Evaluate nested requests within the same operation.
     Group(Vec<Action>),
+    /// Propose insertion into an absent slot of an already established collection.
     Add(Place, Payload),
+    /// Propose removal of a present member whose owned collections start empty.
     Remove(Place),
+    /// Propose a payload write to a present member, preserving its owned collections.
     Replace(Place, Payload),
+    /// Read a slot's presence or payload from the starting snapshot.
     Get(Place),
+    /// Inspect a whole bounded collection and retain selection evidence for all entries.
     Iter(Collection, Predicate),
 }
 
@@ -208,9 +296,15 @@ impl Action {
     }
 }
 
+/// Shared operation limits, carried from preparation through admission.
+///
+/// Defaults are 10,000 work units and 256 inspections. Structural limits are
+/// separate; increasing these values cannot enlarge the fixed model envelope.
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {
+    /// Maximum reference work units; a failed reservation consumes no units.
     pub work: u32,
+    /// Maximum entries inspected across all traversals, including excluded values.
     pub scan: u16,
 }
 
@@ -260,13 +354,21 @@ impl Meter {
     }
 }
 
+/// In-memory result of one successful admission, including read-only corroboration.
+///
+/// This is not an authenticated, durable, or production execution receipt.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Receipt {
+    /// Total reference work consumed by preparation and admission together.
     pub work_used: u32,
     /// Newly published immutable nodes; identical existing ensures add none.
     pub content_added: usize,
 }
 
+/// An inert, bounded proposal with readings and support from one fixed basis.
+///
+/// Only [`prepare`] constructs it. Cloning copies the proposal and retains its
+/// original evidence; it does not authorize replay or refresh stale observations.
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct Candidate {
@@ -286,28 +388,40 @@ impl Candidate {
         &self.ensures
     }
 
+    /// Work consumed during preparation, before any admission work is attempted.
     #[must_use]
     pub fn work_used(&self) -> u32 {
         self.meter.used
     }
 
+    /// Borrow readings in authored evaluation order, with nested groups flattened.
     #[must_use]
     pub fn readings(&self) -> &[Reading] {
         &self.readings
     }
 
+    /// Borrow canonical support facts and their captured model version numbers.
+    ///
+    /// A number has meaning only within this candidate's private world origin.
     #[must_use]
     pub fn support(&self) -> &BTreeMap<Support, u64> {
         &self.support
     }
 }
 
+/// One bounded mutable reference world with append-only validated content.
+///
+/// Each instance has a distinct live origin. All state changes occur through
+/// [`World::admit`]; there is no I/O, durable storage, or concurrent host adapter.
 #[derive(Debug)]
 pub struct World {
     state: Snapshot,
 }
 
 impl World {
+    /// Copy the complete bounded state while retaining this world's origin.
+    ///
+    /// Allocates for maps and owner paths; later admissions do not change the copy.
     #[must_use]
     pub fn snapshot(&self) -> Snapshot {
         self.state.clone()

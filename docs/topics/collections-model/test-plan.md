@@ -2,8 +2,8 @@
 
 The draft contract is the source of requirements. Fixture expectations are
 authored independently of the transition evaluator. Implemented rows below
-name executable evidence; the other rows remain planned. The full repository
-gate and model conformance are still pending.
+name executable evidence; the other rows remain planned. A passing model fixture
+does not establish production compiler or runtime conformance.
 
 ## Requirements
 
@@ -16,6 +16,7 @@ gate and model conformance are still pending.
 | COLL-REQ-005 | planned | Typed immutable content closure and evidence-preserving ensures | docs/design/collections-reference-v1.md |
 | COLL-REQ-006 | implemented | Corpus detects omitted capacity, range, and owner guards | docs/design/collections-reference-v1.md |
 | COLL-REQ-007 | planned | Versioned artifact shapes, exact semantic binding, and feature agreement confer no authority | docs/design/collections-wire-v1.md |
+| COLL-REQ-008 | implemented | Public model reference documents its limits and provides executable workflow examples | docs/topics/rust-standards/README.md |
 
 ## Cases
 
@@ -52,6 +53,28 @@ gate and model conformance are still pending.
 | ID | Status | Scenario | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | COLL-TP-035 | implemented | Negotiate required and offered collection contract headers | COLL-REQ-007 | Exact v1/version/semantic digest match, canonical feature sets, traversal dependency, explicit refusal of unsupported features; agreement is metadata only | matching_unknown_versions_are_still_unsupported, equal_versions_do_not_hide_different_semantics, a_known_but_unoffered_feature_refuses, malformed_required_header_precedes_malformed_offer | crates/amblicit-collections-model/tests/contract_agreement.rs | Pure reference agreement; production codec and target admission belong to downstream issues |
+| COLL-TP-036 | implemented | Documented model and agreement workflows | COLL-REQ-002, COLL-REQ-003, COLL-REQ-005, COLL-REQ-007, COLL-REQ-008 | Fixed-basis absence survives a proposed add, typed parent/child content publishes jointly, agreement returns only required features | buffered_add_and_remove_do_not_change_reads, a_new_parent_can_precede_its_new_child, a_target_may_offer_more_features_than_the_operation_requires | crates/amblicit-collections-model/src/lib.rs, crates/amblicit-collections-model/src/contract.rs, crates/amblicit-collections-model/tests/conformance.rs, crates/amblicit-collections-model/tests/immutable_content.rs, crates/amblicit-collections-model/tests/contract_agreement.rs | Named public-API fixtures validate the workflow behavior; the workspace gate additionally executes all three doctests |
+
+The public API denies missing documentation. Enabling that lint before writing
+the reference produced 41 missing-documentation errors; this is documentation
+validation, not behavioral RED. The completed reference passes the lint and
+three doctests. The topic registry accepts named Rust test functions, so its
+evidence column names the companion public-API fixtures. The doctests execute
+snapshot preparation/admission, complete typed content publication, and metadata
+agreement through the public API. The same
+124 model tests also pass in the optimized profile. Flattening content
+normalization's outer action match preserves its charge/order behavior; the
+existing content fixtures and calibrated assertions cover that mechanical change.
+
+Rust 1.96 coverage instrumentation over all ten package test binaries reports
+721 of 733 model source lines executed (98.36%). The contract and world-origin
+modules each reach 100% line coverage. The report inventories all nine source
+files and retains matching binaries, profiles, and source hashes outside Git.
+Doctests and test-source lines are excluded from that measurement. Branch
+coverage was not instrumented, and this package result does not establish the
+workspace coverage floor or replace semantic assertion calibration. The seven
+unexecuted model functions are checked-arithmetic error closures behind the
+finite request, membership, history, and work-unit envelopes; those checks remain.
 
 The 22 contract-agreement fixtures were written against a no-check scaffold;
 all 22 failed at behavior assertions before implementation. The completed checker
