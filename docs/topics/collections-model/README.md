@@ -17,8 +17,10 @@ cross-world evidence even when numeric versions match; snapshot copies keep
 their origin. This is an in-process model boundary, not a persisted identity.
 Initial membership, request count, owner depth, and mutating history have fixed
 model limits. Constructors refuse invalid membership; exhausted history permits
-read-only corroboration. Immutable content, outcome precedence, and nested
-evaluation are not yet implemented. This checkpoint is not a conforming model or a compiler/runtime
+read-only corroboration. Nested request groups share the snapshot, work/scan
+meters, and complete-candidate validation. Their depth and total node count are
+bounded before copying. Immutable content and outcome precedence are not yet
+implemented. This checkpoint is not a conforming model or a compiler/runtime
 collections capability.
 
 Read the [draft contract](../../design/collections-reference-v1.md) for place

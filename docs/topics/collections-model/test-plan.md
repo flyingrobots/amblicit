@@ -32,7 +32,7 @@ gate and model conformance are still pending.
 | COLL-TP-010 | implemented | Payload key disagrees with storage key | COLL-REQ-001 | Traversal and removal use the storage key and preserve the other slot | entry_keys_are_authoritative_even_when_payloads_name_other_keys | crates/amblicit-collections-model/tests/conformance.rs | Model only; exact reading and final-state oracles |
 | COLL-TP-011 | implemented | Move fails at destination | COLL-REQ-001, COLL-REQ-003 | Source membership and stable owner remain intact; no partial changes | failed_move_preserves_source_membership_and_stable_owner | crates/amblicit-collections-model/tests/conformance.rs | Model only; no Jedit planner imported |
 | COLL-TP-012 | implemented | Same-value replacement | COLL-REQ-003 | Payload equality holds but prior observation evidence becomes stale | same_value_replacement_still_invalidates_prior_write_evidence | crates/amblicit-collections-model/tests/conformance.rs | Model only; not an Echo write receipt |
-| COLL-TP-013 | planned | Nonmatching scans and nested work exhaust bounds | COLL-REQ-002, COLL-REQ-004 | Actual inspections consume shared work; exact bounds pass, one-short refuses | nonmatching_entries_consume_work_and_scan_coverage, owned_traversals_share_one_operation_scan_limit | crates/amblicit-collections-model/tests/conformance.rs | Partial: repeated owned traversals share limits; true nested evaluation remains unimplemented |
+| COLL-TP-013 | implemented | Nonmatching scans and nested work exhaust bounds | COLL-REQ-002, COLL-REQ-004 | Actual inspections consume shared work, exact bounds pass, one-short refuses | nested_traversals_charge_all_inspections, nested_work_does_not_reset_the_operation_budget, nested_scan_coverage_is_shared | crates/amblicit-collections-model/tests/nested_evaluation.rs | Nonmatching scan work persists across group boundaries, 13 units succeed and 12 refuse |
 | COLL-TP-014 | planned | Multiple failures are simultaneously possible | COLL-REQ-004 | Declared phase and canonical-subject precedence selects a stable outcome | - | - | Independent fixture; no runtime claim |
 | COLL-TP-015 | planned | New ensured parent names a new child | COLL-REQ-005 | Complete candidate closure permits it; missing, cyclic, or mistyped links refuse | - | - | Independent fixture; no runtime claim |
 | COLL-TP-016 | planned | Attempt mutation of immutable content | COLL-REQ-005 | Every modeled mutation route refuses; different content under one ID is integrity failure | - | - | Independent fixture; no runtime claim |
@@ -47,6 +47,18 @@ gate and model conformance are still pending.
 | COLL-TP-025 | implemented | Exact whole-operation work budget | COLL-REQ-004 | Empty-root add costs 12 units; budget 11 refuses at the final evidence update with nine units spent and no state change | whole_operation_budget_includes_atomic_admission | crates/amblicit-collections-model/tests/conformance.rs | Explicit cost oracle specified before the meter; no Echo gas claim |
 
 ## Validation boundary
+
+Nested evaluation uses explicit request groups. Groups retain the same basis,
+work meter, scan count, and whole-candidate normalizer. Each group entry costs
+one work unit; group nodes count toward the 64-request envelope. Four nested
+groups are admitted, a fifth refuses before evaluation. For two traversals of
+one root member under two group nodes, the first rejecting the payload and the
+second selecting it, preparation costs 11 and corroboration costs two. Budget
+13 succeeds, 12 refuses, and a shared scan limit of one refuses as incomplete.
+
+| ID | Status | Scenario | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COLL-TP-030 | implemented | Nested candidates preserve operation scope | COLL-REQ-002, COLL-REQ-003, COLL-REQ-004 | Nested reads use the original snapshot, aliases refuse globally, full-collection exchange uses final count, all nested nodes share bounds | nested_reads_ignore_buffered_writes, exclusive_aliases_across_groups_refuse, nested_exchange_uses_whole_candidate_capacity, four_groups_preserve_the_leaf_observation, a_fifth_group_refuses_before_evaluation, sixty_four_nodes_include_group_overhead, nested_nodes_cannot_hide_a_sixty_fifth_request | crates/amblicit-collections-model/tests/nested_evaluation.rs | Reference request groups do not add a compiler language feature |
 
 | ID | Status | Scenario | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |

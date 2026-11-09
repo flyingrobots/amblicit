@@ -168,6 +168,8 @@ impl Snapshot {
 
 #[derive(Clone, Debug)]
 pub enum Action {
+    /// Evaluate nested requests within the same operation.
+    Group(Vec<Action>),
     Add(Place, Payload),
     Remove(Place),
     Replace(Place, Payload),
@@ -179,7 +181,7 @@ impl Action {
     fn mutation_place(&self) -> Option<&Place> {
         match self {
             Self::Add(place, _) | Self::Remove(place) | Self::Replace(place, _) => Some(place),
-            Self::Get(_) | Self::Iter(_, _) => None,
+            Self::Get(_) | Self::Iter(_, _) | Self::Group(_) => None,
         }
     }
 }
@@ -369,7 +371,7 @@ impl World {
                     touched.insert(Support::Slot(place.clone()));
                     proposed.insert(place, payload);
                 }
-                Action::Get(_) | Action::Iter(_, _) => {}
+                Action::Get(_) | Action::Iter(_, _) | Action::Group(_) => {}
             }
         }
         if proposed.len() > bounds::MAX_MEMBERS {
@@ -418,9 +420,7 @@ impl World {
 /// Returns a typed observation failure, exhausted work, incomplete scan coverage,
 /// or duplicate exclusive mutation. A failed observation yields no candidate.
 pub fn prepare(basis: &Snapshot, actions: &[Action], limits: Limits) -> Result<Candidate, Failure> {
-    if actions.len() > bounds::MAX_ACTIONS {
-        return Err(bounds::failure(FailureKind::ModelBound));
-    }
+    bounds::requests(actions)?;
     let mut candidate = Candidate {
         origin: basis.origin.clone(),
         actions: vec![],
@@ -432,11 +432,7 @@ pub fn prepare(basis: &Snapshot, actions: &[Action], limits: Limits) -> Result<C
             scans: 0,
         },
     };
-    for action in actions {
-        candidate.meter.charge(1)?;
-        candidate.actions.push(action.clone());
-        candidate.observe_action(basis, action)?;
-    }
+    candidate.evaluate(basis, actions)?;
     let mut places = BTreeSet::new();
     for action in &candidate.actions {
         if let Some(place) = action.mutation_place() {
@@ -450,8 +446,20 @@ pub fn prepare(basis: &Snapshot, actions: &[Action], limits: Limits) -> Result<C
 }
 
 impl Candidate {
+    fn evaluate(&mut self, basis: &Snapshot, actions: &[Action]) -> Result<(), Failure> {
+        for action in actions {
+            self.meter.charge(1)?;
+            if !matches!(action, Action::Group(_)) {
+                self.actions.push(action.clone());
+            }
+            self.observe_action(basis, action)?;
+        }
+        Ok(())
+    }
+
     fn observe_action(&mut self, basis: &Snapshot, action: &Action) -> Result<(), Failure> {
         match action {
+            Action::Group(children) => self.evaluate(basis, children)?,
             Action::Add(place, _) | Action::Remove(place) => {
                 self.observe_owner(
                     basis,

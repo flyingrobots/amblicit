@@ -1,14 +1,38 @@
 //! Finite model envelope and validated initial membership.
 
-use super::{BTreeMap, Failure, FailureKind, Payload, Place, Snapshot, Support, World};
+use super::{Action, BTreeMap, Failure, FailureKind, Payload, Place, Snapshot, Support, World};
 
 pub(crate) const MAX_MEMBERS: usize = 64;
 pub(crate) const MAX_ACTIONS: usize = 64;
 pub(crate) const MAX_OWNER_DEPTH: usize = 4;
 pub(crate) const MAX_MUTATING_COMMITS: u64 = 128;
+const MAX_EVALUATION_DEPTH: usize = 4;
 
 pub(crate) fn failure(kind: FailureKind) -> Failure {
     Failure { kind, work_used: 0 }
+}
+
+pub(crate) fn requests(actions: &[Action]) -> Result<(), Failure> {
+    let mut remaining = MAX_ACTIONS;
+    request_nodes(actions, &mut remaining, 0)
+}
+
+fn request_nodes(actions: &[Action], remaining: &mut usize, depth: usize) -> Result<(), Failure> {
+    if depth > MAX_EVALUATION_DEPTH || actions.len() > *remaining {
+        return Err(failure(FailureKind::ModelBound));
+    }
+    for action in actions {
+        *remaining = remaining
+            .checked_sub(1)
+            .ok_or_else(|| failure(FailureKind::ModelBound))?;
+        if let Action::Group(children) = action {
+            let next_depth = depth
+                .checked_add(1)
+                .ok_or_else(|| failure(FailureKind::ModelBound))?;
+            request_nodes(children, remaining, next_depth)?;
+        }
+    }
+    Ok(())
 }
 
 fn initial_entries(

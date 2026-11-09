@@ -105,6 +105,12 @@ entries; a result limit alone is insufficient. Nested evaluation consumes
 one shared operation budget. A failed or partial observation never becomes
 an absence witness.
 
+The model represents nested evaluation with `Action::Group`. Every group uses
+the same snapshot, work meter, and scan count. Group entry costs one work unit;
+only leaf requests enter the complete mutation candidate. Consequently aliases
+across groups still refuse, and a full collection can exchange members across
+groups. Nesting does not start a transaction or admit an intermediate candidate.
+
 The observation result distinguishes established absence, unavailable basis
 or authority, incomplete observation due to bounds, and conflict. Expected
 domain obstructions are distinct from integrity failures.
@@ -151,8 +157,9 @@ durability, recovery, or production-authority witness.
 ### Structural envelope
 
 The reference model uses a fixed small-state envelope: at most 64 live members
-across all collections, 64 requests in one operation, four components in an
-owner path, and 128 successful mutating admissions in one world. These numbers
+across all collections, 64 request nodes in one operation (including groups),
+four nested groups, four components in an owner path, and 128 successful
+mutating admissions in one world. These numbers
 bound the conformance model, not the compiler language or an Echo resource limit.
 Initial membership and snapshots are constructed outside operation work
 accounting; their sizes are bounded independently.
@@ -162,7 +169,10 @@ state. It consumes no more than 65 input members, rejects duplicate places,
 requires every immediate owner to exist, and checks collection capacity after
 collecting membership. A child may appear before its owner in the input.
 `Place::child` and `Place::children` refuse depth five before copying the path.
-Request count is checked before evaluation. Admission validates the final live
+Total request-node count and group depth are checked before evaluation or
+request copying. The structural walk stops after at most 64 accepted nodes or
+at the first oversized child list; it does not traverse an unbounded tree.
+Admission validates the final live
 member count, so remove-plus-add remains possible at the limit.
 
 Every successful mutating admission advances history, including same-value
@@ -179,7 +189,7 @@ claim about allocator bytes or production retention policy.
 
 The fixtures specified these costs before the meter was implemented. These are
 bounded model steps, not an Echo gas schedule or a wall-clock prediction.
-One unit covers a bounded request copy, a support observation (including a
+One unit covers a bounded request visit (including a group entry), a support observation (including a
 repeat), a copied payload, an inspected traversal entry, an exclusive-request
 normalization, a corroborated support token, a mutation's domain check, a
 copied baseline member, a proposed mutation, a resulting member's invariant
@@ -201,8 +211,11 @@ tokens, totaling 15. Their physical scan count is two against one shared limit.
 A scan-limit refusal is incomplete observation, never established absence.
 Successful model receipts and failures retain the work actually spent; a
 refused step does not execute or consume additional work. The structural
-envelope bounds initial state, request count, owner depth, and retained history.
-Nested evaluation and immutable content remain outside the current scaffold.
+envelope bounds initial state, request count, group and owner depth, and retained
+history. Two nested traversals of one root member, first excluded and then
+selected under two groups, cost 11 preparation units and two corroborations.
+Work budget 12 refuses admission; scan limit one refuses during the second
+traversal with eight units spent. Immutable content remains unimplemented.
 
 ### Failure ordering
 
