@@ -725,9 +725,10 @@ target-profile-manifest = {
 ; digest-bound semantic input and resolves coordinates within that artifact.
 ; Each map key MUST equal its record's `coordinate` field
 ; (EDICT-ABI-INTRINSIC-UNIQUE-001).
-; Catalog v2 (EDICT-TARGET-PURE-INTRINSIC-001): a pure intrinsic that source
-; programs call carries a complete contract, and the catalog publishes every
-; provider-owned named type a pure signature reaches. A v1 catalog is not a
+; Catalog v2 (EDICT-TARGET-PURE-INTRINSIC-001): every pure intrinsic in the
+; catalog carries a complete monomorphic contract, whether or not a consumer
+; requires it, and the catalog publishes every provider-owned named type a
+; pure signature reaches. A v1 catalog is not a
 ; value of this rule; the publications that admit v1 are frozen under
 ; fixtures/provider-contracts/.
 intrinsics-document = {
@@ -796,14 +797,16 @@ pure-intrinsic = {
   argumentTypes: [* core-type-ref],
   returnType: core-type-ref,
   guardSupport: false,
-  footprintTemplate: tstr,
-  costTemplate: tstr,
+  footprintTemplate: nonempty-text,
+  costTemplate: nonempty-text,
   writeClass: "none",
   ; Semantic version of the constructor's contract; consumers require an
   ; exact version.
-  contractVersion: tstr,
+  contractVersion: nonempty-text,
   costRule: pure-cost-rule,
 }
+
+nonempty-text = tstr .regexp "(?s).+"
 
 ; Steps for one call: base plus, for each argument, its coefficient times the
 ; size bound the verified program establishes for that operand (a Bytes
