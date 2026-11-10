@@ -28,10 +28,12 @@ const EDGE: &str = "Record<edgeType:Bytes<exact=32>,to:Bytes<exact=32>>";
 const PRE_CATALOG_V2_TARGET_PROFILE_CDDL: &[u8] =
     include_bytes!("../../../fixtures/target-profile/pre-catalog-v2-target-profile.cddl");
 
+/// A CBOR text value.
 fn text(value: &str) -> V {
     V::Text(value.into())
 }
 
+/// A CBOR map with text keys, in the given order.
 fn map(entries: Vec<(&str, V)>) -> V {
     V::Map(
         entries
@@ -41,6 +43,7 @@ fn map(entries: Vec<(&str, V)>) -> V {
     )
 }
 
+/// A CBOR array of text values.
 fn texts(values: &[&str]) -> V {
     V::Array(values.iter().map(|value| text(value)).collect())
 }
@@ -71,6 +74,7 @@ fn pure_fields() -> Vec<(&'static str, V)> {
     ]
 }
 
+/// An effect intrinsic, whose shape is the same in both catalog versions.
 fn effect_entry() -> V {
     map(vec![
         ("intrinsicClass", text("effect")),
@@ -128,6 +132,7 @@ fn catalog_v2() -> V {
     ])
 }
 
+/// The digest-locked target profile the intrinsics belong to.
 fn target() -> ResourceRef {
     ResourceRef {
         coordinate: "echo.dpo@1".into(),
@@ -152,6 +157,8 @@ fn compiler_admission(
         .map_err(|failures| failures.into_iter().map(|failure| failure.kind).collect())
 }
 
+/// A contract pack assembled from the authoritative ABI sources, except for
+/// the target-profile schema, which the caller selects.
 fn pack_with(target_profile_cddl: &'static [u8]) -> ProviderContractPack {
     assemble_provider_contract_pack(ProviderContractPackInput {
         common_cddl: include_bytes!("../../../docs/abi/edict-common.cddl"),
@@ -225,6 +232,7 @@ fn catalog_v2_pack() -> ProviderContractPack {
     ))
 }
 
+/// The value of one field of a CBOR map, for mutation.
 fn field_mut<'a>(value: &'a mut V, key: &str) -> &'a mut V {
     let V::Map(entries) = value else {
         panic!("{key}: not a map")
@@ -236,6 +244,7 @@ fn field_mut<'a>(value: &'a mut V, key: &str) -> &'a mut V {
         .1
 }
 
+/// Remove one field, which must be present, from a CBOR map.
 fn remove_field(value: &mut V, key: &str) {
     let V::Map(entries) = value else {
         panic!("{key}: not a map")
@@ -245,6 +254,7 @@ fn remove_field(value: &mut V, key: &str) {
     assert_eq!(entries.len() + 1, before, "missing field {key}");
 }
 
+/// The catalog's `contentAddress` pure contract, for mutation.
 fn pure_contract_mut(catalog: &mut V) -> &mut V {
     field_mut(field_mut(catalog, "intrinsics"), CONTENT_ADDRESS)
 }
