@@ -114,17 +114,29 @@ Controls whose nested rule graph is opaque through the schema dependency, such
 as `.cbor`, reject with a stable unsupported-control failure rather than being
 accepted without a complete closure proof.
 The checked Rust-neutral artifacts live under
-[`fixtures/provider-contracts/bounded-state-fold-v1/`](../../../fixtures/provider-contracts/bounded-state-fold-v1/):
+[`fixtures/provider-contracts/pure-intrinsic-catalog-v1/`](../../../fixtures/provider-contracts/pure-intrinsic-catalog-v1/):
 one self-contained Apache-2.0 CDDL file and one deterministic manifest mapping
 logical contracts and provider artifact domains to exact roots. The prior
 [function-free v1 publication](../../../fixtures/provider-contracts/v1/),
 [source-function publication](../../../fixtures/provider-contracts/source-functions-v1/),
 [source-module publication](../../../fixtures/provider-contracts/source-modules-v1/),
-and [structured-control publication](../../../fixtures/provider-contracts/structured-control-v1/)
+[structured-control publication](../../../fixtures/provider-contracts/structured-control-v1/)
+and [bounded-state-fold publication](../../../fixtures/provider-contracts/bounded-state-fold-v1/)
 remain byte-identical for explicitly pinned consumers; tests reassemble them
-from `fixtures/core/pre-fold-core.cddl` (or the earlier function-free Core
-schema) and, where applicable, the frozen pre-v3 Target IR schema in
-`fixtures/target-ir/pre-structured-target-ir.cddl`. The fold-capable publication
+from the frozen target-profile schema in
+`fixtures/target-profile/pre-catalog-v2-target-profile.cddl` and, where
+applicable, `fixtures/core/pre-fold-core.cddl` (or the earlier function-free
+Core schema) and the frozen pre-v3 Target IR schema in
+`fixtures/target-ir/pre-structured-target-ir.cddl`. The pure-intrinsic-catalog
+publication changes the `intrinsics-document` root, bound to the
+`target-profile-intrinsics` contract, to admit
+`edict.target-profile.intrinsics/v2` catalogs: pure intrinsics carry
+`contractVersion` and `costRule`, and the catalog may publish provider-owned
+`types`. It refuses a v1 catalog, and every earlier publication refuses a v2
+catalog, so a provider whose source programs call pure intrinsics must select
+this publication. The schema fixes catalog shape only; pinned-digest admission,
+contract versions, namespace ownership, type resolution and cost-coefficient
+rules remain with `admit_target_pure_intrinsics`. The fold-capable publication
 adds the explicit `fold` Core expression; consumers must select its new schema
 digest. Capability, state and cost checks remain separate semantic gates.
 The structured-control publication adds the `echo.span-ir/v3` variant of the `target-ir-artifact`

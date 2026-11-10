@@ -5,7 +5,7 @@ root to the [source-module publication](../source-modules-v1/README.md). Its
 `executionOrder` is a tree: instruction ids as text, plus `for` and `branch`
 maps whose nested arrays use the same entry rule. This CDDL/manifest pair is now
 frozen. The generator writes the separate
-[bounded-state-fold publication](../bounded-state-fold-v1/README.md); tests
+[pure-intrinsic-catalog publication](../pure-intrinsic-catalog-v1/README.md); tests
 reproduce this pair from the pre-fold Core schema.
 
 The source-module, source-function and v1 pairs remain byte-identical. Their

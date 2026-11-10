@@ -10,9 +10,11 @@ use amblicit_provider_schema::{
     ProviderContractPack, ProviderContractPackInput,
 };
 use amblicit_syntax::{
-    admit_target_pure_intrinsics, canonical_target_profile_contract_resources,
-    digest_target_intrinsics_catalog, encode_canonical_cbor, CanonicalValue as V,
-    RequiredPureIntrinsic, ResourceRef, TargetPureIntrinsicFact, TargetPureIntrinsicFailureKind,
+    admit_target_pure_intrinsics, canonical_target_profile_contract_resources, compile_to_core,
+    decode_canonical_cbor, digest_target_intrinsics_catalog, encode_canonical_cbor,
+    encode_core_module, parse_module, CanonicalValue as V, CompilerContext, CoreBudget, CoreExpr,
+    CoreNode, RequiredPureIntrinsic, ResourceRef, TargetPureIntrinsicFact,
+    TargetPureIntrinsicFailureKind, CORE_MODULE_DIGEST_DOMAIN,
 };
 
 const CATALOG_CONTRACT: &str = "target-profile-intrinsics";
@@ -212,4 +214,173 @@ fn bounded_state_fold_pack_admits_the_v1_catalog_the_compiler_refuses() {
         Err(vec![TargetPureIntrinsicFailureKind::MalformedCatalog]),
         "the compiler admits pure intrinsics only from a v2 catalog"
     );
+}
+
+// --- The catalog v2 publication ---------------------------------------------
+
+/// The current publication, assembled from the authoritative ABI sources.
+fn catalog_v2_pack() -> ProviderContractPack {
+    pack_with(include_bytes!(
+        "../../../docs/abi/edict-target-profile.cddl"
+    ))
+}
+
+fn field_mut<'a>(value: &'a mut V, key: &str) -> &'a mut V {
+    let V::Map(entries) = value else {
+        panic!("{key}: not a map")
+    };
+    &mut entries
+        .iter_mut()
+        .find(|(name, _)| name == &text(key))
+        .unwrap_or_else(|| panic!("missing field {key}"))
+        .1
+}
+
+fn remove_field(value: &mut V, key: &str) {
+    let V::Map(entries) = value else {
+        panic!("{key}: not a map")
+    };
+    let before = entries.len();
+    entries.retain(|(name, _)| name != &text(key));
+    assert_eq!(entries.len() + 1, before, "missing field {key}");
+}
+
+fn pure_contract_mut(catalog: &mut V) -> &mut V {
+    field_mut(field_mut(catalog, "intrinsics"), CONTENT_ADDRESS)
+}
+
+#[test]
+fn catalog_v2_pack_admits_the_catalog_the_compiler_admits() {
+    let pack = catalog_v2_pack();
+    let catalog = catalog_v2();
+    compiler_admission(&catalog).expect("compiler admits the v2 catalog");
+
+    pack.validate_contract(CATALOG_CONTRACT, &catalog)
+        .expect("the current pack admits a v2 catalog");
+}
+
+#[test]
+fn catalog_v2_pack_refuses_a_v1_catalog() {
+    let pack = catalog_v2_pack();
+
+    assert_eq!(
+        pack.validate_contract(CATALOG_CONTRACT, &catalog_v1()),
+        Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch),
+        "a v1 catalog belongs to bounded-state-fold-v1"
+    );
+}
+
+#[test]
+fn catalog_v2_pack_refuses_contracts_the_compiler_refuses() {
+    use TargetPureIntrinsicFailureKind as K;
+    type Mutation = fn(&mut V);
+    // Each row breaks one requirement the compiler's admission API reads.
+    let cases: [(&str, Mutation, &[K]); 8] = [
+        (
+            "v1 api version with v2 contracts",
+            |v| *field_mut(v, "apiVersion") = text("edict.target-profile.intrinsics/v1"),
+            &[K::MalformedCatalog],
+        ),
+        (
+            "unknown catalog field",
+            |v| {
+                let V::Map(entries) = v else { panic!("map") };
+                entries.push((text("extra"), V::Bool(true)));
+            },
+            &[K::MalformedCatalog],
+        ),
+        (
+            "missing contract version",
+            |v| remove_field(pure_contract_mut(v), "contractVersion"),
+            &[K::MalformedContract],
+        ),
+        (
+            "missing cost rule",
+            |v| remove_field(pure_contract_mut(v), "costRule"),
+            &[K::MalformedContract],
+        ),
+        (
+            "generic pure contract",
+            |v| *field_mut(pure_contract_mut(v), "typeParameters") = texts(&["T"]),
+            &[K::MalformedContract],
+        ),
+        (
+            "negative cost base",
+            |v| *field_mut(field_mut(pure_contract_mut(v), "costRule"), "base") = V::Integer(-1),
+            &[K::InvalidCostRule],
+        ),
+        (
+            "cost rule without coefficients",
+            |v| {
+                remove_field(
+                    field_mut(pure_contract_mut(v), "costRule"),
+                    "perArgumentMax",
+                );
+            },
+            &[K::InvalidCostRule],
+        ),
+        (
+            "provider type that is not a type reference",
+            |v| *field_mut(field_mut(v, "types"), "echo.dpo@1.OutgoingEdge") = V::Integer(1),
+            &[K::UnresolvedType, K::InvalidProviderType],
+        ),
+    ];
+    let pack = catalog_v2_pack();
+
+    for (case, mutate, compiler_refusal) in cases {
+        let mut catalog = catalog_v2();
+        mutate(&mut catalog);
+        assert_eq!(
+            compiler_admission(&catalog),
+            Err(compiler_refusal.to_vec()),
+            "{case}: compiler admission"
+        );
+        assert_eq!(
+            pack.validate_contract(CATALOG_CONTRACT, &catalog),
+            Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch),
+            "{case}: published schema"
+        );
+    }
+}
+
+#[test]
+fn source_calling_a_catalog_v2_pure_intrinsic_compiles_to_core() {
+    let pack = catalog_v2_pack();
+    let catalog = catalog_v2();
+    pack.validate_contract(CATALOG_CONTRACT, &catalog)
+        .expect("the current pack admits the catalog the source is compiled against");
+    let facts = compiler_admission(&catalog).expect("compiler admits the v2 catalog");
+    let mut context = CompilerContext::new()
+        .with_operation_profile("p.read", "continuum.profile.read-only/v1")
+        .with_budget(
+            "p.small",
+            CoreBudget {
+                max_steps: 65_536,
+                max_allocated_bytes: 1_048_576,
+                max_output_bytes: 65_536,
+            },
+        );
+    for fact in facts {
+        context = context.with_target_pure_intrinsic(fact);
+    }
+    let source = include_str!("../../../fixtures/lang/intrinsics/content-address.amblicit");
+
+    let core = compile_to_core(&parse_module(source).expect("fixture parses"), &context)
+        .expect("fixture compiles to Core");
+
+    let CoreNode::Let {
+        value: CoreExpr::Call { callee, args, .. },
+        ..
+    } = &core.intents["ids"].body.nodes[0]
+    else {
+        panic!("the intent's first node is not an intrinsic call binding")
+    };
+    assert_eq!(callee, CONTENT_ADDRESS);
+    assert_eq!(args.len(), 5);
+    let encoded = encode_core_module(&core).expect("Core encodes");
+    pack.validate_domain(
+        CORE_MODULE_DIGEST_DOMAIN,
+        &decode_canonical_cbor(&encoded).expect("Core decodes"),
+    )
+    .expect("the current pack admits the compiled Core module");
 }

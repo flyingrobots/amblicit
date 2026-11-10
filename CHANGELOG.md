@@ -8,6 +8,16 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Publish the `pure-intrinsic-catalog-v1` provider contract pack, whose
+  `intrinsics-document` root admits `edict.target-profile.intrinsics/v2`
+  catalogs: pure intrinsics carry `contractVersion` and `costRule`, and the
+  catalog may publish provider-owned `types`. The new pack refuses a v1
+  catalog; the `bounded-state-fold-v1` pack and every earlier publication keep
+  their bytes and refuse a v2 catalog. `docs/abi/edict-target-profile.cddl`
+  now defines the v2 catalog, and `docs/abi/edict-target-pure-intrinsics.cddl`
+  is removed because its rules moved there. Schema acceptance is not provider
+  or runtime support for any intrinsic.
+
 - Admit compiler-owned result projections for structured Target v3
   operations, selected explicitly as for v2. Projection
   emission and independent verification require the Core body's nested

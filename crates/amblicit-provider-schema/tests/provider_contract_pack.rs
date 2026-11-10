@@ -39,6 +39,8 @@ const PRE_FOLD_CORE_CDDL: &[u8] = include_bytes!("../../../fixtures/core/pre-fol
 const LAWPACK_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-lawpack.cddl");
 const LAWPACK_ADAPTER_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-lawpack-adapter.cddl");
 const TARGET_PROFILE_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-target-profile.cddl");
+const PRE_CATALOG_V2_TARGET_PROFILE_CDDL: &[u8] =
+    include_bytes!("../../../fixtures/target-profile/pre-catalog-v2-target-profile.cddl");
 const AUTHORITY_FACTS_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-authority-facts.cddl");
 const RESULT_PROJECTION_CDDL: &[u8] =
     include_bytes!("../../../docs/abi/edict-result-projection.cddl");
@@ -636,10 +638,11 @@ fn structured_iterable_schema_refuses_empty_aggregates() {
 #[test]
 fn published_target_ir_binding_constructs_the_production_registry_and_validates_v3() {
     const PUBLISHED_CDDL: &[u8] = include_bytes!(
-        "../../../fixtures/provider-contracts/bounded-state-fold-v1/edict-provider-contracts.cddl"
+        "../../../fixtures/provider-contracts/pure-intrinsic-catalog-v1/edict-provider-contracts.cddl"
     );
-    const PUBLISHED_MANIFEST: &[u8] =
-        include_bytes!("../../../fixtures/provider-contracts/bounded-state-fold-v1/manifest.json");
+    const PUBLISHED_MANIFEST: &[u8] = include_bytes!(
+        "../../../fixtures/provider-contracts/pure-intrinsic-catalog-v1/manifest.json"
+    );
 
     // The in-memory pack is exactly the published publication, so its typed
     // manifest carries the published domain bindings.
@@ -717,11 +720,11 @@ fn published_target_ir_binding_constructs_the_production_registry_and_validates_
 
 #[test]
 fn source_module_publication_is_reproduced_from_frozen_target_ir_schema() {
-    let old = assemble_provider_contract_pack(ProviderContractPackInput {
+    let old = assemble_provider_contract_pack(before_catalog_v2(ProviderContractPackInput {
         core_cddl: PRE_FOLD_CORE_CDDL,
         target_ir_cddl: PRE_STRUCTURED_TARGET_IR_CDDL,
         ..input(canonical_target_profile_contract_resources())
-    })
+    }))
     .unwrap();
     assert_eq!(
         old.cddl_bytes(),
@@ -1248,6 +1251,16 @@ fn input(resources: Vec<TargetProfileContractResource>) -> ProviderContractPackI
     }
 }
 
+/// Publications that predate catalog v2 embed the frozen target-profile schema.
+fn before_catalog_v2(
+    input: ProviderContractPackInput<'static>,
+) -> ProviderContractPackInput<'static> {
+    ProviderContractPackInput {
+        target_profile_cddl: PRE_CATALOG_V2_TARGET_PROFILE_CDDL,
+        ..input
+    }
+}
+
 fn input_with(
     core_cddl: &'static [u8],
     target_ir_cddl: &'static [u8],
@@ -1614,7 +1627,7 @@ fn target_profile_manifest() -> CanonicalValue {
 
 fn intrinsics_document() -> CanonicalValue {
     map(vec![
-        ("apiVersion", text("edict.target-profile.intrinsics/v1")),
+        ("apiVersion", text("edict.target-profile.intrinsics/v2")),
         ("intrinsics", map(vec![])),
     ])
 }
@@ -1731,11 +1744,11 @@ fn source_function_contract_preserves_old_modules_and_requires_new_schema_select
         let core = compile_to_core(&parse_module(source).unwrap(), &context).unwrap();
         decode_canonical_cbor(&encode_core_module(&core).unwrap()).unwrap()
     });
-    let old = assemble_provider_contract_pack(input_with(
+    let old = assemble_provider_contract_pack(before_catalog_v2(input_with(
         include_bytes!("../../../fixtures/lang/functions/legacy-core.cddl"),
         PRE_STRUCTURED_TARGET_IR_CDDL,
         canonical_target_profile_contract_resources(),
-    ))
+    )))
     .unwrap();
     let new = assemble(canonical_target_profile_contract_resources());
     assert_ne!(old.raw_sha256(), new.raw_sha256());
@@ -1782,11 +1795,11 @@ fn source_closure_contract_has_its_own_domain_and_closed_typed_wire() {
     let value = representative_source_closure();
     pack.validate_domain(SOURCE_CLOSURE_DIGEST_DOMAIN, &value)
         .expect("source closure publication has a distinct typed domain");
-    let old = assemble_provider_contract_pack(input_with(
+    let old = assemble_provider_contract_pack(before_catalog_v2(input_with(
         PRE_FOLD_CORE_CDDL,
         PRE_STRUCTURED_TARGET_IR_CDDL,
         canonical_target_profile_contract_resources(),
-    ))
+    )))
     .unwrap();
     assert_eq!(old.cddl_bytes(), include_bytes!("../../../fixtures/provider-contracts/source-functions-v1/edict-provider-contracts.cddl"));
     assert_eq!(
@@ -1889,10 +1902,10 @@ fn source_closure_domain_enforces_typed_digest_and_module_count_boundaries() {
 
 #[test]
 fn fold_contract_requires_new_schema_selection() {
-    let old = assemble_provider_contract_pack(ProviderContractPackInput {
+    let old = assemble_provider_contract_pack(before_catalog_v2(ProviderContractPackInput {
         core_cddl: PRE_FOLD_CORE_CDDL,
         ..input(canonical_target_profile_contract_resources())
-    })
+    }))
     .expect("frozen structured-control pack");
     assert_eq!(old.cddl_bytes(), include_bytes!("../../../fixtures/provider-contracts/structured-control-v1/edict-provider-contracts.cddl"));
     assert_eq!(
