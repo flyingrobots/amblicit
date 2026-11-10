@@ -34,7 +34,8 @@ provider or runtime support for any intrinsic.
 
 Admission reads only the pure intrinsics a consumer requires. It does not
 inspect the catalog's other entries, so it can admit facts from a catalog this
-pack refuses, for example one that also lists an uncalled generic constructor.
+pack refuses, for example one that also lists an uncalled generic constructor or
+a malformed effect intrinsic.
 Such a catalog cannot be published under any pack. Validate a catalog against
 this pack before pinning it.
 

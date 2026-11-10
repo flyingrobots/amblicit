@@ -195,6 +195,7 @@ fn bounded_state_fold_pack() -> ProviderContractPack {
     pack
 }
 
+/// The frozen pack refuses a v2 catalog that compiler admission accepts.
 #[test]
 fn bounded_state_fold_pack_refuses_the_catalog_the_compiler_admits() {
     let pack = bounded_state_fold_pack();
@@ -209,6 +210,7 @@ fn bounded_state_fold_pack_refuses_the_catalog_the_compiler_admits() {
     );
 }
 
+/// The frozen pack still admits a v1 catalog, which compiler admission refuses.
 #[test]
 fn bounded_state_fold_pack_admits_the_v1_catalog_the_compiler_refuses() {
     let pack = bounded_state_fold_pack();
@@ -259,6 +261,7 @@ fn pure_contract_mut(catalog: &mut V) -> &mut V {
     field_mut(field_mut(catalog, "intrinsics"), CONTENT_ADDRESS)
 }
 
+/// The current pack admits the v2 catalog that compiler admission accepts.
 #[test]
 fn catalog_v2_pack_admits_the_catalog_the_compiler_admits() {
     let pack = catalog_v2_pack();
@@ -269,6 +272,7 @@ fn catalog_v2_pack_admits_the_catalog_the_compiler_admits() {
         .expect("the current pack admits a v2 catalog");
 }
 
+/// The current pack refuses a v1 catalog.
 #[test]
 fn catalog_v2_pack_refuses_a_v1_catalog() {
     let pack = catalog_v2_pack();
@@ -280,12 +284,50 @@ fn catalog_v2_pack_refuses_a_v1_catalog() {
     );
 }
 
+/// Any non-empty contract text that admission accepts, including line breaks,
+/// whitespace and non-ASCII characters, is also accepted by the current pack.
+#[test]
+fn catalog_v2_pack_admits_any_nonempty_contract_text() {
+    let pack = catalog_v2_pack();
+    for field in ["contractVersion", "footprintTemplate", "costTemplate"] {
+        for value in ["\n", " ", "a\nb", "\u{e9}"] {
+            let mut catalog = catalog_v2();
+            *field_mut(pure_contract_mut(&mut catalog), field) = text(value);
+            let mut required_version = VERSION;
+            if field == "contractVersion" {
+                required_version = value;
+            }
+            let bytes = encode_canonical_cbor(&catalog).expect("canonical catalog");
+            let pinned = ResourceRef {
+                coordinate: CATALOG.into(),
+                digest: Some(
+                    digest_target_intrinsics_catalog(CATALOG, &bytes).expect("catalog digest"),
+                ),
+            };
+            let required = [RequiredPureIntrinsic {
+                coordinate: CONTENT_ADDRESS.into(),
+                contract_version: required_version.into(),
+            }];
+            admit_target_pure_intrinsics(&target(), &pinned, &bytes, &required)
+                .unwrap_or_else(|failures| panic!("{field}={value:?}: admission {failures:?}"));
+
+            assert_eq!(
+                pack.validate_contract(CATALOG_CONTRACT, &catalog),
+                Ok(()),
+                "{field}={value:?}: published schema"
+            );
+        }
+    }
+}
+
+/// Every single-field corruption that admission refuses, the current pack
+/// refuses too.
 #[test]
 fn catalog_v2_pack_refuses_contracts_the_compiler_refuses() {
     use TargetPureIntrinsicFailureKind as K;
     type Mutation = fn(&mut V);
     // Each row breaks one requirement the compiler's admission API reads.
-    let cases: [(&str, Mutation, &[K]); 11] = [
+    let cases: [(&str, Mutation, &[K]); 12] = [
         (
             "v1 api version with v2 contracts",
             |v| *field_mut(v, "apiVersion") = text("edict.target-profile.intrinsics/v1"),
@@ -335,6 +377,19 @@ fn catalog_v2_pack_refuses_contracts_the_compiler_refuses() {
             &[K::InvalidCostRule],
         ),
         (
+            "negative cost coefficient",
+            |v| {
+                let V::Array(coefficients) = field_mut(
+                    field_mut(pure_contract_mut(v), "costRule"),
+                    "perArgumentMax",
+                ) else {
+                    panic!("coefficient array")
+                };
+                coefficients[3] = V::Integer(-1);
+            },
+            &[K::InvalidCostRule],
+        ),
+        (
             "cost rule without coefficients",
             |v| {
                 remove_field(
@@ -368,6 +423,7 @@ fn catalog_v2_pack_refuses_contracts_the_compiler_refuses() {
     }
 }
 
+/// The current pack refuses a catalog with an incomplete uncalled pure entry.
 #[test]
 fn catalog_v2_pack_requires_complete_contracts_for_uncalled_pure_intrinsics() {
     // Publication rule: every pure intrinsic in a v2 catalog carries a
@@ -419,6 +475,7 @@ fn fixture_context() -> CompilerContext {
         )
 }
 
+/// Without admitted facts the fixture's intrinsic call does not resolve.
 #[test]
 fn source_fixture_does_not_compile_without_catalog_facts() {
     let source = include_str!("../../../fixtures/lang/intrinsics/content-address.amblicit");
@@ -435,6 +492,8 @@ fn source_fixture_does_not_compile_without_catalog_facts() {
     assert_eq!(errors, [CompilerErrorKind::UnresolvedFunction]);
 }
 
+/// Source calling a pure intrinsic from a published v2 catalog compiles to
+/// Core that the current pack accepts.
 #[test]
 fn source_calling_a_catalog_v2_pure_intrinsic_compiles_to_core() {
     let pack = catalog_v2_pack();
