@@ -11,6 +11,7 @@ use amblicit_syntax::{
     CompilerErrorKind, CompilerStage, CoreModule, CoreNode, LawpackArtifactKind,
     LawpackAuthoredArtifactSet, LawpackAuthoringDefinition, TargetIrArtifact, TargetLoweringStatus,
 };
+use std::fmt::Write as _;
 
 const PIN: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
 const ID: &str = "Bytes<exact=32>";
@@ -71,6 +72,10 @@ fn input_type(fields: &[&str]) -> String {
 
 /// A lawpack exporting one effect per mutation intrinsic, each with an empty
 /// failure set, plus `readFact`, which declares a failure.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one fixture keeps the complete authored lawpack visible"
+)]
 fn definition() -> LawpackAuthoringDefinition {
     let mut types = vec![
         serde_json::json!({"coordinate": "graph.rope@1.Done", "definition": "Record<>"}),
@@ -250,15 +255,16 @@ fn program(authored: &LawpackAuthoredArtifactSet, body: &str) -> String {
 }
 
 fn every_mutation_body() -> String {
-    MUTATIONS
-        .iter()
-        .map(|(name, _, _, fields)| {
-            format!(
-                "  let {name}Done: fx.Done = fx.{name}({});\n",
-                record_for(fields)
-            )
-        })
-        .collect()
+    let mut body = String::new();
+    for (name, _, _, fields) in MUTATIONS {
+        writeln!(
+            body,
+            "  let {name}Done: fx.Done = fx.{name}({});",
+            record_for(fields)
+        )
+        .expect("write to a String");
+    }
+    body
 }
 
 fn compile(
