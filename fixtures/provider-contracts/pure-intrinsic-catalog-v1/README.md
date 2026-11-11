@@ -37,7 +37,9 @@ inspect the catalog's other entries, so it can admit facts from a catalog this
 pack refuses, for example one that also lists an uncalled generic constructor or
 a malformed effect intrinsic.
 Such a catalog cannot be published under any pack. Validate a catalog against
-this pack before pinning it.
+this pack before pinning it. Neither check resolves the types named by a pure
+intrinsic that no consumer requires: a complete uncalled entry whose signature
+names an unpublished type passes both.
 
 The pack coordinate remains `edict.provider-contract-pack.cddl@1` and the manifest
 API version remains `edict.provider-contract-pack/v1`. Consumers select the exact

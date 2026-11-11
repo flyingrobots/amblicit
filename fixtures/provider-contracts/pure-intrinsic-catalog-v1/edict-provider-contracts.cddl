@@ -727,10 +727,10 @@ target-profile-manifest = {
 ; (EDICT-ABI-INTRINSIC-UNIQUE-001).
 ; Catalog v2 (EDICT-TARGET-PURE-INTRINSIC-001): every pure intrinsic in the
 ; catalog carries a complete monomorphic contract, whether or not a consumer
-; requires it, and the catalog publishes every provider-owned named type a
-; pure signature reaches. A v1 catalog is not a
-; value of this rule; the publications that admit v1 are frozen under
-; fixtures/provider-contracts/.
+; requires it. The catalog publishes every provider-owned named type that a
+; required pure signature reaches; admission checks that, this schema does not.
+; A v1 catalog is not a value of this rule; the publications that admit v1
+; are frozen under fixtures/provider-contracts/.
 intrinsics-document = {
   apiVersion: "edict.target-profile.intrinsics/v2",
   intrinsics: { * tstr => intrinsic },
