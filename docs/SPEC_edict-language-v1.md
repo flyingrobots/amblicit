@@ -3052,7 +3052,14 @@ empty obstruction map. There is nothing for such an effect to map, and the
 source syntax still has no empty `else` map. The same effect inside a larger
 expression reports `EffectWithoutFailureMapping`, directing the author to that
 binding. An effect known only by a write class, with no authenticated
-signature, does not qualify.
+signature, does not qualify. "Declares no failures" is the lawpack's
+authenticated claim; the compiler does not check it against the target
+intrinsic. The provider decides whether the bound intrinsic really cannot
+fail: Echo's lowerer, verifier and runtime refuse an effect whose declared
+failure set differs in size from its intrinsic's. Diagnostics for a malformed
+unmapped binding (annotation, type arguments, arity, input or output types)
+come from the effect-binding checks and span the whole `let` statement, as
+for a mapped binding.
 An unknown effect in an explicit effect binding reports `MissingContextFact`
 with available exact-owner exports under the selected source alias. A bare
 unknown call retains `UnresolvedFunction`; an unknown coordinate does not
