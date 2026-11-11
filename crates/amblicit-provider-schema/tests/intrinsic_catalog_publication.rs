@@ -1,9 +1,10 @@
 //! Intrinsic catalog publication boundary: which published contract pack
 //! admits which `edict.target-profile.intrinsics` catalog version.
 //!
-//! Oracles: the catalog a pack must admit is the one the compiler's own
-//! admission API (`admit_target_pure_intrinsics`) accepts, and published pack
-//! bytes are the checked-in fixtures.
+//! Oracles: for the pure contracts a consumer requires, the compiler's own
+//! admission API (`admit_target_pure_intrinsics`) decides what a pack must
+//! admit and refuse wherever CDDL can state the rule; published pack bytes are
+//! the checked-in fixtures.
 
 use amblicit_provider_schema::{
     assemble_provider_contract_pack, ProviderContractInstanceValidationErrorKind,

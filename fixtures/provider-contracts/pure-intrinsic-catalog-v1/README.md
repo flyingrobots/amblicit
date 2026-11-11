@@ -25,21 +25,27 @@ catalog, and the bounded-state-fold pack refuses a v2 catalog. The compiler
 admits pure intrinsics only from a v2 catalog, so a provider whose source
 programs call pure intrinsics must select this pack.
 
-CDDL establishes structural shape only. Admission
-(`admit_target_pure_intrinsics`) owns the checks a schema cannot state: the
-trusted catalog digest, exact contract versions, namespace ownership, type
-resolution, exactly one cost coefficient per argument, and a zero coefficient for
-every argument that is not `Bytes` or `List`. Selecting this schema is not
-provider or runtime support for any intrinsic.
+CDDL establishes structural shape only. For the pure intrinsics a consumer
+requires, admission (`admit_target_pure_intrinsics`) owns the checks this schema
+does not state: the trusted catalog digest, exact contract versions, namespace
+ownership, type resolution, exactly one cost coefficient per argument, and a
+zero coefficient for every argument that is not `Bytes` or `List`. Selecting
+this schema is not provider or runtime support for any intrinsic.
 
-Admission reads only the pure intrinsics a consumer requires. It does not
-inspect the catalog's other entries, so it can admit facts from a catalog this
-pack refuses, for example one that also lists an uncalled generic constructor or
-a malformed effect intrinsic.
-Such a catalog cannot be published under any pack. Validate a catalog against
-this pack before pinning it. Neither check resolves the types named by a pure
-intrinsic that no consumer requires: a complete uncalled entry whose signature
-names an unpublished type passes both.
+Admission verifies the catalog digest, its top-level fields and every `types`
+definition, but it runs its per-contract checks only on the pure intrinsics a
+consumer requires. Every other intrinsic is checked by this schema alone, and
+the schema checks shape only. Two consequences follow:
+
+- Admission can admit facts from a catalog this pack refuses, for example one
+  that also lists an uncalled generic constructor or a malformed effect
+  intrinsic. Such a catalog cannot be published under any pack.
+- A catalog can pass both checks while an uncalled pure intrinsic breaks a rule
+  that only admission states, for example by naming an unpublished type,
+  carrying the wrong number of cost coefficients, or sitting outside the
+  profile's namespace. No check covers those rules for uncalled entries.
+
+Validate a catalog against this pack before pinning it.
 
 The pack coordinate remains `edict.provider-contract-pack.cddl@1` and the manifest
 API version remains `edict.provider-contract-pack/v1`. Consumers select the exact

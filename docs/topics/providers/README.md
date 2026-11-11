@@ -136,10 +136,11 @@ and the catalog may publish provider-owned `types`. It refuses a v1 catalog, and
 catalog, so a provider whose source programs call pure intrinsics must select
 this publication. The schema fixes catalog shape only; pinned-digest admission,
 contract versions, namespace ownership, type resolution and cost-coefficient
-rules remain with `admit_target_pure_intrinsics`. Admission reads only the
-required contracts, so it can admit facts from a catalog this pack refuses;
-a provider validates its catalog against the pack before pinning it, and neither
-check resolves the types an uncalled pure intrinsic names. The fold-capable publication
+rules remain with `admit_target_pure_intrinsics`, which runs those per-contract
+checks only on the required contracts. So admission can admit facts from a
+catalog this pack refuses, and an uncalled pure intrinsic can break an
+admission-only rule while passing both checks. A provider validates its catalog
+against the pack before pinning it. The fold-capable publication
 adds the explicit `fold` Core expression; consumers must select its new schema
 digest. Capability, state and cost checks remain separate semantic gates.
 The structured-control publication adds the `echo.span-ir/v3` variant of the `target-ir-artifact`

@@ -150,9 +150,9 @@ nonempty-text = tstr .regexp "(?s).+"
 
 ; Steps for one call: base plus, for each argument, its coefficient times the
 ; size bound the verified program establishes for that operand (a Bytes
-; maximum or a List element maximum). The schema fixes the shape; admission
-; additionally requires one coefficient per argument and a zero coefficient
-; for every argument that is not Bytes or List.
+; maximum or a List element maximum). The schema fixes the shape. For a
+; required contract, admission additionally requires one coefficient per
+; argument and a zero coefficient for every argument that is not Bytes or List.
 pure-cost-rule = {
   base: uint,
   perArgumentMax: [* uint],
