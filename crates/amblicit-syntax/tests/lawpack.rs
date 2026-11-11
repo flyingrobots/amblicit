@@ -201,8 +201,8 @@ fn effect_without_declared_failures_binds_without_a_failure_map() {
     assert_eq!(report.status, TargetLoweringStatus::Lowered);
     let artifact = report.artifact.expect("lowered Target IR");
     let step = &artifact.intents["createGreeting"].steps[0];
-    assert!(step.obstruction_arms.is_empty());
-    assert!(step.obstruction_failures.is_empty());
+    assert_eq!(step.obstruction_arms.len(), 0);
+    assert_eq!(step.obstruction_failures, Vec::<String>::new());
 
     // The same binding still refuses while its effect declares a failure.
     let unmapped = CREATE_GREETING_SOURCE.replace(mapping, "");

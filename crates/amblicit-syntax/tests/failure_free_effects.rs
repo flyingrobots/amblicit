@@ -345,13 +345,10 @@ fn each_echo_mutation_intrinsic_is_callable_without_a_failure_map() {
             .collect::<Vec<_>>()
     );
     for step in steps {
-        assert!(
-            step.obstruction_arms.is_empty(),
-            "{}",
-            step.target_intrinsic
-        );
-        assert!(
-            step.obstruction_failures.is_empty(),
+        assert_eq!(step.obstruction_arms.len(), 0, "{}", step.target_intrinsic);
+        assert_eq!(
+            step.obstruction_failures,
+            Vec::<String>::new(),
             "{}",
             step.target_intrinsic
         );
