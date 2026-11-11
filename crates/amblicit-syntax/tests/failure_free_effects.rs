@@ -455,3 +455,41 @@ intent t(input: Input) returns Output
         "{errors:?}"
     );
 }
+
+#[test]
+fn a_failure_free_signature_for_another_import_is_not_admitted() {
+    // Facts prepared for the exact import cannot authorize the same alias
+    // bound to a different lawpack digest.
+    let authored = authored();
+    let source = program(&authored, &every_mutation_body());
+    let manifest = authored.artifact(LawpackArtifactKind::Manifest).unwrap();
+    let exports = authored.artifact(LawpackArtifactKind::Exports).unwrap();
+    let adapter = authored.artifact(LawpackArtifactKind::Adapter).unwrap();
+    let bundle = decode_lawpack_bundle(manifest.bytes(), exports.bytes()).expect("exact bundle");
+    let adapter = decode_lawpack_adapter(&bundle, "echo.dpo@1", adapter.bytes()).expect("adapter");
+    let exact = parse_module(&source).expect("exact consumer parses");
+    let preparation =
+        prepare_lawpack_compilation(&exact, &bundle, &adapter).expect("exact closure");
+    let substituted = source.replace(manifest.digest(), PIN);
+    assert_ne!(substituted, source);
+    let module = parse_module(&substituted).expect("substituted consumer parses");
+    let errors = compile_to_core(&module, preparation.compiler_context())
+        .expect_err("a signature for another import does not authorize this call");
+    // Each call stays on the pure-helper path, which finds no fact for it,
+    // instead of entering the effect-binding path.
+    let unresolved_calls = errors
+        .iter()
+        .filter(|error| error.kind == CompilerErrorKind::UnresolvedFunction)
+        .map(|error| &substituted[error.span.start..error.span.end])
+        .collect::<Vec<_>>();
+    assert_eq!(unresolved_calls.len(), MUTATIONS.len(), "{errors:?}");
+    for (call, (name, ..)) in unresolved_calls.iter().zip(MUTATIONS) {
+        assert!(call.starts_with(&format!("fx.{name}(")), "{call}");
+    }
+    assert!(
+        errors
+            .iter()
+            .all(|error| error.kind != CompilerErrorKind::MissingContextFact),
+        "{errors:?}"
+    );
+}

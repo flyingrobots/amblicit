@@ -3619,7 +3619,7 @@ impl<'a> TypeChecker<'a> {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
                 CompilerErrorKind::UnsupportedSourceShape,
-                "effectful `let ... else` requires an explicit result type annotation",
+                "effect binding requires an explicit result type annotation",
                 span,
             ));
             return None;
@@ -3668,7 +3668,7 @@ impl<'a> TypeChecker<'a> {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
                 CompilerErrorKind::UnsupportedSourceShape,
-                "effectful `let ... else` does not support effect type arguments",
+                "effect bindings do not support effect type arguments",
                 span,
             ));
             return None;
@@ -3677,7 +3677,7 @@ impl<'a> TypeChecker<'a> {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
                 CompilerErrorKind::UnsupportedSourceShape,
-                "effectful `let ... else` supports exactly one effect argument",
+                "effect bindings support exactly one effect argument",
                 span,
             ));
             return None;
