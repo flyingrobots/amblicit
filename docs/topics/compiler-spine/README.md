@@ -49,8 +49,11 @@ with zero or multiple arguments report the same unsupported shape before map gui
 while checking an intent body and is restored afterward. Every bare exact
 effect call also checks the current profile permission before map guidance,
 including direct or nested returns.
-For a zero-failure effect, it reports that bindings without a failure map are
-unsupported instead of suggesting an empty `else` map.
+A zero-failure effect, whose authenticated signature declares no failures,
+binds without a map when it is the whole value of an annotated `let`; Core and
+Target IR carry its node with an empty obstruction map. Inside a larger
+expression it still reports `EffectWithoutFailureMapping`, naming that binding
+form. Echo's five mutation intrinsics are such effects.
 An unknown effect in an explicit effect binding retains `MissingContextFact`
 and lists available effects from its exact imported owner and source alias.
 A bare unknown call retains `UnresolvedFunction`; the compiler does not infer

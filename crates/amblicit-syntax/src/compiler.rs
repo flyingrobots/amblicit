@@ -2920,6 +2920,11 @@ impl<'a> TypeChecker<'a> {
         let name = stmt.name;
         if let Some(handler) = stmt.handler {
             self.check_effectful_let(intent, stmt, handler, env, locals, state);
+        } else if self.is_failure_free_effect_call(stmt.value) {
+            // An effect whose authenticated signature declares no failures has
+            // nothing to map: its binding is an effect node with an empty map.
+            let no_failures = ObstructionHandler::Map(Vec::new());
+            self.check_effectful_let(intent, stmt, &no_failures, env, locals, state);
         } else {
             self.check_pure_let(intent, output_shape, stmt, env, locals, state);
         }
@@ -3507,6 +3512,26 @@ impl<'a> TypeChecker<'a> {
             obstruction_map,
         });
         env.insert(stmt.name.to_owned(), (local, binding_shape));
+    }
+
+    /// Whether `value` is a direct call to an exact imported effect whose
+    /// authenticated signature declares no failures. Effects known only by a
+    /// write class carry no failure authority and never qualify.
+    fn is_failure_free_effect_call(&self, value: &Expr) -> bool {
+        let Some(effect) = effect_coordinate(value) else {
+            return false;
+        };
+        self.resolved
+            .effect_signatures
+            .get(&effect)
+            .is_some_and(|signature| {
+                signature.failure_payload_types.is_empty()
+                    && self.fact_matches_source_import(
+                        &effect,
+                        &signature.coordinate,
+                        &signature.lawpack,
+                    )
+            })
     }
 
     fn check_failed_effect_handler(
@@ -6279,7 +6304,7 @@ fn effect_mapping_error(
     span: Span,
 ) -> CompilerError {
     let guidance = if signature.failure_payload_types.is_empty() {
-        "no declared failures; effect bindings without a failure map are not supported".to_owned()
+        "no declared failures; call it as the whole value of an annotated `let` binding".to_owned()
     } else if signature.domain_mappable_failures.is_empty() {
         "no domain-mappable failures; effect bindings without an authored failure map are not supported".to_owned()
     } else {

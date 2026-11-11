@@ -3045,8 +3045,14 @@ Explicit effect type arguments also report `UnsupportedSourceShape` in mapped
 and bare forms before failure-map guidance.
 Effects in source-owned pure functions and intent clauses report
 `UnsupportedSourceShape` without recommending a binding that is illegal there.
-An effect with no declared failures reports that bindings without a failure map
-are unsupported; the diagnostic does not suggest an empty `else` map.
+An effect whose authenticated signature declares no failures needs no map: an
+annotated `let` whose whole value is a call to it, such as
+`let done: fx.Done = fx.ensureNode(input);`, binds it as an effect node with an
+empty obstruction map. There is nothing for such an effect to map, and the
+source syntax still has no empty `else` map. The same effect inside a larger
+expression reports `EffectWithoutFailureMapping`, directing the author to that
+binding. An effect known only by a write class, with no authenticated
+signature, does not qualify.
 An unknown effect in an explicit effect binding reports `MissingContextFact`
 with available exact-owner exports under the selected source alias. A bare
 unknown call retains `UnresolvedFunction`; an unknown coordinate does not

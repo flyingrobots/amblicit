@@ -8,6 +8,17 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Let source bind an effect whose authenticated signature declares no failures
+  without a failure map: `let done: fx.Done = fx.ensureNode(input);` compiles
+  to a Core effect node and a Target IR step with empty obstruction maps. This
+  makes Echo's five mutation intrinsics (`ensure-node`, `create-node`,
+  `replace-atom`, `ensure-edge`, `replace-edge`), which only emit mutation
+  intents and have no runtime obstruction path, callable from source. An
+  effect that declares any failure still reports
+  `EffectWithoutFailureMapping` without its map, and a failure-free effect
+  used inside a larger expression is still refused. Echo still has to publish
+  a provider profile whose catalog carries these intrinsics (Echo #985).
+
 - Admit compiler-owned result projections for structured Target v3
   operations, selected explicitly as for v2. Projection
   emission and independent verification require the Core body's nested
