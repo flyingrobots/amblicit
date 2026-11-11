@@ -15,8 +15,10 @@ versions still track specification maturity rather than a released product.
   `UnsupportedTargetIrDomain`. The canonical encoder now admits an ordered or
   structured artifact under any profile that selects its domain, rather than
   under `echo.dpo@1` only. `echo.dpo@1` and `gitwarp.ref_crdt@1` are
-  unchanged. Amblicit ships no `echo.dpo@2` provider; a complete build needs
-  Echo's provider package (Echo #985).
+  unchanged. `amblicit_syntax` exports `ECHO_DPO_2_TARGET_PROFILE`; the
+  in-process `BuiltinTargetLowerer` seam still serves only `echo.dpo@1` and
+  `gitwarp.ref_crdt@1`. Amblicit ships no `echo.dpo@2` provider; a complete
+  build needs Echo's provider package (Echo #985).
 
 - Admit compiler-owned result projections for structured Target v3
   operations, selected explicitly as for v2. Projection

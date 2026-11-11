@@ -65,13 +65,13 @@ fn echo_dpo_2_profile() -> (Vec<u8>, String) {
 }
 
 /// The causal-cell example lawpack, retargeted to `echo.dpo@2`.
-fn echo_dpo_2_lawpack_document(profile_digest: &str) -> Value {
+fn echo_dpo_2_lawpack_document(profile_digest: &str, target_ir: &str) -> Value {
     let mut document = document::document(LIMITS).expect("example document");
     let adapter = &mut document["lawpack"]["targetAdapters"][0];
     adapter["acceptedTargetProfile"] = json!({"id": ECHO_DPO_2, "digest": profile_digest});
     // Amblicit selects the contract by this id; it does not interpret the digest.
     adapter["acceptedTargetIr"] =
-        json!({"id": ORDERED, "digest": format!("sha256:{}", "2f".repeat(32))});
+        json!({"id": target_ir, "digest": format!("sha256:{}", "2f".repeat(32))});
     adapter["effectImplementations"]["example.cell@1.createIfAbsent"]["targetIntrinsic"] =
         json!(INTRINSIC);
     document
@@ -80,7 +80,7 @@ fn echo_dpo_2_lawpack_document(profile_digest: &str) -> Value {
 #[test]
 fn echo_dpo_2_adapter_lowers_the_application_to_ordered_target_ir() {
     let (_, profile_digest) = echo_dpo_2_profile();
-    let document = echo_dpo_2_lawpack_document(&profile_digest);
+    let document = echo_dpo_2_lawpack_document(&profile_digest, ORDERED);
     let definition: LawpackAuthoringDefinition =
         serde_json::from_value(document["lawpack"].clone()).expect("typed authoring document");
     let authored = author_lawpack(&definition, &[]).expect("author echo.dpo@2 lawpack");
@@ -123,38 +123,47 @@ fn echo_dpo_2_adapter_lowers_the_application_to_ordered_target_ir() {
 
 #[test]
 fn public_build_of_an_echo_dpo_2_application_passes_target_lowering() {
-    let directory = tempfile::Builder::new()
-        .prefix("amblicit-echo-dpo-2-")
-        .tempdir()
-        .expect("owned temp directory");
-    let root = directory.path();
-    let (profile_bytes, profile_digest) = echo_dpo_2_profile();
-    write_application(root, &profile_bytes, &profile_digest);
+    // The control differs only in the adapter's accepted Target IR, which
+    // `echo.dpo@2` does not select: the same package then fails exactly at
+    // Target lowering, so the ordered build's later failure is past it.
+    // Before #310 the ordered build also failed with `TargetLoweringFailed`.
+    // The first stage after Target lowering reads the provider's artifact
+    // schema, which this package declares but does not ship.
+    for (target_ir, expected) in [
+        (ORDERED, "ProviderPackageReadFailed"),
+        ("echo.span-ir/v3", "TargetLoweringFailed"),
+    ] {
+        let directory = tempfile::Builder::new()
+            .prefix("amblicit-echo-dpo-2-")
+            .tempdir()
+            .expect("owned temp directory");
+        let root = directory.path();
+        let (profile_bytes, profile_digest) = echo_dpo_2_profile();
+        write_application(root, &profile_bytes, &profile_digest, target_ir);
 
-    let built = run_public_build(root, "application", "edict.application.json");
+        let built = run_public_build(root, "application", "edict.application.json");
 
-    assert_eq!(built.status.code(), Some(2), "{built:?}");
-    assert!(built.stdout.is_empty(), "{built:?}");
-    let kinds = std::str::from_utf8(&built.stderr)
-        .expect("UTF-8 JSONL")
-        .lines()
-        .map(|line| serde_json::from_str::<Value>(line).expect("JSONL record"))
-        .filter(|record| record["schema"] == "edict.cli.diagnostic/v1")
-        .map(|record| record["kind"].as_str().unwrap_or_default().to_owned())
-        .collect::<Vec<_>>();
-    // Before #310 this was `TargetLoweringFailed`. The first stage after
-    // Target lowering reads the provider's artifact schema, which this package
-    // declares but does not ship.
-    assert_eq!(kinds, ["ProviderPackageReadFailed"], "{built:?}");
-    assert!(!root.join(".build/application").exists());
+        assert_eq!(built.status.code(), Some(2), "{target_ir}: {built:?}");
+        assert!(built.stdout.is_empty(), "{target_ir}: {built:?}");
+        let kinds = std::str::from_utf8(&built.stderr)
+            .expect("UTF-8 JSONL")
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).expect("JSONL record"))
+            .filter(|record| record["schema"] == "edict.cli.diagnostic/v1")
+            .map(|record| record["kind"].as_str().unwrap_or_default().to_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(kinds, [expected], "{target_ir}: {built:?}");
+        assert!(!root.join(".build/application").exists(), "{target_ir}");
+    }
 }
 
-fn write_application(root: &Path, profile_bytes: &[u8], profile_digest: &str) {
+fn write_application(root: &Path, profile_bytes: &[u8], profile_digest: &str, target_ir: &str) {
     fs::create_dir_all(root.join("src")).expect("source directory");
     fs::create_dir_all(root.join("provider/generated/primary")).expect("provider directory");
     fs::write(
         root.join("edict.lawpack.json"),
-        serde_json::to_vec(&echo_dpo_2_lawpack_document(profile_digest)).expect("encode"),
+        serde_json::to_vec(&echo_dpo_2_lawpack_document(profile_digest, target_ir))
+            .expect("encode"),
     )
     .expect("write lawpack document");
     let authored = run_public_build(root, "lawpack", "edict.lawpack.json");

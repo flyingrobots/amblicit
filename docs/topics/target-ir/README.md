@@ -190,17 +190,17 @@ contract. [TIR-REQ-050]
 
 `echo.dpo@2` is Echo's effect profile. It selects the same ordered
 `echo.span-ir/v2` contract described above, and only that contract: no
-`targetIr` setting or adapter `acceptedTargetIr` selects `echo.span-ir/v1`,
-`echo.span-ir/v3`, or another domain under it. Those refuse with
+projection `target.irDomain` or adapter `acceptedTargetIr` selects
+`echo.span-ir/v1`, `echo.span-ir/v3`, or another domain under it. Those refuse with
 `UnsupportedTargetIrDomain`. Its effect intrinsics are named `echo.dpo@2.*`.
 An `echo.dpo@1.*` intrinsic under `echo.dpo@2`, or an `echo.dpo@2.*`
 intrinsic under `echo.dpo@1`, refuses with `UnsupportedTargetIntrinsic` and no
 artifact. [TIR-REQ-067]
 
-One selection table decides both lowering and canonical encoding. The encoder
-admits an ordered or structured artifact only when its `targetProfile` selects
-that domain: `echo.span-ir/v2` under `echo.dpo@1` or `echo.dpo@2`, and
-`echo.span-ir/v3` under `echo.dpo@1` only. `echo.dpo@1` and
+Lowering and the canonical encoder use one selection table for the ordered
+and structured domains. The encoder admits an ordered or structured artifact
+only when its `targetProfile` selects that domain: `echo.span-ir/v2` under
+`echo.dpo@1` or `echo.dpo@2`, and `echo.span-ir/v3` under `echo.dpo@1` only. `echo.dpo@1` and
 `gitwarp.ref_crdt@1` selection, failure kinds, and bytes are unchanged.
 [TIR-REQ-067]
 
@@ -208,6 +208,11 @@ A public application build whose lawpack adapter accepts `echo.dpo@2` lowers
 through Target and hands `echo.span-ir/v2` to the selected provider. Whether
 that provider accepts it is the provider's contract; Amblicit ships no
 `echo.dpo@2` provider components. [TIR-REQ-067]
+
+The in-process `BuiltinTargetLowerer` seam is unchanged and serves only
+`echo.dpo@1` and `gitwarp.ref_crdt@1`; a request for `echo.dpo@2` through it
+refuses with `TargetProfileMismatch`. The application build does not use that
+seam. [TIR-REQ-013]
 
 ## Structured control flow
 

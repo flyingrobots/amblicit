@@ -123,6 +123,7 @@ fn echo_dpo_2_selects_only_the_ordered_target_ir() {
             vec![TargetLoweringFailureKind::UnsupportedTargetIrDomain],
             "{domain}"
         );
+        assert_eq!(report.failures[0].detail, domain);
     }
 }
 
@@ -135,7 +136,13 @@ fn ordered_encoding_requires_a_profile_that_selects_its_domain() {
     let mut ordered_under_gitwarp = ordered.clone();
     GITWARP_REF_CRDT_TARGET_PROFILE
         .clone_into(&mut ordered_under_gitwarp.target_profile.coordinate);
-    for refused in [structured_under_echo_dpo_2, ordered_under_gitwarp] {
+    let mut ordered_under_unknown_profile = ordered.clone();
+    "echo.dpo@3".clone_into(&mut ordered_under_unknown_profile.target_profile.coordinate);
+    for refused in [
+        structured_under_echo_dpo_2,
+        ordered_under_gitwarp,
+        ordered_under_unknown_profile,
+    ] {
         let error = encode_target_ir_artifact(&refused)
             .expect_err("profile does not select this ordered domain");
         assert_eq!(error.kind(), CanonicalErrorKind::UnsupportedValue);
