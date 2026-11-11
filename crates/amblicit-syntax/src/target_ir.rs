@@ -43,6 +43,9 @@ use crate::MAX_CANONICAL_NESTING_DEPTH;
 use crate::{ResultProjectionArtifact, ResultProjectionFailure};
 
 pub const ECHO_DPO_TARGET_PROFILE: &str = "echo.dpo@1";
+/// Echo's effect profile: its intrinsics are named `echo.dpo@2.*` and it
+/// selects only the ordered `echo.span-ir/v2` contract.
+pub const ECHO_DPO_2_TARGET_PROFILE: &str = "echo.dpo@2";
 pub const ECHO_SPAN_IR_DOMAIN: &str = "echo.span-ir/v1";
 pub const ECHO_ORDERED_SPAN_IR_DOMAIN: &str = "echo.span-ir/v2";
 pub const ECHO_STRUCTURED_SPAN_IR_DOMAIN: &str = "echo.span-ir/v3";
@@ -82,6 +85,12 @@ fn target_selection_for_profile(target_profile: &str) -> Option<TargetSelection>
             supports_requirements: true,
             execution_model: ExecutionModel::PreStepGuards,
         }),
+        ECHO_DPO_2_TARGET_PROFILE => Some(TargetSelection {
+            target_ir_domain: ECHO_ORDERED_SPAN_IR_DOMAIN,
+            target_intrinsic_prefix: ECHO_DPO_2_TARGET_PROFILE,
+            supports_requirements: true,
+            execution_model: ExecutionModel::Ordered,
+        }),
         GITWARP_REF_CRDT_TARGET_PROFILE => Some(TargetSelection {
             target_ir_domain: GITWARP_COMMIT_REDUCER_IR_DOMAIN,
             target_intrinsic_prefix: GITWARP_REF_CRDT_TARGET_PROFILE,
@@ -90,6 +99,39 @@ fn target_selection_for_profile(target_profile: &str) -> Option<TargetSelection>
         }),
         _ => None,
     }
+}
+
+/// The selection for an explicit profile and Target IR domain, or `None` when
+/// the profile is unknown or does not select that domain. `echo.dpo@1` keeps
+/// v1 by default and selects v2 or v3 only when the domain names it.
+fn target_selection_for_domain(
+    target_profile: &str,
+    target_ir_domain: &str,
+) -> Option<TargetSelection> {
+    let mut selection = target_selection_for_profile(target_profile)?;
+    if target_profile == ECHO_DPO_TARGET_PROFILE {
+        match target_ir_domain {
+            ECHO_ORDERED_SPAN_IR_DOMAIN => {
+                selection.target_ir_domain = ECHO_ORDERED_SPAN_IR_DOMAIN;
+                selection.execution_model = ExecutionModel::Ordered;
+            }
+            ECHO_STRUCTURED_SPAN_IR_DOMAIN => {
+                selection.target_ir_domain = ECHO_STRUCTURED_SPAN_IR_DOMAIN;
+                selection.execution_model = ExecutionModel::Structured;
+            }
+            _ => {}
+        }
+    }
+    (selection.target_ir_domain == target_ir_domain).then_some(selection)
+}
+
+/// Whether `target_profile` selects `target_ir_domain`; the canonical encoder
+/// uses the same table as lowering.
+pub(crate) fn profile_selects_target_ir_domain(
+    target_profile: &str,
+    target_ir_domain: &str,
+) -> bool {
+    target_selection_for_domain(target_profile, target_ir_domain).is_some()
 }
 
 /// Canonical non-generic helper signature owned by one exact imported lawpack.
@@ -810,15 +852,14 @@ fn digest_locked_import_set(
 fn validate_target_selection(
     facts: &TargetIrLoweringFacts,
 ) -> Result<TargetSelection, Vec<TargetLoweringFailure>> {
-    let Some(mut target_selection) = target_selection_for_profile(&facts.target_profile.coordinate)
-    else {
+    if target_selection_for_profile(&facts.target_profile.coordinate).is_none() {
         return Err(vec![TargetLoweringFailure {
             kind: TargetLoweringFailureKind::UnsupportedTargetProfile,
             intent: None,
             node_index: None,
             detail: facts.target_profile.coordinate.clone(),
         }]);
-    };
+    }
     if !facts.target_profile.is_digest_locked() {
         return Err(vec![TargetLoweringFailure {
             kind: TargetLoweringFailureKind::UndigestedTargetProfile,
@@ -831,27 +872,15 @@ fn validate_target_selection(
                 .unwrap_or_else(|| "<missing>".to_owned()),
         }]);
     }
-    if facts.target_profile.coordinate == ECHO_DPO_TARGET_PROFILE
-        && facts.target_ir_domain == ECHO_ORDERED_SPAN_IR_DOMAIN
-    {
-        target_selection.target_ir_domain = ECHO_ORDERED_SPAN_IR_DOMAIN;
-        target_selection.execution_model = ExecutionModel::Ordered;
-    }
-    if facts.target_profile.coordinate == ECHO_DPO_TARGET_PROFILE
-        && facts.target_ir_domain == ECHO_STRUCTURED_SPAN_IR_DOMAIN
-    {
-        target_selection.target_ir_domain = ECHO_STRUCTURED_SPAN_IR_DOMAIN;
-        target_selection.execution_model = ExecutionModel::Structured;
-    }
-    if facts.target_ir_domain != target_selection.target_ir_domain {
-        return Err(vec![TargetLoweringFailure {
-            kind: TargetLoweringFailureKind::UnsupportedTargetIrDomain,
-            intent: None,
-            node_index: None,
-            detail: facts.target_ir_domain.clone(),
-        }]);
-    }
-    Ok(target_selection)
+    target_selection_for_domain(&facts.target_profile.coordinate, &facts.target_ir_domain)
+        .ok_or_else(|| {
+            vec![TargetLoweringFailure {
+                kind: TargetLoweringFailureKind::UnsupportedTargetIrDomain,
+                intent: None,
+                node_index: None,
+                detail: facts.target_ir_domain.clone(),
+            }]
+        })
 }
 
 fn validate_core_module(
