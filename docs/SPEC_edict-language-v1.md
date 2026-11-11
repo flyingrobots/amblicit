@@ -3056,10 +3056,10 @@ signature, does not qualify. "Declares no failures" is the lawpack's
 authenticated claim; the compiler does not check it against the target
 intrinsic. The provider decides whether the bound intrinsic really cannot
 fail: Echo's lowerer, verifier and runtime refuse an effect whose declared
-failure set differs in size from its intrinsic's. Diagnostics for a malformed
-unmapped binding (annotation, type arguments, arity, input or output types)
-come from the effect-binding checks and span the whole `let` statement, as
-for a mapped binding.
+failure set differs in size from its intrinsic's. For a malformed unmapped
+binding, the annotation, type-argument, arity and profile diagnostics span the
+whole `let` statement, and input or receipt type mismatches span the effect
+call, as for a mapped binding.
 An unknown effect in an explicit effect binding reports `MissingContextFact`
 with available exact-owner exports under the selected source alias. A bare
 unknown call retains `UnresolvedFunction`; an unknown coordinate does not
