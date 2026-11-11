@@ -320,14 +320,14 @@ fn catalog_v2_pack_admits_any_nonempty_contract_text() {
     }
 }
 
-/// Twelve single-field corruptions that admission refuses are refused by the
+/// Thirteen single-field corruptions that admission refuses are refused by the
 /// current pack too. Type resolution is not among them: admission owns it.
 #[test]
 fn catalog_v2_pack_refuses_contracts_the_compiler_refuses() {
     use TargetPureIntrinsicFailureKind as K;
     type Mutation = fn(&mut V);
     // Each row breaks one requirement the compiler's admission API reads.
-    let cases: [(&str, Mutation, &[K]); 12] = [
+    let cases: [(&str, Mutation, &[K]); 13] = [
         (
             "v1 api version with v2 contracts",
             |v| *field_mut(v, "apiVersion") = text("edict.target-profile.intrinsics/v1"),
@@ -374,6 +374,11 @@ fn catalog_v2_pack_refuses_contracts_the_compiler_refuses() {
         (
             "negative cost base",
             |v| *field_mut(field_mut(pure_contract_mut(v), "costRule"), "base") = V::Integer(-1),
+            &[K::InvalidCostRule],
+        ),
+        (
+            "text cost base",
+            |v| *field_mut(field_mut(pure_contract_mut(v), "costRule"), "base") = text("71"),
             &[K::InvalidCostRule],
         ),
         (
