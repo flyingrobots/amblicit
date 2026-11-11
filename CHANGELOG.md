@@ -8,10 +8,6 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
-- Update `rustix` to 1.1.6 for RUSTSEC-2026-0486 (lockfile only). The
-  provider component fixture inventory records the new source digest; the
-  component bytes are unchanged.
-
 - Select target profile `echo.dpo@2`, Echo's effect profile. It lowers only
   to the ordered `echo.span-ir/v2` Target IR, and its effect intrinsics are
   named `echo.dpo@2.*`; each Echo profile refuses the other's intrinsics with
