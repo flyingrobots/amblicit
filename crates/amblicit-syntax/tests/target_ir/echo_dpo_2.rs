@@ -156,3 +156,32 @@ fn ordered_encoding_requires_a_profile_that_selects_its_domain() {
     encode_target_ir_artifact(&structured_under_echo_dpo_1)
         .expect("echo.dpo@1 selects the structured domain");
 }
+
+#[test]
+fn target_selection_refusals_keep_their_precedence() {
+    // Unknown profile before digest, digest before domain: the order the
+    // selection refactor must preserve for every profile.
+    let mut unknown_undigested = echo_dpo_2_facts("echo.dpo@3.replace");
+    "echo.dpo@3".clone_into(&mut unknown_undigested.target_profile.coordinate);
+    unknown_undigested.target_profile.digest = None;
+    let mut undigested_wrong_domain = echo_dpo_2_facts("echo.dpo@2.replace");
+    undigested_wrong_domain.target_profile.digest = None;
+    STRUCTURED.clone_into(&mut undigested_wrong_domain.target_ir_domain);
+
+    for (facts, expected) in [
+        (
+            unknown_undigested,
+            TargetLoweringFailureKind::UnsupportedTargetProfile,
+        ),
+        (
+            undigested_wrong_domain,
+            TargetLoweringFailureKind::UndigestedTargetProfile,
+        ),
+    ] {
+        let report = lower_to_target_ir(&guarded_effect_core(), &facts);
+
+        assert_eq!(report.status, TargetLoweringStatus::Unsupported);
+        assert!(report.artifact.is_none());
+        assert_eq!(failure_kinds(&report), vec![expected]);
+    }
+}
