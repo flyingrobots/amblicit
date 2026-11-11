@@ -8,6 +8,16 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Select target profile `echo.dpo@2`, Echo's effect profile. It lowers only
+  to the ordered `echo.span-ir/v2` Target IR, and its effect intrinsics are
+  named `echo.dpo@2.*`; each Echo profile refuses the other's intrinsics with
+  `UnsupportedTargetIntrinsic`, and `echo.dpo@2` refuses other domains with
+  `UnsupportedTargetIrDomain`. The canonical encoder now admits an ordered or
+  structured artifact under any profile that selects its domain, rather than
+  under `echo.dpo@1` only. `echo.dpo@1` and `gitwarp.ref_crdt@1` are
+  unchanged. Amblicit ships no `echo.dpo@2` provider; a complete build needs
+  Echo's provider package (Echo #985).
+
 - Admit compiler-owned result projections for structured Target v3
   operations, selected explicitly as for v2. Projection
   emission and independent verification require the Core body's nested

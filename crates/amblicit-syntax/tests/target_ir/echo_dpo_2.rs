@@ -63,7 +63,7 @@ fn echo_dpo_2_lowers_effects_to_ordered_target_ir() {
     assert_eq!(text_entry(&value, "kind"), &text("orderedTargetIrArtifact"));
     assert_eq!(text_entry(&value, "domain"), &text(ORDERED));
     assert_eq!(
-        text_entry(text_entry(&value, "targetProfile"), "coordinate"),
+        text_entry(text_entry(&value, "targetProfile"), "id"),
         &text(ECHO_DPO_2)
     );
     let encoded_intent = text_entry(text_entry(&value, "intents"), "t");

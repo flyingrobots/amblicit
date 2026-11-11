@@ -19,10 +19,12 @@ at this boundary. Provider and runtime support remain separate. [TIR-REQ-056]
 
 The current target IR implementation is deliberately narrow:
 
-- selected target profile: `echo.dpo@1` or `gitwarp.ref_crdt@1`;
+- selected target profile: `echo.dpo@1`, `echo.dpo@2`, or
+  `gitwarp.ref_crdt@1`;
 - selected Target IR artifact domain: `echo.span-ir/v1`, explicitly ordered
   `echo.span-ir/v2`, explicitly structured `echo.span-ir/v3`, or
-  `gitwarp.commit-reducer-ir/v1`;
+  `gitwarp.commit-reducer-ir/v1`; `echo.dpo@2` selects only
+  `echo.span-ir/v2`;
 - selected source/Core shape: source-ordered pure `let` bindings, the first
   supported effectful Core effect node, Echo `require` guard requirements, and
   typed external-action request data; under the explicitly selected
@@ -183,6 +185,29 @@ refuses at Target lowering; an experimental v2 selection reaches the pinned
 old Echo provider's schema gate and refuses before provider execution or
 package publication. It does not repin Jim or claim a released Echo v2 target
 contract. [TIR-REQ-050]
+
+### Target profile `echo.dpo@2`
+
+`echo.dpo@2` is Echo's effect profile. It selects the same ordered
+`echo.span-ir/v2` contract described above, and only that contract: no
+`targetIr` setting or adapter `acceptedTargetIr` selects `echo.span-ir/v1`,
+`echo.span-ir/v3`, or another domain under it. Those refuse with
+`UnsupportedTargetIrDomain`. Its effect intrinsics are named `echo.dpo@2.*`.
+An `echo.dpo@1.*` intrinsic under `echo.dpo@2`, or an `echo.dpo@2.*`
+intrinsic under `echo.dpo@1`, refuses with `UnsupportedTargetIntrinsic` and no
+artifact. [TIR-REQ-067]
+
+One selection table decides both lowering and canonical encoding. The encoder
+admits an ordered or structured artifact only when its `targetProfile` selects
+that domain: `echo.span-ir/v2` under `echo.dpo@1` or `echo.dpo@2`, and
+`echo.span-ir/v3` under `echo.dpo@1` only. `echo.dpo@1` and
+`gitwarp.ref_crdt@1` selection, failure kinds, and bytes are unchanged.
+[TIR-REQ-067]
+
+A public application build whose lawpack adapter accepts `echo.dpo@2` lowers
+through Target and hands `echo.span-ir/v2` to the selected provider. Whether
+that provider accepts it is the provider's contract; Amblicit ships no
+`echo.dpo@2` provider components. [TIR-REQ-067]
 
 ## Structured control flow
 

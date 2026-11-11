@@ -243,8 +243,8 @@ pub use target_ir::{
     TargetIrLoweringFacts, TargetIrOrderEntry, TargetIrPureBinding, TargetIrRequireFailure,
     TargetIrRequirement, TargetIrSemanticClosure, TargetIrStep, TargetLoweringFailure,
     TargetLoweringFailureKind, TargetLoweringReport, TargetLoweringStatus, TargetPureFunctionFact,
-    ECHO_DPO_TARGET_PROFILE, ECHO_ORDERED_SPAN_IR_DOMAIN, ECHO_SPAN_IR_DOMAIN,
-    ECHO_STRUCTURED_SPAN_IR_DOMAIN, GITWARP_COMMIT_REDUCER_IR_DOMAIN,
+    ECHO_DPO_2_TARGET_PROFILE, ECHO_DPO_TARGET_PROFILE, ECHO_ORDERED_SPAN_IR_DOMAIN,
+    ECHO_SPAN_IR_DOMAIN, ECHO_STRUCTURED_SPAN_IR_DOMAIN, GITWARP_COMMIT_REDUCER_IR_DOMAIN,
     GITWARP_REF_CRDT_TARGET_PROFILE,
 };
 pub use target_profile::{
