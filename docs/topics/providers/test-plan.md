@@ -205,8 +205,11 @@ source-functions, source-modules, structured-control and bounded-state-fold
 publications remain byte-identical. A frozen pre-v2 target-profile schema
 reproduces their existing `intrinsics-document` root. For the pure contracts a
 consumer requires, `admit_target_pure_intrinsics` is the oracle: the pack
-admits the catalogs it admits and refuses the single-field corruptions it
-refuses. The pack is stricter about entries no consumer requires, which
+admits the catalogs it admits and refuses the corruptions it refuses wherever
+CDDL can state the rule (PROVIDERS-TP-057). The schema does not state type
+resolution: an argument type naming an unpublished type, or a `types` value
+that is text but not a `Record<...>`, is refused by admission and accepted by
+the schema. The pack is stricter about entries no consumer requires, which
 admission never reads: every entry must be a well-formed intrinsic, and every
 pure intrinsic in a v2 catalog must carry a complete monomorphic contract
 (PROVIDERS-TP-059, PROVIDERS-TP-060). Schema

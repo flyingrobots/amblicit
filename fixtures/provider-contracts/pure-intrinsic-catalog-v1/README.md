@@ -11,7 +11,7 @@ A v2 catalog differs from v1 in three ways:
 | Field | v2 rule |
 | --- | --- |
 | `apiVersion` | Exactly `edict.target-profile.intrinsics/v2`. |
-| `types` | Optional map from a provider-owned type coordinate to its structural `Record<...>` definition. |
+| `types` | Optional map from a provider-owned type coordinate to a text definition. Admission, not the schema, requires each definition to be a structural `Record<...>` and resolves every type a signature names. |
 | pure intrinsic | Every pure intrinsic, required by a consumer or not: `typeParameters` is empty; `contractVersion`, `footprintTemplate` and `costTemplate` are non-empty text; `costRule` is required, with an unsigned `base` and an array of unsigned `perArgumentMax` coefficients. |
 
 Effect intrinsics keep their v1 shape, so an effect-only v1 catalog becomes a

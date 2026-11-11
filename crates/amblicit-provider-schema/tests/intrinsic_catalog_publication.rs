@@ -320,8 +320,8 @@ fn catalog_v2_pack_admits_any_nonempty_contract_text() {
     }
 }
 
-/// Every single-field corruption that admission refuses, the current pack
-/// refuses too.
+/// Twelve single-field corruptions that admission refuses are refused by the
+/// current pack too. Type resolution is not among them: admission owns it.
 #[test]
 fn catalog_v2_pack_refuses_contracts_the_compiler_refuses() {
     use TargetPureIntrinsicFailureKind as K;
