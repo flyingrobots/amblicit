@@ -8,6 +8,10 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Lock rustix 1.1.6, fixing RUSTSEC-2026-0486 without adding an advisory
+  exception. Regenerate the source-bound provider fixture inventory and its
+  Rust guest components with the pinned fixture toolchain.
+
 - Admit compiler-owned result projections for structured Target v3
   operations, selected explicitly as for v2. Projection
   emission and independent verification require the Core body's nested
