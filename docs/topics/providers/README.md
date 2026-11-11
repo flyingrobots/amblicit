@@ -134,14 +134,15 @@ publication changes the `intrinsics-document` root, bound to the
 not, is monomorphic and carries a non-empty `contractVersion` and a `costRule`,
 and the catalog may publish provider-owned `types`. It refuses a v1 catalog, and every earlier publication refuses a v2
 catalog, so a provider whose source programs call pure intrinsics must select
-this publication. The schema fixes catalog shape only; pinned-digest admission,
-contract versions, namespace ownership, type resolution and cost-coefficient
-rules remain with `admit_target_pure_intrinsics`, which runs those per-contract
-checks only on the required contracts. So admission can admit facts from a
-catalog this pack refuses, and an uncalled pure intrinsic can break an
-admission-only rule while passing both checks. A provider validates its catalog
-against the pack before pinning it. The fold-capable publication
-adds the explicit `fold` Core expression; consumers must select its new schema
+this publication. The schema fixes catalog shape only; the remaining checks stay
+with `admit_target_pure_intrinsics`. For the whole catalog, admission checks the
+pinned digest, the top-level fields and every `types` definition. Its
+per-contract checks (contract version, field shape, the intrinsic's namespace,
+signature type resolution and cost coefficients) run only on the required
+contracts. So admission can admit facts from a catalog this pack refuses, and
+an uncalled pure intrinsic can break an admission-only rule while passing both
+checks. A provider validates its catalog against the pack before pinning it.
+The fold-capable publication adds the explicit `fold` Core expression; consumers must select its new schema
 digest. Capability, state and cost checks remain separate semantic gates.
 The structured-control publication adds the `echo.span-ir/v3` variant of the `target-ir-artifact`
 root, with recursive `for` and `branch` order entries discriminated by their

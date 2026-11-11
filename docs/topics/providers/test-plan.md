@@ -204,10 +204,12 @@ The catalog-v2 pack is a new explicit publication at
 source-functions, source-modules, structured-control and bounded-state-fold
 publications remain byte-identical. A frozen pre-v2 target-profile schema
 reproduces their existing `intrinsics-document` root. For the pure contracts a
-consumer requires, `admit_target_pure_intrinsics` is the oracle: the pack
-admits the catalogs it admits and refuses the corruptions it refuses wherever
-CDDL can state the rule (PROVIDERS-TP-057, PROVIDERS-TP-061). The schema does not state type
-resolution: an argument type naming an unpublished type, or a `types` value
+consumer requires, `admit_target_pure_intrinsics` is the oracle. For a catalog in
+which every pure intrinsic is required and every other entry is a well-formed
+effect intrinsic, the pack admits what admission admits and refuses the
+corruptions admission refuses wherever CDDL can state the rule
+(PROVIDERS-TP-056, PROVIDERS-TP-057, PROVIDERS-TP-061). The schema does not
+state type resolution: an argument type naming an unpublished type, or a `types` value
 that is text but not a `Record<...>`, is refused by admission and accepted by
 the schema. The pack is stricter about entries no consumer requires, which
 admission never reads: every entry must be a well-formed intrinsic, and every
