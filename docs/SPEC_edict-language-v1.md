@@ -2116,7 +2116,11 @@ expression within an operand.
 **Call-site obligation** (`EDICT-LANG-FN-PRECONDITION-002`). Every call
 instantiates each precondition by replacing each parameter with the argument
 expression in the same position, and the compiler must prove the result from
-the facts that dominate the call. A call that does not establish a
+the facts that dominate the call. Substitution is simultaneous: every
+parameter is replaced in one pass, and an inserted argument expression is
+never substituted again, so `f(b, a)` inside a function whose own parameters
+are `a` and `b` obliges `b <= a` for a precondition `x <= y` of `f`, never
+`a <= a`. A call that does not establish a
 precondition refuses with the stable compiler error `UnprovenPrecondition` at
 the call's span; the message names the callee and the first unproven
 `where.N`. Preconditions are never evaluated at runtime, never become an input
@@ -2807,7 +2811,11 @@ core-source-function = {
 ```
 
 Parameters are the positional locals `arg.0`, `arg.1`, … with alpha names
-`$arg0`, `$arg1`, …. `preconditions` holds the function's `where` predicates
+`$arg0`, `$arg1`, …. For a function that carries `preconditions` this is
+required: Core integrity refuses any other parameter id or alpha name with
+`InvalidDefinition` at `functions.<name>.params`. A consumer instantiates a call
+by replacing the local `params[N]`, matched by id, alpha name and type, with
+`args[N]`, simultaneously for every `N`. `preconditions` holds the function's `where` predicates
 as typed Core predicate trees in source order (`EDICT-CORE-FN-PRECONDITION-001`).
 It is hash-significant: adding, removing, reordering or changing a
 precondition changes the Core digest. A function without preconditions omits

@@ -687,3 +687,46 @@ fn a_function_holds_at_most_256_precondition_nodes() {
     ));
     assert_eq!(over.kind, CompilerErrorKind::InvalidBound, "{over:?}");
 }
+
+/// Oracle: "Core Source Function Shape". A precondition-bearing function
+/// names parameter `N` exactly `arg.N` / `$argN`, so substituting by name and
+/// by position agree. Renaming refuses at Core integrity and in Target, even
+/// a pure swap that keeps every reference consistent. Safety-review round 5.
+#[test]
+fn precondition_bearing_parameters_are_named_by_position() {
+    let core = accepted(&program(
+        "fn first(start: U64, end: U64) -> U64 where start <= end { return start; }",
+        "where input.start <= input.end",
+        "U64",
+        "first(input.start, input.end)",
+    ));
+    let swap = |local: &LocalRef| match local.id.as_str() {
+        "arg.0" => LocalRef {
+            id: "arg.1".into(),
+            alpha_name: "$arg1".into(),
+            ty: local.ty.clone(),
+        },
+        "arg.1" => LocalRef {
+            id: "arg.0".into(),
+            alpha_name: "$arg0".into(),
+            ty: local.ty.clone(),
+        },
+        _ => local.clone(),
+    };
+    let mut renamed = core;
+    let function = renamed.functions.get_mut("first").unwrap();
+    function.params = function.params.iter().map(swap).collect();
+    function.preconditions = vec![CorePredicate::Compare {
+        op: CompareOp::Le,
+        left: param(1, "U64"),
+        right: param(0, "U64"),
+    }];
+    function.body.result = param(1, "U64");
+    let failure = validate_core_module_type_integrity(&renamed).unwrap_err();
+    assert_eq!(
+        failure.kind(),
+        CoreTypeIntegrityFailureKind::InvalidDefinition
+    );
+    assert_eq!(failure.path(), "functions.first.params");
+    target_refuses(&renamed);
+}

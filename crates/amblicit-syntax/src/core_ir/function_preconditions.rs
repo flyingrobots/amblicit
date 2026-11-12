@@ -79,6 +79,16 @@ pub(super) fn validate_preconditions(
     path: &str,
     function: &CoreFunction,
 ) -> Result<(), CoreTypeIntegrityFailure> {
+    // A precondition-bearing function names its parameters positionally, so a
+    // consumer that substitutes by `arg.N` and one that substitutes by
+    // position build the same obligation.
+    if !function.preconditions.is_empty()
+        && function.params.iter().enumerate().any(|(index, local)| {
+            local.id != format!("arg.{index}") || local.alpha_name != format!("$arg{index}")
+        })
+    {
+        return Err(invalid(&format!("{path}.params")));
+    }
     let params = function
         .params
         .iter()
