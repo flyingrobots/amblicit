@@ -19,6 +19,18 @@ versions still track specification maturity rather than a released product.
   used inside a larger expression is still refused. Echo still has to publish
   a provider profile whose catalog carries these intrinsics (Echo #985).
 
+- Select target profile `echo.dpo@2`, Echo's effect profile. It lowers only
+  to the ordered `echo.span-ir/v2` Target IR, and its effect intrinsics are
+  named `echo.dpo@2.*`; each Echo profile refuses the other's intrinsics with
+  `UnsupportedTargetIntrinsic`, and `echo.dpo@2` refuses other domains with
+  `UnsupportedTargetIrDomain`. The canonical encoder now admits an ordered or
+  structured artifact under any profile that selects its domain, rather than
+  under `echo.dpo@1` only. `echo.dpo@1` and `gitwarp.ref_crdt@1` are
+  unchanged. `amblicit_syntax` exports `ECHO_DPO_2_TARGET_PROFILE`; the
+  in-process `BuiltinTargetLowerer` seam still serves only `echo.dpo@1` and
+  `gitwarp.ref_crdt@1`. Amblicit ships no `echo.dpo@2` provider; a complete
+  build needs Echo's provider package (Echo #985).
+
 - Lock rustix 1.1.6, fixing RUSTSEC-2026-0486 without adding an advisory
   exception. Regenerate the source-bound provider fixture inventory and its
   Rust guest components with the pinned fixture toolchain.
