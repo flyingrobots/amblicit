@@ -617,6 +617,48 @@ CSPINE-REQ-054 remains planned. The implemented rows establish their named fixtu
 | CSPINE-TP-198 | implemented | Cost and scope | CSPINE-REQ-063 | Direct dispatch exceeding its budget refuses while a same-frame control accepts; nested matches and Boolean predicates retain scope and recursive calls in arms refuse. | direct_matches_charge_dispatch_without_a_helper_declaration, nested_matches_keep_outer_payloads_and_boolean_predicates_scoped, match_arms_cannot_hide_recursive_calls | crates/amblicit-syntax/tests/variant_matches.rs | Compiler accounting is distinct from runtime consumption. |
 | CSPINE-TP-199 | implemented | Match peer inference | CSPINE-REQ-063 | Bare integer arms infer width from typed peer arms regardless of arm order; the resulting Core retains source arm order. All-bare matches remain ambiguous without an expected type. | variant_match_infers_bare_integer_width_from_peer_arms, conditional_infers_bare_integer_width_from_match_peer, variant_match_without_a_typed_peer_keeps_integer_width_ambiguous | crates/amblicit-syntax/tests/variant_matches.rs | Review probe failed TypeMismatch before the inference repair. |
 
+## Source enum declarations (issue #261)
+
+Compiler contract: `enum Name { A, B }` is a closed set of payload-free cases
+(`EDICT-LANG-ENUMVARIANT-001`). Core has no separate enum kind, so the compiler
+encodes an enum as a named Core `Variant` whose cases carry no payload, under the
+same `core.variant/v1` capability. Source keeps the two syntaxes apart: an enum
+case is selected with `Name.CASE`, a variant constructor with `Name::Case`.
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| CSPINE-REQ-075 | planned | Enum declarations compile to named payload-free Core variants with exact case names. `Name.CASE` selects a case, also through a transparent alias or a linked source module; `match` covers enum cases exhaustively without binders. `Name::CASE` on an enum, `Name.Case` on a variant and unknown cases refuse with stable kinds. | issue #261 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-240 | planned | Enum lowering | CSPINE-REQ-075 | Specified (SPEC enum-decl, EDICT-LANG-ENUMVARIANT-001): the Core type table holds a `Variant` with exactly the declared payload-free cases; case selection lowers to a payload-free variant expression; an exhaustive match lowers to a Core match; `core.variant/v1` is required and native Target lowers the module. | - | - | Encoding as a payload-free variant is the compiler's enum coordinate encoding. |
+| CSPINE-TP-241 | planned | Enum refusals | CSPINE-REQ-075 | Specified: non-exhaustive and duplicate-arm matches and arm binders refuse `TypeMismatch`; `Enum::Case` and `Variant.Case` refuse `TypeMismatch`; an unknown case refuses `UnknownField`; duplicate cases refuse `SurfaceValidation`. | - | - | Same coverage rule as variant matches. |
+| CSPINE-TP-242 | planned | Linked enums | CSPINE-REQ-075 | Specified: an enum imported from an authenticated source module keeps its original module coordinate and selects cases through `alias.Name.CASE`. | - | - | Source-module linking hygiene. |
+
+## Option values and presence refinement (issue #261)
+
+Compiler contract: `Option<T>` is the structural Core `Option` type. The closed
+prelude adds `some`, `none`, `isSome`, `default` and `unwrap`
+(`EDICT-LANG-PRELUDE-001`). They lower to typed Core calls
+`core.option.some<T>(v)`, `core.option.none<T>()`, `core.option.isSome<T>(o)`,
+`core.option.default<T>(o, f)` and `core.option.unwrap<T>(o)` under the required
+capability `core.option/v1`, where `T` is the item coordinate. `unwrap(x)` is
+legal only where `isSome(x)` positively refines the same local `x`
+(`EDICT-LANG-OPTION-REFINE-001`): the right operand of `&&` and the `then`
+branch of an expression, statement or branch-yield `if`. Refinement does not
+flow through helpers, aliases, `else` branches or later statements.
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| CSPINE-REQ-076 | planned | `Option<T>` types and the `some`, `none`, `isSome` and `default` prelude calls compile to the typed `core.option.*` calls with exact item coordinates and the `core.option/v1` capability. `none` takes its item type from an explicit type argument, an expected Option type or a typed conditional peer; otherwise it refuses. | issue #261 |
+| CSPINE-REQ-077 | planned | `unwrap(x)` compiles only inside a region positively refined by `isSome(x)` for the same local; every other use refuses `UnsupportedSourceShape`. | issue #261 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-243 | planned | Option lowering | CSPINE-REQ-076 | Specified (SPEC Standard Functions): each prelude call lowers to its `core.option.*` call with the item coordinate as its only type argument; `Option<T>` fields keep the structural coordinate; `core.option/v1` is required; native Target lowers the module. | - | - | Core golden pins the canonical bytes. |
+| CSPINE-TP-244 | planned | Option typing refusals | CSPINE-REQ-076 | Specified: a mismatched payload, fallback or explicit type argument refuses `TypeMismatch`; `isSome` or `default` on a non-Option refuses `TypeMismatch`; `none()` with no type source refuses `UnsupportedSourceShape`; wrong arity refuses; declaring a function named like an Option prelude function refuses `SurfaceValidation`. | - | - | |
+| CSPINE-TP-245 | planned | Presence refinement | CSPINE-REQ-077 | Specified (EDICT-LANG-OPTION-REFINE-001): `unwrap` compiles in each listed refined region; it refuses outside them, in `else` branches, after the `if`, through an alias local, for a different local, on a field path and through a helper call. | - | - | Lexical and variable-specific. |
+
 
 ## Bounded state-carrying fold (issue #268)
 

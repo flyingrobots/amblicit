@@ -1,5 +1,17 @@
 # Target IR Test Plan
 
+## Independent Option validation (#261)
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| TIR-REQ-075 | planned | Native Target admits `core.option/v1` and independently derives the result type of every `core.option.*` call from its item type argument and operands. `core.option.unwrap` is total only where a dominating `isSome` fact names the exact same local, including the `then` block of a statement or branch-yield branch. It does not trust source refinement. | issue #261 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-150 | planned | Option authority | TIR-REQ-075 | Specified: valid controls lower; a missing capability, a forged item type argument, a non-Option operand, a wrong fallback and a wrong arity refuse with `InvalidCoreIdentity` and no artifact. | - | - | Mutates compiler-produced Core. |
+| TIR-TP-151 | planned | Unwrap presence | TIR-REQ-075 | Specified: removing the guard, guarding a different local, moving `unwrap` to the `else` arm or onto a non-local operand refuses `InvalidCoreIdentity`; statement-branch guards are honoured only in their `then` block. | - | - | Byte and list proofs keep their existing statement-branch rule. |
+| TIR-TP-152 | planned | Target golden | TIR-REQ-075 | Change detection (labelled): the canonical Target IR bytes and digest of the Option and enum specimen match the reviewed golden. | - | - | Reviewed golden under re-baseline discipline. |
+
 ## Target profile `echo.dpo@2` (#310)
 
 | ID | Status | Requirement | Source |
