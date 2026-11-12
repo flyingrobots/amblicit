@@ -698,3 +698,42 @@ fn recursive_types_through_option_remain_rejected() {
         );
     }
 }
+
+/// SPEC Standard Functions: `<`, `<=`, `>`, `>=` are defined for integers,
+/// `U8` and collated strings only, never for Option or enum values.
+#[test]
+fn ordered_comparisons_refuse_options_and_enums() {
+    for body in [
+        "fn f(a: Option<U64>, b: Option<U64>) -> Bool { return a < b; }",
+        "fn f(a: Option<U64>, b: Option<U64>) -> Bool { return a >= b; }",
+        "enum Spine { Boundary, Range } fn f(a: Spine, b: Spine) -> Bool { return a <= b; }",
+        "type Choice = variant { Empty, Data(U8) }; fn f(a: Choice, b: Choice) -> Bool { return a > b; }",
+    ] {
+        let errors = compile(body).expect_err(body);
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.kind == CompilerErrorKind::TypeMismatch),
+            "{body}: {errors:?}"
+        );
+    }
+}
+
+/// Native Target joins conditional arms only when one arm's type contains the
+/// other's, so the compiler does not invent a wider joined Option item.
+#[test]
+fn option_joins_need_one_arm_to_contain_the_other() {
+    let body = "fn f(flag: Bool, a: Option<Bytes<exact=1>>, b: Option<Bytes<exact=2>>) -> Bool { return isSome(if flag then a else b); }";
+    let errors = compile(body).expect_err(body);
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.kind == CompilerErrorKind::TypeMismatch),
+        "{errors:?}"
+    );
+    let core = compile(&format!(
+        "fn f(flag: Bool, a: Option<Bytes<max=1>>, b: Option<Bytes<max=2>>) -> Bool {{ return isSome(if flag then a else b); }} {WITNESS}"
+    ))
+    .expect("a contained arm joins");
+    lowered(&core);
+}

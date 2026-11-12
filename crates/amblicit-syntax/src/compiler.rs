@@ -4298,6 +4298,22 @@ impl<'a> TypeChecker<'a> {
                 (left?, right?)
             }
         };
+        if matches!(
+            op,
+            CompareOp::Lt | CompareOp::Le | CompareOp::Gt | CompareOp::Ge
+        ) && [&left.ty, &right.ty]
+            .iter()
+            .any(|shape| matches!(shape.kind, TypeKind::Option(_) | TypeKind::Variant(_)))
+        {
+            // SPEC: ordered operators exist only for integers and collated strings.
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::TypeMismatch,
+                "ordered comparison is not defined for Option, enum or variant values",
+                span,
+            ));
+            return None;
+        }
         if comparable(&left.ty, &right.ty) {
             Some(CorePredicate::Compare {
                 op,
@@ -5832,10 +5848,6 @@ fn compatible_shape(left: &TypeShape, right: &TypeShape) -> Option<TypeShape> {
                 max: joined_max,
             },
         );
-    }
-    if let (TypeKind::Option(left_item), TypeKind::Option(right_item)) = (&left.kind, &right.kind) {
-        let joined_item = compatible_shape(left_item, right_item)?;
-        return joined_shape(left, right, TypeKind::Option(Box::new(joined_item)));
     }
     if let (TypeKind::Record(left_fields), TypeKind::Record(right_fields)) =
         (&left.kind, &right.kind)

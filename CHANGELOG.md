@@ -17,8 +17,10 @@ versions still track specification maturity rather than a released product.
   `core.option/v1`. `unwrap(x)` compiles only where `isSome(x)` refines the
   same local; native Target rechecks every Option signature and `unwrap`
   presence, and fold work now charges Option values. `isSome`, `unwrap` and
-  `default` become protected prelude names, so a module declaring a function
-  with one of those names now refuses `SurfaceValidation`. Option `match` and
+  `default` become protected prelude names, so a module declaring a function,
+  parameter, intent input or local with one of those names now refuses
+  `SurfaceValidation`. Ordered comparisons on Option, enum or variant values now
+  refuse `TypeMismatch`; variants were previously accepted. Option `match` and
   Option-valued intent results remain unsupported; Echo provider and runtime
   support for `core.option/v1` is separate work (issue #261).
 

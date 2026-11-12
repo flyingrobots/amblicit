@@ -157,7 +157,7 @@ expected Option type or its value, and `none()` from an expected Option type or
 a typed conditional or match peer; with neither it refuses
 `UnsupportedSourceShape`. Mismatched payloads, fallbacks, type arguments and
 non-Option operands refuse `TypeMismatch`. `isSome`, `unwrap` and `default` are
-protected prelude names. Option-valued intent results refuse
+protected prelude names: no function, parameter or local may use them. Ordered comparisons (`<`, `<=`, `>`, `>=`) on Option, enum or variant values refuse `TypeMismatch`, and an Option conditional join refuses unless one arm's type contains the other's. Option-valued intent results refuse
 `UnsupportedSourceShape`, as variant-valued results do. [CSPINE-REQ-076]
 
 `unwrap(x)` compiles only where `isSome(x)`, alone or as a conjunct of an `&&`
