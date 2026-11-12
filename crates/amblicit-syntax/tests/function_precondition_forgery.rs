@@ -595,3 +595,66 @@ fn a_partial_proof_is_refused() {
         }
     }
 }
+
+const NOT_EQ: &str = "fn pick(start: U64, end: U64) -> U64 where !(start == end) { return start; }";
+
+/// Fact table: an `if` expression's `else` value sees the `not` of its
+/// predicate, so it proves the identical negated precondition. First written
+/// by safety-review round 6.
+#[test]
+fn an_else_arm_negation_proves_the_identical_negated_precondition() {
+    let core = accepted(&program(
+        NOT_EQ,
+        "",
+        "U64",
+        "if input.start == input.end then 0u64 else pick(input.start, input.end)",
+    ));
+    assert_lowers(&core);
+}
+
+/// Fact table: item `k` of a Core `any` sees the `not` of each earlier item.
+#[test]
+fn a_later_disjunct_sees_the_negation_of_earlier_ones() {
+    let core = accepted(&program(
+        NOT_EQ,
+        "where input.start == input.end || pick(input.start, input.end) == input.start",
+        "U64",
+        "input.start",
+    ));
+    assert_lowers(&core);
+}
+
+/// Mirroring applies to comparisons only, never under `!`: `!(end == start)`
+/// does not prove `!(start == end)` in the compiler or in Target.
+#[test]
+fn a_negation_is_not_mirrored() {
+    let error = first_unproven(&program(
+        NOT_EQ,
+        "",
+        "U64",
+        "if input.end == input.start then 0u64 else pick(input.start, input.end)",
+    ));
+    assert_eq!(error, CompilerErrorKind::UnprovenPrecondition);
+    let mut core = accepted(&program(
+        NOT_EQ,
+        "",
+        "U64",
+        "if input.start == input.end then 0u64 else pick(input.start, input.end)",
+    ));
+    let CoreExpr::If { predicate, .. } = body_value(&mut core) else {
+        panic!("if")
+    };
+    let CorePredicate::Compare { left, right, .. } = (**predicate).clone() else {
+        panic!("compare")
+    };
+    **predicate = CorePredicate::Compare {
+        op: CompareOp::Eq,
+        left: right,
+        right: left,
+    };
+    assert_refused(&core);
+}
+
+fn first_unproven(source: &str) -> CompilerErrorKind {
+    compile(source).expect_err("the compiler refuses")[0].kind
+}
