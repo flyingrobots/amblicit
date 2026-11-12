@@ -64,7 +64,15 @@ impl TypeChecker<'_> {
             }
             CoreExpr::Fold { .. } => Some("cannot fold"),
             CoreExpr::Match { .. } => Some("cannot match"),
-            _ => None,
+            // Exhaustive on purpose: a new expression form must decide here.
+            CoreExpr::Call { .. }
+            | CoreExpr::Local { .. }
+            | CoreExpr::Const(_)
+            | CoreExpr::Variant { .. }
+            | CoreExpr::Record { .. }
+            | CoreExpr::List { .. }
+            | CoreExpr::Field { .. }
+            | CoreExpr::If { .. } => None,
         })
     }
 

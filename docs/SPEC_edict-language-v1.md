@@ -2114,23 +2114,26 @@ or budget.
 
 The facts that dominate a call are:
 
-1. the enclosing intent's `where` predicates;
-2. the enclosing function's own preconditions;
+1. for a call in an intent **body**, the intent's `where` predicates;
+2. for a call in a function body, that function's own preconditions;
 3. the condition of each enclosing `if … then … else` expression: the
    condition itself in the `then` arm, and its negation in the `else` arm;
 4. within an `&&`, its left operand while checking the right; within an `||`,
    the negation of its left operand while checking the right.
 
-Separate predicates of one `where` clause do not see one another, and
-statement-level `if` blocks contribute no facts, exactly as for unsigned
-subtraction.
+Nothing else is a fact. In particular, a call in an intent's `basis` sees no
+intent `where` predicate, and a call inside an intent `where` predicate sees
+only the facts from items 3 and 4 within that same predicate: no other
+predicate of the same or another `where` clause. Statement-level `if` blocks
+contribute no facts, exactly as for unsigned subtraction.
 
 An instantiated precondition is proven when each of its `&&` conjuncts is
 proven:
 
 - `a <= b` or `b >= a` is proven by the order proof used for unsigned
   subtraction and `slice`: `a` and `b` are the same expression, `a` is the
-  literal zero, both are literals with `a <= b`, or a dominating fact, or a
+  unsigned literal `0u32` or `0u64`, both are `U32` or `U64` literals with
+  `a <= b`, or a dominating fact, or a
   conjunct of one, is `a <= b`, `a < b`, `b >= a`, `b > a`, `a == b` or
   `b == a`.
 - `true` is always proven.

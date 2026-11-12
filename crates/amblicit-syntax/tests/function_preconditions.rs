@@ -7,8 +7,8 @@ use amblicit_syntax::{
     compile_to_core, decode_canonical_cbor, digest_core_module, encode_core_module,
     lower_to_target_ir, parse_module, validate_core_module_type_integrity, CanonicalValue,
     CompareOp, CompilerContext, CompilerError, CompilerErrorKind, CoreBudget, CoreExpr, CoreModule,
-    CorePredicate, CoreTypeIntegrityFailureKind, LocalRef, ResourceRef, TargetIrLoweringFacts,
-    TargetLoweringFailureKind, TargetLoweringStatus,
+    CorePredicate, CoreTypeIntegrityFailureKind, CoreValue, LocalRef, ResourceRef,
+    TargetIrLoweringFacts, TargetLoweringFailureKind, TargetLoweringStatus,
 };
 
 /// Jedit's reproducer, byte-for-byte (see `fixtures/lang/functions/README.md`).
@@ -93,6 +93,18 @@ fn target_refuses(core: &CoreModule) {
     assert_eq!(
         report.failures.first().map(|failure| failure.kind),
         Some(TargetLoweringFailureKind::InvalidCoreIdentity),
+        "{report:?}"
+    );
+}
+
+/// Target refuses, and attributes the refusal to the calling intent rather
+/// than to a callee body, so the call-site judgment is what decided.
+fn target_refuses_call_in(core: &CoreModule, intent: &str) {
+    let report = lower_to_target_ir(core, &facts());
+    let failure = report.failures.first();
+    assert_eq!(
+        failure.map(|failure| (failure.kind, failure.intent.as_deref())),
+        Some((TargetLoweringFailureKind::InvalidCoreIdentity, Some(intent))),
         "{report:?}"
     );
 }
@@ -471,32 +483,60 @@ fn target_refuses_forged_core_that_drops_a_precondition_the_body_needs() {
 
 #[test]
 fn target_refuses_forged_core_whose_call_does_not_establish_a_precondition() {
+    // The callee body never needs its precondition, so only Target's
+    // call-site re-proof can refuse, and it refuses at the calling intent.
+    let first = "fn first(start: U64, end: U64) -> U64 where start <= end { return start; }";
     let mut core = accepted(&program(
-        SPAN,
+        first,
         "where input.start <= input.end",
         "U64",
-        "span(input.start, input.end)",
+        "first(input.start, input.end)",
     ));
+    lowers(&core);
     core.intents
         .get_mut("evaluate")
         .unwrap()
         .input_constraints
         .clear();
-    target_refuses(&core);
+    target_refuses_call_in(&core, "evaluate");
 
-    let mut swapped = accepted(&program(
-        SPAN,
+    let mut reversed = accepted(&program(
+        first,
         "where input.start <= input.end",
         "U64",
-        "span(input.start, input.end)",
+        "first(input.start, input.end)",
     ));
-    let precondition = &mut swapped.functions.get_mut("span").unwrap().preconditions[0];
-    *precondition = CorePredicate::Compare {
+    reversed.functions.get_mut("first").unwrap().preconditions[0] = CorePredicate::Compare {
         op: CompareOp::Le,
         left: param(1, "U64"),
         right: param(0, "U64"),
     };
-    target_refuses(&swapped);
+    target_refuses_call_in(&reversed, "evaluate");
+}
+
+#[test]
+fn target_refuses_forged_core_that_gives_a_fold_step_a_precondition() {
+    // The step body does not need the precondition, so only the fold-step
+    // rule (EDICT-LANG-FN-PRECONDITION-004) can refuse.
+    let source = "package preconditions.example@1;
+fn step(state: U64) -> U64 { return state; }
+type Input = { start: U64, };
+type Output = { value: U64, };
+intent evaluate(input: Input) returns Output profile p.read basis none budget <= p.small {
+  let value: U64 = fold(input.start, step, 2u64);
+  return { value };
+}";
+    let mut core = accepted(source);
+    lowers(&core);
+    core.functions.get_mut("step").unwrap().preconditions = vec![CorePredicate::Compare {
+        op: CompareOp::Le,
+        left: param(0, "U64"),
+        right: CoreExpr::Const(CoreValue::Int {
+            width: "U64".into(),
+            value: "4".into(),
+        }),
+    }];
+    target_refuses_call_in(&core, "evaluate");
 }
 
 #[test]

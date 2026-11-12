@@ -35,7 +35,15 @@ pub(super) fn validate_preconditions(
                 Err(invalid(&at))
             }
             CoreExpr::Fold { .. } | CoreExpr::Match { .. } => Err(invalid(&at)),
-            _ => Ok(()),
+            // Exhaustive on purpose: a new expression form must decide here.
+            CoreExpr::Call { .. }
+            | CoreExpr::Local { .. }
+            | CoreExpr::Const(_)
+            | CoreExpr::Variant { .. }
+            | CoreExpr::Record { .. }
+            | CoreExpr::List { .. }
+            | CoreExpr::Field { .. }
+            | CoreExpr::If { .. } => Ok(()),
         })?;
     }
     Ok(())
