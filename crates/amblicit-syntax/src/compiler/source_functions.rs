@@ -719,7 +719,9 @@ fn contains_external_action_request(shape: &TypeShape) -> bool {
         TypeKind::Nominal { representation, .. } => {
             contains_external_action_request(representation)
         }
-        TypeKind::List { item, .. } => contains_external_action_request(item),
+        TypeKind::List { item, .. } | TypeKind::Option(item) => {
+            contains_external_action_request(item)
+        }
         TypeKind::Record(fields) => fields.values().any(contains_external_action_request),
         TypeKind::Variant(cases) => cases
             .values()
@@ -741,6 +743,11 @@ fn value_bound(shape: &TypeShape) -> Option<(u64, u64)> {
             Some((1, VALUE_CELL_BYTES.checked_add(max.checked_mul(4)?)?))
         }
         TypeKind::Nominal { representation, .. } => value_bound(representation),
+        // A presence cell plus the largest present payload; absence is one cell.
+        TypeKind::Option(item) => {
+            let (cells, bytes) = value_bound(item)?;
+            Some((cells.checked_add(1)?, bytes.checked_add(VALUE_CELL_BYTES)?))
+        }
         TypeKind::List { item, max } => {
             let (cells, bytes) = value_bound(item)?;
             Some((
@@ -797,6 +804,8 @@ fn encoded_bound(shape: &TypeShape) -> Option<u64> {
         TypeKind::Bytes { max, .. } => 9_u64.checked_add(*max),
         TypeKind::String { max, .. } => 9_u64.checked_add(max.checked_mul(4)?),
         TypeKind::Nominal { representation, .. } => encoded_bound(representation),
+        // SPEC CanonicalEncodedMax: max(CanonicalEncodedMax<T>, none-encoding).
+        TypeKind::Option(item) => Some(encoded_bound(item)?.max(1)),
         TypeKind::List { item, max } => 9_u64.checked_add(encoded_bound(item)?.checked_mul(*max)?),
         TypeKind::Record(fields) => fields.iter().try_fold(9_u64, |sum, (name, shape)| {
             sum.checked_add(9)?

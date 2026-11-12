@@ -182,12 +182,15 @@ const PRELUDE_NAMES: &[&str] = &[
     "hash",
     "count",
     "at",
+    "default",
+    "isSome",
     "isUtf8",
     "len",
     "none",
     "slice",
     "some",
     "true",
+    "unwrap",
 ];
 
 #[derive(Debug, Clone)]

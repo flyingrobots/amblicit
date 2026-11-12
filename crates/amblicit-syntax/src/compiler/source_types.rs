@@ -62,6 +62,9 @@ impl TypeChecker<'_> {
                 self.core_types.insert(key, shape.core_type());
             }
             weights.insert(decl.name.clone(), weight);
+            if self.resolved.enum_types.contains(&decl.name) {
+                self.enum_coordinates.insert(shape.coord.clone());
+            }
             self.named_types.insert(decl.name.clone(), shape);
         }
     }
@@ -264,7 +267,9 @@ fn shape_fits_depth(shape: &TypeShape) -> bool {
         }
         match &shape.kind {
             TypeKind::Nominal { representation, .. } => pending.push((representation, depth + 1)),
-            TypeKind::List { item, .. } => pending.push((item, depth + 1)),
+            TypeKind::List { item, .. } | TypeKind::Option(item) => {
+                pending.push((item, depth + 1));
+            }
             TypeKind::ExternalActionRequest { settlement } => pending.push((settlement, depth + 1)),
             TypeKind::Record(fields) => {
                 pending.extend(fields.values().map(|field| (field, depth + 1)));

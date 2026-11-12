@@ -6,10 +6,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ast::{
-    BinOp, Block, BoundRef, BytesRefine, Decl, DigestLockedPackageRef, ElseClause, Expr, FieldDecl,
-    FunctionDecl, Import, ImportKind, IntentClause, IntentDecl, Module, ObstructionArm,
+    BinOp, Block, BoundRef, BytesRefine, Decl, DigestLockedPackageRef, ElseClause, EnumDecl, Expr,
+    FieldDecl, FunctionDecl, Import, ImportKind, IntentClause, IntentDecl, Module, ObstructionArm,
     ObstructionHandler, ObstructionTarget, RecordEntry, RequireElseArm, ScalarRefine, Stmt,
-    TypeDecl, TypeExpr, TypeRef, UnOp, YieldBlock,
+    TypeDecl, TypeExpr, TypeRef, UnOp, VariantCase, YieldBlock,
 };
 use crate::core_ir::{
     classify_core_type_reference, is_lowercase_sha256_review_digest, parse_core_integer,
@@ -33,6 +33,7 @@ mod signature_diagnostic;
 mod source_fold;
 mod source_functions;
 mod source_matches;
+mod source_options;
 mod source_types;
 mod source_variants;
 mod source_work;
@@ -338,6 +339,8 @@ pub struct ResolvedModule {
     /// which no source function may claim.
     pub(crate) target_intrinsic_coordinates: BTreeSet<String>,
     pub types: Vec<ResolvedTypeDecl>,
+    /// Declarations written as `enum`, whose cases use `Name.CASE` selection.
+    pub(crate) enum_types: BTreeSet<String>,
     pub source_functions: Vec<FunctionDecl>,
     pub intents: Vec<ResolvedIntent>,
 }
@@ -440,6 +443,7 @@ pub fn resolve_module(
     let imports = resolve_imports(&module.imports);
     let target_pure_intrinsics = target_pure_intrinsics_by_source(&imports, context);
     let mut types = Vec::new();
+    let mut enum_types = BTreeSet::new();
     let mut intents = Vec::new();
     let mut source_functions = Vec::new();
 
@@ -450,12 +454,16 @@ pub fn resolve_module(
                 name: decl.name.clone(),
                 source: decl.clone(),
             }),
-            Decl::Enum(decl) => errors.push(error(
-                CompilerStage::Resolve,
-                CompilerErrorKind::UnsupportedSourceShape,
-                "enum declarations are not in the initial lowerable subset",
-                decl.span,
-            )),
+            Decl::Enum(decl) => {
+                // Core has no enum kind. The compiler's enum encoding is a
+                // named variant whose cases carry no payload; source keeps the
+                // `Name.CASE` selection syntax distinct from `Name::Case`.
+                enum_types.insert(decl.name.clone());
+                types.push(ResolvedTypeDecl {
+                    name: decl.name.clone(),
+                    source: enum_type_decl(decl),
+                });
+            }
             Decl::Intent(intent) => {
                 if let Some(resolved) = resolve_intent(intent, context, &mut errors) {
                     intents.push(resolved);
@@ -485,10 +493,29 @@ pub fn resolve_module(
                 .collect(),
             target_pure_intrinsics,
             types,
+            enum_types,
             source_functions,
             intents,
         },
     )
+}
+
+fn enum_type_decl(decl: &EnumDecl) -> TypeDecl {
+    TypeDecl {
+        name: decl.name.clone(),
+        params: Vec::new(),
+        body: TypeExpr::Variant(
+            decl.cases
+                .iter()
+                .map(|case| VariantCase {
+                    name: case.clone(),
+                    payload: None,
+                    span: decl.span,
+                })
+                .collect(),
+        ),
+        span: decl.span,
+    }
 }
 
 /// Type-check a resolved module into the Core-ready typed boundary.
@@ -730,6 +757,8 @@ enum TypeKind {
     },
     Record(BTreeMap<String, TypeShape>),
     Variant(BTreeMap<String, Option<TypeShape>>),
+    /// Structural `Option<T>`; the item is the presence payload.
+    Option(Box<TypeShape>),
     ExternalActionRequest {
         settlement: Box<TypeShape>,
     },
@@ -760,6 +789,9 @@ impl TypeShape {
             TypeKind::List { item, max } => CoreType::List {
                 item: item.value_type_coord(),
                 max: *max,
+            },
+            TypeKind::Option(item) => CoreType::Option {
+                item: item.value_type_coord(),
             },
             TypeKind::Record(fields) => CoreType::Record {
                 fields: fields
@@ -1057,10 +1089,14 @@ struct TypeChecker<'a> {
     /// checked, by local id. Ids are unique and bindings immutable within a body.
     local_bounds: BTreeMap<String, (LocalRef, u64)>,
     input_proof_constraints: Vec<CorePredicate>,
+    /// Locals proven present by an enclosing `isSome` refinement, by local id.
+    option_presence: Vec<String>,
     effect_binding_profile: Option<EffectBindingProfile>,
     errors: Vec<CompilerError>,
     named_types: BTreeMap<String, TypeShape>,
     core_types: BTreeMap<String, CoreType>,
+    /// Coordinates of source `enum` declarations; their cases use `Name.CASE`.
+    enum_coordinates: BTreeSet<String>,
     inferred_yield_shapes: BTreeMap<usize, TypeShape>,
     inferred_yield_envs: BTreeMap<usize, LocalEnvironment>,
     expected_type_unavailable: bool,
@@ -1090,10 +1126,12 @@ impl<'a> TypeChecker<'a> {
             count_operand_maxima: BTreeMap::new(),
             local_bounds: BTreeMap::new(),
             input_proof_constraints: Vec::new(),
+            option_presence: Vec::new(),
             effect_binding_profile: None,
             errors: Vec::new(),
             named_types: BTreeMap::new(),
             core_types: BTreeMap::new(),
+            enum_coordinates: BTreeSet::new(),
             inferred_yield_shapes: BTreeMap::new(),
             inferred_yield_envs: BTreeMap::new(),
             expected_type_unavailable: false,
@@ -1225,8 +1263,11 @@ impl<'a> TypeChecker<'a> {
                 };
                 self.source_canonical_structural(kind, span)
             }
+            TypeRef::Option(item) => {
+                let item = self.type_ref_shape(item, span)?;
+                self.source_canonical_structural(TypeKind::Option(Box::new(item)), span)
+            }
             TypeRef::BytesTy(None)
-            | TypeRef::Option(_)
             | TypeRef::CapabilityRef(_)
             | TypeRef::Map { .. }
             | TypeRef::Named { .. }
@@ -2212,8 +2253,10 @@ impl<'a> TypeChecker<'a> {
     ) {
         let predicate = self.check_predicate(cond, env);
         let baseline_steps = state.accumulated_steps;
+        let presence = self.enter_presence(predicate.as_ref());
         let then_block =
             self.check_isolated_statement_block(intent, output_shape, then_block, env, state);
+        self.leave_presence(presence);
         let then_steps = state.accumulated_steps;
         state.accumulated_steps = baseline_steps;
         let else_block = match els {
@@ -3014,6 +3057,10 @@ impl<'a> TypeChecker<'a> {
             .and_then(|annotation| self.type_ref_shape(annotation, stmt.span));
         let expected_unavailable = stmt.ty.is_some() && annotation_shape.is_none();
         let baseline_steps = state.accumulated_steps;
+        let then_presence = predicate
+            .as_ref()
+            .map(source_options::present_locals)
+            .unwrap_or_default();
         let Some((then_block, then_shape, else_block, else_shape)) = self
             .check_branch_yield_blocks(
                 intent,
@@ -3024,6 +3071,7 @@ impl<'a> TypeChecker<'a> {
                 state,
                 baseline_steps,
                 annotation_shape.as_ref(),
+                &then_presence,
                 expected_unavailable,
             )
         else {
@@ -3070,8 +3118,12 @@ impl<'a> TypeChecker<'a> {
         state: &mut BodyState,
         baseline_steps: u64,
         annotation_shape: Option<&TypeShape>,
+        then_presence: &[String],
         expected_unavailable: bool,
     ) -> Option<(CoreBlock, TypeShape, CoreBlock, TypeShape)> {
+        // The `then` block, and probes of it, see the predicate's presence facts.
+        let then_mark = self.option_presence.len();
+        self.option_presence.extend_from_slice(then_presence);
         let joint_shape = if annotation_shape.is_none()
             && contains_contextual_bare_integer(&then_source.value)
             && contains_contextual_bare_integer(&else_source.value)
@@ -3080,6 +3132,7 @@ impl<'a> TypeChecker<'a> {
         } else {
             None
         };
+        self.leave_presence(then_mark);
         let shared_expected = annotation_shape.or(joint_shape.as_ref());
         let inferred_else_shape =
             if shared_expected.is_none() && contains_contextual_bare_integer(&then_source.value) {
@@ -3087,6 +3140,7 @@ impl<'a> TypeChecker<'a> {
             } else {
                 None
             };
+        self.option_presence.extend_from_slice(then_presence);
         let then_result = self.check_yield_block(
             intent,
             output_shape,
@@ -3109,6 +3163,7 @@ impl<'a> TypeChecker<'a> {
             } else {
                 None
             };
+        self.leave_presence(then_mark);
         let else_expected = shared_expected.or(inferred_then_shape.as_ref());
         let else_result = self.check_yield_block(
             intent,
@@ -4101,7 +4156,9 @@ impl<'a> TypeChecker<'a> {
                 if let Some(left) = &left {
                     self.input_proof_constraints.push(left.clone());
                 }
+                let presence = self.enter_presence(left.as_ref());
                 let right = self.check_predicate(rhs, env);
+                self.leave_presence(presence);
                 self.input_proof_constraints.truncate(prefix);
                 Some(CorePredicate::All(vec![left?, right?]))
             }
@@ -4446,6 +4503,9 @@ impl<'a> TypeChecker<'a> {
             }
             Expr::Ident { name, .. } if name == "fold" => {
                 self.check_fold(type_args, args, env, *span)
+            }
+            Expr::Ident { name, .. } if source_options::NAMES.contains(&name.as_str()) => {
+                self.check_option_operation(name, type_args, args, env, expectation.value(), *span)
             }
             Expr::Ident { name, .. } if name == "len" => {
                 self.check_byte_length(type_args, args, env, *span)
@@ -5196,7 +5256,7 @@ impl<'a> TypeChecker<'a> {
             next: &expectation,
         };
         let (then_value, else_value) = match expected {
-            None if is_bare_integer_literal(then) => {
+            None if needs_peer_type(then) => {
                 let else_value = self.check_conditional_arm(
                     els,
                     env,
@@ -5209,7 +5269,7 @@ impl<'a> TypeChecker<'a> {
                     .and_then(|value| self.check_expr_with_expected(then, env, Some(&value.ty)));
                 (then_value, else_value)
             }
-            None if is_bare_integer_literal(els) => {
+            None if needs_peer_type(els) => {
                 let then_value = self.check_conditional_arm(
                     then,
                     env,
@@ -5285,7 +5345,10 @@ impl<'a> TypeChecker<'a> {
                 CorePredicate::Not(Box::new(predicate.clone()))
             });
         }
+        // Only the `then` arm is refined; the `else` arm learns nothing.
+        let presence = self.enter_presence(predicate.filter(|_| truth));
         let checked = self.check_expr_with_effect_expectation(expr, env, expectation);
+        self.leave_presence(presence);
         self.input_proof_constraints.truncate(before);
         checked
     }
@@ -5395,6 +5458,11 @@ impl<'a> TypeChecker<'a> {
         env: &LocalEnvironment,
         expectation: EffectOutputExpectation<'_>,
     ) -> Option<TypedValue> {
+        if let Expr::Ident { name, .. } = base {
+            if let Some(ty) = self.case_selection_type(name, env) {
+                return self.check_enum_case(&ty, field, expectation.value(), span);
+            }
+        }
         let base = self.check_expr_with_effect_expectation(
             base,
             env,
@@ -5657,6 +5725,12 @@ impl<'a> TypeChecker<'a> {
     }
 }
 
+/// Expressions whose type comes from a typed conditional or match peer: a bare
+/// integer literal's width, or an untyped `none()`'s item type.
+fn needs_peer_type(expr: &Expr) -> bool {
+    is_bare_integer_literal(expr) || source_options::is_untyped_none(expr)
+}
+
 fn is_bare_integer_literal(expr: &Expr) -> bool {
     match expr {
         Expr::Int { suffix: None, .. } => true,
@@ -5758,6 +5832,10 @@ fn compatible_shape(left: &TypeShape, right: &TypeShape) -> Option<TypeShape> {
                 max: joined_max,
             },
         );
+    }
+    if let (TypeKind::Option(left_item), TypeKind::Option(right_item)) = (&left.kind, &right.kind) {
+        let joined_item = compatible_shape(left_item, right_item)?;
+        return joined_shape(left, right, TypeKind::Option(Box::new(joined_item)));
     }
     if let (TypeKind::Record(left_fields), TypeKind::Record(right_fields)) =
         (&left.kind, &right.kind)
@@ -5879,7 +5957,8 @@ fn compatible(expected: &TypeShape, actual: &TypeShape) -> bool {
                 max: actual_max,
             },
         ) => actual_max <= expected_max && compatible(expected_item, actual_item),
-        (
+        (TypeKind::Option(expected), TypeKind::Option(actual))
+        | (
             TypeKind::ExternalActionRequest {
                 settlement: expected,
             },
@@ -6071,6 +6150,7 @@ fn collect_imported_type_shape_closure(
             }
         }
         TypeKind::Nominal { representation, .. }
+        | TypeKind::Option(representation)
         | TypeKind::List {
             item: representation,
             ..

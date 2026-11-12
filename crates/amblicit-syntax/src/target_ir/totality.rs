@@ -145,8 +145,12 @@ fn node_is_total(
             else_block,
             ..
         } => {
+            // Statement branches extend only Option presence into `then`.
+            let presence = super::option_operations::then_block_presence(predicate);
+            let mut then_constraints = constraints.to_vec();
+            then_constraints.extend(presence.as_ref());
             predicate_is_total_at_depth(core, predicate, constraints, depth)
-                && block_is_total_at_depth(core, then_block, constraints, depth + 1)
+                && block_is_total_at_depth(core, then_block, &then_constraints, depth + 1)
                 && block_is_total_at_depth(core, else_block, constraints, depth + 1)
         }
     }
@@ -295,6 +299,9 @@ fn expression_is_total_at_depth(
                         args,
                         constraints,
                     )
+                }
+                _ if super::option_operations::is_operation(callee) => {
+                    super::option_operations::is_total(callee, args, constraints)
                 }
                 unsigned_addition::OPERATION => {
                     unsigned_addition::is_total(core, type_args, args, constraints)
