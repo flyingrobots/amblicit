@@ -2847,7 +2847,11 @@ fn source_function_comparisons_admissible(
             .iter()
             .map(|local| (local.id.as_str(), local))
             .collect::<BTreeMap<_, _>>();
-        function.body.bindings.iter().all(|binding| {
+        // Preconditions are never evaluated, but they are Core predicates and
+        // obey the same closed operator rule as the body they guard.
+        function.preconditions.iter().all(|precondition| {
+            predicate_comparisons_admissible(core, pure_functions, precondition, &available, 0)
+        }) && function.body.bindings.iter().all(|binding| {
             let admissible = expression_comparisons_admissible(
                 core,
                 pure_functions,

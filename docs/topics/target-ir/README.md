@@ -299,7 +299,7 @@ an ordered comparison (`<`, `<=`, `>`, `>=`) anywhere in an intent must compare
 integers, per the closed operator set: lowering resolves both operand types and
 refuses any other pairing with `InvalidCoreIdentity` detail
 `inadmissible_comparison_operator`. Under v3 the same rule applies to every
-source function in the module, each judged in its own scope, so a helper
+source function in the module, including its preconditions, each judged in its own scope, so a helper
 reached directly or through another helper cannot carry one. The v3 encoder has
 no type table, so it refuses an ordered comparison only when an operand is
 provably non-integer from the artifact itself (a non-integer constant, a record

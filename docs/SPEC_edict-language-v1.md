@@ -2162,7 +2162,9 @@ and every provider lowerer or verifier that accepts such Core, must judge them
 without trusting the compiler:
 
 - each precondition must be a total, typed predicate whose only locals are the
-  function's parameters, with no source-function call, fold or match;
+  function's parameters, with no source-function call, fold or match, and it
+  obeys every rule the selected Target IR domain applies to Core predicates
+  (under `echo.span-ir/v3`, an ordered comparison must compare integers);
 - the function body is judged total with its preconditions as facts, and
   without them a body that needs them refuses;
 - every call to the function, in an intent or in another function, must prove

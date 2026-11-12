@@ -560,3 +560,48 @@ fn target_refuses_forged_core_whose_precondition_reads_a_non_parameter() {
     };
     target_refuses(&core);
 }
+
+/// Oracle: the v3 closed comparison-operator rule (TIR-REQ-060) applies to
+/// every Core predicate, so a precondition cannot carry an ordered
+/// comparison of non-integers past `echo.span-ir/v3`.
+#[test]
+fn structured_target_refuses_a_non_integer_ordered_comparison_in_a_precondition() {
+    let structured = TargetIrLoweringFacts {
+        target_ir_domain: amblicit_syntax::ECHO_STRUCTURED_SPAN_IR_DOMAIN.into(),
+        ..facts()
+    };
+    let source = |precondition: &str| {
+        format!(
+            "package preconditions.example@1;
+fn first(bytes: Bytes<max=8>, start: U64) -> U64 where {precondition} {{ return start; }}
+type Input = {{ bytes: Bytes<max=8>, start: U64, end: U64, }};
+type Output = {{ value: U64, }};
+intent evaluate(input: Input) returns Output profile p.read basis none budget <= p.small {{
+  let value: U64 = first(input.bytes, input.start);
+  return {{ value }};
+}}"
+        )
+    };
+    let integer = accepted(&source("start <= start"));
+    let report = lower_to_target_ir(&integer, &structured);
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
+
+    let mut forged = integer;
+    forged.functions.get_mut("first").unwrap().preconditions = vec![CorePredicate::Compare {
+        op: CompareOp::Le,
+        left: param(0, "Bytes<max=8>"),
+        right: param(0, "Bytes<max=8>"),
+    }];
+    let report = lower_to_target_ir(&forged, &structured);
+    assert_eq!(
+        report
+            .failures
+            .first()
+            .map(|failure| (failure.kind, failure.detail.as_str())),
+        Some((
+            TargetLoweringFailureKind::InvalidCoreIdentity,
+            "inadmissible_comparison_operator"
+        )),
+        "{report:?}"
+    );
+}
