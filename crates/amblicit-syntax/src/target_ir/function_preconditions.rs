@@ -147,15 +147,25 @@ fn contains(fact: &CorePredicate, wanted: &CorePredicate) -> bool {
         CorePredicate::All(items) if fact != wanted => {
             items.iter().any(|item| contains(item, wanted))
         }
-        _ => fact == wanted || mirrored(fact).is_some_and(|mirror| &mirror == wanted),
+        _ => fact == wanted || mirrors(fact, wanted),
     }
 }
 
-fn mirrored(fact: &CorePredicate) -> Option<CorePredicate> {
-    let CorePredicate::Compare { op, left, right } = fact else {
-        return None;
+/// Whether `wanted` is `fact` with its operands swapped and its operator
+/// mirrored (`a < b` and `b > a`; `a == b` and `b == a`). Borrows only.
+fn mirrors(fact: &CorePredicate, wanted: &CorePredicate) -> bool {
+    let (
+        CorePredicate::Compare { op, left, right },
+        CorePredicate::Compare {
+            op: wanted_op,
+            left: wanted_left,
+            right: wanted_right,
+        },
+    ) = (fact, wanted)
+    else {
+        return false;
     };
-    let op = match op {
+    let mirrored = match op {
         CompareOp::Lt => CompareOp::Gt,
         CompareOp::Gt => CompareOp::Lt,
         CompareOp::Le => CompareOp::Ge,
@@ -163,11 +173,7 @@ fn mirrored(fact: &CorePredicate) -> Option<CorePredicate> {
         CompareOp::Eq => CompareOp::Eq,
         CompareOp::Ne => CompareOp::Ne,
     };
-    Some(CorePredicate::Compare {
-        op,
-        left: right.clone(),
-        right: left.clone(),
-    })
+    *wanted_op == mirrored && wanted_left == right && wanted_right == left
 }
 
 #[cfg(test)]

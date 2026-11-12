@@ -7,6 +7,27 @@ use super::{
     CoreTypeIntegrityFailure, CoreTypeIntegrityFailureKind, CoreTypeIntegrityState, LocalRef,
 };
 
+/// The most conjuncts a function's preconditions may hold in total, counting
+/// through nested Core `all` (`EDICT-CORE-FN-PRECONDITION-001`). Re-proving a
+/// call then scans the dominating facts at most this many times, which keeps
+/// the proof work in the same class as checking a subtraction.
+pub const MAX_FUNCTION_PRECONDITION_CONJUNCTS: usize = 16;
+
+/// Conjuncts of a predicate list, counting through nested Core `all`.
+pub(crate) fn precondition_conjuncts(preconditions: &[CorePredicate]) -> usize {
+    fn count(predicate: &CorePredicate) -> usize {
+        match predicate {
+            CorePredicate::All(items) => items.iter().map(count).sum(),
+            CorePredicate::True
+            | CorePredicate::False
+            | CorePredicate::Not(_)
+            | CorePredicate::Any(_)
+            | CorePredicate::Compare { .. } => 1,
+        }
+    }
+    preconditions.iter().map(count).sum()
+}
+
 /// A precondition is a typed predicate over the function's parameters alone.
 /// It may not call a source function, fold, or match, so a call site can
 /// instantiate it by substituting argument expressions for parameters.
@@ -45,6 +66,10 @@ pub(super) fn validate_preconditions(
             | CoreExpr::Field { .. }
             | CoreExpr::If { .. } => Ok(()),
         })?;
+    }
+    // Counted only after every predicate passed the depth-checked walks above.
+    if precondition_conjuncts(&function.preconditions) > MAX_FUNCTION_PRECONDITION_CONJUNCTS {
+        return Err(invalid(&format!("{path}.preconditions")));
     }
     Ok(())
 }

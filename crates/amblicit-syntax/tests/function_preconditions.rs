@@ -605,3 +605,39 @@ intent evaluate(input: Input) returns Output profile p.read basis none budget <=
         "{report:?}"
     );
 }
+
+/// Oracle: EDICT-CORE-FN-PRECONDITION-001 caps a function at
+/// `MAX_FUNCTION_PRECONDITION_CONJUNCTS` conjuncts, counted through `&&`.
+#[test]
+fn a_function_holds_at_most_sixteen_precondition_conjuncts() {
+    assert_eq!(amblicit_syntax::MAX_FUNCTION_PRECONDITION_CONJUNCTS, 16);
+    let function = |count: u64| {
+        let conjuncts = (1..=count)
+            .map(|bound| format!("start != {bound}u64"))
+            .collect::<Vec<_>>();
+        // Half as separate predicates, half inside one `&&` chain.
+        let (listed, chained) = conjuncts.split_at(conjuncts.len() / 2);
+        format!(
+            "fn first(start: U64) -> U64 where {}, {} {{ return start; }}",
+            listed.join(", "),
+            chained.join(" && ")
+        )
+    };
+    let at_limit = accepted(&program(&function(16), "", "U64", "input.start"));
+    assert_eq!(at_limit.functions["first"].preconditions.len(), 9);
+    let over = first_error(&program(&function(17), "", "U64", "input.start"));
+    assert_eq!(over.kind, CompilerErrorKind::InvalidBound, "{over:?}");
+
+    let mut forged = at_limit;
+    forged
+        .functions
+        .get_mut("first")
+        .unwrap()
+        .preconditions
+        .push(CorePredicate::True);
+    let failure = validate_core_module_type_integrity(&forged).unwrap_err();
+    assert_eq!(
+        failure.kind(),
+        CoreTypeIntegrityFailureKind::InvalidDefinition
+    );
+}

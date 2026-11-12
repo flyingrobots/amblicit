@@ -489,3 +489,57 @@ fn a_negated_left_operand_does_not_prove_the_right() {
     intent.input_constraints[0].predicate = CorePredicate::All(items);
     assert_refused(&core);
 }
+
+const NE: &str = "fn pick(start: U64, end: U64) -> U64 where start != end { return start; }";
+const LT: &str = "fn pick(start: U64, end: U64) -> U64 where start < end { return start; }";
+
+/// The non-order rule (`<`, `!=`, mirrored, nested in `&&`) through the
+/// compiler and Target. First written by safety-review round 3.
+#[test]
+fn non_order_preconditions_need_the_same_or_a_mirrored_fact() {
+    for (function, guard, proven) in [
+        (NE, "where input.start != input.end", true),
+        (NE, "where input.end != input.start", true),
+        (
+            NE,
+            "where input.end <= 4u64 && input.start != input.end",
+            true,
+        ),
+        (NE, "where input.start < input.end", false),
+        (NE, "", false),
+        (LT, "where input.start < input.end", true),
+        (LT, "where input.end > input.start", true),
+        (LT, "where input.end < input.start", false),
+        (LT, "where input.start <= input.end", false),
+        (LT, "where input.start != input.end", false),
+    ] {
+        let source = program(function, guard, "U64", "pick(input.start, input.end)");
+        match (proven, compile(&source)) {
+            (true, Ok(core)) => assert_lowers(&core),
+            (false, Err(errors)) => assert_eq!(
+                errors[0].kind,
+                CompilerErrorKind::UnprovenPrecondition,
+                "{guard}: {errors:?}"
+            ),
+            (_, result) => panic!("{function} / {guard}: expected proven={proven}, got {result:?}"),
+        }
+    }
+    // Target: a reversed strict-order fact does not prove `start < end`.
+    let mut core = accepted(&program(
+        LT,
+        "where input.start < input.end",
+        "U64",
+        "pick(input.start, input.end)",
+    ));
+    let intent = core.intents.get_mut("evaluate").unwrap();
+    let CorePredicate::Compare { left, right, .. } = intent.input_constraints[0].predicate.clone()
+    else {
+        panic!("compare")
+    };
+    intent.input_constraints[0].predicate = CorePredicate::Compare {
+        op: CompareOp::Lt,
+        left: right,
+        right: left,
+    };
+    assert_refused(&core);
+}

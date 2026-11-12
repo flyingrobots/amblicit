@@ -2100,7 +2100,13 @@ calls to imported or intrinsic pure functions such as `len`. A precondition
 must not call a source function, `fold` or `match`; such a predicate refuses
 with `UnsupportedSourceShape`, and a non-Boolean one with `ExpectedPredicate`.
 Each predicate is checked assuming the predicates before it, so a later
-precondition may subtract operands an earlier one orders.
+precondition may subtract operands an earlier one orders. A function holds at
+most 16 precondition conjuncts in total, counting each `&&` operand separately
+(`MAX_FUNCTION_PRECONDITION_CONJUNCTS`); more refuse with `InvalidBound`. The
+cap keeps re-proving a call to at most 16 scans of the facts that dominate it.
+Preconditions, facts and obligations use only the predicate forms `true`,
+`false`, `!`, `&&`, `||` and comparisons, including inside a conditional
+expression within an operand.
 
 **Call-site obligation** (`EDICT-LANG-FN-PRECONDITION-002`). Every call
 instantiates each precondition by replacing each parameter with the argument
@@ -2145,10 +2151,13 @@ proven:
 
 Expressions are compared as Core expression trees by structural equality: a
 local matches only a local with the same id, alpha name and type; a constant
-only a constant with the same width and value text; a call only a call with
+only a constant with the same width and integer value; a call only a call with
 the same callee, type arguments and arguments. A negated fact proves only the
 identical negation; it is never turned into an order. An obligation that is
-itself a Core `all` is proven when every item is proven, at any depth.
+itself a Core `all` is proven when every item is proven, at any depth. An
+instantiated obligation is not a Core artifact: its depth may reach the
+precondition's depth plus an argument's depth, each within the Core limit, and
+a consumer must not refuse it for exceeding the Core depth limit.
 
 **Body assumption** (`EDICT-LANG-FN-PRECONDITION-003`). The function body is
 checked with its preconditions as dominating facts, so subtraction, `slice`
@@ -2192,9 +2201,9 @@ position are:
 | a source function's `body` bindings and result | that function's `preconditions` |
 | a function's `preconditions[i]` | `preconditions[0..i]` |
 | an `if` expression's `then` / `else` value | the facts at the `if`, plus its predicate / the `not` of its predicate |
-| item `k` of a Core `all` | the facts at the `all`, plus items `0..k` |
-| item `k` of a Core `any` | the facts at the `any`, plus the `not` of items `0..k` |
-| a `fold` initial value, `match` scrutinee and arms, record, list, variant payload, field base, call argument | the facts at the enclosing expression |
+| item `k` of a Core `all` | the facts at the `all`, plus the items before `k` |
+| item `k` of a Core `any` | the facts at the `any`, plus the `not` of each item before `k` |
+| a `fold` initial value, `match` scrutinee and arms, record, list, variant payload, field base, call argument, the inner predicate of a `not`, the operands of a comparison, the predicate of an `if` expression | the facts at the enclosing expression |
 
 Statement-level `branch` blocks add no facts of their own, and nothing else
 adds a fact.
@@ -2787,7 +2796,7 @@ keyed by module-local name and omitted when empty:
 core-source-function = {
   params: [* local-ref],
   returnType: core-type-ref,
-  ? preconditions: [+ core-predicate],
+  ? preconditions: [+ precondition-predicate],
   body: core-pure-block,
 }
 ```
@@ -2801,7 +2810,10 @@ the field, so its canonical bytes and digest are exactly those it had before
 preconditions existed; an empty array is not canonical and refuses schema
 validation. Every local a precondition reads must be one of `params`, compared
 by id, alpha name and type, and no precondition may contain a call to a
-function in the same module's table, a `fold` or a `match`. Core type
+function in the same module's table, a `fold` or a `match`. A function
+holds at most 16 conjuncts in total, counted through nested `all`, and
+`precondition-predicate` admits only `true`, `false`, `not`, `all`, `any` and
+`compare`; `call` and `obstruction` predicates are never preconditions. Core type
 integrity refuses a violation with `InvalidDefinition` at
 `functions.<name>.preconditions[<index>]`.
 

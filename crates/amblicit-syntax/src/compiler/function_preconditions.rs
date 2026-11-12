@@ -5,7 +5,9 @@ use super::{
     CompilerStage, CoreExpr, CorePredicate, FunctionDecl, LocalEnvironment, LocalRef, Span,
     TypeChecker,
 };
-use crate::core_ir::instantiate_precondition;
+use crate::core_ir::{
+    instantiate_precondition, precondition_conjuncts, MAX_FUNCTION_PRECONDITION_CONJUNCTS,
+};
 
 impl TypeChecker<'_> {
     /// Compile every function's preconditions in its parameter frame. Each
@@ -42,6 +44,19 @@ impl TypeChecker<'_> {
                 preconditions.push(checked);
             }
             self.input_proof_constraints.clear();
+            let conjuncts = precondition_conjuncts(&preconditions);
+            if conjuncts > MAX_FUNCTION_PRECONDITION_CONJUNCTS {
+                self.errors.push(error(
+                    CompilerStage::TypeCheck,
+                    CompilerErrorKind::InvalidBound,
+                    format!(
+                        "function `{}` has {conjuncts} precondition conjuncts; at most \
+                         {MAX_FUNCTION_PRECONDITION_CONJUNCTS} are allowed",
+                        definition.name
+                    ),
+                    definition.span,
+                ));
+            }
             if let Some(signature) = self.function_signatures.get_mut(&definition.name) {
                 signature.preconditions = preconditions;
             }
