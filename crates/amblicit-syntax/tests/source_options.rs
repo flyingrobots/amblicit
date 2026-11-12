@@ -593,3 +593,20 @@ fn option_fold_state_is_metered_by_target() {
         .max_steps = 1;
     refused_by_target(&starved, "one-step budget");
 }
+
+#[test]
+fn recursive_types_through_option_remain_rejected() {
+    for body in [
+        "type Tree = variant { Leaf, Node(Option<Tree>) };",
+        "type Tree = variant { Leaf, Node(Branch) }; type Branch = { left: Option<Tree>, right: Option<Tree> };",
+        "type Chain = { next: Option<Chain> };",
+    ] {
+        let errors = compile(body).expect_err(body);
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.kind == CompilerErrorKind::InvalidCoreTypeIntegrity),
+            "{body}: {errors:?}"
+        );
+    }
+}
