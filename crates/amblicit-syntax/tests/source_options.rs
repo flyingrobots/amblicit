@@ -519,6 +519,29 @@ fn target_presence_follows_negated_and_disjunctive_guards() {
 }
 
 #[test]
+fn default_takes_its_item_from_the_operand_and_its_context_from_the_result() {
+    for body in [
+        // The expected type of `default` is `T`, not `Option<T>`.
+        "fn f(o: Option<Option<U64>>) -> Option<U64> { return default(o, none<U64>()); }",
+        "fn f() -> U64 { return default(none(), 0u64); }",
+        // A wider result context does not widen the Core item.
+        "fn f(o: Option<String<max=1>>) -> String<max=2> { return default(o, \"x\"); }",
+    ] {
+        let core = compile(&format!("{body} {WITNESS}")).expect(body);
+        lowered(&core);
+    }
+    // An explicit item type must be the operand's item exactly, as Target requires.
+    let body = "fn f(o: Option<String<max=1>>) -> String<max=2> { return default<String<max=2>>(o, \"xx\"); }";
+    let errors = compile(body).expect_err(body);
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.kind == CompilerErrorKind::TypeMismatch),
+        "{errors:?}"
+    );
+}
+
+#[test]
 fn target_rechecks_option_signatures_and_capability() {
     let original = compile(&format!("{EXPANSION} {WITNESS}")).unwrap();
     lowered(&original);

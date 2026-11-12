@@ -79,19 +79,21 @@ impl TypeChecker<'_> {
                 ("isSome", item, vec![value.expr], result)
             }
             "default" => {
-                let wanted = declared.or(expected_item);
-                let (option, item) = self.option_operand(&args[0], env, wanted.as_ref(), span)?;
-                let item = match wanted {
-                    Some(wanted) if compatible(&wanted, &item) => wanted,
-                    Some(_) => {
-                        return self.option_error(
-                            CompilerErrorKind::TypeMismatch,
-                            "default Option item does not fit its expected type",
-                            span,
-                        )
-                    }
-                    None => item,
-                };
+                // `default<T>(Option<T>, T) -> T`: an expected type is the
+                // result `T` itself, and only guides an untyped operand. The
+                // Core item is the operand's own item, never a widening, so
+                // native Target's exact Option signature check agrees.
+                let hint = declared.clone().or_else(|| expected.cloned());
+                let (option, item) = self.option_operand(&args[0], env, hint.as_ref(), span)?;
+                if declared.as_ref().is_some_and(|declared| {
+                    !(compatible(declared, &item) && compatible(&item, declared))
+                }) {
+                    return self.option_error(
+                        CompilerErrorKind::TypeMismatch,
+                        "default Option item does not match its type argument",
+                        span,
+                    );
+                }
                 let fallback = self.check_expr_with_expected(&args[1], env, Some(&item))?;
                 if !compatible(&item, &fallback.ty) {
                     return self.option_error(
