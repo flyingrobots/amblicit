@@ -8,6 +8,21 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Add function preconditions (#264). A source function may write `where`
+  clauses after its return type, as in `fn cut(bytes: Bytes<max=8>, start:
+  U64, end: U64) -> Bytes<max=8> where start <= end, end <= len(bytes)`. The
+  body may assume them, so subtraction and `slice` are proven in range. Every
+  call must prove them from the facts that dominate it, or it refuses with the
+  new compiler error `UnprovenPrecondition` at the call. They are never
+  evaluated and cost nothing. Core carries them as the optional, hash-significant
+  `functions.<name>.preconditions` list, omitted when empty, so every existing
+  Core and Target IR golden is byte-identical. Target re-judges them without
+  the compiler's proof and refuses forged Core with `InvalidCoreIdentity`.
+  Provider contract pack `function-preconditions-v1` publishes the schema;
+  `bounded-state-fold-v1` and earlier packs are unchanged and refuse the field.
+  The language specification defines the syntax, proof rule and Core shape,
+  and carves function `where` out of `EDICT-LANG-WHERE-001`.
+
 - Select target profile `echo.dpo@2`, Echo's effect profile. It lowers only
   to the ordered `echo.span-ir/v2` Target IR, and its effect intrinsics are
   named `echo.dpo@2.*`; each Echo profile refuses the other's intrinsics with

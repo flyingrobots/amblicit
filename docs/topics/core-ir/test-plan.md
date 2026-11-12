@@ -210,3 +210,15 @@ Out of scope:
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | COREIR-TP-044 | implemented | Fold identity and authority | COREIR-REQ-033 | All fold fields survive encoding; missing capability or invalid helper/state metadata fails InvalidDefinition at the fold result; a zero bound does not hide recursion. | bounded_fold_preserves_initial_state_static_step_and_iteration_bound, fold_core_requires_capability_and_declared_step_state, zero_bound_does_not_hide_recursive_step_authority | crates/amblicit-syntax/tests/bounded_state_fold.rs | Initial value typing is checked by Target separately. |
+
+## Function preconditions (#264)
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| COREIR-REQ-035 | implemented | `functions.<name>.preconditions` is a source-ordered, hash-significant `[+ core-predicate]`, omitted when empty so earlier canonical bytes are unchanged; integrity refuses non-parameter locals, same-module function calls, fold and match with InvalidDefinition at `functions.<name>.preconditions[<index>]`. | EDICT-CORE-FN-PRECONDITION-001, issue #264 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COREIR-TP-046 | implemented | Canonical shape and digest | COREIR-REQ-035 | The canonical map orders `body, params, returnType, preconditions` with two entries; a precondition-free function has no key; removing a precondition changes the digest. | core_preconditions_are_hash_significant_and_omitted_when_empty | crates/amblicit-syntax/tests/function_preconditions.rs | |
+| COREIR-TP-047 | implemented | Integrity scope | COREIR-REQ-035 | A forged non-parameter local and a forged self-call in a precondition each fail InvalidDefinition. | core_integrity_refuses_preconditions_outside_the_parameter_scope | crates/amblicit-syntax/tests/function_preconditions.rs | |
+| COREIR-TP-048 | implemented | Reviewed golden | COREIR-REQ-035 | The executable encoder reproduces the reviewed Core bytes and digest for Jedit's reproducer; earlier Core goldens are unchanged. | core_goldens_match_executable_encoder | xtask/src/tests.rs, fixtures/core/canonical/function-precondition.core.cbor, fixtures/core/canonical/function-precondition.core.sha256 | Class-5 change detector; the field-level oracle is COREIR-TP-046. |

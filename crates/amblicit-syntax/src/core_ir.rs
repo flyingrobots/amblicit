@@ -9,8 +9,10 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+mod function_preconditions;
 mod source_functions;
 mod variant_expressions;
+pub(crate) use function_preconditions::instantiate_precondition;
 pub(crate) use source_functions::validate_function_graph;
 pub(crate) use variant_expressions::{core_variant_case, core_variant_identity_matches};
 
@@ -43,6 +45,10 @@ pub struct CoreModule {
 pub struct CoreFunction {
     pub params: Vec<LocalRef>,
     pub return_type: String,
+    /// Static preconditions over `params`, in source order. Every call site
+    /// must prove them, and the body may assume them; nothing evaluates them.
+    /// Canonical Core omits the field when the list is empty.
+    pub preconditions: Vec<CorePredicate>,
     pub body: CorePureBlock,
 }
 

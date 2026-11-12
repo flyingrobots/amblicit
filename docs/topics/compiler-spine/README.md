@@ -210,6 +210,15 @@ The [source-function reference](source-functions.md) explains authority,
 canonical identity, conservative budgeting and target restrictions.
 [CSPINE-REQ-044] [CSPINE-REQ-045]
 
+A source function may state `where` preconditions after its return type. They
+are checked once as Boolean predicates over the parameters, before any body,
+and become facts in the function's own body, so subtraction and `slice` there
+can be proven. Every call instantiates them with its argument expressions and
+must prove each one from the facts that dominate the call, or it refuses with
+`UnprovenPrecondition` at the call span. Preconditions add nothing to Core
+intents or costs, and a precondition-bearing function cannot be a fold step.
+[CSPINE-REQ-067] [CSPINE-REQ-068] [CSPINE-REQ-069]
+
 Boolean `&&` and `||` predicates lower to ordered Core `All` and `Any` forms
 where predicate checking is used: input constraints, statement conditionals,
 requirements, branch-yield conditions, and pure conditionals. This preserves

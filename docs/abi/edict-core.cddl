@@ -128,9 +128,15 @@ core-capability-value = {
 ; guard, branch, loop, match-node, or proof-obligation nodes.
 ; Source-owned functions use the same pure body algebra, with their result type
 ; authenticated by the enclosing module. An empty function table is omitted.
+; `preconditions` are the function's `where` predicates in source order
+; (EDICT-CORE-FN-PRECONDITION-001). They read only `params`, never call a
+; source function, fold or match, and are never evaluated: every call site
+; must prove them and the body may assume them. A function without
+; preconditions omits the field; an empty array is not canonical.
 core-source-function = {
   params: [* local-ref],
   returnType: core-type-ref,
+  ? preconditions: [+ core-predicate],
   body: core-pure-block,
 }
 

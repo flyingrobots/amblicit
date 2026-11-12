@@ -447,3 +447,14 @@ without any intrinsic facts, retaining positive and structural-encoding controls
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TIR-TP-128 | implemented | Fold intrinsic operand bound | TIR-REQ-065 | A bounded-byte fold used as a sized intrinsic argument lowers with sufficient budget. | target_intrinsic_accepts_a_fold_with_validated_bounded_bytes_state | crates/amblicit-syntax/tests/target_pure_intrinsic.rs | State type supplies an independently validated maximum. |
+
+## Function preconditions (#264)
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| TIR-REQ-068 | implemented | Target judges source-function preconditions without the compiler's proof: each must be a total, typed predicate over exactly the parameters with no source call, fold or match; each body is total with its preconditions as facts; every call re-proves each instantiated precondition from its dominating facts; a precondition-bearing fold step refuses. Failures are InvalidCoreIdentity. | EDICT-TARGET-FN-PRECONDITION-001, issue #264 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-142 | implemented | Forged contract mutations | TIR-REQ-068 | From valid emitted Core: dropping the body's precondition, removing the intent `where` that proves the call, reversing the precondition, and reading a non-parameter local each refuse InvalidCoreIdentity. | target_refuses_forged_core_that_drops_a_precondition_the_body_needs, target_refuses_forged_core_whose_call_does_not_establish_a_precondition, target_refuses_forged_core_whose_precondition_reads_a_non_parameter | crates/amblicit-syntax/tests/function_preconditions.rs | Each mutation starts from Core the compiler accepted, so the refusal is Target's own judgment. |
+| TIR-TP-143 | implemented | Valid programs lower | TIR-REQ-068 | Every accepted precondition program in the compiler suite lowers; the reviewed Echo Target IR golden for Jedit's reproducer reproduces exactly. | jedit_function_precondition_reproducer_compiles_and_lowers, dominating_facts_from_every_source_establish_a_precondition, target_ir_goldens_match_executable_encoder | crates/amblicit-syntax/tests/function_preconditions.rs, xtask/src/tests.rs, fixtures/target-ir/canonical/echo-function-precondition.target-ir.cbor | Target IR carries the call, not the precondition; the precondition lives in the Core the artifact's semantic closure digests. |
