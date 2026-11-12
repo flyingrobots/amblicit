@@ -9,7 +9,8 @@ use amblicit_syntax::{
     author_lawpack, compile_to_core, decode_lawpack_adapter, decode_lawpack_bundle,
     lower_to_target_ir, parse_module, prepare_lawpack_compilation, CompilerError,
     CompilerErrorKind, CompilerStage, CoreModule, CoreNode, LawpackArtifactKind,
-    LawpackAuthoredArtifactSet, LawpackAuthoringDefinition, TargetIrArtifact, TargetLoweringStatus,
+    LawpackAuthoredArtifactSet, LawpackAuthoringDefinition, TargetIrArtifact, TargetIrOrderEntry,
+    TargetLoweringStatus,
 };
 use std::fmt::Write as _;
 
@@ -393,6 +394,17 @@ fn each_echo_mutation_intrinsic_is_callable_under_echo_dpo_2() {
             .iter()
             .map(|(_, intrinsic, ..)| intrinsic.replace("echo.dpo@1.", "echo.dpo@2."))
             .collect::<Vec<_>>()
+    );
+    // Ordered Target IR runs instructions in `executionOrder`, not table order.
+    assert_eq!(
+        artifact.intents["write"].execution_order,
+        Some(
+            steps
+                .iter()
+                .map(|step| TargetIrOrderEntry::Instruction(step.id.clone()))
+                .collect()
+        ),
+        "the five steps run in source order"
     );
     for step in steps {
         assert_eq!(step.obstruction_arms.len(), 0, "{}", step.target_intrinsic);
