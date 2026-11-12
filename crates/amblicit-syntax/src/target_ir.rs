@@ -2059,6 +2059,24 @@ fn expression_fits_declared_type(
     }
 }
 
+/// The result coordinate of a call: typed prelude results (`core.option.default`,
+/// `core.list.at`, ...) are derived by Target itself, other calls by their
+/// validated function fact.
+fn call_result_coordinate(
+    core: &CoreModule,
+    pure_functions: &[TargetPureFunctionFact],
+    callee: &str,
+    type_args: &[String],
+    args: &[CoreExpr],
+    available: &BTreeMap<&str, &LocalRef>,
+) -> Option<String> {
+    if is_typed_prelude_operation(callee) {
+        return prelude_type_coordinate(core, pure_functions, callee, type_args, args, available);
+    }
+    validated_function_return_type(core, pure_functions, callee, type_args, args, available)
+        .map(str::to_owned)
+}
+
 fn validated_function_return_type<'a>(
     core: &'a CoreModule,
     imported: &'a [TargetPureFunctionFact],
@@ -2293,15 +2311,9 @@ fn expression_string_shape(
             type_args,
             args,
         } => {
-            let fact = validated_function_return_type(
-                core,
-                pure_functions,
-                callee,
-                type_args,
-                args,
-                available,
-            )?;
-            let CoreType::String { max, canonical } = resolved_core_type(core, fact)? else {
+            let coordinate =
+                call_result_coordinate(core, pure_functions, callee, type_args, args, available)?;
+            let CoreType::String { max, canonical } = resolved_core_type(core, &coordinate)? else {
                 return None;
             };
             Some((max, canonical))

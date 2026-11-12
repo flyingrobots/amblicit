@@ -628,6 +628,19 @@ fn target_honours_statement_branch_presence_only_in_the_then_block() {
     refused_with(&core, &structured_facts(), "unwrap moved to the else block");
 }
 
+/// Target derives the String shape of a `default` or guarded `unwrap` result
+/// itself, so the value can feed string concatenation without a `let`.
+#[test]
+fn option_string_results_feed_concatenation() {
+    for body in [
+        "fn f(o: Option<String<max=2>>, s: String<max=2>) -> String<max=4> { return default(o, s) + s; }",
+        "fn f(o: Option<String<max=2>>, s: String<max=2>) -> String<max=4> { return if isSome(o) then unwrap(o) + s else s; }",
+    ] {
+        let core = compile(&format!("{body} {WITNESS}")).expect(body);
+        lowered(&core);
+    }
+}
+
 /// A statement-branch predicate gives its `then` block presence only through
 /// positive conjuncts. Target must not lift an `isSome` fact out of a negation
 /// or a disjunction, whatever the source checker decided.
