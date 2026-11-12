@@ -367,6 +367,8 @@ fn unwrap_refuses_outside_refined_regions() {
         "fn f(o: Option<U64>) -> Bool { return !isSome(o) && unwrap(o) > 3u64; }",
         "fn f(o: Option<U64>) -> U64 { return if !isSome(o) then 0u64 else unwrap(o); }",
         "fn f(o: Option<U64>) -> U64 { return if isSome(o) || false then unwrap(o) else 0u64; }",
+        "fn f(o: Option<U64>) -> U64 { return if isSome(o) != true then unwrap(o) else 0u64; }",
+        "fn f(o: Option<U64>) -> U64 { return if isSome(o) == false then unwrap(o) else 0u64; }",
         "type Box = { inner: Option<U64> }; fn f(b: Box) -> U64 { return if isSome(b.inner) then unwrap(b.inner) else 0u64; }",
         "fn get(o: Option<U64>) -> U64 { return unwrap(o); } fn f(o: Option<U64>) -> U64 { return if isSome(o) then get(o) else 0u64; }",
     ] {
@@ -624,6 +626,34 @@ fn target_honours_statement_branch_presence_only_in_the_then_block() {
     };
     std::mem::swap(then_block, else_block);
     refused_with(&core, &structured_facts(), "unwrap moved to the else block");
+}
+
+/// A statement-branch predicate gives its `then` block presence only through
+/// positive conjuncts. Target must not lift an `isSome` fact out of a negation
+/// or a disjunction, whatever the source checker decided.
+#[test]
+fn target_statement_branch_presence_ignores_negated_and_disjunctive_guards() {
+    let source = format!("{OPTIONAL_INPUT} intent run(input: Input) returns Output profile p.read basis none budget <= p.large {{ let o = input.value; if isSome(o) {{ let inner = unwrap(o); }} return {{ value: 0u64 }}; }}");
+    let original = compile(&source).unwrap();
+    lowered_with(&original, &structured_facts());
+    let forge = |label: &str, wrap: fn(CorePredicate) -> CorePredicate| {
+        let mut core = original.clone();
+        let intent = core.intents.get_mut("run").unwrap();
+        let Some(CoreNode::Branch { predicate, .. }) = intent
+            .body
+            .nodes
+            .iter_mut()
+            .find(|node| matches!(node, CoreNode::Branch { .. }))
+        else {
+            unreachable!()
+        };
+        *predicate = wrap(predicate.clone());
+        refused_with(&core, &structured_facts(), label);
+    };
+    forge("!isSome(o)", |guard| CorePredicate::Not(Box::new(guard)));
+    forge("isSome(o) || true", |guard| {
+        CorePredicate::Any(vec![guard, CorePredicate::True])
+    });
 }
 
 /// The root-presence shape of Jedit's `ReplaceRange` draft (`rootId`).
