@@ -386,13 +386,23 @@ fn each_precondition_is_total_only_given_the_ones_before_it() {
     assert_refused(&dropped);
     // Compiler side: same ordering requirement.
     let gap_rev = "fn gap(start: U64, end: U64) -> U64 where end - start <= 4u64, start <= end { return start; }";
-    assert!(compile(&program(
+    let source = program(
         gap_rev,
         "where input.start <= input.end && input.end - input.start <= 4u64",
         "U64",
         "gap(input.start, input.end)",
-    ))
-    .is_err());
+    );
+    let errors = compile(&source).expect_err("an unordered subtraction refuses");
+    assert_eq!(
+        errors[0].kind,
+        CompilerErrorKind::UnsupportedSourceShape,
+        "{errors:?}"
+    );
+    assert_eq!(
+        &source[errors[0].span.start..errors[0].span.end],
+        "end - start",
+        "{errors:?}"
+    );
 }
 
 // a call in a fold's initial value is judged with the intent facts.
