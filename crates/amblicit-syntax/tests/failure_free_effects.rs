@@ -271,11 +271,20 @@ fn compile(
     authored: &LawpackAuthoredArtifactSet,
     source: &str,
 ) -> Result<(CoreModule, amblicit_syntax::TargetLoweringReport), Vec<CompilerError>> {
+    compile_for(authored, source, "echo.dpo@1")
+}
+
+fn compile_for(
+    authored: &LawpackAuthoredArtifactSet,
+    source: &str,
+    target_profile: &str,
+) -> Result<(CoreModule, amblicit_syntax::TargetLoweringReport), Vec<CompilerError>> {
     let manifest = authored.artifact(LawpackArtifactKind::Manifest).unwrap();
     let exports = authored.artifact(LawpackArtifactKind::Exports).unwrap();
     let adapter = authored.artifact(LawpackArtifactKind::Adapter).unwrap();
     let bundle = decode_lawpack_bundle(manifest.bytes(), exports.bytes()).expect("exact bundle");
-    let adapter = decode_lawpack_adapter(&bundle, "echo.dpo@1", adapter.bytes()).expect("adapter");
+    let adapter =
+        decode_lawpack_adapter(&bundle, target_profile, adapter.bytes()).expect("adapter");
     let module = parse_module(source).expect("consumer parses");
     let preparation =
         prepare_lawpack_compilation(&module, &bundle, &adapter).expect("exact closure");
@@ -342,6 +351,47 @@ fn each_echo_mutation_intrinsic_is_callable_without_a_failure_map() {
         MUTATIONS
             .iter()
             .map(|(_, intrinsic, ..)| *intrinsic)
+            .collect::<Vec<_>>()
+    );
+    for step in steps {
+        assert_eq!(step.obstruction_arms.len(), 0, "{}", step.target_intrinsic);
+        assert_eq!(
+            step.obstruction_failures,
+            Vec::<String>::new(),
+            "{}",
+            step.target_intrinsic
+        );
+    }
+}
+
+#[test]
+fn each_echo_mutation_intrinsic_is_callable_under_echo_dpo_2() {
+    // Echo's effect profile `echo.dpo@2` names the same mutations in its own
+    // namespace and lowers only to ordered Target IR.
+    let mut definition = definition();
+    let adapter = &mut definition.target_adapters[0];
+    "echo.dpo@2".clone_into(&mut adapter.accepted_target_profile.id);
+    for implementation in adapter.effect_implementations.values_mut() {
+        implementation.target_intrinsic = implementation
+            .target_intrinsic
+            .replace("echo.dpo@1.", "echo.dpo@2.");
+    }
+    let authored = author_lawpack(&definition, &[]).expect("author the echo.dpo@2 lawpack");
+    let source = program(&authored, &every_mutation_body());
+    let (_, report) =
+        compile_for(&authored, &source, "echo.dpo@2").expect("failure-free effects compile");
+
+    let artifact = lowered(report);
+    assert_eq!(artifact.domain, "echo.span-ir/v2");
+    let steps = &artifact.intents["write"].steps;
+    assert_eq!(
+        steps
+            .iter()
+            .map(|step| step.target_intrinsic.clone())
+            .collect::<Vec<_>>(),
+        MUTATIONS
+            .iter()
+            .map(|(_, intrinsic, ..)| intrinsic.replace("echo.dpo@1.", "echo.dpo@2."))
             .collect::<Vec<_>>()
     );
     for step in steps {
