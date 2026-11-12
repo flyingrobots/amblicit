@@ -1,0 +1,13 @@
+package jedit.iterative.pure_typed_failure@1;
+use lawpack jedit.text@1 digest "sha256:f50872ced6d229170258ad145c4d1d14ee341716f5b454ab50a27538787eed0b" as text;
+// Jedit's iterative/pure-typed-failure.edict probe, reconciled with the
+// typed-failure design: the failure is declared, and the intent maps it with
+// `else` instead of propagating it with `expect`.
+failure Underflow;
+type Input = { start: U64, end: U64 }; type Output = { value: U64 };
+fn distance(start: U64, end: U64) -> U64 fails Underflow {
+  return if start <= end then end - start else fail Underflow;
+}
+intent evaluate(input: Input) returns Output profile text.replaceRange basis none budget <= text.replaceRangeBudget {
+  let value = distance(input.start, input.end) else text.RangeInverted; return { value };
+}
