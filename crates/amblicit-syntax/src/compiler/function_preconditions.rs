@@ -6,7 +6,8 @@ use super::{
     TypeChecker,
 };
 use crate::core_ir::{
-    instantiate_precondition, precondition_conjuncts, MAX_FUNCTION_PRECONDITION_CONJUNCTS,
+    instantiate_precondition, precondition_conjuncts, precondition_nodes,
+    MAX_FUNCTION_PRECONDITION_CONJUNCTS, MAX_FUNCTION_PRECONDITION_NODES,
 };
 
 impl TypeChecker<'_> {
@@ -44,21 +45,36 @@ impl TypeChecker<'_> {
                 preconditions.push(checked);
             }
             self.input_proof_constraints.clear();
-            let conjuncts = precondition_conjuncts(&preconditions);
-            if conjuncts > MAX_FUNCTION_PRECONDITION_CONJUNCTS {
+            self.check_precondition_bounds(definition, &preconditions);
+            if let Some(signature) = self.function_signatures.get_mut(&definition.name) {
+                signature.preconditions = preconditions;
+            }
+        }
+    }
+
+    /// Both caps of `EDICT-CORE-FN-PRECONDITION-001`, which bound the work of
+    /// re-proving every call: conjuncts (fact scans) and nodes (copies).
+    fn check_precondition_bounds(
+        &mut self,
+        definition: &FunctionDecl,
+        preconditions: &[CorePredicate],
+    ) {
+        let conjuncts = precondition_conjuncts(preconditions);
+        let nodes = precondition_nodes(preconditions);
+        for (what, count, limit) in [
+            ("conjuncts", conjuncts, MAX_FUNCTION_PRECONDITION_CONJUNCTS),
+            ("Core nodes", nodes, MAX_FUNCTION_PRECONDITION_NODES),
+        ] {
+            if count > limit {
                 self.errors.push(error(
                     CompilerStage::TypeCheck,
                     CompilerErrorKind::InvalidBound,
                     format!(
-                        "function `{}` has {conjuncts} precondition conjuncts; at most \
-                         {MAX_FUNCTION_PRECONDITION_CONJUNCTS} are allowed",
+                        "preconditions of `{}` hold {count} {what}; at most {limit} are allowed",
                         definition.name
                     ),
                     definition.span,
                 ));
-            }
-            if let Some(signature) = self.function_signatures.get_mut(&definition.name) {
-                signature.preconditions = preconditions;
             }
         }
     }

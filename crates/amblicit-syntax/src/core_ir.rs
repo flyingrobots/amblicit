@@ -12,8 +12,12 @@ use serde::{Deserialize, Serialize};
 mod function_preconditions;
 mod source_functions;
 mod variant_expressions;
-pub use function_preconditions::MAX_FUNCTION_PRECONDITION_CONJUNCTS;
-pub(crate) use function_preconditions::{instantiate_precondition, precondition_conjuncts};
+pub(crate) use function_preconditions::{
+    instantiate_precondition, precondition_conjuncts, precondition_nodes,
+};
+pub use function_preconditions::{
+    MAX_FUNCTION_PRECONDITION_CONJUNCTS, MAX_FUNCTION_PRECONDITION_NODES,
+};
 pub(crate) use source_functions::validate_function_graph;
 pub(crate) use variant_expressions::{core_variant_case, core_variant_identity_matches};
 

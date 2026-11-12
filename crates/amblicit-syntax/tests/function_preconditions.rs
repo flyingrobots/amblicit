@@ -641,3 +641,49 @@ fn a_function_holds_at_most_sixteen_precondition_conjuncts() {
         CoreTypeIntegrityFailureKind::InvalidDefinition
     );
 }
+
+/// Oracle: EDICT-CORE-FN-PRECONDITION-001 caps a function's preconditions
+/// at `MAX_FUNCTION_PRECONDITION_NODES` Core nodes, one per predicate and per
+/// expression. An `any` of 85 `local != const` comparisons is 1 + 85 * 3.
+#[test]
+fn a_function_holds_at_most_256_precondition_nodes() {
+    assert_eq!(amblicit_syntax::MAX_FUNCTION_PRECONDITION_NODES, 256);
+    let mut core = accepted(&program(
+        "fn first(start: U64) -> U64 where start != 0u64 { return start; }",
+        "",
+        "U64",
+        "input.start",
+    ));
+    let compare = |bound: u64| CorePredicate::Compare {
+        op: CompareOp::Ne,
+        left: param(0, "U64"),
+        right: CoreExpr::Const(CoreValue::Int {
+            width: "U64".into(),
+            value: bound.to_string(),
+        }),
+    };
+    let mut items = (1..=85).map(compare).collect::<Vec<_>>();
+    core.functions.get_mut("first").unwrap().preconditions =
+        vec![CorePredicate::Any(items.clone())];
+    validate_core_module_type_integrity(&core).expect("256 nodes are allowed");
+
+    items.push(CorePredicate::True);
+    core.functions.get_mut("first").unwrap().preconditions = vec![CorePredicate::Any(items)];
+    let failure = validate_core_module_type_integrity(&core).unwrap_err();
+    assert_eq!(
+        failure.kind(),
+        CoreTypeIntegrityFailureKind::InvalidDefinition
+    );
+
+    let disjuncts = (1..=100)
+        .map(|bound| format!("start != {bound}u64"))
+        .collect::<Vec<_>>()
+        .join(" || ");
+    let over = first_error(&program(
+        &format!("fn first(start: U64) -> U64 where {disjuncts} {{ return start; }}"),
+        "",
+        "U64",
+        "input.start",
+    ));
+    assert_eq!(over.kind, CompilerErrorKind::InvalidBound, "{over:?}");
+}

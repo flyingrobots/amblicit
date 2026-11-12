@@ -133,7 +133,8 @@ core-capability-value = {
 ; source function, fold or match, and are never evaluated: every call site
 ; must prove them and the body may assume them. A function without
 ; preconditions omits the field; an empty array is not canonical. A function
-; holds at most 16 conjuncts in total, counted through nested `all`.
+; holds at most 16 conjuncts in total, counted through nested `all`, and at
+; most 256 Core nodes, one per predicate and per expression.
 core-source-function = {
   params: [* local-ref],
   returnType: core-type-ref,

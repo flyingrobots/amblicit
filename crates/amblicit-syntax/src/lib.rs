@@ -146,6 +146,7 @@ pub use core_ir::{
     CorePureBinding, CorePureBlock, CoreRequireFailureArm, CoreType, CoreTypeIntegrityFailure,
     CoreTypeIntegrityFailureKind, CoreValue, InputConstraint, InputConstraintSource, LocalRef,
     ResourceRef, ValidatedCoreModule, CORE_API_VERSION, MAX_FUNCTION_PRECONDITION_CONJUNCTS,
+    MAX_FUNCTION_PRECONDITION_NODES,
 };
 pub use highlight::{highlight_source, HighlightRole, HighlightToken};
 pub use lawpack::{

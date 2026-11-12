@@ -9,9 +9,51 @@ use super::{
 
 /// The most conjuncts a function's preconditions may hold in total, counting
 /// through nested Core `all` (`EDICT-CORE-FN-PRECONDITION-001`). Re-proving a
-/// call then scans the dominating facts at most this many times, which keeps
-/// the proof work in the same class as checking a subtraction.
+/// call scans the dominating facts at most this many times.
 pub const MAX_FUNCTION_PRECONDITION_CONJUNCTS: usize = 16;
+
+/// The most Core nodes a function's preconditions may hold in total: one per
+/// predicate and one per expression, anywhere in the trees
+/// (`EDICT-CORE-FN-PRECONDITION-001`). Instantiating a call copies at most
+/// this many nodes plus one copy of an argument per parameter reference, so
+/// one call costs at most this bound times its own size, and checking every
+/// call stays proportional to Core size times this bound before fact scans.
+pub const MAX_FUNCTION_PRECONDITION_NODES: usize = 256;
+
+/// Core nodes in a predicate list: one per predicate and per expression.
+pub(crate) fn precondition_nodes(preconditions: &[CorePredicate]) -> usize {
+    fn predicate(value: &CorePredicate) -> usize {
+        1 + match value {
+            CorePredicate::True | CorePredicate::False => 0,
+            CorePredicate::Not(inner) => predicate(inner),
+            CorePredicate::All(items) | CorePredicate::Any(items) => {
+                items.iter().map(predicate).sum()
+            }
+            CorePredicate::Compare { left, right, .. } => expression(left) + expression(right),
+        }
+    }
+    fn expression(value: &CoreExpr) -> usize {
+        1 + match value {
+            CoreExpr::Local { .. } | CoreExpr::Const(_) => 0,
+            CoreExpr::Variant { payload, .. } => payload.as_deref().map_or(0, expression),
+            CoreExpr::Fold { initial, .. } => expression(initial),
+            CoreExpr::Match { scrutinee, arms } => {
+                expression(scrutinee) + arms.iter().map(|arm| expression(&arm.body)).sum::<usize>()
+            }
+            CoreExpr::Record { fields } => fields.values().map(expression).sum(),
+            CoreExpr::List { values } | CoreExpr::Call { args: values, .. } => {
+                values.iter().map(expression).sum()
+            }
+            CoreExpr::Field { base, .. } => expression(base),
+            CoreExpr::If {
+                predicate: condition,
+                then_value,
+                else_value,
+            } => predicate(condition) + expression(then_value) + expression(else_value),
+        }
+    }
+    preconditions.iter().map(predicate).sum()
+}
 
 /// Conjuncts of a predicate list, counting through nested Core `all`.
 pub(crate) fn precondition_conjuncts(preconditions: &[CorePredicate]) -> usize {
@@ -68,7 +110,9 @@ pub(super) fn validate_preconditions(
         })?;
     }
     // Counted only after every predicate passed the depth-checked walks above.
-    if precondition_conjuncts(&function.preconditions) > MAX_FUNCTION_PRECONDITION_CONJUNCTS {
+    if precondition_conjuncts(&function.preconditions) > MAX_FUNCTION_PRECONDITION_CONJUNCTS
+        || precondition_nodes(&function.preconditions) > MAX_FUNCTION_PRECONDITION_NODES
+    {
         return Err(invalid(&format!("{path}.preconditions")));
     }
     Ok(())

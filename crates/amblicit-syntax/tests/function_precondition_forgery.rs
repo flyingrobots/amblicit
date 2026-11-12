@@ -553,3 +553,45 @@ fn non_order_preconditions_need_the_same_or_a_mirrored_fact() {
     };
     assert_refused(&core);
 }
+
+/// A call must prove every precondition and every `&&` part of one: a fact
+/// for only one part refuses, attributed to the calling intent. First
+/// written by safety-review round 4.
+#[test]
+fn a_partial_proof_is_refused() {
+    for (name, function) in [
+        (
+            "two listed preconditions",
+            "fn first(start: U64, end: U64) -> U64 where start <= end, end <= 8u64 { return start; }",
+        ),
+        (
+            "one && precondition",
+            "fn first(start: U64, end: U64) -> U64 where start <= end && end <= 8u64 { return start; }",
+        ),
+    ] {
+        let mut core = accepted(&program(
+            function,
+            "where input.start <= input.end && input.end <= 8u64",
+            "U64",
+            "first(input.start, input.end)",
+        ));
+        assert_lowers(&core);
+        let CorePredicate::All(items) =
+            core.intents["evaluate"].input_constraints[0].predicate.clone()
+        else {
+            panic!("{name}: expected all")
+        };
+        for (index, item) in items.into_iter().enumerate() {
+            core.intents.get_mut("evaluate").unwrap().input_constraints[0].predicate = item;
+            let report = lower(&core);
+            assert_eq!(
+                report
+                    .failures
+                    .first()
+                    .map(|failure| (failure.kind, failure.intent.as_deref())),
+                Some((TargetLoweringFailureKind::InvalidCoreIdentity, Some("evaluate"))),
+                "BYPASS {name} with only fact {index}: {report:?}"
+            );
+        }
+    }
+}

@@ -2102,8 +2102,13 @@ with `UnsupportedSourceShape`, and a non-Boolean one with `ExpectedPredicate`.
 Each predicate is checked assuming the predicates before it, so a later
 precondition may subtract operands an earlier one orders. A function holds at
 most 16 precondition conjuncts in total, counting each `&&` operand separately
-(`MAX_FUNCTION_PRECONDITION_CONJUNCTS`); more refuse with `InvalidBound`. The
-cap keeps re-proving a call to at most 16 scans of the facts that dominate it.
+(`MAX_FUNCTION_PRECONDITION_CONJUNCTS`), and at most 256 Core nodes in total,
+counting one per predicate and one per expression anywhere in the trees
+(`MAX_FUNCTION_PRECONDITION_NODES`); more refuse with `InvalidBound`. Together
+the caps bound re-proving one call to at most 16 scans of the facts that
+dominate it, after building an obligation of at most 256 nodes plus one copy
+of an argument per parameter reference. Checking every call is then at worst
+quadratic in Core size, the same class as checking unsigned subtraction.
 Preconditions, facts and obligations use only the predicate forms `true`,
 `false`, `!`, `&&`, `||` and comparisons, including inside a conditional
 expression within an operand.
@@ -2811,11 +2816,13 @@ preconditions existed; an empty array is not canonical and refuses schema
 validation. Every local a precondition reads must be one of `params`, compared
 by id, alpha name and type, and no precondition may contain a call to a
 function in the same module's table, a `fold` or a `match`. A function
-holds at most 16 conjuncts in total, counted through nested `all`, and
+holds at most 16 conjuncts in total, counted through nested `all`, and at
+most 256 Core nodes (one per predicate and per expression), and
 `precondition-predicate` admits only `true`, `false`, `not`, `all`, `any` and
 `compare`; `call` and `obstruction` predicates are never preconditions. Core type
-integrity refuses a violation with `InvalidDefinition` at
-`functions.<name>.preconditions[<index>]`.
+integrity refuses a violation with `InvalidDefinition` at or under
+`functions.<name>.preconditions`: a cap violation at that path, a violation
+within one precondition at or under `functions.<name>.preconditions[<index>]`.
 
 The meaning of `preconditions` is the static contract in
 [Function Preconditions](#function-preconditions): every call site proves them
