@@ -2113,7 +2113,7 @@ The current compiler's Option encoding lowers `some`, `none`, `isSome`,
 `default` and `unwrap` to typed Core calls `core.option.<name><T>(...)` under the
 required capability `core.option/v1`; the single type argument is the item
 coordinate `T`. `none<T>()` may omit `<T>` where an expected `Option` type or a
-typed conditional or match peer supplies it. A refining `isSome(x)` may stand
+typed peer (another `if` arm or block, or another `match` arm) supplies it. A refining `isSome(x)` may stand
 alone or be one conjunct of an `&&` chain; the `then` branch of an expression
 `if`, a statement `if` and a branch-yield `if` are all refined regions. `x` must
 be a local, not a field path. The compiler does not yet accept `match` on an

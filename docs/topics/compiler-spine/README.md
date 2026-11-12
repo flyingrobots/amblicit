@@ -154,7 +154,8 @@ coverage rule and cannot bind a payload. [CSPINE-REQ-075]
 coordinate, and add the hash-significant `core.option/v1` capability. `some` and
 `none` accept an explicit `<T>`. Otherwise `some` takes its item type from an
 expected Option type or its value, and `none()` from an expected Option type or
-a typed conditional or match peer; with neither it refuses
+a typed peer: the other arm of an expression `if`, another `match` arm, or
+the other block of a branch-yield `if`; with neither it refuses
 `UnsupportedSourceShape`. Mismatched payloads, fallbacks, type arguments and
 non-Option operands refuse `TypeMismatch`. `isSome`, `unwrap` and `default` are
 protected prelude names: no function, parameter or local may use them. Ordered comparisons (`<`, `<=`, `>`, `>=`) on Option, enum or variant values refuse `TypeMismatch`, and an Option conditional join refuses unless one arm's type contains the other's. Option-valued intent results refuse

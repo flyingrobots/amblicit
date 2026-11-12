@@ -3135,7 +3135,7 @@ impl<'a> TypeChecker<'a> {
         self.leave_presence(then_mark);
         let shared_expected = annotation_shape.or(joint_shape.as_ref());
         let inferred_else_shape =
-            if shared_expected.is_none() && contains_contextual_bare_integer(&then_source.value) {
+            if shared_expected.is_none() && needs_yield_peer_type(&then_source.value) {
                 self.infer_yield_block_shape(intent, output_shape, else_source, env, state)
             } else {
                 None
@@ -3153,7 +3153,7 @@ impl<'a> TypeChecker<'a> {
         let then_steps = state.accumulated_steps;
         state.accumulated_steps = baseline_steps;
         let inferred_then_shape =
-            if shared_expected.is_none() && contains_contextual_bare_integer(&else_source.value) {
+            if shared_expected.is_none() && needs_yield_peer_type(&else_source.value) {
                 then_result
                     .as_ref()
                     .map(|(_, shape)| shape.clone())
@@ -5739,6 +5739,11 @@ impl<'a> TypeChecker<'a> {
             }
         }
     }
+}
+
+/// Branch-yield values whose type comes from the other block's typed yield.
+fn needs_yield_peer_type(expr: &Expr) -> bool {
+    contains_contextual_bare_integer(expr) || source_options::is_untyped_none(expr)
 }
 
 /// Expressions whose type comes from a typed conditional or match peer: a bare

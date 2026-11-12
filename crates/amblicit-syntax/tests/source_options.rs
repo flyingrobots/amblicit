@@ -780,3 +780,20 @@ fn option_joins_need_one_arm_to_contain_the_other() {
     .expect("a contained arm joins");
     lowered(&core);
 }
+
+/// An untyped `none()` in either branch-yield block takes its item type from a
+/// typed `some(...)` yielded by the other block, as in expression conditionals.
+#[test]
+fn branch_yield_none_takes_its_item_type_from_the_typed_peer() {
+    for (then_value, else_value) in [
+        ("none()", "some(input.value)"),
+        ("some(input.value)", "none()"),
+    ] {
+        let source = format!("type Input = {{ value: U64 }}; type Output = {{ value: U64 }}; intent run(input: Input) returns Output profile p.read basis none budget <= p.large {{ let o = if input.value == 0u64 {{ yield {then_value}; }} else {{ yield {else_value}; }}; return {{ value: default(o, 0u64) }}; }}");
+        let core = compile(&source).expect(&source);
+        assert!(core
+            .required_core_capabilities
+            .iter()
+            .any(|capability| capability == "core.option/v1"));
+    }
+}
