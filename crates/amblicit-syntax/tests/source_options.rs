@@ -134,7 +134,7 @@ fn option_prelude_calls_lower_to_typed_core_option_calls() {
     let (callee, type_args, args) = call(&fields["right"]);
     assert_eq!(callee, "core.option.none");
     assert_eq!(type_args, ["jedit.options@1.Visit"]);
-    assert!(args.is_empty());
+    assert!(matches!(args, []), "{args:?}");
 
     let (callee, type_args, args) = call(&core.functions["present"].body.result);
     assert_eq!(
