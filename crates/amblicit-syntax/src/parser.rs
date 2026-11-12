@@ -823,11 +823,19 @@ impl Parser {
         self.expect(&TokenKind::RParen)?;
         self.expect(&TokenKind::Arrow)?;
         let returns = self.type_ref()?;
+        let mut preconditions = Vec::new();
+        while self.eat_kw("where") {
+            preconditions.push(self.expr()?);
+            while self.eat(&TokenKind::Comma) {
+                preconditions.push(self.expr()?);
+            }
+        }
         let body = self.block()?;
         Ok(FunctionDecl {
             name,
             params,
             returns,
+            preconditions,
             body,
             span: Span::new(start, self.prev_end()),
         })

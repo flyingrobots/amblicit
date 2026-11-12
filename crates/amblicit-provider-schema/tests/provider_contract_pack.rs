@@ -36,6 +36,10 @@ use sha2::{Digest, Sha256};
 const COMMON_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-common.cddl");
 const CORE_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-core.cddl");
 const PRE_FOLD_CORE_CDDL: &[u8] = include_bytes!("../../../fixtures/core/pre-fold-core.cddl");
+/// Core schema bytes before function `preconditions`; the bounded-state-fold
+/// publication embeds these bytes.
+const PRE_PRECONDITION_CORE_CDDL: &[u8] =
+    include_bytes!("../../../fixtures/core/pre-precondition-core.cddl");
 const LAWPACK_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-lawpack.cddl");
 const LAWPACK_ADAPTER_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-lawpack-adapter.cddl");
 const TARGET_PROFILE_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-target-profile.cddl");
@@ -636,10 +640,11 @@ fn structured_iterable_schema_refuses_empty_aggregates() {
 #[test]
 fn published_target_ir_binding_constructs_the_production_registry_and_validates_v3() {
     const PUBLISHED_CDDL: &[u8] = include_bytes!(
-        "../../../fixtures/provider-contracts/bounded-state-fold-v1/edict-provider-contracts.cddl"
+        "../../../fixtures/provider-contracts/function-preconditions-v1/edict-provider-contracts.cddl"
     );
-    const PUBLISHED_MANIFEST: &[u8] =
-        include_bytes!("../../../fixtures/provider-contracts/bounded-state-fold-v1/manifest.json");
+    const PUBLISHED_MANIFEST: &[u8] = include_bytes!(
+        "../../../fixtures/provider-contracts/function-preconditions-v1/manifest.json"
+    );
 
     // The in-memory pack is exactly the published publication, so its typed
     // manifest carries the published domain bindings.
@@ -1932,6 +1937,76 @@ fn fold_contract_requires_new_schema_selection() {
     remove_map_field(map_value_mut(map_value_mut(run, "body"), "result"), "step");
     assert_eq!(
         current.validate_domain(CORE_MODULE_DIGEST_DOMAIN, &missing_step),
+        Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+    );
+}
+
+/// Oracle: `docs/abi/edict-core.cddl` (EDICT-CORE-FN-PRECONDITION-001). The
+/// earlier publication stays byte-identical and refuses the new field.
+#[test]
+fn precondition_contract_requires_new_schema_selection() {
+    let old = assemble_provider_contract_pack(ProviderContractPackInput {
+        core_cddl: PRE_PRECONDITION_CORE_CDDL,
+        ..input(canonical_target_profile_contract_resources())
+    })
+    .expect("frozen bounded-state-fold pack");
+    assert_eq!(
+        old.cddl_bytes(),
+        include_bytes!(
+            "../../../fixtures/provider-contracts/bounded-state-fold-v1/edict-provider-contracts.cddl"
+        )
+    );
+    assert_eq!(
+        old.manifest_bytes(),
+        include_bytes!("../../../fixtures/provider-contracts/bounded-state-fold-v1/manifest.json")
+    );
+    let source = include_str!("../../../fixtures/lang/functions/function-precondition.amblicit");
+    let budget = CoreBudget {
+        max_steps: 512,
+        max_allocated_bytes: 8192,
+        max_output_bytes: 4096,
+    };
+    let context = CompilerContext::new()
+        .with_operation_profile("text.replaceRange", "continuum.profile.read-only/v1")
+        .with_budget("text.replaceRangeBudget", budget);
+    let encode = |source: &str| {
+        let core = compile_to_core(&parse_module(source).unwrap(), &context).unwrap();
+        decode_canonical_cbor(&encode_core_module(&core).unwrap()).unwrap()
+    };
+    let baseline = encode(
+        &source
+            .replace(
+                "  where start <= end, end <= len(bytes), start <= len(bytes)\n",
+                "",
+            )
+            .replace("slice(bytes, start, end)", "bytes"),
+    );
+    old.validate_domain(CORE_MODULE_DIGEST_DOMAIN, &baseline)
+        .expect("old publication accepts the precondition-free control");
+    let value = encode(source);
+    assert_eq!(
+        old.validate_domain(CORE_MODULE_DIGEST_DOMAIN, &value),
+        Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+    );
+    let current = assemble(canonical_target_profile_contract_resources());
+    assert_ne!(old.raw_sha256(), current.raw_sha256());
+    current
+        .validate_domain(CORE_MODULE_DIGEST_DOMAIN, &value)
+        .expect("new schema accepts function preconditions");
+
+    let mut empty = value;
+    let CanonicalValue::Map(fields) = map_value_mut(map_value_mut(&mut empty, "functions"), "cut")
+    else {
+        panic!("function entry is a map")
+    };
+    let preconditions = fields
+        .iter_mut()
+        .find(|(key, _)| *key == CanonicalValue::Text("preconditions".into()))
+        .map(|(_, value)| value)
+        .expect("preconditions field");
+    *preconditions = CanonicalValue::Array(Vec::new());
+    assert_eq!(
+        current.validate_domain(CORE_MODULE_DIGEST_DOMAIN, &empty),
         Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
     );
 }

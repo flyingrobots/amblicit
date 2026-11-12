@@ -299,7 +299,7 @@ an ordered comparison (`<`, `<=`, `>`, `>=`) anywhere in an intent must compare
 integers, per the closed operator set: lowering resolves both operand types and
 refuses any other pairing with `InvalidCoreIdentity` detail
 `inadmissible_comparison_operator`. Under v3 the same rule applies to every
-source function in the module, each judged in its own scope, so a helper
+source function in the module, including its preconditions, each judged in its own scope, so a helper
 reached directly or through another helper cannot carry one. The v3 encoder has
 no type table, so it refuses an ordered comparison only when an operand is
 provably non-integer from the artifact itself (a non-integer constant, a record
@@ -859,3 +859,18 @@ and can reject a compiler-accepted operation near its budget ceiling.
 provider verification, effect execution costs, output encoding limits and runtime
 admission retain their separate authorities; this meter does not establish the
 full #268 runtime contract or the authored rope cutover.
+
+## Function preconditions
+
+Target judges source-function preconditions itself rather than trusting the
+compiler. Each precondition must be a total, typed predicate whose only locals
+are the function's parameters, with no source-function call, fold or match.
+Each function body is judged total with its preconditions as facts. Every call
+to a precondition-bearing function, in an intent or another function,
+instantiates each precondition with the call's arguments and must prove it
+from the facts that dominate the call, by the specification's order proof or
+an identical fact. A fold whose step carries preconditions refuses. Any failure
+refuses with `InvalidCoreIdentity`, so Core that drops a precondition its body
+needs, adds one its callers do not establish, or reads a non-parameter local is
+refused. Target IR carries the call; the precondition stays in the Core the
+artifact's semantic closure digests. [TIR-REQ-068]

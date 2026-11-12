@@ -1287,6 +1287,7 @@ fn compiler_error_kind_name(kind: CompilerErrorKind) -> &'static str {
         CompilerErrorKind::DuplicateObstructionPayloadField => "DuplicateObstructionPayloadField",
         CompilerErrorKind::ReservedTypeIdentity => "ReservedTypeIdentity",
         CompilerErrorKind::InvalidCoreTypeIntegrity => "InvalidCoreTypeIntegrity",
+        CompilerErrorKind::UnprovenPrecondition => "UnprovenPrecondition",
     }
 }
 
@@ -1306,17 +1307,23 @@ fn core_review(core: &amblicit_syntax::CoreModule) -> Value {
         "requiredCoreCapabilities": core.required_core_capabilities,
     });
     if !core.functions.is_empty() {
-        review["functions"] = Value::Object(core.functions.iter().map(|(name, function)| (name.clone(), json!({
-            "params": function.params.iter().map(local_ref_review).collect::<Vec<_>>(),
-            "returnType": function.return_type,
-            "body": {
-                "locals": function.body.locals.iter().map(local_ref_review).collect::<Vec<_>>(),
-                "bindings": function.body.bindings.iter().map(|binding| json!({
-                    "kind": "let", "binding": local_ref_review(&binding.binding), "value": core_expr_review(&binding.value)
-                })).collect::<Vec<_>>(),
-                "result": core_expr_review(&function.body.result)
+        review["functions"] = Value::Object(core.functions.iter().map(|(name, function)| {
+            let mut entry = json!({
+                "params": function.params.iter().map(local_ref_review).collect::<Vec<_>>(),
+                "returnType": function.return_type,
+                "body": {
+                    "locals": function.body.locals.iter().map(local_ref_review).collect::<Vec<_>>(),
+                    "bindings": function.body.bindings.iter().map(|binding| json!({
+                        "kind": "let", "binding": local_ref_review(&binding.binding), "value": core_expr_review(&binding.value)
+                    })).collect::<Vec<_>>(),
+                    "result": core_expr_review(&function.body.result)
+                }
+            });
+            if !function.preconditions.is_empty() {
+                entry["preconditions"] = function.preconditions.iter().map(core_predicate_review).collect();
             }
-        }))).collect());
+            (name.clone(), entry)
+        }).collect());
     }
     review
 }

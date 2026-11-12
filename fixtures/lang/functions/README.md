@@ -30,3 +30,12 @@ It uses the original Jim `edict/replace-range` vendored lawpack (digest
 input/source/binary hashes before and after, and requires the function-free
 artifact pair plus function-bearing schema refusal with no output. This remains
 application compatibility evidence, not provider function execution evidence.
+
+`function-precondition.amblicit` is copied byte-for-byte from Jedit
+(`flyingrobots/jedit`) commit `641f53a3cc53482a929817213d82d92de0b6c8b5`,
+`edict/replace-range-probes/compiler-inventory/iterative/function-precondition.edict`.
+Its SHA-256 is `8feec28f75b59e2a027f9662900c4e504a5b0e0104f6649120f056f0d2888bdb`.
+It is the reproducer for function `where` preconditions (#264): main refused it
+at parse with `ExpectedToken`. It now compiles, and its reviewed Core and Echo
+Target IR goldens live under `fixtures/core/canonical/function-precondition.*`
+and `fixtures/target-ir/canonical/echo-function-precondition.*`.
