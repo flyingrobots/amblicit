@@ -36,6 +36,12 @@ use sha2::{Digest, Sha256};
 const COMMON_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-common.cddl");
 const CORE_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-core.cddl");
 const PRE_FOLD_CORE_CDDL: &[u8] = include_bytes!("../../../fixtures/core/pre-fold-core.cddl");
+/// Core and Target IR schema bytes before typed function failures; the
+/// bounded-state-fold publication embeds these bytes.
+const PRE_TYPED_FAILURE_CORE_CDDL: &[u8] =
+    include_bytes!("../../../fixtures/core/pre-typed-failure-core.cddl");
+const PRE_TYPED_FAILURE_TARGET_IR_CDDL: &[u8] =
+    include_bytes!("../../../fixtures/target-ir/pre-typed-failure-target-ir.cddl");
 const LAWPACK_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-lawpack.cddl");
 const LAWPACK_ADAPTER_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-lawpack-adapter.cddl");
 const TARGET_PROFILE_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-target-profile.cddl");
@@ -636,10 +642,10 @@ fn structured_iterable_schema_refuses_empty_aggregates() {
 #[test]
 fn published_target_ir_binding_constructs_the_production_registry_and_validates_v3() {
     const PUBLISHED_CDDL: &[u8] = include_bytes!(
-        "../../../fixtures/provider-contracts/bounded-state-fold-v1/edict-provider-contracts.cddl"
+        "../../../fixtures/provider-contracts/typed-failures-v1/edict-provider-contracts.cddl"
     );
     const PUBLISHED_MANIFEST: &[u8] =
-        include_bytes!("../../../fixtures/provider-contracts/bounded-state-fold-v1/manifest.json");
+        include_bytes!("../../../fixtures/provider-contracts/typed-failures-v1/manifest.json");
 
     // The in-memory pack is exactly the published publication, so its typed
     // manifest carries the published domain bindings.
@@ -1892,6 +1898,7 @@ fn source_closure_domain_enforces_typed_digest_and_module_count_boundaries() {
 fn fold_contract_requires_new_schema_selection() {
     let old = assemble_provider_contract_pack(ProviderContractPackInput {
         core_cddl: PRE_FOLD_CORE_CDDL,
+        target_ir_cddl: PRE_TYPED_FAILURE_TARGET_IR_CDDL,
         ..input(canonical_target_profile_contract_resources())
     })
     .expect("frozen structured-control pack");
@@ -1933,6 +1940,86 @@ fn fold_contract_requires_new_schema_selection() {
     remove_map_field(map_value_mut(map_value_mut(run, "body"), "result"), "step");
     assert_eq!(
         current.validate_domain(CORE_MODULE_DIGEST_DOMAIN, &missing_step),
+        Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+    );
+}
+
+#[test]
+fn typed_failure_contract_requires_new_schema_selection() {
+    let old = assemble_provider_contract_pack(ProviderContractPackInput {
+        core_cddl: PRE_TYPED_FAILURE_CORE_CDDL,
+        target_ir_cddl: PRE_TYPED_FAILURE_TARGET_IR_CDDL,
+        ..input(canonical_target_profile_contract_resources())
+    })
+    .expect("frozen bounded-state-fold pack");
+    assert_eq!(
+        old.cddl_bytes(),
+        include_bytes!(
+            "../../../fixtures/provider-contracts/bounded-state-fold-v1/edict-provider-contracts.cddl"
+        )
+    );
+    assert_eq!(
+        old.manifest_bytes(),
+        include_bytes!("../../../fixtures/provider-contracts/bounded-state-fold-v1/manifest.json")
+    );
+    let source = include_str!("../../../fixtures/lang/functions/pure-typed-failure.amblicit");
+    let budget = CoreBudget {
+        max_steps: 65_536,
+        max_allocated_bytes: 1_048_576,
+        max_output_bytes: 65_536,
+    };
+    let context = CompilerContext::new()
+        .with_operation_profile("text.replaceRange", "continuum.profile.read-only/v1")
+        .with_budget("text.replaceRangeBudget", budget);
+    let core = compile_to_core(&parse_module(source).unwrap(), &context).unwrap();
+    let core_value = decode_canonical_cbor(&encode_core_module(&core).unwrap()).unwrap();
+    let report = lower_to_target_ir(
+        &core,
+        &TargetIrLoweringFacts {
+            target_profile: ResourceRef {
+                coordinate: ECHO_DPO_TARGET_PROFILE.to_owned(),
+                digest: Some(format!("sha256:{}", "1".repeat(64))),
+            },
+            target_ir_domain: "echo.span-ir/v2".to_owned(),
+            operation_profiles: vec!["continuum.profile.read-only/v1".to_owned()],
+            obstruction_coordinates: Vec::new(),
+            effect_lowerings: Vec::new(),
+            effect_signatures: Vec::new(),
+            pure_functions: Vec::new(),
+        },
+    );
+    let artifact = report
+        .artifact
+        .expect("ordered artifact with a failure-mapped binding");
+    assert!(artifact.semantic_closure.is_some());
+    let target_value =
+        decode_canonical_cbor(&encode_target_ir_artifact(&artifact).unwrap()).unwrap();
+    for (domain, value) in [
+        (CORE_MODULE_DIGEST_DOMAIN, &core_value),
+        (TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &target_value),
+    ] {
+        assert_eq!(
+            old.validate_domain(domain, value),
+            Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch),
+            "{domain}"
+        );
+    }
+    let current = assemble(canonical_target_profile_contract_resources());
+    assert_ne!(old.raw_sha256(), current.raw_sha256());
+    current
+        .validate_domain(CORE_MODULE_DIGEST_DOMAIN, &core_value)
+        .expect("new schema accepts failure-bearing Core");
+    current
+        .validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &target_value)
+        .expect("new schema accepts failure arms on ordered pure bindings");
+    let mut unmapped = core_value;
+    let intent = map_value_mut(map_value_mut(&mut unmapped, "intents"), "evaluate");
+    let CanonicalValue::Array(nodes) = map_value_mut(map_value_mut(intent, "body"), "nodes") else {
+        panic!("Core nodes are an array")
+    };
+    remove_map_field(&mut nodes[0], "failureMap");
+    assert_eq!(
+        current.validate_domain(CORE_MODULE_DIGEST_DOMAIN, &unmapped),
         Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
     );
 }

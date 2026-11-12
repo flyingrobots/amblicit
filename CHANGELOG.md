@@ -8,6 +8,19 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Add typed failures to source functions. `failure ClosureTooSmall;`
+  declares a failure. `fn f(...) -> T fails ClosureTooSmall` declares the
+  exact set the body produces with `fail` and `expect`. An intent maps every
+  failure with `let x = f(...) else { ClosureTooSmall => Obstruction };`. No
+  other way to fail compiles, and each violation has its own diagnostic kind
+  (`UnknownFailure`, `UndeclaredFailure`, `UnraisedFailure`, `UnhandledFailure`,
+  `IncompleteFailureMapping`). Core gains function `failures`, the `fail`
+  expression and the `attempt` node under `core.failure/v1`. Ordered and
+  structured Target IR carry `failureArms` on pure bindings. All of these are
+  omitted when unused, so existing artifacts are byte-identical. The provider
+  contract pack `typed-failures-v1` publishes the schema. Echo must implement
+  `core.failure/v1` before a failing program can run.
+
 - Let source bind an effect whose authenticated signature declares no failures
   without a failure map: `let done: fx.Done = fx.ensureNode(input);` compiles
   to a Core effect node and a Target IR step with empty obstruction maps. This

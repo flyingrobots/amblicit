@@ -12,8 +12,10 @@ API version remains `edict.provider-contract-pack/v1`. Consumers select the exac
 CDDL/manifest pair and verify its schema digest; the same coordinate does not make
 different publication bytes interchangeable.
 
-Run `cargo xtask provider-contract-pack --write` to regenerate this current pair.
-`cargo xtask provider-contract-pack --check` and `cargo xtask verify` check it.
-The v1, source-function, source-module and structured-control CDDL/manifest pairs
-remain byte-identical. Tests reproduce the earlier pairs using their frozen Core
-and Target IR inputs, including `fixtures/core/pre-fold-core.cddl`.
+This CDDL/manifest pair is now frozen. The generator writes the separate
+[typed-failures publication](../typed-failures-v1/README.md); tests reproduce
+this pair from `fixtures/core/pre-typed-failure-core.cddl` and
+`fixtures/target-ir/pre-typed-failure-target-ir.cddl`. The v1, source-function,
+source-module and structured-control pairs also remain byte-identical, and tests
+reproduce them from their frozen Core and Target IR inputs, including
+`fixtures/core/pre-fold-core.cddl`.

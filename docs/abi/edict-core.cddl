@@ -132,6 +132,9 @@ core-source-function = {
   params: [* local-ref],
   returnType: core-type-ref,
   body: core-pure-block,
+  ; Sorted, unique failure coordinates of a function that may fail; omitted
+  ; for a total function. Requires core.failure/v1.
+  ? failures: [+ tstr],
 }
 
 core-fn-body = {
@@ -155,7 +158,7 @@ pure-let-node = {
 
 core-expr = local-expr / const-expr / record-expr / field-expr /
             variant-expr / match-expr / fold-expr / call-expr / list-expr / map-expr /
-            if-expr
+            if-expr / fail-expr
 
 local-expr = { kind: "local", ref: local-ref }
 const-expr = { kind: "const", value: core-value }
@@ -202,6 +205,9 @@ if-expr = {
   then: core-expr,
   else: core-expr,
 }
+; Ends the enclosing source function with a declared failure (core.failure/v1).
+; Legal only in a function body whose `failures` lists it.
+fail-expr = { kind: "fail", failure: tstr }
 
 core-predicate = true-predicate / false-predicate / not-predicate /
                  all-predicate / any-predicate / compare-predicate /
@@ -270,12 +276,21 @@ core-block = {
 
 core-node = let-node / require-node / effect-node /
             external-action-request-node / guard-node / branch-node /
-            for-node / match-node / proof-obligation-node
+            for-node / match-node / proof-obligation-node /
+            attempt-node
 
 let-node = {
   kind: "let",
   binding: local-ref,
   value: core-expr,
+}
+; Binds a call to a failing source function and maps each failure coordinate
+; of the callee to a terminal obstruction reason (core.failure/v1).
+attempt-node = {
+  kind: "attempt",
+  binding: local-ref,
+  value: call-expr,
+  failureMap: { + tstr => obstruction-reason },
 }
 require-node = {
   kind: "require",
