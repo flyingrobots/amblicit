@@ -169,3 +169,51 @@ fn mirrored(fact: &CorePredicate) -> Option<CorePredicate> {
         right: left.clone(),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{names_only, CoreExpr, CorePredicate, LocalRef};
+    use crate::core_ir::{CompareOp, CoreValue};
+
+    fn local(id: &str, alpha: &str) -> LocalRef {
+        LocalRef {
+            id: id.into(),
+            alpha_name: alpha.into(),
+            ty: "U64".into(),
+        }
+    }
+
+    fn compare(left: CoreExpr, right: CoreExpr) -> CorePredicate {
+        CorePredicate::Compare {
+            op: CompareOp::Le,
+            left,
+            right,
+        }
+    }
+
+    /// Target's own scope rule, independent of Core integrity (which refuses
+    /// the same inputs first inside `lower_to_target_ir`).
+    #[test]
+    fn names_only_admits_exactly_the_parameters() {
+        let params = [local("arg.0", "$arg0"), local("arg.1", "$arg1")];
+        let param = |index: usize| CoreExpr::Local {
+            reference: params[index].clone(),
+        };
+        let stranger = CoreExpr::Local {
+            reference: local("local.0", "$local0"),
+        };
+        let renamed = CoreExpr::Local {
+            reference: local("arg.0", "$other"),
+        };
+        assert!(names_only(&compare(param(0), param(1)), &params));
+        assert!(!names_only(&compare(stranger.clone(), param(1)), &params));
+        assert!(!names_only(&compare(renamed, param(1)), &params));
+        // A local hidden in a conditional's own predicate is still found.
+        let hidden = CoreExpr::If {
+            predicate: Box::new(compare(stranger, param(0))),
+            then_value: Box::new(CoreExpr::Const(CoreValue::Bool(true))),
+            else_value: Box::new(CoreExpr::Const(CoreValue::Bool(false))),
+        };
+        assert!(!names_only(&compare(hidden, param(1)), &params));
+    }
+}

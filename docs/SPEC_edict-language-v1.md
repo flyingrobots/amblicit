@@ -2133,17 +2133,22 @@ proven:
 - `a <= b` or `b >= a` is proven by the order proof used for unsigned
   subtraction and `slice`: `a` and `b` are the same expression, `a` is the
   unsigned literal `0u32` or `0u64`, both are `U32` or `U64` literals with
-  `a <= b`, or a dominating fact, or a
-  conjunct of one, is `a <= b`, `a < b`, `b >= a`, `b > a`, `a == b` or
+  `a <= b`, or a dominating fact, or a conjunct of one at any depth of
+  nested `&&` (Core `all`), is `a <= b`, `a < b`, `b >= a`, `b > a`, `a == b` or
   `b == a`.
 - `true` is always proven.
 - Any other conjunct (`<`, `>`, `==`, `!=`, `!`, `||`, `false`) is proven only
-  when a dominating fact, or a conjunct of one, is the same predicate, or the
+  when a dominating fact, or a conjunct of one at any depth of nested `&&`,
+  is the same predicate, or the
   same comparison with its operands mirrored (`a < b` and `b > a`; `a == b`
   and `b == a`).
 
-Expressions are compared as Core expression trees. A negated fact proves only
-the identical negation; it is never turned into an order.
+Expressions are compared as Core expression trees by structural equality: a
+local matches only a local with the same id, alpha name and type; a constant
+only a constant with the same width and value text; a call only a call with
+the same callee, type arguments and arguments. A negated fact proves only the
+identical negation; it is never turned into an order. An obligation that is
+itself a Core `all` is proven when every item is proven, at any depth.
 
 **Body assumption** (`EDICT-LANG-FN-PRECONDITION-003`). The function body is
 checked with its preconditions as dominating facts, so subtraction, `slice`
@@ -2175,6 +2180,24 @@ without trusting the compiler:
 Target refuses a module that fails any of these with `InvalidCoreIdentity`. A
 forged Core that drops a precondition its body needs, adds one its callers do
 not establish, or reads a non-parameter local in one, is therefore refused.
+
+A consumer judges call sites over Core, not source. The facts at each Core
+position are:
+
+| Core position | Facts there |
+| --- | --- |
+| intent `basis` | none |
+| intent `inputConstraints[i].predicate` | only facts arising inside that predicate (rows below) |
+| every expression in the intent `body` block: `let` values, `require` predicate and payload, effect input and obstruction-arm values, external-action fields, `for` iterable and body, `branch` predicate and both blocks, the block result | every `inputConstraints` predicate (whatever its `source`) |
+| a source function's `body` bindings and result | that function's `preconditions` |
+| a function's `preconditions[i]` | `preconditions[0..i]` |
+| an `if` expression's `then` / `else` value | the facts at the `if`, plus its predicate / the `not` of its predicate |
+| item `k` of a Core `all` | the facts at the `all`, plus items `0..k` |
+| item `k` of a Core `any` | the facts at the `any`, plus the `not` of items `0..k` |
+| a `fold` initial value, `match` scrutinee and arms, record, list, variant payload, field base, call argument | the facts at the enclosing expression |
+
+Statement-level `branch` blocks add no facts of their own, and nothing else
+adds a fact.
 
 ## Basis Expressions
 
