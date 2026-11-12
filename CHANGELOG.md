@@ -23,6 +23,17 @@ versions still track specification maturity rather than a released product.
   The language specification defines the syntax, proof rule and Core shape,
   and carves function `where` out of `EDICT-LANG-WHERE-001`.
 
+- Let source bind an effect whose authenticated signature declares no failures
+  without a failure map: `let done: fx.Done = fx.ensureNode(input);` compiles
+  to a Core effect node and a Target IR step with empty obstruction maps. This
+  makes Echo's five mutation intrinsics (`ensure-node`, `create-node`,
+  `replace-atom`, `ensure-edge`, `replace-edge`), which only emit mutation
+  intents and have no runtime obstruction path, callable from source. An
+  effect that declares any failure still reports
+  `EffectWithoutFailureMapping` without its map, and a failure-free effect
+  used inside a larger expression is still refused. Echo still has to publish
+  a provider profile whose catalog carries these intrinsics (Echo #985).
+
 - Select target profile `echo.dpo@2`, Echo's effect profile. It lowers only
   to the ordered `echo.span-ir/v2` Target IR, and its effect intrinsics are
   named `echo.dpo@2.*`; each Echo profile refuses the other's intrinsics with
