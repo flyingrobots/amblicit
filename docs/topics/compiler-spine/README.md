@@ -165,7 +165,9 @@ chain, refines the same local `x` (`EDICT-LANG-OPTION-REFINE-001`): the right
 operand of `&&` and the `then` branch of an expression, statement or
 branch-yield `if`. It refuses `UnsupportedSourceShape` everywhere else,
 including `else` branches, later statements, alias locals, field paths, helper
-calls and `where` clauses. Native Target rechecks the same presence fact on the
+calls and an intent body guarded only by a `where` clause. Inside a `where`
+constraint, `isSome(x) && ...` refines its own right operand, as every `&&`
+does. Native Target rechecks the same presence fact on the
 exact local. Provider acceptance and runtime execution are separate gates.
 [CSPINE-REQ-077]
 
