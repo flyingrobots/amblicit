@@ -453,6 +453,71 @@ fn target_rechecks_unwrap_presence_on_the_exact_local() {
     }
 }
 
+/// Target reads presence through `!=`, negation and disjunction itself; it
+/// does not rely on the compiler emitting only `isSome(x) == true`.
+#[test]
+fn target_presence_follows_negated_and_disjunctive_guards() {
+    use amblicit_syntax::{CompareOp, CoreValue};
+    let original = guarded_core();
+    let CoreExpr::If { predicate, .. } = &original.functions["guarded"].body.result else {
+        panic!("guard")
+    };
+    let CorePredicate::Compare { left: probe, .. } = predicate.as_ref() else {
+        panic!("isSome comparison")
+    };
+    let test = |op, value| CorePredicate::Compare {
+        op,
+        left: probe.clone(),
+        right: CoreExpr::Const(CoreValue::Bool(value)),
+    };
+    let not = |inner| CorePredicate::Not(Box::new(inner));
+    let guarded = |guard: CorePredicate| {
+        let mut core = original.clone();
+        let CoreExpr::If { predicate, .. } =
+            &mut core.functions.get_mut("guarded").unwrap().body.result
+        else {
+            panic!("guard")
+        };
+        **predicate = guard;
+        core
+    };
+    for (label, guard) in [
+        ("isSome != false", test(CompareOp::Ne, false)),
+        ("!(isSome == false)", not(test(CompareOp::Eq, false))),
+        (
+            "!(isSome == false || false)",
+            not(CorePredicate::Any(vec![
+                test(CompareOp::Eq, false),
+                CorePredicate::False,
+            ])),
+        ),
+    ] {
+        let report = lower_to_target_ir(&guarded(guard), &facts());
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Lowered,
+            "{label}: {report:?}"
+        );
+    }
+    for (label, guard) in [
+        ("isSome != true", test(CompareOp::Ne, true)),
+        ("isSome == false", test(CompareOp::Eq, false)),
+        (
+            "isSome == true || true",
+            CorePredicate::Any(vec![test(CompareOp::Eq, true), CorePredicate::True]),
+        ),
+        (
+            "!(isSome == true && true)",
+            not(CorePredicate::All(vec![
+                test(CompareOp::Eq, true),
+                CorePredicate::True,
+            ])),
+        ),
+    ] {
+        refused_by_target(&guarded(guard), label);
+    }
+}
+
 #[test]
 fn target_rechecks_option_signatures_and_capability() {
     let original = compile(&format!("{EXPANSION} {WITNESS}")).unwrap();
