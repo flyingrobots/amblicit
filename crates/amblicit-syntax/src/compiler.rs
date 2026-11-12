@@ -6,10 +6,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ast::{
-    BinOp, Block, BoundRef, BytesRefine, Decl, DigestLockedPackageRef, ElseClause, Expr, FieldDecl,
-    FunctionDecl, Import, ImportKind, IntentClause, IntentDecl, Module, ObstructionArm,
-    ObstructionHandler, ObstructionTarget, RecordEntry, RequireElseArm, ScalarRefine, Stmt,
-    TypeDecl, TypeExpr, TypeRef, UnOp, YieldBlock,
+    BinOp, Block, BoundRef, BytesRefine, Decl, DigestLockedPackageRef, ElseClause, Expr,
+    FailureDecl, FieldDecl, FunctionDecl, Import, ImportKind, IntentClause, IntentDecl, Module,
+    ObstructionArm, ObstructionHandler, ObstructionTarget, RecordEntry, RequireElseArm,
+    ScalarRefine, Stmt, TypeDecl, TypeExpr, TypeRef, UnOp, YieldBlock,
 };
 use crate::core_ir::{
     classify_core_type_reference, is_lowercase_sha256_review_digest, parse_core_integer,
@@ -30,6 +30,8 @@ mod list_literal;
 mod list_operations;
 mod return_budget;
 mod signature_diagnostic;
+mod source_failure_maps;
+mod source_failures;
 mod source_fold;
 mod source_functions;
 mod source_matches;
@@ -76,6 +78,16 @@ pub enum CompilerErrorKind {
     DuplicateObstructionPayloadField,
     ReservedTypeIdentity,
     InvalidCoreTypeIntegrity,
+    /// A `fails`, `fail` or map arm names no declared failure.
+    UnknownFailure,
+    /// A body produces a failure its function does not declare.
+    UndeclaredFailure,
+    /// A function declares a failure its body never produces.
+    UnraisedFailure,
+    /// A failing call is neither propagated with `expect` nor mapped with `else`.
+    UnhandledFailure,
+    /// A failure map does not cover every failure of its call.
+    IncompleteFailureMapping,
 }
 
 /// Deterministic signature and canonical identity for one imported pure helper.
@@ -162,6 +174,7 @@ pub struct CompilerContext {
     pure_helper_costs: BTreeMap<String, PureHelperCostFact>,
     type_shapes: BTreeMap<String, TypeShapeFact>,
     source_type_origins: BTreeMap<String, SourceTypeOrigin>,
+    source_failure_origins: BTreeMap<String, SourceFailureOrigin>,
     bounds: BTreeMap<String, BoundFact>,
     budgets: BTreeMap<String, CoreBudget>,
     target_pure_intrinsics: Vec<TargetPureIntrinsicFact>,
@@ -173,6 +186,14 @@ impl CompilerContext {
         origins: BTreeMap<String, SourceTypeOrigin>,
     ) -> Self {
         self.source_type_origins = origins;
+        self
+    }
+
+    pub(crate) fn with_linked_source_failures(
+        mut self,
+        origins: BTreeMap<String, SourceFailureOrigin>,
+    ) -> Self {
+        self.source_failure_origins = origins;
         self
     }
 
@@ -331,6 +352,7 @@ pub struct ResolvedModule {
     pub pure_helper_costs: BTreeMap<String, PureHelperCostFact>,
     pub type_shapes: BTreeMap<String, TypeShapeFact>,
     pub(crate) source_type_origins: BTreeMap<String, SourceTypeOrigin>,
+    pub(crate) source_failure_origins: BTreeMap<String, SourceFailureOrigin>,
     pub bounds: BTreeMap<String, BoundFact>,
     pub budgets: BTreeMap<String, CoreBudget>,
     pub(crate) target_pure_intrinsics: BTreeMap<String, TargetPureIntrinsicFact>,
@@ -339,6 +361,8 @@ pub struct ResolvedModule {
     pub(crate) target_intrinsic_coordinates: BTreeSet<String>,
     pub types: Vec<ResolvedTypeDecl>,
     pub source_functions: Vec<FunctionDecl>,
+    /// `failure` declarations, in source order.
+    pub failures: Vec<FailureDecl>,
     pub intents: Vec<ResolvedIntent>,
 }
 
@@ -346,6 +370,14 @@ pub struct ResolvedModule {
 pub(crate) struct SourceTypeOrigin {
     pub(crate) coordinate: String,
     pub(crate) table_key: String,
+}
+
+/// The module that declared a linked failure, by its original coordinate and
+/// bare name; linking hygiene never reaches Core.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SourceFailureOrigin {
+    pub(crate) coordinate: String,
+    pub(crate) name: String,
 }
 
 /// Resolved type declaration.
@@ -442,10 +474,12 @@ pub fn resolve_module(
     let mut types = Vec::new();
     let mut intents = Vec::new();
     let mut source_functions = Vec::new();
+    let mut failures = Vec::new();
 
     for decl in &module.decls {
         match decl {
             Decl::Function(decl) => source_functions.push(decl.clone()),
+            Decl::Failure(decl) => failures.push(decl.clone()),
             Decl::Type(decl) => types.push(ResolvedTypeDecl {
                 name: decl.name.clone(),
                 source: decl.clone(),
@@ -476,6 +510,7 @@ pub fn resolve_module(
             pure_helper_costs: context.pure_helper_costs.clone(),
             type_shapes: context.type_shapes.clone(),
             source_type_origins: context.source_type_origins.clone(),
+            source_failure_origins: context.source_failure_origins.clone(),
             bounds: context.bounds.clone(),
             budgets: context.budgets.clone(),
             target_intrinsic_coordinates: context
@@ -486,6 +521,7 @@ pub fn resolve_module(
             target_pure_intrinsics,
             types,
             source_functions,
+            failures,
             intents,
         },
     )
@@ -1065,6 +1101,7 @@ struct TypeChecker<'a> {
     inferred_yield_envs: BTreeMap<usize, LocalEnvironment>,
     expected_type_unavailable: bool,
     checking_diagnostic_peer: bool,
+    failures: source_failures::FailureState,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -1098,6 +1135,7 @@ impl<'a> TypeChecker<'a> {
             inferred_yield_envs: BTreeMap::new(),
             expected_type_unavailable: false,
             checking_diagnostic_peer: false,
+            failures: source_failures::FailureState::default(),
         }
     }
 
@@ -1736,10 +1774,11 @@ impl<'a> TypeChecker<'a> {
             | Expr::Str { .. }
             | Expr::Bytes { .. }
             | Expr::Bool { .. }
-            | Expr::Digest { .. } => Some(HelperCost::default()),
-            Expr::Field { base, .. } | Expr::Unary { operand: base, .. } => {
-                self.helper_cost_for_expr(base)
-            }
+            | Expr::Digest { .. }
+            | Expr::Fail { .. } => Some(HelperCost::default()),
+            Expr::Field { base, .. }
+            | Expr::Unary { operand: base, .. }
+            | Expr::Expect { call: base, .. } => self.helper_cost_for_expr(base),
             Expr::Call {
                 callee, args, span, ..
             } => {
@@ -2919,7 +2958,11 @@ impl<'a> TypeChecker<'a> {
         let previous_id = env.get(stmt.name).map(|(local, _)| local.id.clone());
         let name = stmt.name;
         if let Some(handler) = stmt.handler {
-            self.check_effectful_let(intent, stmt, handler, env, locals, state);
+            if self.source_call_name(stmt.value).is_some() {
+                self.check_failure_mapped_let(&stmt, handler, env, locals, state);
+            } else {
+                self.check_effectful_let(intent, stmt, handler, env, locals, state);
+            }
         } else if self.is_failure_free_effect_call(stmt.value) {
             // An effect whose authenticated signature declares no failures has
             // nothing to map: its binding is an effect node with an empty map.
@@ -3915,7 +3958,8 @@ impl<'a> TypeChecker<'a> {
             | Expr::Str { .. }
             | Expr::Bytes { .. }
             | Expr::Bool { .. }
-            | Expr::Digest { .. } => {}
+            | Expr::Digest { .. }
+            | Expr::Fail { .. } => {}
             Expr::Field { base, .. } => {
                 accepted &= self.check_known_effect_profiles(intent, base);
             }
@@ -3971,6 +4015,9 @@ impl<'a> TypeChecker<'a> {
                 for arm in arms {
                     accepted &= self.check_known_effect_profiles(intent, &arm.body);
                 }
+            }
+            Expr::Expect { call, .. } => {
+                accepted &= self.check_known_effect_profiles(intent, call);
             }
         }
         accepted
@@ -4416,6 +4463,11 @@ impl<'a> TypeChecker<'a> {
                 ..
             }
             | Expr::Unary { op: UnOp::Not, .. } => self.check_predicate_value(expr, env),
+            Expr::Fail { failure, span } => self.check_fail_expr(failure, expected, *span),
+            // The call records its own cost; `expect` adds none.
+            Expr::Expect { call, span } => {
+                return self.check_expect_expr(call, env, expectation, *span);
+            }
             Expr::Binary { .. } | Expr::Digest { .. } | Expr::IfYield { .. } => {
                 self.errors.push(error(
                     CompilerStage::TypeCheck,
@@ -5221,7 +5273,7 @@ impl<'a> TypeChecker<'a> {
             next: &expectation,
         };
         let (then_value, else_value) = match expected {
-            None if is_bare_integer_literal(then) => {
+            None if needs_peer_type(then) => {
                 let else_value = self.check_conditional_arm(
                     els,
                     env,
@@ -5234,7 +5286,7 @@ impl<'a> TypeChecker<'a> {
                     .and_then(|value| self.check_expr_with_expected(then, env, Some(&value.ty)));
                 (then_value, else_value)
             }
-            None if is_bare_integer_literal(els) => {
+            None if needs_peer_type(els) => {
                 let then_value = self.check_conditional_arm(
                     then,
                     env,
@@ -5682,6 +5734,12 @@ impl<'a> TypeChecker<'a> {
     }
 }
 
+/// An arm whose type comes from its peers: a bare integer literal takes its
+/// width from them, and `fail` takes their whole type.
+fn needs_peer_type(expr: &Expr) -> bool {
+    is_bare_integer_literal(expr) || matches!(expr, Expr::Fail { .. })
+}
+
 fn is_bare_integer_literal(expr: &Expr) -> bool {
     match expr {
         Expr::Int { suffix: None, .. } => true,
@@ -5721,7 +5779,9 @@ fn contains_contextual_bare_integer(expr: &Expr) -> bool {
         | Expr::Binary { .. }
         | Expr::IfYield { .. }
         | Expr::VariantLit { .. }
-        | Expr::Match { .. } => false,
+        | Expr::Match { .. }
+        | Expr::Fail { .. }
+        | Expr::Expect { .. } => false,
     }
 }
 
@@ -6238,7 +6298,9 @@ fn plain_callee_coordinate(expr: &Expr) -> Option<String> {
         | Expr::If { .. }
         | Expr::IfYield { .. }
         | Expr::VariantLit { .. }
-        | Expr::Match { .. } => None,
+        | Expr::Match { .. }
+        | Expr::Fail { .. }
+        | Expr::Expect { .. } => None,
     }
 }
 
@@ -6263,7 +6325,9 @@ fn plain_path_root(expr: &Expr) -> Option<&str> {
         | Expr::If { .. }
         | Expr::IfYield { .. }
         | Expr::VariantLit { .. }
-        | Expr::Match { .. } => None,
+        | Expr::Match { .. }
+        | Expr::Fail { .. }
+        | Expr::Expect { .. } => None,
     }
 }
 
@@ -6294,7 +6358,9 @@ fn expr_span(expr: &Expr) -> Span {
         | Expr::If { span, .. }
         | Expr::IfYield { span, .. }
         | Expr::VariantLit { span, .. }
-        | Expr::Match { span, .. } => *span,
+        | Expr::Match { span, .. }
+        | Expr::Fail { span, .. }
+        | Expr::Expect { span, .. } => *span,
     }
 }
 

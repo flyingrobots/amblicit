@@ -917,11 +917,20 @@ fn target_ir_order_value(
 fn target_ir_pure_binding_value(
     binding: &TargetIrPureBinding,
 ) -> Result<CanonicalValue, CanonicalError> {
-    Ok(map([
+    let mut entries = vec![
         ("id", text(&binding.id)),
         ("binding", local_ref_value(&binding.binding)),
         ("value", core_expr_value(&binding.value)?),
-    ]))
+    ];
+    if !binding.failure_arms.is_empty() {
+        entries.push((
+            "failureArms",
+            string_map_results(binding.failure_arms.iter().map(|(failure, reason)| {
+                Ok((failure.as_str(), core_obstruction_reason_value(reason)?))
+            }))?,
+        ));
+    }
+    Ok(map(entries))
 }
 
 fn target_ir_external_action_request_value(
@@ -1080,7 +1089,7 @@ fn core_module_value(module: &CoreModule) -> Result<CanonicalValue, CanonicalErr
 fn core_function_value(
     function: &crate::core_ir::CoreFunction,
 ) -> Result<CanonicalValue, CanonicalError> {
-    Ok(map([
+    let mut entries = vec![
         ("params", array(function.params.iter().map(local_ref_value))),
         ("returnType", text(&function.return_type)),
         (
@@ -1103,7 +1112,14 @@ fn core_function_value(
                 ("result", core_expr_value(&function.body.result)?),
             ]),
         ),
-    ]))
+    ];
+    if !function.failures.is_empty() {
+        entries.push((
+            "failures",
+            array(function.failures.iter().map(|failure| text(failure))),
+        ));
+    }
+    Ok(map(entries))
 }
 
 fn collect_request_operations<'a>(
@@ -1131,7 +1147,10 @@ fn collect_request_operations<'a>(
                 collect_request_operations(then_block, out, depth + 1)?;
                 collect_request_operations(else_block, out, depth + 1)?;
             }
-            CoreNode::Let { .. } | CoreNode::Require { .. } | CoreNode::Effect { .. } => {}
+            CoreNode::Let { .. }
+            | CoreNode::Attempt { .. }
+            | CoreNode::Require { .. }
+            | CoreNode::Effect { .. } => {}
         }
     }
     Ok(())
@@ -1343,6 +1362,11 @@ fn core_node_value(node: &CoreNode) -> Result<CanonicalValue, CanonicalError> {
             ("binding", local_ref_value(binding)),
             ("value", core_expr_value(value)?),
         ])),
+        CoreNode::Attempt {
+            binding,
+            value,
+            failure_map,
+        } => core_attempt_value(binding, value, failure_map),
         CoreNode::Require { predicate, arm } => Ok(map([
             ("kind", text("require")),
             ("predicate", core_predicate_value(predicate)?),
@@ -1425,6 +1449,26 @@ fn core_node_value(node: &CoreNode) -> Result<CanonicalValue, CanonicalError> {
     }
 }
 
+/// A failure-mapped call: the binding, the call, and one terminal reason per
+/// failure coordinate of the callee.
+fn core_attempt_value(
+    binding: &crate::core_ir::LocalRef,
+    value: &CoreExpr,
+    failure_map: &std::collections::BTreeMap<String, crate::core_ir::CoreObstructionReason>,
+) -> Result<CanonicalValue, CanonicalError> {
+    Ok(map([
+        ("kind", text("attempt")),
+        ("binding", local_ref_value(binding)),
+        ("value", core_expr_value(value)?),
+        (
+            "failureMap",
+            string_map_results(failure_map.iter().map(|(failure, reason)| {
+                Ok((failure.as_str(), core_obstruction_reason_value(reason)?))
+            }))?,
+        ),
+    ]))
+}
+
 fn core_bound_value(bound: &crate::core_ir::CoreBound) -> CanonicalValue {
     match bound {
         crate::core_ir::CoreBound::Literal(value) => {
@@ -1489,6 +1533,7 @@ fn core_obstruction_arm_value(arm: &CoreObstructionArm) -> Result<CanonicalValue
 
 fn core_expr_value(expr: &CoreExpr) -> Result<CanonicalValue, CanonicalError> {
     Ok(match expr {
+        CoreExpr::Fail { failure } => map([("kind", text("fail")), ("failure", text(failure))]),
         CoreExpr::Local { reference } => {
             map([("kind", text("local")), ("ref", local_ref_value(reference))])
         }

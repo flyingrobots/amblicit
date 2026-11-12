@@ -40,6 +40,13 @@ impl TypeChecker<'_> {
                 span,
             );
         };
+        if !self.function_failures(name).is_empty() {
+            return self.fold_failure(
+                CompilerErrorKind::UnhandledFailure,
+                "a fold step cannot fail: a fold can neither propagate nor map a failure",
+                span,
+            );
+        }
         if signature.params.len() != 1 || signature.params[0].coord != signature.result.coord {
             return self.fold_failure(
                 CompilerErrorKind::TypeMismatch,

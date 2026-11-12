@@ -1287,6 +1287,11 @@ fn compiler_error_kind_name(kind: CompilerErrorKind) -> &'static str {
         CompilerErrorKind::DuplicateObstructionPayloadField => "DuplicateObstructionPayloadField",
         CompilerErrorKind::ReservedTypeIdentity => "ReservedTypeIdentity",
         CompilerErrorKind::InvalidCoreTypeIntegrity => "InvalidCoreTypeIntegrity",
+        CompilerErrorKind::UnknownFailure => "UnknownFailure",
+        CompilerErrorKind::UndeclaredFailure => "UndeclaredFailure",
+        CompilerErrorKind::UnraisedFailure => "UnraisedFailure",
+        CompilerErrorKind::UnhandledFailure => "UnhandledFailure",
+        CompilerErrorKind::IncompleteFailureMapping => "IncompleteFailureMapping",
     }
 }
 
@@ -1306,7 +1311,8 @@ fn core_review(core: &amblicit_syntax::CoreModule) -> Value {
         "requiredCoreCapabilities": core.required_core_capabilities,
     });
     if !core.functions.is_empty() {
-        review["functions"] = Value::Object(core.functions.iter().map(|(name, function)| (name.clone(), json!({
+        review["functions"] = Value::Object(core.functions.iter().map(|(name, function)| {
+            let mut entry = json!({
             "params": function.params.iter().map(local_ref_review).collect::<Vec<_>>(),
             "returnType": function.return_type,
             "body": {
@@ -1316,7 +1322,12 @@ fn core_review(core: &amblicit_syntax::CoreModule) -> Value {
                 })).collect::<Vec<_>>(),
                 "result": core_expr_review(&function.body.result)
             }
-        }))).collect());
+            });
+            if !function.failures.is_empty() {
+                entry["failures"] = json!(function.failures);
+            }
+            (name.clone(), entry)
+        }).collect());
     }
     review
 }
@@ -1617,6 +1628,19 @@ fn core_node_review(node: &CoreNode) -> Value {
             "binding": local_ref_review(binding),
             "value": core_expr_review(value),
         }),
+        CoreNode::Attempt {
+            binding,
+            value,
+            failure_map,
+        } => json!({
+            "kind": "attempt",
+            "binding": local_ref_review(binding),
+            "value": core_expr_review(value),
+            "failureMap": failure_map
+                .iter()
+                .map(|(failure, reason)| (failure.clone(), core_obstruction_reason_review(reason)))
+                .collect::<BTreeMap<_, _>>(),
+        }),
         CoreNode::Require { predicate, arm } => json!({
             "kind": "require",
             "predicate": core_predicate_review(predicate),
@@ -1741,6 +1765,7 @@ fn local_ref_review(reference: &amblicit_syntax::LocalRef) -> Value {
 
 fn core_expr_review(expr: &CoreExpr) -> Value {
     match expr {
+        CoreExpr::Fail { failure } => json!({ "kind": "fail", "failure": failure }),
         CoreExpr::Local { reference } => json!({
             "kind": "local",
             "reference": local_ref_review(reference),

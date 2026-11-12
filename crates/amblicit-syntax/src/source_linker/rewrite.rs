@@ -114,6 +114,12 @@ impl<'a> Rewrite<'a> {
                 }
                 self.shift(&mut definition.span)?;
             }
+            Decl::Failure(definition) => {
+                definition
+                    .name
+                    .clone_from(&self.names.definitions[&definition.name].linked);
+                self.shift(&mut definition.span)?;
+            }
             Decl::Enum(definition) => {
                 definition
                     .name
@@ -127,6 +133,10 @@ impl<'a> Rewrite<'a> {
                 let mut env = Env::new();
                 self.params(&mut definition.params, &mut env)?;
                 self.ty(&mut definition.returns, definition.span)?;
+                for failure in &mut definition.fails {
+                    self.failure_path(&mut failure.path);
+                    self.shift(&mut failure.span)?;
+                }
                 self.block(&mut definition.body, &mut env)?;
                 self.shift(&mut definition.span)?;
             }
@@ -231,6 +241,25 @@ impl<'a> Rewrite<'a> {
                 Ok(())
             }
             None => Err(self.error(SourceLinkErrorKind::UnresolvedName, span, first)),
+        }
+    }
+    /// Resolve a declared failure to its linked name. An unresolved name is left
+    /// for the compiler, which reports `UnknownFailure` at its span.
+    fn failure_path(&self, path: &mut Vec<String>) {
+        let definition = match path.as_slice() {
+            [name] => self.names.definitions.get(name),
+            [alias, name] => match self.names.imports.get(alias) {
+                Some(ImportBinding::Source(coordinate)) => {
+                    self.units[coordinate].definitions.get(name)
+                }
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(definition) =
+            definition.filter(|definition| definition.kind == DefinitionKind::Failure)
+        {
+            *path = vec![definition.linked.clone()];
         }
     }
     fn bound(&self, bound: &mut BoundRef, span: Span) -> Result {
@@ -486,6 +515,8 @@ impl<'a> Rewrite<'a> {
             | Expr::Bytes { .. }
             | Expr::Bool { .. }
             | Expr::Digest { .. } => {}
+            Expr::Fail { failure, .. } => self.failure_path(failure),
+            Expr::Expect { call, .. } => self.expr(call, env)?,
             Expr::Call {
                 callee,
                 type_args,
@@ -703,6 +734,8 @@ fn expr_span(expr: &mut Expr) -> &mut Span {
         | Expr::If { span, .. }
         | Expr::IfYield { span, .. }
         | Expr::VariantLit { span, .. }
-        | Expr::Match { span, .. } => span,
+        | Expr::Match { span, .. }
+        | Expr::Fail { span, .. }
+        | Expr::Expect { span, .. } => span,
     }
 }

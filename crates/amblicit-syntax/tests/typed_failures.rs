@@ -19,7 +19,7 @@ const CONFLICT: &str = "rope.example@1.ConflictingContent";
 
 /// Two failures, a function that raises one, a function that propagates it
 /// and raises the other, and an intent that maps both.
-const BASE: &str = r#"package rope.example@1;
+const BASE: &str = r"package rope.example@1;
 failure ClosureTooSmall;
 failure ConflictingContent;
 type Input = { value: U64, other: U64, };
@@ -38,7 +38,7 @@ intent evaluate(input: Input) returns Output profile p.read basis none budget <=
   };
   return { value };
 }
-"#;
+";
 
 fn context() -> CompilerContext {
     let budget = CoreBudget {
@@ -103,7 +103,10 @@ fn failure_syntax_parses_into_declarations_clauses_and_expressions() {
         })
         .expect("both is declared");
     assert_eq!(
-        both.fails,
+        both.fails
+            .iter()
+            .map(|failure| failure.path.clone())
+            .collect::<Vec<_>>(),
         [
             vec!["ConflictingContent".to_owned()],
             vec!["ClosureTooSmall".to_owned()]
@@ -177,10 +180,7 @@ fn unknown_repeated_or_ambiguous_failure_names_refuse() {
         "Missing",
     );
     refuse(
-        &BASE.replace(
-            "else fail ClosureTooSmall;",
-            "else fail Missing;",
-        ),
+        &BASE.replace("else fail ClosureTooSmall;", "else fail Missing;"),
         CompilerErrorKind::UnknownFailure,
         "fail Missing",
     );
@@ -197,7 +197,7 @@ fn unknown_repeated_or_ambiguous_failure_names_refuse() {
             "failure ConflictingContent;",
             "failure ConflictingContent;\nfailure ConflictingContent; // repeated",
         ),
-        CompilerErrorKind::UnsupportedSourceShape,
+        CompilerErrorKind::SurfaceValidation,
         "failure ConflictingContent; // repeated",
     );
 }
@@ -208,9 +208,9 @@ fn declared_failure_set_is_exactly_what_the_body_produces() {
         "intent evaluate",
         r"type Choice = variant { Small(U64), Large(U64), };
 fn pick(choice: Choice) -> U64 fails ClosureTooSmall {
-  let bounded: U64 = if true then 1u64 else fail ClosureTooSmall;
+  let limit: U64 = if true then 1u64 else fail ClosureTooSmall;
   return match choice {
-    Small(value) => value + bounded,
+    Small(value) => if value == limit then limit else value,
     Large(value) => fail ClosureTooSmall,
   };
 }
@@ -274,7 +274,10 @@ fn undeclared_and_unraised_failures_refuse() {
     );
     // `fail` in an intent.
     refuse(
-        &BASE.replace("return { value };", "return { value: fail ClosureTooSmall };"),
+        &BASE.replace(
+            "return { value };",
+            "return { value: fail ClosureTooSmall };",
+        ),
         CompilerErrorKind::UndeclaredFailure,
         "fail ClosureTooSmall }",
     );
@@ -309,7 +312,10 @@ intent evaluate",
 fn failing_calls_without_expect_or_mapping_refuse() {
     // A failing call in a function body without `expect`.
     refuse(
-        &BASE.replace("let first = expect checked(value);", "let first = checked(value);"),
+        &BASE.replace(
+            "let first = expect checked(value);",
+            "let first = checked(value);",
+        ),
         CompilerErrorKind::UnhandledFailure,
         "checked(value)",
     );
@@ -321,7 +327,10 @@ fn failing_calls_without_expect_or_mapping_refuse() {
     );
     // `expect` in an intent.
     refuse(
-        &BASE.replace("return { value };", "return { value: expect checked(value) };"),
+        &BASE.replace(
+            "return { value };",
+            "return { value: expect checked(value) };",
+        ),
         CompilerErrorKind::UnhandledFailure,
         "expect checked(value) }",
     );
@@ -501,11 +510,11 @@ fn linked_modules_keep_original_failure_coordinates() {
         .compile(&context())
         .expect_err("ambiguous bare failure names refuse");
     assert!(
-        errors
-            .iter()
-            .any(|error| error.error.kind == CompilerErrorKind::UnsupportedSourceShape
+        errors.iter().any(
+            |error| error.error.kind == CompilerErrorKind::UnsupportedSourceShape
                 && error.coordinate == "app.example@1"
-                && error.error.span.start == ambiguous.find("fn both").unwrap_or(usize::MAX)),
+                && error.error.span.start == ambiguous.find("fn both").unwrap_or(usize::MAX)
+        ),
         "{errors:#?}"
     );
 }

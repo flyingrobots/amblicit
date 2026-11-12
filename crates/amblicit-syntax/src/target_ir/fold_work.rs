@@ -285,7 +285,7 @@ impl<'a> Meter<'a> {
         }
         let own = self.value(expr, available, depth)?.evaluation()?;
         let children = match expr {
-            CoreExpr::Local { .. } | CoreExpr::Const(_) => Cost::default(),
+            CoreExpr::Local { .. } | CoreExpr::Const(_) | CoreExpr::Fail { .. } => Cost::default(),
             CoreExpr::Field { base, .. } => self.expression(base, available, depth + 1)?,
             CoreExpr::Variant { payload, .. } => match payload {
                 Some(value) => self.expression(value, available, depth + 1)?,
@@ -501,6 +501,18 @@ impl<'a> Meter<'a> {
         }
         let cost = match node {
             CoreNode::Let { value, .. } => self.expression(value, available, depth + 1)?,
+            CoreNode::Attempt {
+                value, failure_map, ..
+            } => {
+                let mut cost = self.expression(value, available, depth + 1)?;
+                for payload in failure_map
+                    .values()
+                    .flat_map(|reason| reason.payload.values())
+                {
+                    cost = cost.add(self.expression(payload, available, depth + 1)?)?;
+                }
+                cost
+            }
             CoreNode::Require { predicate, arm } => {
                 let (CoreRequireFailureArm::Terminal { reason }
                 | CoreRequireFailureArm::ContinueObstructed { reason }) = arm;

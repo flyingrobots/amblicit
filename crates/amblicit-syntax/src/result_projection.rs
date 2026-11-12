@@ -15,8 +15,9 @@ use crate::core_ir::{
 };
 use crate::{
     decode_canonical_cbor, digest_canonical_artifact, encode_canonical_cbor, CanonicalValue,
-    CoreDigest, CoreExpr, CoreIntent, CoreModule, CoreNode, CoreType, LocalRef, TargetIrArtifact,
-    TargetIrIntent, TargetIrPureBinding, TargetIrSemanticClosure, TargetIrStep,
+    CoreDigest, CoreExpr, CoreIntent, CoreModule, CoreNode, CoreObstructionReason, CoreType,
+    LocalRef, TargetIrArtifact, TargetIrIntent, TargetIrPureBinding, TargetIrSemanticClosure,
+    TargetIrStep,
 };
 
 /// Semantic schema identifier for result-projection values.
@@ -561,15 +562,7 @@ fn resolve_projection_sources(
     ),
     ResultProjectionFailure,
 > {
-    let core_pure_bindings = core_intent
-        .body
-        .nodes
-        .iter()
-        .filter_map(|node| match node {
-            CoreNode::Let { binding, value } => Some((binding, value)),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
+    let core_pure_bindings = core_pure_bindings(core_intent);
     let mut core_effects = Vec::new();
     for node in &core_intent.body.nodes {
         match node {
@@ -580,6 +573,7 @@ fn resolve_projection_sources(
                 ..
             } => core_effects.push((binding, effect, input)),
             CoreNode::Let { .. }
+            | CoreNode::Attempt { .. }
             | CoreNode::Require { .. }
             | CoreNode::ExternalActionRequest { .. } => {}
             CoreNode::For { .. } | CoreNode::Branch { .. } => {
@@ -606,7 +600,7 @@ fn resolve_projection_sources(
     let mut claimed_local_ids = BTreeSet::from([input.id.clone()]);
     let mut pure_by_local = BTreeMap::new();
     let mut pure_by_id = BTreeMap::new();
-    for (binding_index, ((core_binding, core_value), binding)) in core_pure_bindings
+    for (binding_index, ((core_binding, core_value, core_arms), binding)) in core_pure_bindings
         .iter()
         .zip(&target_intent.pure_bindings)
         .enumerate()
@@ -615,6 +609,7 @@ fn resolve_projection_sources(
             binding,
             core_binding,
             core_value,
+            *core_arms,
             intent_name,
             binding_index,
         )?;
@@ -664,15 +659,46 @@ fn resolve_projection_sources(
     ))
 }
 
+/// Root `let` and failure-mapped bindings in order, as Target pure bindings.
+type CorePureBindingView<'a> = (
+    &'a LocalRef,
+    &'a CoreExpr,
+    Option<&'a BTreeMap<String, CoreObstructionReason>>,
+);
+
+fn core_pure_bindings(core_intent: &CoreIntent) -> Vec<CorePureBindingView<'_>> {
+    core_intent
+        .body
+        .nodes
+        .iter()
+        .filter_map(|node| match node {
+            CoreNode::Let { binding, value } => Some((binding, value, None)),
+            CoreNode::Attempt {
+                binding,
+                value,
+                failure_map,
+            } => Some((binding, value, Some(failure_map))),
+            _ => None,
+        })
+        .collect()
+}
+
 fn validate_pure_binding_matches_core(
     binding: &TargetIrPureBinding,
     core_binding: &LocalRef,
     core_value: &CoreExpr,
+    core_arms: Option<&BTreeMap<String, CoreObstructionReason>>,
     intent_name: &str,
     binding_index: usize,
 ) -> Result<(), ResultProjectionFailure> {
     let expected_id = format!("{intent_name}.binding.{binding_index}");
-    if binding.id == expected_id && core_binding == &binding.binding && core_value == &binding.value
+    let arms_match = core_arms.map_or(binding.failure_arms.is_empty(), |arms| {
+        arms == &binding.failure_arms
+    });
+    if binding.id == expected_id
+        && core_binding == &binding.binding
+        && core_value == &binding.value
+        && arms_match
     {
         Ok(())
     } else {
@@ -753,6 +779,7 @@ fn project_core_expression(
         | CoreExpr::Match { .. }
         | CoreExpr::Variant { .. }
         | CoreExpr::Const(_)
+        | CoreExpr::Fail { .. }
         | CoreExpr::List { .. }
         | CoreExpr::Call { .. }
         | CoreExpr::If { .. } => Err(failure(
@@ -776,6 +803,7 @@ fn source_path(expression: &CoreExpr) -> Result<(&LocalRef, Vec<String>), Result
         | CoreExpr::Match { .. }
         | CoreExpr::Variant { .. }
         | CoreExpr::Const(_)
+        | CoreExpr::Fail { .. }
         | CoreExpr::Record { .. }
         | CoreExpr::List { .. }
         | CoreExpr::Call { .. }

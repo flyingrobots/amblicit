@@ -1449,6 +1449,7 @@ fn encoded_target_ir_with_pure_binding() -> CanonicalValue {
             width: "U64".to_owned(),
             value: "1".to_owned(),
         }),
+        failure_arms: std::collections::BTreeMap::new(),
     });
     intent.result = CoreExpr::Local { reference: binding };
     encode_target_ir_value(&artifact)

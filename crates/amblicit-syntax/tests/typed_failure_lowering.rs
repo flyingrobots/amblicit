@@ -115,7 +115,10 @@ fn core_failure_constructs_round_trip_canonically() {
     let fail = field(result, "else");
     assert_eq!(field(fail, "kind"), &text("fail"));
     assert_eq!(field(fail, "failure"), &text(TOO_SMALL));
-    let nodes = field(field(field(field(&value, "intents"), "evaluate"), "body"), "nodes");
+    let nodes = field(
+        field(field(field(&value, "intents"), "evaluate"), "body"),
+        "nodes",
+    );
     let CanonicalValue::Array(nodes) = nodes else {
         panic!("nodes are an array")
     };
@@ -169,7 +172,7 @@ fn failure_free_modules_carry_no_failure_fields_or_capability() {
 }
 
 #[test]
-fn core_integrity_refuses_forged_failure_constructs() {
+fn core_integrity_refuses_forged_function_failure_sets() {
     let compiled = core(BASE);
     validate_core_module_type_integrity(&compiled).expect("compiled Core is valid");
     let invalid = CoreTypeIntegrityFailureKind::InvalidDefinition;
@@ -198,8 +201,53 @@ fn core_integrity_refuses_forged_failure_constructs() {
         (invalid, "functions.both.failures".to_owned())
     );
 
+    let mut overdeclared = compiled.clone();
+    overdeclared
+        .functions
+        .get_mut("checked")
+        .expect("checked")
+        .failures
+        .push(CONFLICT.to_owned());
+    assert_eq!(
+        forged_refusal(&overdeclared),
+        (invalid, "functions.checked.failures".to_owned())
+    );
+
+    let mut failing_step = compiled;
+    failing_step
+        .required_core_capabilities
+        .push("core.fold/v1".to_owned());
+    failing_step
+        .functions
+        .get_mut("retain")
+        .expect("retain")
+        .body
+        .result = CoreExpr::Fold {
+        initial: Box::new(CoreExpr::Local {
+            reference: failing_step.functions["retain"].params[0].clone(),
+        }),
+        step: "rope.example@1.checked".to_owned(),
+        bound: 1,
+        state_type: "U64".to_owned(),
+    };
+    assert_eq!(
+        forged_refusal(&failing_step),
+        (invalid, "functions.retain.body".to_owned())
+    );
+}
+
+#[test]
+fn core_integrity_refuses_forged_intent_failure_constructs() {
+    let compiled = core(BASE);
+    let invalid = CoreTypeIntegrityFailureKind::InvalidDefinition;
+
     let mut misplaced = compiled.clone();
-    misplaced.intents.get_mut("evaluate").expect("intent").body.result = CoreExpr::Fail {
+    misplaced
+        .intents
+        .get_mut("evaluate")
+        .expect("intent")
+        .body
+        .result = CoreExpr::Fail {
         failure: TOO_SMALL.to_owned(),
     };
     assert_eq!(
@@ -208,7 +256,12 @@ fn core_integrity_refuses_forged_failure_constructs() {
     );
 
     let mut unmapped = compiled.clone();
-    let nodes = &mut unmapped.intents.get_mut("evaluate").expect("intent").body.nodes;
+    let nodes = &mut unmapped
+        .intents
+        .get_mut("evaluate")
+        .expect("intent")
+        .body
+        .nodes;
     let CoreNode::Attempt { binding, value, .. } = nodes[0].clone() else {
         panic!("attempt node")
     };
@@ -219,15 +272,22 @@ fn core_integrity_refuses_forged_failure_constructs() {
     );
 
     let mut partial = compiled.clone();
-    let CoreNode::Attempt { failure_map, .. } =
-        &mut partial.intents.get_mut("evaluate").expect("intent").body.nodes[0]
+    let CoreNode::Attempt { failure_map, .. } = &mut partial
+        .intents
+        .get_mut("evaluate")
+        .expect("intent")
+        .body
+        .nodes[0]
     else {
         panic!("attempt node")
     };
     failure_map.remove(CONFLICT);
     assert_eq!(
         forged_refusal(&partial),
-        (invalid, "intents.evaluate.body.nodes[0].failureMap".to_owned())
+        (
+            invalid,
+            "intents.evaluate.body.nodes[0].failureMap".to_owned()
+        )
     );
 
     let mut dead = compiled.clone();
@@ -245,7 +305,7 @@ fn core_integrity_refuses_forged_failure_constructs() {
         (invalid, "intents.evaluate.body.nodes[1]".to_owned())
     );
 
-    let mut uncapable = compiled.clone();
+    let mut uncapable = compiled;
     uncapable
         .required_core_capabilities
         .retain(|capability| capability != "core.failure/v1");
@@ -253,24 +313,6 @@ fn core_integrity_refuses_forged_failure_constructs() {
         forged_refusal(&uncapable),
         (invalid, "requiredCoreCapabilities".to_owned())
     );
-
-    let mut failing_step = compiled;
-    failing_step
-        .functions
-        .get_mut("retain")
-        .expect("retain")
-        .body
-        .result = CoreExpr::Fold {
-        initial: Box::new(CoreExpr::Local {
-            reference: failing_step.functions["retain"].params[0].clone(),
-        }),
-        step: "checked".to_owned(),
-        bound: 1,
-        state_type: "U64".to_owned(),
-    };
-    let (kind, path) = forged_refusal(&failing_step);
-    assert_eq!(kind, invalid);
-    assert!(path.starts_with("functions.retain"), "{path}");
 }
 
 #[test]
@@ -280,11 +322,18 @@ fn attempt_lowers_to_failure_armed_pure_binding() {
         let intent = &artifact.intents["evaluate"];
         let attempt = &intent.pure_bindings[0];
         assert_eq!(
-            attempt.failure_arms.keys().map(String::as_str).collect::<Vec<_>>(),
+            attempt
+                .failure_arms
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
             [TOO_SMALL, CONFLICT],
             "{domain}"
         );
-        assert_eq!(attempt.failure_arms[CONFLICT].kind, "text.ContentIdentityMismatch");
+        assert_eq!(
+            attempt.failure_arms[CONFLICT].kind,
+            "text.ContentIdentityMismatch"
+        );
         assert!(intent.pure_bindings[1].failure_arms.is_empty());
         assert_eq!(
             intent.execution_order.as_deref(),
@@ -317,7 +366,11 @@ fn attempt_lowers_to_failure_armed_pure_binding() {
 #[test]
 fn pre_step_guard_target_refuses_failure_mapped_bindings() {
     let report = lower_to_target_ir(&core(BASE), &facts("echo.span-ir/v1"));
-    assert_eq!(report.status, TargetLoweringStatus::Unsupported, "{report:#?}");
+    assert_eq!(
+        report.status,
+        TargetLoweringStatus::Unsupported,
+        "{report:#?}"
+    );
     assert!(
         report.failures.iter().any(|failure| failure.kind
             == TargetLoweringFailureKind::UnsupportedCoreNode

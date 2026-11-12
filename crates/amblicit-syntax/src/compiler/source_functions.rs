@@ -22,7 +22,9 @@ pub(super) struct Signature {
 
 impl TypeChecker<'_> {
     pub(super) fn check_source_functions(&mut self) -> BTreeMap<String, CoreFunction> {
+        self.declare_source_failures();
         for definition in &self.resolved.source_functions {
+            self.declare_function_failures(definition);
             let params = definition
                 .params
                 .iter()
@@ -112,6 +114,18 @@ impl TypeChecker<'_> {
 
     fn check_source_function(&mut self, definition: &FunctionDecl) -> Option<CoreFunction> {
         let signature = self.function_signatures.get(&definition.name)?.clone();
+        self.begin_function_failures(&definition.name);
+        let function = self.check_source_function_body(definition, signature);
+        let clean = function.is_some();
+        self.end_function_failures(definition, clean);
+        function
+    }
+
+    fn check_source_function_body(
+        &mut self,
+        definition: &FunctionDecl,
+        signature: Signature,
+    ) -> Option<CoreFunction> {
         self.input_proof_constraints.clear();
         self.local_bounds.clear();
         let mut env = LocalEnvironment::default();
@@ -203,6 +217,7 @@ impl TypeChecker<'_> {
         Some(CoreFunction {
             params,
             return_type: signature.result.coord,
+            failures: self.function_failures(&definition.name).to_vec(),
             body: CorePureBlock {
                 locals,
                 bindings,
@@ -262,6 +277,9 @@ impl TypeChecker<'_> {
         expected: Option<&TypeShape>,
         span: Span,
     ) -> Option<TypedValue> {
+        if !self.failing_call_is_handled(name, span) {
+            return None;
+        }
         if !type_args.is_empty() {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
