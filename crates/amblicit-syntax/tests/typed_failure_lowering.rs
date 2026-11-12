@@ -334,7 +334,7 @@ fn attempt_lowers_to_failure_armed_pure_binding() {
             attempt.failure_arms[CONFLICT].kind,
             "text.ContentIdentityMismatch"
         );
-        assert!(intent.pure_bindings[1].failure_arms.is_empty());
+        assert_eq!(intent.pure_bindings[1].failure_arms, BTreeMap::new());
         assert_eq!(
             intent.execution_order.as_deref(),
             Some(

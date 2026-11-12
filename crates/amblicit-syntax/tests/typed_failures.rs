@@ -144,7 +144,7 @@ intent evaluate(input: Input) returns Output profile p.read basis none budget <=
 }
 ";
     let core = compile(source);
-    assert!(core.functions["fails"].failures.is_empty());
+    assert_eq!(core.functions["fails"].failures, Vec::<String>::new());
     assert!(!core
         .required_core_capabilities
         .iter()
@@ -390,7 +390,10 @@ fn intent_maps_every_failure_to_a_terminal_obstruction() {
         [TOO_SMALL, CONFLICT]
     );
     assert_eq!(failure_map[TOO_SMALL].kind, "text.ClosureInsufficient");
-    assert!(failure_map[TOO_SMALL].payload.is_empty());
+    assert_eq!(
+        failure_map[TOO_SMALL].payload,
+        std::collections::BTreeMap::new()
+    );
     assert_eq!(failure_map[CONFLICT].kind, "text.ContentIdentityMismatch");
     assert!(matches!(
         &failure_map[CONFLICT].payload["observed"],
