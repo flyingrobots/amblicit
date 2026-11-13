@@ -8,6 +8,20 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Add typed failures to source functions. `failure ClosureTooSmall;`
+  declares a failure. `fn f(...) -> T fails ClosureTooSmall` declares the
+  exact set the body produces with `fail` and `expect`. An intent maps every
+  failure with `let x = f(...) else { ClosureTooSmall => Obstruction };`. No
+  other way to fail compiles, and each violation has its own diagnostic kind
+  (`UnknownFailure`, `UndeclaredFailure`, `UnraisedFailure`, `UnhandledFailure`,
+  `IncompleteFailureMapping`). Core gains function `failures`, the `fail`
+  expression and the `attempt` node under `core.failure/v1`. Ordered and
+  structured Target IR carry `failureArms` on pure bindings. All of these are
+  omitted when unused, so existing artifacts are byte-identical. The provider
+  contract pack `typed-failures-v1` publishes the schema;
+  `function-preconditions-v1` and earlier packs are unchanged. Echo must implement
+  `core.failure/v1` before a failing program can run.
+
 - Add function preconditions (#264). A source function may write `where`
   clauses after its return type, as in `fn cut(bytes: Bytes<max=8>, start:
   U64, end: U64) -> Bytes<max=8> where start <= end, end <= len(bytes)`. The

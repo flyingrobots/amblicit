@@ -284,7 +284,7 @@ impl<'a> LocalAvailability<'a> {
         }
         match expression {
             CoreExpr::Local { reference } => self.reference(reference),
-            CoreExpr::Const(_) => true,
+            CoreExpr::Const(_) | CoreExpr::Fail { .. } => true,
             CoreExpr::Fold { initial, .. } => self.expression(initial, depth + 1),
             CoreExpr::Match { scrutinee, arms } => {
                 if !self.expression(scrutinee, depth + 1) {
@@ -370,7 +370,11 @@ fn provably_non_integer(expression: &CoreExpr, depth: usize) -> bool {
         CoreExpr::Match { arms, .. } => arms
             .iter()
             .any(|arm| provably_non_integer(&arm.body, depth + 1)),
-        CoreExpr::Record { .. } | CoreExpr::List { .. } | CoreExpr::Variant { .. } => true,
+        // A failure is never an integer value; treating it as non-integer fails closed.
+        CoreExpr::Record { .. }
+        | CoreExpr::List { .. }
+        | CoreExpr::Variant { .. }
+        | CoreExpr::Fail { .. } => true,
         CoreExpr::Local { reference } => {
             let ty = reference.ty.as_str();
             ty == "Bool"

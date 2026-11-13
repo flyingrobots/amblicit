@@ -114,16 +114,19 @@ Controls whose nested rule graph is opaque through the schema dependency, such
 as `.cbor`, reject with a stable unsupported-control failure rather than being
 accepted without a complete closure proof.
 The checked Rust-neutral artifacts live under
-[`fixtures/provider-contracts/function-preconditions-v1/`](../../../fixtures/provider-contracts/function-preconditions-v1/):
+[`fixtures/provider-contracts/typed-failures-v1/`](../../../fixtures/provider-contracts/typed-failures-v1/):
 one self-contained Apache-2.0 CDDL file and one deterministic manifest mapping
 logical contracts and provider artifact domains to exact roots. The prior
 [function-free v1 publication](../../../fixtures/provider-contracts/v1/),
 [source-function publication](../../../fixtures/provider-contracts/source-functions-v1/),
 [source-module publication](../../../fixtures/provider-contracts/source-modules-v1/),
-[structured-control publication](../../../fixtures/provider-contracts/structured-control-v1/)
-and [bounded-state-fold publication](../../../fixtures/provider-contracts/bounded-state-fold-v1/)
+[structured-control publication](../../../fixtures/provider-contracts/structured-control-v1/),
+[bounded-state-fold publication](../../../fixtures/provider-contracts/bounded-state-fold-v1/)
+and [function-preconditions publication](../../../fixtures/provider-contracts/function-preconditions-v1/)
 remain byte-identical for explicitly pinned consumers; tests reassemble them
-from `fixtures/core/pre-precondition-core.cddl`, `fixtures/core/pre-fold-core.cddl`
+from `fixtures/core/pre-typed-failure-core.cddl` and
+`fixtures/target-ir/pre-typed-failure-target-ir.cddl`,
+`fixtures/core/pre-precondition-core.cddl`, `fixtures/core/pre-fold-core.cddl`
 (or the earlier function-free Core schema) and, where applicable, the frozen
 pre-v3 Target IR schema in `fixtures/target-ir/pre-structured-target-ir.cddl`.
 The fold-capable publication adds the explicit `fold` Core expression; the
@@ -133,6 +136,10 @@ either; an earlier pack refuses the field with a schema mismatch. Accepting the
 field in a schema is not support for it: a consumer must implement the
 contract in the language specification's Function Preconditions section or
 refuse. Capability, state and cost checks remain separate semantic gates.
+The typed-failure publication adds a function's optional `failures`, the
+`fail` Core expression and the `attempt` Core node, and optional `failureArms`
+on ordered (v2) and structured (v3) Target IR pure bindings. Consumers must
+select its new schema digest; schema acceptance is not runtime support.
 The structured-control publication adds the `echo.span-ir/v3` variant of the `target-ir-artifact`
 root, with recursive `for` and `branch` order entries discriminated by their
 literal `kind`; it accepts actual v3 encoder output and refuses missing or

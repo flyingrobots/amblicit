@@ -34,7 +34,7 @@ pub(crate) fn precondition_nodes(preconditions: &[CorePredicate]) -> usize {
     }
     fn expression(value: &CoreExpr) -> usize {
         1 + match value {
-            CoreExpr::Local { .. } | CoreExpr::Const(_) => 0,
+            CoreExpr::Local { .. } | CoreExpr::Const(_) | CoreExpr::Fail { .. } => 0,
             CoreExpr::Variant { payload, .. } => payload.as_deref().map_or(0, expression),
             CoreExpr::Fold { initial, .. } => expression(initial),
             CoreExpr::Match { scrutinee, arms } => {
@@ -107,7 +107,9 @@ pub(super) fn validate_preconditions(
             {
                 Err(invalid(&at))
             }
-            CoreExpr::Fold { .. } | CoreExpr::Match { .. } => Err(invalid(&at)),
+            CoreExpr::Fold { .. } | CoreExpr::Match { .. } | CoreExpr::Fail { .. } => {
+                Err(invalid(&at))
+            }
             // Exhaustive on purpose: a new expression form must decide here.
             CoreExpr::Call { .. }
             | CoreExpr::Local { .. }
@@ -172,7 +174,7 @@ fn expression(value: &CoreExpr, bindings: &Bindings<'_>) -> CoreExpr {
             .iter()
             .find(|(param, _)| *param == reference)
             .map_or_else(|| value.clone(), |(_, argument)| (*argument).clone()),
-        CoreExpr::Const(_) => value.clone(),
+        CoreExpr::Const(_) | CoreExpr::Fail { .. } => value.clone(),
         CoreExpr::Variant { ty, case, payload } => CoreExpr::Variant {
             ty: ty.clone(),
             case: case.clone(),

@@ -88,7 +88,7 @@ fn rewrite(e: &mut CoreExpr, f: &mut impl FnMut(&mut CoreExpr) -> bool) -> bool 
         return true;
     }
     match e {
-        CoreExpr::Local { .. } | CoreExpr::Const(_) => false,
+        CoreExpr::Local { .. } | CoreExpr::Const(_) | CoreExpr::Fail { .. } => false,
         CoreExpr::Variant { payload, .. } => payload.as_deref_mut().is_some_and(|p| rewrite(p, f)),
         CoreExpr::Fold { initial, .. } => rewrite(initial, f),
         CoreExpr::Match { scrutinee, arms } => {

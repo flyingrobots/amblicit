@@ -1287,6 +1287,11 @@ fn compiler_error_kind_name(kind: CompilerErrorKind) -> &'static str {
         CompilerErrorKind::DuplicateObstructionPayloadField => "DuplicateObstructionPayloadField",
         CompilerErrorKind::ReservedTypeIdentity => "ReservedTypeIdentity",
         CompilerErrorKind::InvalidCoreTypeIntegrity => "InvalidCoreTypeIntegrity",
+        CompilerErrorKind::UnknownFailure => "UnknownFailure",
+        CompilerErrorKind::UndeclaredFailure => "UndeclaredFailure",
+        CompilerErrorKind::UnraisedFailure => "UnraisedFailure",
+        CompilerErrorKind::UnhandledFailure => "UnhandledFailure",
+        CompilerErrorKind::IncompleteFailureMapping => "IncompleteFailureMapping",
         CompilerErrorKind::UnprovenPrecondition => "UnprovenPrecondition",
     }
 }
@@ -1321,6 +1326,9 @@ fn core_review(core: &amblicit_syntax::CoreModule) -> Value {
             });
             if !function.preconditions.is_empty() {
                 entry["preconditions"] = function.preconditions.iter().map(core_predicate_review).collect();
+            }
+            if !function.failures.is_empty() {
+                entry["failures"] = json!(function.failures);
             }
             (name.clone(), entry)
         }).collect());
@@ -1624,6 +1632,19 @@ fn core_node_review(node: &CoreNode) -> Value {
             "binding": local_ref_review(binding),
             "value": core_expr_review(value),
         }),
+        CoreNode::Attempt {
+            binding,
+            value,
+            failure_map,
+        } => json!({
+            "kind": "attempt",
+            "binding": local_ref_review(binding),
+            "value": core_expr_review(value),
+            "failureMap": failure_map
+                .iter()
+                .map(|(failure, reason)| (failure.clone(), core_obstruction_reason_review(reason)))
+                .collect::<BTreeMap<_, _>>(),
+        }),
         CoreNode::Require { predicate, arm } => json!({
             "kind": "require",
             "predicate": core_predicate_review(predicate),
@@ -1748,6 +1769,7 @@ fn local_ref_review(reference: &amblicit_syntax::LocalRef) -> Value {
 
 fn core_expr_review(expr: &CoreExpr) -> Value {
     match expr {
+        CoreExpr::Fail { failure } => json!({ "kind": "fail", "failure": failure }),
         CoreExpr::Local { reference } => json!({
             "kind": "local",
             "reference": local_ref_review(reference),

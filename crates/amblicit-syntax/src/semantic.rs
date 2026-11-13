@@ -80,7 +80,7 @@ pub fn validate_surface(module: &Module) -> Result<(), Vec<SemanticError>> {
     for decl in &module.decls {
         match decl {
             Decl::Type(decl) => validate_type_expr(&decl.body, decl.span, &mut errors),
-            Decl::Enum(_) => {}
+            Decl::Enum(_) | Decl::Failure(_) => {}
             Decl::Function(function) => {
                 if PRELUDE_NAMES.contains(&function.name.as_str()) {
                     errors.push(error(
@@ -136,6 +136,7 @@ fn collect_module_names(module: &Module, errors: &mut Vec<SemanticError>) -> BTr
             Decl::Enum(decl) => record_module_name(&mut names, &decl.name, decl.span, errors),
             Decl::Function(decl) => record_module_name(&mut names, &decl.name, decl.span, errors),
             Decl::Intent(decl) => record_module_name(&mut names, &decl.name, decl.span, errors),
+            Decl::Failure(decl) => record_module_name(&mut names, &decl.name, decl.span, errors),
         }
     }
     names
@@ -541,8 +542,11 @@ fn validate_expr(expr: &Expr, names: &mut NameEnv, errors: &mut Vec<SemanticErro
         | Expr::Str { .. }
         | Expr::Bytes { .. }
         | Expr::Bool { .. }
-        | Expr::Digest { .. } => {}
-        Expr::Field { base, .. } | Expr::Unary { operand: base, .. } => {
+        | Expr::Digest { .. }
+        | Expr::Fail { .. } => {}
+        Expr::Field { base, .. }
+        | Expr::Unary { operand: base, .. }
+        | Expr::Expect { call: base, .. } => {
             validate_expr(base, names, errors);
         }
         Expr::Call {

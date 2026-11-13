@@ -101,6 +101,19 @@ impl<'a> Meter<'a> {
         for node in &block.nodes {
             let node_steps = match node {
                 CoreNode::Let { value, .. } => self.expression(value, available, depth + 1)?,
+                CoreNode::Attempt {
+                    value, failure_map, ..
+                } => {
+                    let mut steps = self.expression(value, available, depth + 1)?;
+                    for payload in failure_map
+                        .values()
+                        .flat_map(|reason| reason.payload.values())
+                    {
+                        steps =
+                            steps.checked_add(self.expression(payload, available, depth + 1)?)?;
+                    }
+                    steps
+                }
                 CoreNode::Require { predicate, arm } => {
                     let (CoreRequireFailureArm::Terminal { reason }
                     | CoreRequireFailureArm::ContinueObstructed { reason }) = arm;
@@ -206,7 +219,7 @@ impl<'a> Meter<'a> {
             return None;
         }
         let children = match expression {
-            CoreExpr::Local { .. } | CoreExpr::Const(_) => Some(0),
+            CoreExpr::Local { .. } | CoreExpr::Const(_) | CoreExpr::Fail { .. } => Some(0),
             CoreExpr::Fold {
                 initial,
                 step,

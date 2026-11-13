@@ -412,7 +412,7 @@ fn mutate_first_local_reference_type(expression: &mut CoreExpr, ty: &str) -> boo
             ty.clone_into(&mut reference.ty);
             true
         }
-        CoreExpr::Const(_) => false,
+        CoreExpr::Const(_) | CoreExpr::Fail { .. } => false,
         CoreExpr::Record { fields } => fields
             .values_mut()
             .any(|value| mutate_first_local_reference_type(value, ty)),

@@ -94,6 +94,7 @@ impl TypeChecker<'_> {
                 Some("cannot call a source function")
             }
             CoreExpr::Fold { .. } => Some("cannot fold"),
+            CoreExpr::Fail { .. } => Some("cannot fail"),
             CoreExpr::Match { .. } => Some("cannot match"),
             // Exhaustive on purpose: a new expression form must decide here.
             CoreExpr::Call { .. }
@@ -241,7 +242,10 @@ fn find_in_expression(
         return Some(found);
     }
     match expression {
-        CoreExpr::Local { .. } | CoreExpr::Const(_) | CoreExpr::Fold { .. } => None,
+        CoreExpr::Local { .. }
+        | CoreExpr::Const(_)
+        | CoreExpr::Fold { .. }
+        | CoreExpr::Fail { .. } => None,
         CoreExpr::Match { scrutinee, .. }
         | CoreExpr::Field {
             base: scrutinee, ..

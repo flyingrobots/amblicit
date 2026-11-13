@@ -84,7 +84,7 @@ fn block_is_total_at_depth(
     // Proven bounds of earlier unsigned bindings extend the evaluation scope.
     block.nodes.iter().all(|node| {
         let total = node_is_total(core, node, constraints, depth);
-        if let CoreNode::Let { binding, value } = node {
+        if let CoreNode::Let { binding, value } | CoreNode::Attempt { binding, value, .. } = node {
             core.record_binding(binding, value, constraints);
         }
         total
@@ -100,6 +100,15 @@ fn node_is_total(
     match node {
         CoreNode::Let { value, .. } => {
             expression_is_total_at_depth(core, value, constraints, depth)
+        }
+        CoreNode::Attempt {
+            value, failure_map, ..
+        } => {
+            expression_is_total_at_depth(core, value, constraints, depth)
+                && failure_map
+                    .values()
+                    .flat_map(|reason| reason.payload.values())
+                    .all(|payload| expression_is_total_at_depth(core, payload, constraints, depth))
         }
         CoreNode::Require { predicate, arm } => {
             let (CoreRequireFailureArm::Terminal { reason }
@@ -239,7 +248,7 @@ fn expression_is_total_at_depth(
         return false;
     }
     match expression {
-        CoreExpr::Local { .. } | CoreExpr::Const(_) => true,
+        CoreExpr::Local { .. } | CoreExpr::Const(_) | CoreExpr::Fail { .. } => true,
         CoreExpr::Fold { initial, .. } => {
             expression_is_total_at_depth(core, initial, constraints, depth + 1)
         }

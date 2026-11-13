@@ -272,7 +272,7 @@ fn rename_expr(expr: &mut CoreExpr, from: &str, to: &LocalRef) {
             }
         }
         CoreExpr::Local { reference } if reference.id == from => *reference = to.clone(),
-        CoreExpr::Local { .. } | CoreExpr::Const(_) => {}
+        CoreExpr::Local { .. } | CoreExpr::Const(_) | CoreExpr::Fail { .. } => {}
         CoreExpr::Record { fields } => fields
             .values_mut()
             .for_each(|value| rename_expr(value, from, to)),
@@ -317,7 +317,9 @@ fn rename_block(block: &mut CoreBlock, from: &str, to: &LocalRef) {
     }
     for node in &mut block.nodes {
         match node {
-            CoreNode::Let { value, .. } => rename_expr(value, from, to),
+            CoreNode::Let { value, .. } | CoreNode::Attempt { value, .. } => {
+                rename_expr(value, from, to);
+            }
             CoreNode::Effect { input, .. } => rename_expr(input, from, to),
             CoreNode::Require { predicate, .. } => rename_predicate(predicate, from, to),
             CoreNode::For {

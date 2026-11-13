@@ -140,7 +140,7 @@ fn walk_scope(
             }
             Ok(())
         }
-        CoreExpr::Const(_) | CoreExpr::Local { .. } => Ok(()),
+        CoreExpr::Const(_) | CoreExpr::Local { .. } | CoreExpr::Fail { .. } => Ok(()),
         CoreExpr::Variant { payload, .. } => {
             if let Some(payload) = payload {
                 walk_scope(payload, depth + 1, scope, path)?;
@@ -201,7 +201,7 @@ pub(super) fn scope_predicate(
     }
 }
 
-fn walk(
+pub(super) fn walk(
     expression: &CoreExpr,
     depth: usize,
     check: &mut impl FnMut(&CoreExpr) -> Result<(), CoreTypeIntegrityFailure>,
@@ -217,7 +217,7 @@ fn walk(
             }
             Ok(())
         }
-        CoreExpr::Const(_) | CoreExpr::Local { .. } => Ok(()),
+        CoreExpr::Const(_) | CoreExpr::Local { .. } | CoreExpr::Fail { .. } => Ok(()),
         CoreExpr::Variant { payload, .. } => {
             if let Some(payload) = payload {
                 walk(payload, depth + 1, check)?;

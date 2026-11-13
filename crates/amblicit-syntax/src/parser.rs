@@ -12,6 +12,8 @@ use crate::ast::{
 };
 use crate::token::{lex, Span, Token, TokenKind};
 
+mod failures;
+
 /// Stable parser error categories used by deterministic negative tests.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParseErrorKind {
@@ -536,9 +538,11 @@ impl Parser {
             Ok(Decl::Intent(self.intent_decl()?))
         } else if self.at_kw("fn") {
             Ok(Decl::Function(self.function_decl()?))
+        } else if self.at_contextual("failure") {
+            Ok(Decl::Failure(self.failure_decl()?))
         } else {
             self.err(format!(
-                "expected `type`, `enum`, `fn`, or `intent` declaration, found {:?}",
+                "expected `type`, `enum`, `failure`, `fn`, or `intent` declaration, found {:?}",
                 self.peek()
             ))
         }
@@ -823,6 +827,7 @@ impl Parser {
         self.expect(&TokenKind::RParen)?;
         self.expect(&TokenKind::Arrow)?;
         let returns = self.type_ref()?;
+        let fails = self.fails_clause()?;
         let mut preconditions = Vec::new();
         while self.eat_kw("where") {
             preconditions.push(self.expr()?);
@@ -835,6 +840,7 @@ impl Parser {
             name,
             params,
             returns,
+            fails,
             preconditions,
             body,
             span: Span::new(start, self.prev_end()),
@@ -1425,6 +1431,9 @@ impl Parser {
                 span: Span::new(start, self.prev_end()),
             })
         } else {
+            if let Some(failure) = self.failure_expr()? {
+                return Ok(failure);
+            }
             self.postfix()
         }
     }
@@ -1734,7 +1743,9 @@ fn expr_span(expr: &Expr) -> Span {
         | Expr::If { span, .. }
         | Expr::IfYield { span, .. }
         | Expr::VariantLit { span, .. }
-        | Expr::Match { span, .. } => *span,
+        | Expr::Match { span, .. }
+        | Expr::Fail { span, .. }
+        | Expr::Expect { span, .. } => *span,
     }
 }
 

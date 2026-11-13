@@ -64,6 +64,22 @@ pub enum Decl {
     Enum(EnumDecl),
     Intent(IntentDecl),
     Function(FunctionDecl),
+    /// `failure Name;` — a payload-free failure owned by the module.
+    Failure(FailureDecl),
+}
+
+/// `failure Name;` declares one payload-free failure owned by the module.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FailureDecl {
+    pub name: String,
+    pub span: Span,
+}
+
+/// One entry of a `fails` clause: a local `Name` or an imported `alias.Name`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FailureRef {
+    pub path: Vec<String>,
+    pub span: Span,
 }
 
 /// A nongeneric source-owned pure function. Statement purity is checked by the compiler.
@@ -72,6 +88,8 @@ pub struct FunctionDecl {
     pub name: String,
     pub params: Vec<Param>,
     pub returns: TypeRef,
+    /// The declared failure set, in source order; empty without `fails`.
+    pub fails: Vec<FailureRef>,
     /// `where` preconditions in source order, every clause flattened.
     pub preconditions: Vec<Expr>,
     pub body: Block,
@@ -463,6 +481,16 @@ pub enum Expr {
     Match {
         scrutinee: Box<Expr>,
         arms: Vec<MatchArm>,
+        span: Span,
+    },
+    /// `fail Name` — ends the enclosing function with a declared failure.
+    Fail {
+        failure: Vec<String>,
+        span: Span,
+    },
+    /// `expect call` — a failing call whose failures propagate to the caller.
+    Expect {
+        call: Box<Expr>,
         span: Span,
     },
 }

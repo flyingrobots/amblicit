@@ -753,6 +753,201 @@ When the predicate protects mutable target state, lowering must attach it to the
 relevant target effect as an atomic runtime guard rather than treating it as only
 a local read-time assertion.
 
+## Typed Function Failures
+
+A source function may end its evaluation in a small set of named failures
+that it declares. It cannot fail in any other way. The caller sees the
+failures in the function's signature and has to handle each one. A function
+can propagate a failure to its own caller with `expect`. An intent maps each
+failure to a domain obstruction with `else`, as it does for an effect. This is
+how a law such as the authored rope reports `ClosureTooSmall` (a closure read
+did not expand enough) or `ConflictingContent` (one content id was built from
+two different definitions).
+
+```amblicit
+failure ClosureTooSmall;
+
+fn expanded(t: Tree) -> BranchView fails ClosureTooSmall {
+  return match t {
+    Branch(b) => b,
+    Leaf(l) => fail ClosureTooSmall,
+  };
+}
+
+fn leftHeight(t: Tree) -> U8 fails ClosureTooSmall {
+  let b = expect expanded(t);
+  return height(b.left);
+}
+
+intent measure(input: Input) returns Output ... {
+  let h = rope.leftHeight(input.tree)
+    else { ClosureTooSmall => text.ClosureInsufficient };
+  return { height: h };
+}
+```
+
+### Declaring failures
+
+`failure Name;` declares a failure owned by the enclosing module
+(`EDICT-LANG-FAIL-DECL-001`). Its failure coordinate is the module
+coordinate followed by the name, for example `jedit.rope@1.ClosureTooSmall`.
+That coordinate stays the same when an authenticated source closure links the
+module under a hygienic name. A failure name starts with an uppercase letter
+and must not repeat another declaration name in its module. A v1 failure
+carries no payload.
+
+A function declares the failures it can produce after its return type:
+`fn f(...) -> T fails A, B { ... }`. A bare name refers to a failure declared
+in the same module. `alias.Name` refers to a failure declared in an imported
+source module. A name that resolves to no declared failure reports
+`UnknownFailure`. A set may not list a failure twice, and it may not list two
+failures with the same bare name from different modules: callers map failures
+by bare name, so the name must identify one failure.
+
+### The declared set is exact
+
+A function's declared set is exactly the set of failures its body can produce
+(`EDICT-LANG-FAIL-SET-001`). A body produces a failure with `fail Name` or by
+propagating one with `expect`. If the body can produce a failure the
+function does not declare, the compiler reports `UndeclaredFailure`. If the
+function declares a failure its body never produces, the compiler reports
+`UnraisedFailure`. The judgment is syntactic: a `fail` in a branch that the
+compiler can prove is never taken still counts. Exactness means a caller never
+has to map a failure that cannot happen, and every declared failure has
+somewhere in the body that produces it.
+
+`fail Name` is an expression. It has whatever type its context expects, so it
+can stand in a `return`, a conditional arm, a `match` arm or an operand. A
+`fail` with no expected type reports `TypeMismatch`. A `fail` is legal only in
+the body of a function whose declared set contains it; anywhere else it
+reports `UndeclaredFailure`.
+
+### Propagating with `expect`
+
+`expect f(args)` calls a source function that declares failures. It produces
+the function's result value, or ends the enclosing function with the same
+failure (`EDICT-LANG-FAIL-EXPECT-001`). Its operand must be a direct call;
+`(expect f(x)).field` reads a field of the result. It is legal only inside a
+function body, and the callee's whole failure set must be part of the enclosing
+function's declared set. A callee failure that the enclosing function does
+not declare reports `UndeclaredFailure`. An intent has no failure set, so
+`expect` in an intent, intent clause or basis reports `UnhandledFailure`. An
+`expect` on a call that declares no failures reports `UnsupportedSourceShape`.
+
+A call to a function that declares failures must be either the operand of
+`expect` in a function body, or the whole value of a mapped intent `let`
+(below). A call anywhere else reports `UnhandledFailure` and names the
+failures the call can produce. A `fold` step must be a function with no
+failures.
+
+### Mapping failures in an intent
+
+An intent maps a failing call with the same `else` clause it uses for
+effects (`EDICT-LANG-FAIL-MAP-001`):
+
+```amblicit
+let fresh = rope.normalized(rope.created(next))
+  else {
+    ConflictingContent => text.ContentIdentityMismatch,
+    ClosureTooSmall => text.ClosureInsufficient,
+  };
+```
+
+- The whole value of the `let` must be a direct call to a source function
+  that declares failures. The `let` may sit in an intent body, a `for` body
+  or an `if` statement block. The type annotation is optional; the binding has
+  the function's return type.
+- The map must have exactly one arm for each failure in the callee's set,
+  keyed by its bare name. A missing failure reports
+  `IncompleteFailureMapping`. An arm naming a failure the callee does not
+  declare reports `UnknownFailure`. A repeated arm reports
+  `DuplicateObstructionFailure`.
+- `else Obstruction` is shorthand for a one-arm map. It is legal only when the
+  callee declares exactly one failure; otherwise it reports
+  `IncompleteFailureMapping`.
+- An arm cannot bind the failure (`Name(x) => ...` reports
+  `UnsupportedSourceShape`), because a v1 failure has no payload.
+- An arm's target is a terminal obstruction written like a `require`
+  target: a coordinate with an optional record payload. The payload may read
+  any binding that is in scope before the `let`.
+- `else` on a call to a function that declares no failures reports
+  `UnknownFailure` for each arm (or `IncompleteFailureMapping` for the
+  shorthand). There is nothing to map.
+
+### Evaluation
+
+Evaluation stays strict and left to right. When a `fail` runs, the current
+function call ends. Every enclosing `expect` then ends its own function with
+the same failure, up to the mapped `let` in the intent. That `let` ends the
+intent with the arm's terminal obstruction. No later statement runs.
+Atomic application means that no write becomes visible. A failure that is
+never produced costs nothing. A function that fails within its declared set
+is still total for the purposes of I-004.
+
+### Core and Target representation
+
+Core represents a failure without changing anything for a program that
+declares none (`EDICT-CORE-FAIL-001`). A Core module without failures is
+byte-identical to the same module before this feature existed.
+
+- A source function carries `failures`, the sorted failure coordinates of its
+  declared set. The field is omitted when the set is empty.
+- `{ kind: "fail", failure }` is the Core expression for `fail Name`.
+- `expect` leaves no Core node. A call keeps its ordinary `call` form, and
+  propagation follows from the callee's declared set.
+- A mapped `let` becomes `{ kind: "attempt", binding, value, failureMap }`.
+  `value` is the call, and `failureMap` maps every failure coordinate of the
+  callee to a terminal obstruction reason (`reasonKind` plus payload), the
+  same envelope as a terminal `require`.
+- A module that declares any failure requires the `core.failure/v1` Core
+  capability, so a provider that does not implement it refuses the module
+  instead of misreading it.
+
+The Core integrity judgment checks these rules independently of the source
+compiler. Each function's `failures` is sorted and unique. The set of failures
+its body can produce (its `fail` expressions plus the sets of the functions it
+calls) equals its declared set. A `fail` appears only in function bodies. Outside
+function bodies, a call to a failing function appears only as the value of an
+`attempt` node, with failure-free arguments. An `attempt` names a failing
+callee, and its map has exactly that callee's coordinates as keys. A `fold`
+step declares no failures. A failure-free call in `attempt` position is
+refused, so every Core program has one encoding.
+
+Target IR lowers an `attempt` node to a pure binding with
+`failureArms`, a map from failure coordinate to obstruction reason
+(`EDICT-TARGET-FAIL-001`). Only the ordered (`echo.span-ir/v2`) and
+structured (`echo.span-ir/v3`) execution models carry it, because their
+explicit order decides which instruction runs first. The pre-step-guard model
+(`echo.span-ir/v1`) refuses an `attempt` with `UnsupportedCoreNode` and the
+detail `failure_mapped_binding`. A pure binding without failure arms is
+encoded exactly as before. A provider judges a `failureArms` binding from the
+same Core facts. The binding is legal only when its value is a call to a
+failing source function whose set equals the arm keys. If evaluation ends in
+failure `F`, the provider obstructs with the reason in `failureArms[F]`.
+
+### Rationale
+
+- **An explicit, closed set.** A failure is a declared name, not an
+  arbitrary value. Callers can then check that they handle every failure,
+  and Core stays free of exception objects. Payloads are left for a later
+  version: the authored rope needs none, and adding them later does not
+  change any program that compiles today.
+- **Exact sets.** Allowing a function to over-declare would force callers to
+  map failures that cannot happen. An exact set can be relaxed later without
+  breaking programs; a loose set cannot be tightened later without breaking
+  them.
+- **Propagation without wrappers.** A failure could have been encoded as a
+  result variant that every caller matches. Bodies would then need
+  continuation helpers after every `expect`, and an intent would need a dead
+  match arm to unwrap the value. Ending the call, which is how `require`
+  already ends an intent, keeps both Core and authored source direct.
+- **Mapping only at the intent boundary.** An obstruction is an
+  intent-level result. A function cannot turn a failure into a value or into a
+  different failure in v1, so a failure always reaches the intent unchanged.
+- **Contextual words.** `failure`, `fails`, `fail` and `expect` are keywords
+  only where this grammar uses them, so existing programs that use these
+  words as names still compile.
+
 ## Atomic Application
 
 Lawful-autonomous v1 operations apply as one target-owned atomic application
@@ -985,7 +1180,9 @@ admitted basis, or capability presentation.
 
 ### I-004 Total Bounded Evaluation
 
-Pure Edict functions are total and cost-bounded over valid inputs. Loops must
+Pure Edict functions are total and cost-bounded over valid inputs, except that
+a function may end with one of the failures it declares (see Typed Function
+Failures). It cannot fail in any other way. Loops must
 be over finite collections with statically known or type-bounded maximum
 cardinality. Recursive function calls are rejected in v1.
 
@@ -1459,8 +1656,11 @@ digest-clause   = "digest" , digest-lit ;
 declaration     = type-decl
                 | enum-decl
                 | const-decl
+                | failure-decl
                 | fn-decl
                 | intent-decl ;
+
+failure-decl    = "failure" , upper-ident , ";" ;
 
 bound-ref       = int-lit | qual-ident ;
 
@@ -1498,7 +1698,8 @@ bytes-refine    = "<" , ( "max" | "exact" ) , "=" , bound-ref , ">" ;
 type-args       = "<" , type-ref , { "," , type-ref } , ">" ;
 
 fn-decl         = "fn" , ident , "(" , param-list? , ")" ,
-                  "->" , type-ref , where-clause* , pure-block ;
+                  "->" , type-ref , fails-clause? , where-clause* , pure-block ;
+fails-clause    = "fails" , qual-ident , { "," , qual-ident } ;
 pure-block      = "{" , pure-statement* , "}" ;
 pure-statement  = let-stmt
                 | assert-stmt
@@ -1588,7 +1789,9 @@ equality        = relation , { ( "==" | "!=" ) , relation } ;
 relation        = additive , { ( "<" | "<=" | ">" | ">=" ) , additive } ;
 additive        = multiplicative , { ( "+" | "-" ) , multiplicative } ;
 multiplicative  = unary , { ( "*" | "/" | "%" ) , unary } ;
-unary           = ( "!" | "-" ) , unary | postfix ;
+unary           = ( "!" | "-" ) , unary | fail-expr | expect-expr | postfix ;
+fail-expr       = "fail" , qual-ident ;
+expect-expr     = "expect" , postfix ;
 postfix         = primary , { field-access | call-suffix | type-call-suffix } ;
 field-access    = "." , ident ;
 call-suffix     = "(" , arg-list? , ")" ;
@@ -1660,7 +1863,13 @@ Semantic grammar rules:
   and on a function. On a function they are static preconditions, not input
   refinement (see [Function Preconditions](#function-preconditions)).
 - `effect-else-clause` is legal only when the right-hand side expression or
-  statement is an imported effect.
+  statement is an imported effect, or when the whole value of an intent `let`
+  is a call to a source function that declares failures (see Typed Function
+  Failures).
+- `failure`, `fails`, `fail` and `expect` are contextual keywords. They are
+  keywords only in the `failure-decl`, `fails-clause`, `fail-expr` and
+  `expect-expr` positions, and only when an identifier follows them.
+  Elsewhere they remain ordinary identifiers.
 - A `require` always carries an `obstruction-clause` (`else`), whether its
   predicate is input-only or runtime-state-dependent. A precommit `guarantee`
   carries `else`; a verifier-discharged `guarantee` is a proof obligation with
@@ -1688,7 +1897,8 @@ Semantic grammar rules:
   inlining must not duplicate, discard or eagerly evaluate an argument.
 - Function declarations are pure. `pure-block` cannot contain imported effects,
   `require`, `guarantee`, branch-yield effect expressions, semantic record
-  statements, or effect statements.
+  statements, or effect statements. A function ends with a failure only
+  through `fail` or `expect` and only within its `fails-clause`.
 - `variant-lit` constructor cases must belong to the named variant type.
 - `match-expr` must cover every variant case exactly once unless a future
   version adds explicit wildcard syntax.
@@ -3685,6 +3895,8 @@ These are important but are not parser or language freeze prerequisites:
 
 - MVP user-defined pure functions are first-order, non-recursive,
   non-higher-order, monomorphized or non-generic, effect-free, and cost-bounded.
+  They may end only with failures they declare, which callers propagate with
+  `expect` or map with `else`.
 - Authoritative hash input is `edict.canonical-cbor/v1`; canonical JSON is
   review/debug rendering.
 - First non-Echo target is `kv.transactional@1`; event-log follows later.
