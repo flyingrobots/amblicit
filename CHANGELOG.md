@@ -12,12 +12,51 @@ versions still track specification maturity rather than a released product.
   `intrinsics-document` root admits `edict.target-profile.intrinsics/v2`
   catalogs: every pure intrinsic, called or not, is monomorphic and carries a
   non-empty `contractVersion` and a `costRule`, and the catalog may publish
-  provider-owned `types`. The new pack refuses a v1
-  catalog; the `bounded-state-fold-v1` pack and every earlier publication keep
-  their bytes and refuse a v2 catalog. `docs/abi/edict-target-profile.cddl`
-  now defines the v2 catalog, and `docs/abi/edict-target-pure-intrinsics.cddl`
-  is removed because its rules moved there. Schema acceptance is not provider
-  or runtime support for any intrinsic.
+  provider-owned `types`. It also carries the function-preconditions Core
+  schema. The new pack refuses a v1 catalog; the `function-preconditions-v1`
+  pack and every earlier publication keep their bytes and refuse a v2
+  catalog. `docs/abi/edict-target-profile.cddl` now defines the v2 catalog,
+  and `docs/abi/edict-target-pure-intrinsics.cddl` is removed because its
+  rules moved there. Schema acceptance is not provider or runtime support for
+  any intrinsic.
+
+- Add function preconditions (#264). A source function may write `where`
+  clauses after its return type, as in `fn cut(bytes: Bytes<max=8>, start:
+  U64, end: U64) -> Bytes<max=8> where start <= end, end <= len(bytes)`. The
+  body may assume them, so subtraction and `slice` are proven in range. Every
+  call must prove them from the facts that dominate it, or it refuses with the
+  new compiler error `UnprovenPrecondition` at the call. They are never
+  evaluated and cost nothing. Core carries them as the optional, hash-significant
+  `functions.<name>.preconditions` list, omitted when empty, so every existing
+  Core and Target IR golden is byte-identical. Target re-judges them without
+  the compiler's proof and refuses forged Core with `InvalidCoreIdentity`.
+  Provider contract pack `function-preconditions-v1` publishes the schema;
+  `bounded-state-fold-v1` and earlier packs are unchanged and refuse the field.
+  The language specification defines the syntax, proof rule and Core shape,
+  and carves function `where` out of `EDICT-LANG-WHERE-001`.
+
+- Let source bind an effect whose authenticated signature declares no failures
+  without a failure map: `let done: fx.Done = fx.ensureNode(input);` compiles
+  to a Core effect node and a Target IR step with empty obstruction maps. This
+  makes Echo's five mutation intrinsics (`ensure-node`, `create-node`,
+  `replace-atom`, `ensure-edge`, `replace-edge`), which only emit mutation
+  intents and have no runtime obstruction path, callable from source. An
+  effect that declares any failure still reports
+  `EffectWithoutFailureMapping` without its map, and a failure-free effect
+  used inside a larger expression is still refused. Echo still has to publish
+  a provider profile whose catalog carries these intrinsics (Echo #985).
+
+- Select target profile `echo.dpo@2`, Echo's effect profile. It lowers only
+  to the ordered `echo.span-ir/v2` Target IR, and its effect intrinsics are
+  named `echo.dpo@2.*`; each Echo profile refuses the other's intrinsics with
+  `UnsupportedTargetIntrinsic`, and `echo.dpo@2` refuses other domains with
+  `UnsupportedTargetIrDomain`. The canonical encoder now admits an ordered or
+  structured artifact under any profile that selects its domain, rather than
+  under `echo.dpo@1` only. `echo.dpo@1` and `gitwarp.ref_crdt@1` are
+  unchanged. `amblicit_syntax` exports `ECHO_DPO_2_TARGET_PROFILE`; the
+  in-process `BuiltinTargetLowerer` seam still serves only `echo.dpo@1` and
+  `gitwarp.ref_crdt@1`. Amblicit ships no `echo.dpo@2` provider; a complete
+  build needs Echo's provider package (Echo #985).
 
 - Lock rustix 1.1.6, fixing RUSTSEC-2026-0486 without adding an advisory
   exception. Regenerate the source-bound provider fixture inventory and its

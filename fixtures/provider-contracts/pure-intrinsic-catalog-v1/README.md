@@ -1,7 +1,7 @@
 # Pure-intrinsic-catalog provider contract publication
 
 This publication changes one root of the
-[bounded-state-fold publication](../bounded-state-fold-v1/README.md):
+[function-precondition publication](../function-preconditions-v1/README.md):
 `intrinsics-document`, bound to the `target-profile-intrinsics` contract, now
 admits `edict.target-profile.intrinsics/v2` catalogs. Every other root is
 unchanged.
@@ -20,8 +20,8 @@ bytes, so its pinned digest, and every target profile, package and piece of
 evidence that pins it, must be regenerated. A generic pure constructor cannot be
 listed in a v2 catalog at all; only the frozen v1 publications can carry one.
 
-The two publications are disjoint for catalogs. This pack refuses a v1
-catalog, and the bounded-state-fold pack refuses a v2 catalog. The compiler
+The publications are disjoint for catalogs. This pack refuses a v1 catalog, and
+the bounded-state-fold and function-precondition packs refuse a v2 catalog. The compiler
 admits pure intrinsics only from a v2 catalog, so a provider whose source
 programs call pure intrinsics must select this pack.
 
@@ -54,7 +54,7 @@ different publication bytes interchangeable.
 
 Run `cargo xtask provider-contract-pack --write` to regenerate this current pair.
 `cargo xtask provider-contract-pack --check` and `cargo xtask verify` check it.
-The v1, source-function, source-module, structured-control and
-bounded-state-fold CDDL/manifest pairs remain byte-identical. Tests reproduce
-them from frozen inputs, including
+The v1, source-function, source-module, structured-control, bounded-state-fold
+and function-precondition CDDL/manifest pairs remain byte-identical. Tests
+reproduce them from frozen inputs, including
 [`fixtures/target-profile/pre-catalog-v2-target-profile.cddl`](../../target-profile/pre-catalog-v2-target-profile.cddl).

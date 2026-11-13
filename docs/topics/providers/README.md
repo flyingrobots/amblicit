@@ -120,20 +120,23 @@ logical contracts and provider artifact domains to exact roots. The prior
 [function-free v1 publication](../../../fixtures/provider-contracts/v1/),
 [source-function publication](../../../fixtures/provider-contracts/source-functions-v1/),
 [source-module publication](../../../fixtures/provider-contracts/source-modules-v1/),
-[structured-control publication](../../../fixtures/provider-contracts/structured-control-v1/)
-and [bounded-state-fold publication](../../../fixtures/provider-contracts/bounded-state-fold-v1/)
+[structured-control publication](../../../fixtures/provider-contracts/structured-control-v1/),
+[bounded-state-fold publication](../../../fixtures/provider-contracts/bounded-state-fold-v1/)
+and [function-precondition publication](../../../fixtures/provider-contracts/function-preconditions-v1/)
 remain byte-identical for explicitly pinned consumers; tests reassemble them
 from the frozen target-profile schema in
 `fixtures/target-profile/pre-catalog-v2-target-profile.cddl` and, where
-applicable, `fixtures/core/pre-fold-core.cddl` (or the earlier function-free
-Core schema) and the frozen pre-v3 Target IR schema in
+applicable, `fixtures/core/pre-precondition-core.cddl`,
+`fixtures/core/pre-fold-core.cddl` (or the earlier function-free Core schema)
+and the frozen pre-v3 Target IR schema in
 `fixtures/target-ir/pre-structured-target-ir.cddl`. The pure-intrinsic-catalog
 publication changes the `intrinsics-document` root, bound to the
 `target-profile-intrinsics` contract, to admit
 `edict.target-profile.intrinsics/v2` catalogs: every pure intrinsic, called or
 not, is monomorphic and carries a non-empty `contractVersion` and a `costRule`,
-and the catalog may publish provider-owned `types`. It refuses a v1 catalog, and every earlier publication refuses a v2
-catalog, so a provider whose source programs call pure intrinsics must select
+and the catalog may publish provider-owned `types`. It also carries the
+function-precondition Core schema. It refuses a v1 catalog, and every earlier
+publication refuses a v2 catalog, so a provider whose source programs call pure intrinsics must select
 this publication. The schema fixes catalog shape only; the remaining checks stay
 with `admit_target_pure_intrinsics`. For the whole catalog, admission checks the
 pinned digest, the top-level fields and every `types` definition. Its
@@ -142,8 +145,13 @@ signature type resolution and cost coefficients) run only on the required
 contracts. So admission can admit facts from a catalog this pack refuses, and
 an uncalled pure intrinsic can break an admission-only rule while passing both
 checks. A provider validates its catalog against the pack before pinning it.
-The fold-capable publication adds the explicit `fold` Core expression; consumers must select its new schema
-digest. Capability, state and cost checks remain separate semantic gates.
+The fold-capable publication adds the explicit `fold` Core expression; the
+precondition publication adds the optional nonempty `preconditions` predicate
+list on a source function. Consumers must select a new schema digest to accept
+either; an earlier pack refuses the field with a schema mismatch. Accepting the
+field in a schema is not support for it: a consumer must implement the
+contract in the language specification's Function Preconditions section or
+refuse. Capability, state and cost checks remain separate semantic gates.
 The structured-control publication adds the `echo.span-ir/v3` variant of the `target-ir-artifact`
 root, with recursive `for` and `branch` order entries discriminated by their
 literal `kind`; it accepts actual v3 encoder output and refuses missing or

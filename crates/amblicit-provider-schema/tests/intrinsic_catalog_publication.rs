@@ -158,12 +158,18 @@ fn compiler_admission(
         .map_err(|failures| failures.into_iter().map(|failure| failure.kind).collect())
 }
 
+/// Core schema as published before function `preconditions`.
+const PRE_PRECONDITION_CORE_CDDL: &[u8] =
+    include_bytes!("../../../fixtures/core/pre-precondition-core.cddl");
+/// Current Core schema.
+const CORE_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-core.cddl");
+
 /// A contract pack assembled from the authoritative ABI sources, except for
-/// the target-profile schema, which the caller selects.
-fn pack_with(target_profile_cddl: &'static [u8]) -> ProviderContractPack {
+/// the Core and target-profile schemas, which the caller selects.
+fn pack_with(core_cddl: &'static [u8], target_profile_cddl: &'static [u8]) -> ProviderContractPack {
     assemble_provider_contract_pack(ProviderContractPackInput {
         common_cddl: include_bytes!("../../../docs/abi/edict-common.cddl"),
-        core_cddl: include_bytes!("../../../docs/abi/edict-core.cddl"),
+        core_cddl,
         lawpack_cddl: include_bytes!("../../../docs/abi/edict-lawpack.cddl"),
         lawpack_adapter_cddl: include_bytes!("../../../docs/abi/edict-lawpack-adapter.cddl"),
         target_profile_cddl,
@@ -178,61 +184,93 @@ fn pack_with(target_profile_cddl: &'static [u8]) -> ProviderContractPack {
     .expect("pack assembles")
 }
 
-/// The `bounded-state-fold-v1` publication, reproduced from its frozen input.
-fn bounded_state_fold_pack() -> ProviderContractPack {
-    let pack = pack_with(PRE_CATALOG_V2_TARGET_PROFILE_CDDL);
-    assert_eq!(
-        pack.cddl_bytes(),
-        include_bytes!(
-            "../../../fixtures/provider-contracts/bounded-state-fold-v1/edict-provider-contracts.cddl"
+/// The two latest publications that admit only v1 catalogs, each reproduced
+/// from its frozen inputs and checked against its published bytes.
+fn frozen_v1_catalog_packs() -> [(&'static str, ProviderContractPack); 2] {
+    let packs = [
+        (
+            "bounded-state-fold-v1",
+            pack_with(PRE_PRECONDITION_CORE_CDDL, PRE_CATALOG_V2_TARGET_PROFILE_CDDL),
+            include_bytes!(
+                "../../../fixtures/provider-contracts/bounded-state-fold-v1/edict-provider-contracts.cddl"
+            )
+            .as_slice(),
+            include_bytes!("../../../fixtures/provider-contracts/bounded-state-fold-v1/manifest.json")
+                .as_slice(),
         ),
-        "frozen inputs no longer reproduce the published bounded-state-fold-v1 schema"
-    );
-    assert_eq!(
-        pack.manifest_bytes(),
-        include_bytes!("../../../fixtures/provider-contracts/bounded-state-fold-v1/manifest.json"),
-        "frozen inputs no longer reproduce the published bounded-state-fold-v1 manifest"
-    );
-    pack
+        (
+            "function-preconditions-v1",
+            pack_with(CORE_CDDL, PRE_CATALOG_V2_TARGET_PROFILE_CDDL),
+            include_bytes!(
+                "../../../fixtures/provider-contracts/function-preconditions-v1/edict-provider-contracts.cddl"
+            )
+            .as_slice(),
+            include_bytes!(
+                "../../../fixtures/provider-contracts/function-preconditions-v1/manifest.json"
+            )
+            .as_slice(),
+        ),
+    ];
+    packs.map(|(name, pack, cddl, manifest)| {
+        assert_eq!(
+            pack.cddl_bytes(),
+            cddl,
+            "frozen inputs no longer reproduce the published {name} schema"
+        );
+        assert_eq!(
+            pack.manifest_bytes(),
+            manifest,
+            "frozen inputs no longer reproduce the published {name} manifest"
+        );
+        (name, pack)
+    })
 }
 
-/// The frozen pack refuses a v2 catalog that compiler admission accepts.
+/// Each frozen v1-catalog pack refuses a v2 catalog that compiler admission
+/// accepts.
 #[test]
-fn bounded_state_fold_pack_refuses_the_catalog_the_compiler_admits() {
-    let pack = bounded_state_fold_pack();
+fn frozen_packs_refuse_the_catalog_the_compiler_admits() {
     let catalog = catalog_v2();
     let facts = compiler_admission(&catalog).expect("compiler admits the v2 catalog");
     assert_eq!(facts.len(), 1, "one required pure intrinsic is admitted");
 
-    assert_eq!(
-        pack.validate_contract(CATALOG_CONTRACT, &catalog),
-        Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch),
-        "bounded-state-fold-v1 must not admit a v2 catalog"
-    );
+    for (name, pack) in frozen_v1_catalog_packs() {
+        assert_eq!(
+            pack.validate_contract(CATALOG_CONTRACT, &catalog),
+            Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch),
+            "{name} must not admit a v2 catalog"
+        );
+    }
 }
 
-/// The frozen pack still admits a v1 catalog, which compiler admission refuses.
+/// Each frozen v1-catalog pack still admits a v1 catalog, which compiler
+/// admission refuses.
 #[test]
-fn bounded_state_fold_pack_admits_the_v1_catalog_the_compiler_refuses() {
-    let pack = bounded_state_fold_pack();
+fn frozen_packs_admit_the_v1_catalog_the_compiler_refuses() {
     let catalog = catalog_v1();
-
-    pack.validate_contract(CATALOG_CONTRACT, &catalog)
-        .expect("bounded-state-fold-v1 admits a v1 catalog");
     assert_eq!(
         compiler_admission(&catalog),
         Err(vec![TargetPureIntrinsicFailureKind::MalformedCatalog]),
         "the compiler admits pure intrinsics only from a v2 catalog"
     );
+
+    for (name, pack) in frozen_v1_catalog_packs() {
+        assert_eq!(
+            pack.validate_contract(CATALOG_CONTRACT, &catalog),
+            Ok(()),
+            "{name} must still admit a v1 catalog"
+        );
+    }
 }
 
 // --- The catalog v2 publication ---------------------------------------------
 
 /// The current publication, assembled from the authoritative ABI sources.
 fn catalog_v2_pack() -> ProviderContractPack {
-    pack_with(include_bytes!(
-        "../../../docs/abi/edict-target-profile.cddl"
-    ))
+    pack_with(
+        CORE_CDDL,
+        include_bytes!("../../../docs/abi/edict-target-profile.cddl"),
+    )
 }
 
 /// The value of one field of a CBOR map, for mutation.
@@ -281,7 +319,7 @@ fn catalog_v2_pack_refuses_a_v1_catalog() {
     assert_eq!(
         pack.validate_contract(CATALOG_CONTRACT, &catalog_v1()),
         Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch),
-        "a v1 catalog belongs to bounded-state-fold-v1"
+        "a v1 catalog belongs to the frozen v1-catalog packs"
     );
 }
 

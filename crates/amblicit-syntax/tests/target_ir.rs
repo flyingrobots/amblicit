@@ -3973,6 +3973,8 @@ fn digest_text(hex: char) -> String {
     format!("sha256:{}", hex.to_string().repeat(64))
 }
 
+#[path = "target_ir/echo_dpo_2.rs"]
+mod echo_dpo_2;
 #[path = "target_ir/ordered.rs"]
 mod ordered;
 #[path = "target_ir/structured.rs"]

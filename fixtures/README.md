@@ -51,8 +51,9 @@ The current Rust-neutral provider contract pack and its exact manifest live in
 The prior [`provider-contracts/v1/`](./provider-contracts/v1/),
 [`source-functions-v1/`](./provider-contracts/source-functions-v1/),
 [`source-modules-v1/`](./provider-contracts/source-modules-v1/),
-[`structured-control-v1/`](./provider-contracts/structured-control-v1/) and
-[`bounded-state-fold-v1/`](./provider-contracts/bounded-state-fold-v1/) CDDL/manifest publications
+[`structured-control-v1/`](./provider-contracts/structured-control-v1/),
+[`bounded-state-fold-v1/`](./provider-contracts/bounded-state-fold-v1/) and
+[`function-preconditions-v1/`](./provider-contracts/function-preconditions-v1/) CDDL/manifest publications
 remain unchanged for explicitly pinned consumers.
 Additional source coverage, relapse-zoo cases, runtime-owned target fixtures,
 and admission fixtures remain planned as their owning implementation slices

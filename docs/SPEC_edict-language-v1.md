@@ -1498,7 +1498,7 @@ bytes-refine    = "<" , ( "max" | "exact" ) , "=" , bound-ref , ">" ;
 type-args       = "<" , type-ref , { "," , type-ref } , ">" ;
 
 fn-decl         = "fn" , ident , "(" , param-list? , ")" ,
-                  "->" , type-ref , pure-block ;
+                  "->" , type-ref , where-clause* , pure-block ;
 pure-block      = "{" , pure-statement* , "}" ;
 pure-statement  = let-stmt
                 | assert-stmt
@@ -1656,7 +1656,9 @@ Semantic grammar rules:
   supplies a digest-locked basis template; `basis none` is the explicit no-basis
   declaration. The `basis` expression is a typed Core expression, never a
   free-form string.
-- Multiple `where` clauses are permitted and merge conjunctively.
+- Multiple `where` clauses are permitted and merge conjunctively, on an intent
+  and on a function. On a function they are static preconditions, not input
+  refinement (see [Function Preconditions](#function-preconditions)).
 - `effect-else-clause` is legal only when the right-hand side expression or
   statement is an imported effect.
 - A `require` always carries an `obstruction-clause` (`else`), whether its
@@ -2049,10 +2051,15 @@ needs no obstruction is an `assert`.
 
 ## Where Clauses And Input Refinement
 
-A `where` clause is an **input refinement**, not a runtime precondition and not a
-compiler assumption (`EDICT-LANG-WHERE-001`). It constrains the operation's typed
-input and is checked by a generated input validator **before** the atomic
-application unit begins.
+On an **intent**, a `where` clause is an **input refinement**, not a runtime
+precondition and not a compiler assumption (`EDICT-LANG-WHERE-001`). It
+constrains the operation's typed input and is checked by a generated input
+validator **before** the atomic application unit begins. On a **function**, the
+same clause is a static precondition with different semantics; see
+[Function Preconditions](#function-preconditions). In both positions `where`
+states a predicate over the declaration's parameters that holds whenever the
+body runs. What differs is who establishes it: the input validator for an
+intent, a proof at every call site for a function.
 
 - A `where` predicate may reference only operation inputs and pure functions of
   them. It must not reference runtime/target state.
@@ -2068,6 +2075,147 @@ validator coordinate), because the predicates are hash-significant: changing
 Core hash (`EDICT-CORE-WHERE-HASH-001`). The generated input validator is a
 derived artifact lowered from these trees; any validator coordinate lives in a
 non-hash sidecar.
+
+## Function Preconditions
+
+A source function may state preconditions with `where` clauses between its
+return type and its body. They let a pure function rely on facts its callers
+have already established, such as the order of two offsets, so that
+subtraction and slicing inside the body are proven in range.
+
+```edict
+fn cut(bytes: Bytes<max=8>, start: U64, end: U64) -> Bytes<max=8>
+  where start <= end, end <= len(bytes)
+{
+  return slice(bytes, start, end);
+}
+```
+
+**Declaration** (`EDICT-LANG-FN-PRECONDITION-001`). Each `where` clause holds
+one or more comma-separated predicates. Clauses and predicates merge
+conjunctively into one ordered list, numbered `where.0`, `where.1`, … in source
+order. Each predicate must have type `Bool` and may read only the function's
+parameters, through field access, constructors, conditional expressions and
+calls to imported or intrinsic pure functions such as `len`. A precondition
+must not call a source function, `fold` or `match`; such a predicate refuses
+with `UnsupportedSourceShape`, and a non-Boolean one with `ExpectedPredicate`.
+Each predicate is checked assuming the predicates before it, so a later
+precondition may subtract operands an earlier one orders. A function holds at
+most 16 precondition conjuncts in total, counting each `&&` operand separately
+(`MAX_FUNCTION_PRECONDITION_CONJUNCTS`), and at most 256 Core nodes in total,
+counting one per predicate and one per expression anywhere in the trees
+(`MAX_FUNCTION_PRECONDITION_NODES`); more refuse with `InvalidBound`. Together
+the caps bound re-proving one call to at most 16 scans of the facts that
+dominate it, after building an obligation of at most 256 nodes plus one copy
+of an argument per parameter reference. Checking every call is then at worst
+quadratic in Core size, the same class as checking unsigned subtraction.
+Preconditions, facts and obligations use only the predicate forms `true`,
+`false`, `!`, `&&`, `||` and comparisons, including inside a conditional
+expression within an operand.
+
+**Call-site obligation** (`EDICT-LANG-FN-PRECONDITION-002`). Every call
+instantiates each precondition by replacing each parameter with the argument
+expression in the same position, and the compiler must prove the result from
+the facts that dominate the call. Substitution is simultaneous: every
+parameter is replaced in one pass, and an inserted argument expression is
+never substituted again, so `f(b, a)` inside a function whose own parameters
+are `a` and `b` obliges `b <= a` for a precondition `x <= y` of `f`, never
+`a <= a`. A call that does not establish a
+precondition refuses with the stable compiler error `UnprovenPrecondition` at
+the call's span; the message names the callee and the first unproven
+`where.N`. Preconditions are never evaluated at runtime, never become an input
+validator or obstruction, and add no steps, allocation or output to any cost
+or budget.
+
+The facts that dominate a call are:
+
+1. for a call in an intent **body**, the intent's `where` predicates;
+2. for a call in a function body, that function's own preconditions;
+3. the condition of each enclosing `if … then … else` expression: the
+   condition itself in the `then` arm, and its negation in the `else` arm;
+4. within an `&&`, its left operand while checking the right; within an `||`,
+   the negation of its left operand while checking the right.
+
+Nothing else is a fact. In particular, a call in an intent's `basis` sees no
+intent `where` predicate, and a call inside an intent `where` predicate sees
+only the facts from items 3 and 4 within that same predicate: no other
+predicate of the same or another `where` clause. Statement-level `if` blocks
+contribute no facts, exactly as for unsigned subtraction.
+
+An instantiated precondition is proven when each of its `&&` conjuncts is
+proven:
+
+- `a <= b` or `b >= a` is proven by the order proof used for unsigned
+  subtraction and `slice`: `a` and `b` are the same expression, `a` is the
+  unsigned literal `0u32` or `0u64`, both are `U32` or `U64` literals with
+  `a <= b`, or a dominating fact, or a conjunct of one at any depth of
+  nested `&&` (Core `all`), is `a <= b`, `a < b`, `b >= a`, `b > a`, `a == b` or
+  `b == a`.
+- `true` is always proven.
+- Any other conjunct (`<`, `>`, `==`, `!=`, `!`, `||`, `false`) is proven only
+  when a dominating fact, or a conjunct of one at any depth of nested `&&`,
+  is the same predicate, or the
+  same comparison with its operands mirrored (`a < b` and `b > a`; `a == b`
+  and `b == a`).
+
+Expressions are compared as Core expression trees by structural equality: a
+local matches only a local with the same id, alpha name and type; a constant
+only a constant with the same width and integer value; a call only a call with
+the same callee, type arguments and arguments. A negated fact proves only the
+identical negation; it is never turned into an order. An obligation that is
+itself a Core `all` is proven when every item is proven, at any depth. An
+instantiated obligation is not a Core artifact: its depth may reach the
+precondition's depth plus an argument's depth, each within the Core limit, and
+a consumer must not refuse it for exceeding the Core depth limit.
+
+**Body assumption** (`EDICT-LANG-FN-PRECONDITION-003`). The function body is
+checked with its preconditions as dominating facts, so subtraction, `slice`
+and calls to other functions inside the body may rely on them. Because every
+call proves the preconditions first, the assumption holds on every execution.
+
+**Fold steps** (`EDICT-LANG-FN-PRECONDITION-004`). `fold` calls its step with
+no call site at which to prove anything, so a function with preconditions
+cannot be a fold step. Naming one as a step refuses with
+`UnsupportedSourceShape`.
+
+**Independent judgment** (`EDICT-TARGET-FN-PRECONDITION-001`). Core carries
+the preconditions on the function (see
+[Core Source Function Shape](#core-source-function-shape)). Target lowering,
+and every provider lowerer or verifier that accepts such Core, must judge them
+without trusting the compiler:
+
+- each precondition must be a total, typed predicate whose only locals are the
+  function's parameters, with no source-function call, fold or match, and it
+  obeys every rule the selected Target IR domain applies to Core predicates
+  (under `echo.span-ir/v3`, an ordered comparison must compare integers);
+- the function body is judged total with its preconditions as facts, and
+  without them a body that needs them refuses;
+- every call to the function, in an intent or in another function, must prove
+  each instantiated precondition from the facts that dominate it, by the rule
+  above;
+- a function with preconditions named as a fold step refuses.
+
+Target refuses a module that fails any of these with `InvalidCoreIdentity`. A
+forged Core that drops a precondition its body needs, adds one its callers do
+not establish, or reads a non-parameter local in one, is therefore refused.
+
+A consumer judges call sites over Core, not source. The facts at each Core
+position are:
+
+| Core position | Facts there |
+| --- | --- |
+| intent `basis` | none |
+| intent `inputConstraints[i].predicate` | only facts arising inside that predicate (rows below) |
+| every expression in the intent `body` block: `let` values, `require` predicate and payload, effect input and obstruction-arm values, external-action fields, `for` iterable and body, `branch` predicate and both blocks, the block result | every `inputConstraints` predicate (whatever its `source`) |
+| a source function's `body` bindings and result | that function's `preconditions` |
+| a function's `preconditions[i]` | `preconditions[0..i]` |
+| an `if` expression's `then` / `else` value | the facts at the `if`, plus its predicate / the `not` of its predicate |
+| item `k` of a Core `all` | the facts at the `all`, plus the items before `k` |
+| item `k` of a Core `any` | the facts at the `any`, plus the `not` of each item before `k` |
+| a `fold` initial value, `match` scrutinee and arms, record, list, variant payload, field base, call argument, the inner predicate of a `not`, the operands of a comparison, the predicate of an `if` expression | the facts at the enclosing expression |
+
+Statement-level `branch` blocks add no facts of their own, and nothing else
+adds a fact.
 
 ## Basis Expressions
 
@@ -2648,6 +2796,52 @@ contents. Canonical encoding and digesting, Target lowering, and
 result-projection emission or verification MUST obtain that witness before
 they can mint or verify an artifact.
 
+### Core Source Function Shape
+
+A module with source functions carries them in an optional `functions` table,
+keyed by module-local name and omitted when empty:
+
+```cddl
+core-source-function = {
+  params: [* local-ref],
+  returnType: core-type-ref,
+  ? preconditions: [+ precondition-predicate],
+  body: core-pure-block,
+}
+```
+
+Parameters are the positional locals `arg.0`, `arg.1`, … with alpha names
+`$arg0`, `$arg1`, …. For a function that carries `preconditions` this is
+required: Core integrity refuses any other parameter id or alpha name with
+`InvalidDefinition` at `functions.<name>.params`. A consumer instantiates a call
+by replacing the local `params[N]`, matched by id, alpha name and type, with
+`args[N]`, simultaneously for every `N`. `preconditions` holds the function's `where` predicates
+as typed Core predicate trees in source order (`EDICT-CORE-FN-PRECONDITION-001`).
+It is hash-significant: adding, removing, reordering or changing a
+precondition changes the Core digest. A function without preconditions omits
+the field, so its canonical bytes and digest are exactly those it had before
+preconditions existed; an empty array is not canonical and refuses schema
+validation. Every local a precondition reads must be one of `params`, compared
+by id, alpha name and type, and no precondition may contain a call to a
+function in the same module's table, a `fold` or a `match`. A function
+holds at most 16 conjuncts in total, counted through nested `all`, and at
+most 256 Core nodes (one per predicate and per expression), and
+`precondition-predicate` admits only `true`, `false`, `not`, `all`, `any` and
+`compare`; `call` and `obstruction` predicates are never preconditions. Core type
+integrity refuses a violation with `InvalidDefinition` at or under
+`functions.<name>.preconditions`: a cap violation at that path, a violation
+within one precondition at or under `functions.<name>.preconditions[<index>]`.
+
+The meaning of `preconditions` is the static contract in
+[Function Preconditions](#function-preconditions): every call site proves them
+and the body assumes them. They are never evaluated. A Core consumer that does
+not implement this contract must refuse a function that carries the field; it
+must not ignore it, because the body's totality may depend on it.
+
+Provider contract pack `function-preconditions-v1` publishes this schema.
+Earlier packs, including `bounded-state-fold-v1`, keep their bytes and refuse
+the field.
+
 ### Core Type Reference Identity
 
 Every `core-type-ref` MUST classify without consulting mutable module state as
@@ -3045,8 +3239,21 @@ Explicit effect type arguments also report `UnsupportedSourceShape` in mapped
 and bare forms before failure-map guidance.
 Effects in source-owned pure functions and intent clauses report
 `UnsupportedSourceShape` without recommending a binding that is illegal there.
-An effect with no declared failures reports that bindings without a failure map
-are unsupported; the diagnostic does not suggest an empty `else` map.
+An effect whose authenticated signature declares no failures needs no map: an
+annotated `let` whose whole value is a call to it, such as
+`let done: fx.Done = fx.ensureNode(input);`, binds it as an effect node with an
+empty obstruction map. There is nothing for such an effect to map, and the
+source syntax still has no empty `else` map. The same effect inside a larger
+expression reports `EffectWithoutFailureMapping`, directing the author to that
+binding. An effect known only by a write class, with no authenticated
+signature, does not qualify. "Declares no failures" is the lawpack's
+authenticated claim; the compiler does not check it against the target
+intrinsic. The provider decides whether the bound intrinsic really cannot
+fail: Echo's lowerer, verifier and runtime refuse an effect whose declared
+failure set differs in size from its intrinsic's. For a malformed unmapped
+binding, the annotation, type-argument, arity and profile diagnostics span the
+whole `let` statement, and input or receipt type mismatches span the effect
+call, as for a mapped binding.
 An unknown effect in an explicit effect binding reports `MissingContextFact`
 with available exact-owner exports under the selected source alias. A bare
 unknown call retains `UnresolvedFunction`; an unknown coordinate does not
@@ -3397,6 +3604,10 @@ These are important but are not parser or language freeze prerequisites:
 - Nondeterminism rejects compilation.
 - Unbounded loops reject compilation.
 - Recursive pure functions reject compilation.
+- A function `where` precondition is proven at every call site and assumed in
+  the body; a call that does not establish it rejects with
+  `UnprovenPrecondition`, and Target refuses forged Core that drops, adds or
+  widens one.
 - Recursive value types reject unless every recursive path has a digest-locked
   maximum depth.
 - Declared footprint underclaim rejects compilation.

@@ -5,8 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
     TargetIrArtifact, TargetIrIntent, TargetIrOrderEntry, TargetIrPureBinding,
-    TargetIrRequireFailure, TargetIrRequirement, TargetIrStep, ECHO_DPO_TARGET_PROFILE,
-    ECHO_ORDERED_SPAN_IR_DOMAIN, ECHO_STRUCTURED_SPAN_IR_DOMAIN,
+    TargetIrRequireFailure, TargetIrRequirement, TargetIrStep, ECHO_ORDERED_SPAN_IR_DOMAIN,
+    ECHO_STRUCTURED_SPAN_IR_DOMAIN,
 };
 use crate::core_ir::{
     CompareOp, CoreBound, CoreExpr, CorePredicate, CoreValue, LocalRef, ResourceRef,
@@ -24,10 +24,11 @@ fn order_mode(domain: &str) -> Option<bool> {
     }
 }
 
-/// The artifact-level half of the execution-order check: ordered and
-/// structured domains require the Echo DPO target profile.
+/// The artifact-level half of the execution-order check: an ordered or
+/// structured domain requires a target profile that selects it.
 pub(crate) fn header_has_valid_execution_order(domain: &str, target_profile: &ResourceRef) -> bool {
-    order_mode(domain).is_none() || target_profile.coordinate == ECHO_DPO_TARGET_PROFILE
+    order_mode(domain).is_none()
+        || super::profile_selects_target_ir_domain(&target_profile.coordinate, domain)
 }
 
 /// The per-intent half of the execution-order check, on a borrowed intent.
