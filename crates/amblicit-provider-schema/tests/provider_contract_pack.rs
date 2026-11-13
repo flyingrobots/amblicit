@@ -55,6 +55,9 @@ const PRE_STRUCTURED_TARGET_IR_CDDL: &[u8] =
     include_bytes!("../../../fixtures/target-ir/pre-structured-target-ir.cddl");
 const STRUCTURED_TARGET_IR_FIXTURE: &[u8] =
     include_bytes!("../../../fixtures/target-ir/canonical/echo-structured-loop.target-ir.cbor");
+/// Loop and branches calling `echo.dpo@2` intrinsics under v3 (#319).
+const ECHO_DPO_2_STRUCTURED_TARGET_IR_FIXTURE: &[u8] =
+    include_bytes!("../../../fixtures/target-ir/canonical/echo-dpo-2-structured.target-ir.cbor");
 const CORE_FIXTURE: &[u8] =
     include_bytes!("../../../fixtures/core/canonical/bounded-hello.core.cbor");
 const EXTERNAL_REQUEST_CORE_FIXTURE: &[u8] =
@@ -382,6 +385,15 @@ fn structured_target_ir_schema_accepts_nested_order_entries() {
             "{case}"
         );
     }
+}
+
+#[test]
+fn structured_target_ir_schema_accepts_the_echo_dpo_2_golden() {
+    let pack = assemble(canonical_target_profile_contract_resources());
+    let value = decode_canonical_cbor(ECHO_DPO_2_STRUCTURED_TARGET_IR_FIXTURE)
+        .expect("canonical echo.dpo@2 v3 golden");
+    pack.validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &value)
+        .expect("v3 schema accepts the reviewed echo.dpo@2 encoder output");
 }
 
 /// Nested loops, a branch inside a loop and a loop inside a branch.
