@@ -203,8 +203,10 @@ Lowering and the canonical encoder use one selection table for the ordered
 and structured domains. The encoder admits an ordered or structured artifact
 only when its `targetProfile` selects that domain: `echo.span-ir/v2` and
 `echo.span-ir/v3` under `echo.dpo@1` or `echo.dpo@2`. `echo.dpo@1` and
-`gitwarp.ref_crdt@1` selection, failure kinds, and bytes are unchanged.
-[TIR-REQ-067]
+`gitwarp.ref_crdt@1` selection and bytes are unchanged. The only new refusal
+under `echo.dpo@1` is the v3 step-intrinsic check described under
+[Structured control flow](#structured-control-flow), which lowering never
+triggers. [TIR-REQ-067] [TIR-REQ-080]
 
 A public application build whose lawpack adapter accepts `echo.dpo@2` lowers
 through Target and hands `echo.span-ir/v2`, or `echo.span-ir/v3` when the
