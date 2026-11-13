@@ -19,8 +19,9 @@ versions still track specification maturity rather than a released product.
   presence, and fold work now charges Option values. `isSome`, `unwrap` and
   `default` become protected prelude names, so a module declaring a function,
   parameter, intent input or local with one of those names now refuses
-  `SurfaceValidation`. Ordered comparisons on Option, enum or variant values now
-  refuse `TypeMismatch`; variants were previously accepted. Option `match` and
+  `SurfaceValidation`. Ordered comparisons on Option, enum or variant values, and on
+  records and lists that contain one, now refuse `TypeMismatch`; variants and
+  records holding them were previously accepted. Option `match` and
   Option-valued intent results remain unsupported; Echo provider and runtime
   support for `core.option/v1` is separate work (issue #261).
 

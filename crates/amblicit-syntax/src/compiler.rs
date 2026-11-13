@@ -4335,7 +4335,7 @@ impl<'a> TypeChecker<'a> {
             CompareOp::Lt | CompareOp::Le | CompareOp::Gt | CompareOp::Ge
         ) && [&left.ty, &right.ty]
             .iter()
-            .any(|shape| matches!(shape.kind, TypeKind::Option(_) | TypeKind::Variant(_)))
+            .any(|shape| contains_unordered_component(shape))
         {
             // SPEC: ordered operators exist only for integers and collated strings.
             self.errors.push(error(
@@ -6029,6 +6029,22 @@ fn coordinate_is_below_lawpack(coordinate: &str, lawpack: &ResourceRef) -> bool 
     coordinate
         .strip_prefix(&prefix)
         .is_some_and(|suffix| !suffix.is_empty())
+}
+
+/// Whether ordering `shape` would order an Option, enum or variant value,
+/// directly or as a component of a record, list or nominal representation.
+fn contains_unordered_component(shape: &TypeShape) -> bool {
+    match &shape.kind {
+        TypeKind::Option(_) | TypeKind::Variant(_) => true,
+        TypeKind::Nominal { representation, .. } => contains_unordered_component(representation),
+        TypeKind::List { item, .. } => contains_unordered_component(item),
+        TypeKind::Record(fields) => fields.values().any(contains_unordered_component),
+        TypeKind::ExternalActionRequest { settlement } => contains_unordered_component(settlement),
+        TypeKind::Bool
+        | TypeKind::Int { .. }
+        | TypeKind::String { .. }
+        | TypeKind::Bytes { .. } => false,
+    }
 }
 
 fn comparable(left: &TypeShape, right: &TypeShape) -> bool {

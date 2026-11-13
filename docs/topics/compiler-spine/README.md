@@ -161,7 +161,7 @@ a typed peer: the other arm of an expression `if`, another `match` arm, or
 the other block of a branch-yield `if`; with neither it refuses
 `UnsupportedSourceShape`. Mismatched payloads, fallbacks, type arguments and
 non-Option operands refuse `TypeMismatch`. `isSome`, `unwrap` and `default` are
-protected prelude names: no function, parameter or local may use them. Ordered comparisons (`<`, `<=`, `>`, `>=`) on Option, enum or variant values refuse `TypeMismatch`, and an Option conditional join refuses unless one arm's type contains the other's. Option-valued intent results refuse
+protected prelude names: no function, parameter or local may use them. Ordered comparisons (`<`, `<=`, `>`, `>=`) on Option, enum or variant values, or on records and lists that contain one, refuse `TypeMismatch`, and an Option conditional join refuses unless one arm's type contains the other's. Option-valued intent results refuse
 `UnsupportedSourceShape`, as variant-valued results do. [CSPINE-REQ-076]
 
 `unwrap(x)` compiles only where `isSome(x)`, alone or as a conjunct of an `&&`

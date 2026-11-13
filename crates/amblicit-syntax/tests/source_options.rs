@@ -743,7 +743,8 @@ fn recursive_types_through_option_remain_rejected() {
 }
 
 /// SPEC Standard Functions: `<`, `<=`, `>`, `>=` are defined for integers,
-/// `U8` and collated strings only, never for Option or enum values.
+/// `U8` and collated strings only, never for Option or enum values, nor for
+/// records or lists that contain them.
 #[test]
 fn ordered_comparisons_refuse_options_and_enums() {
     for body in [
@@ -751,6 +752,11 @@ fn ordered_comparisons_refuse_options_and_enums() {
         "fn f(a: Option<U64>, b: Option<U64>) -> Bool { return a >= b; }",
         "enum Spine { Boundary, Range } fn f(a: Spine, b: Spine) -> Bool { return a <= b; }",
         "type Choice = variant { Empty, Data(U8) }; fn f(a: Choice, b: Choice) -> Bool { return a > b; }",
+        // A container orders its components, so Option, enum and variant
+        // components refuse wherever they are nested.
+        "type R = { o: Option<U64> }; fn f(a: R, b: R) -> Bool { return a < b; }",
+        "fn f(a: List<Option<U64>, max=2>, b: List<Option<U64>, max=2>) -> Bool { return a < b; }",
+        "enum Spine { Boundary, Range } type R = { s: Spine }; fn f(a: R, b: R) -> Bool { return a >= b; }",
     ] {
         let errors = compile(body).expect_err(body);
         assert!(
