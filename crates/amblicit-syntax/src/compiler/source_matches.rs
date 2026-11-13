@@ -1,6 +1,6 @@
 //! Exhaustive alternatives with one scrutinee and lexical arm payloads.
 use super::{
-    compatible, compatible_shape, error, is_bare_integer_literal, CompilerErrorKind, CompilerStage,
+    compatible, compatible_shape, error, needs_peer_type, CompilerErrorKind, CompilerStage,
     CoreExpr, Expr, LocalEnvironment, Span, TypeChecker, TypeKind, TypeShape, TypedValue,
 };
 use crate::{
@@ -53,7 +53,7 @@ impl TypeChecker<'_> {
         // in Core. Like conditionals, no width is invented for all-bare arms.
         let mut order = (0..arms.len()).collect::<Vec<_>>();
         if expected.is_none() {
-            order.sort_by_key(|index| is_bare_integer_literal(&arms[*index].body));
+            order.sort_by_key(|index| needs_peer_type(&arms[*index].body));
         }
         for index in order {
             let arm = &arms[index];
@@ -84,7 +84,7 @@ impl TypeChecker<'_> {
                 (None, _) => None,
             };
             let arm_expected = expected.or_else(|| {
-                is_bare_integer_literal(&arm.body)
+                needs_peer_type(&arm.body)
                     .then_some(result_type.as_ref())
                     .flatten()
             });

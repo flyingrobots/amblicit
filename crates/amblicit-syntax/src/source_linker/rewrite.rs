@@ -582,6 +582,37 @@ impl<'a> Rewrite<'a> {
             }
         }
     }
+    /// `Type.CASE` or `module.Type.CASE`: an enum case selection whose type
+    /// head becomes the linked type name. Whether the type is an enum is the
+    /// compiler's judgment; the linker only resolves the type name.
+    fn type_case_selection(&self, path: &[String], span: Span) -> Option<Expr> {
+        let linked = match path {
+            [name, _] => self
+                .names
+                .definitions
+                .get(name)
+                .filter(|definition| definition.kind == DefinitionKind::Type),
+            [alias, name, _] => match self.names.imports.get(alias) {
+                Some(ImportBinding::Source(coordinate)) => self.units[coordinate]
+                    .definitions
+                    .get(name)
+                    .filter(|definition| definition.kind == DefinitionKind::Type),
+                _ => None,
+            },
+            _ => None,
+        };
+        let (Some(definition), Some(case)) = (linked, path.last()) else {
+            return None;
+        };
+        Some(Expr::Field {
+            base: Box::new(Expr::Ident {
+                name: definition.linked.clone(),
+                span,
+            }),
+            field: case.clone(),
+            span,
+        })
+    }
     fn value_path(
         &self,
         expr: &mut Expr,
@@ -591,6 +622,18 @@ impl<'a> Rewrite<'a> {
         span: Span,
     ) -> Result {
         let head = &path[0];
+        if !function && env.get(head).is_none() {
+            if let Some(selection) = self.type_case_selection(path, span) {
+                *expr = selection;
+                if let Expr::Field { base, span, .. } = expr {
+                    if let Expr::Ident { span, .. } = base.as_mut() {
+                        self.shift(span)?;
+                    }
+                    self.shift(span)?;
+                }
+                return Ok(());
+            }
+        }
         let rename = if let Some(local) = env.get(head) {
             Some(local.clone())
         } else if let Some(binding) = self.names.imports.get(head) {
@@ -648,6 +691,9 @@ impl<'a> Rewrite<'a> {
                     | "digest"
                     | "some"
                     | "none"
+                    | "isSome"
+                    | "unwrap"
+                    | "default"
                     | "fold"
             ) {
                 None

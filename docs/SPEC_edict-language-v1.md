@@ -1720,6 +1720,9 @@ not change the resulting canonical Core. Alias targets must already belong to
 the currently lowerable type subset. Variant declarations preserve named cases
 and payload references in Core. Checked constructors preserve the named case and
 optional payload. Exhaustive matching lowers to Core with arm-local optional payload binders.
+Core has no enum kind: the compiler's enum coordinate encoding is a named Core
+`Variant` whose cases carry no payload, so `Qual.EnumType.CASE` lowers to a
+payload-free variant expression and enum matches use the variant coverage rule.
 Generic and recursive types remain outside this source subset.
 
 Source type dependency paths have a ceiling of 128 declarations. Fully expanded
@@ -2215,7 +2218,10 @@ position are:
 | a `fold` initial value, `match` scrutinee and arms, record, list, variant payload, field base, call argument, the inner predicate of a `not`, the operands of a comparison, the predicate of an `if` expression | the facts at the enclosing expression |
 
 Statement-level `branch` blocks add no facts of their own, and nothing else
-adds a fact.
+adds a fact. Separately from this table, `core.option.unwrap` alone also
+accepts the `isSome` conjuncts of an enclosing statement branch's predicate
+inside that branch's `then` block (see Option Refinement); those presence facts
+never discharge a precondition.
 
 ## Basis Expressions
 
@@ -2253,6 +2259,18 @@ v1 defines exactly one refinement, not general dependent typing
 exhaustive `Option` `match`. Refinement is **lexical and variable-specific**: it
 does not flow through arbitrary helper calls, aliases, merge points, or target
 effects. There is no other narrowing in v1.
+
+The current compiler's Option encoding lowers `some`, `none`, `isSome`,
+`default` and `unwrap` to typed Core calls `core.option.<name><T>(...)` under the
+required capability `core.option/v1`; the single type argument is the item
+coordinate `T`. `none<T>()` may omit `<T>` where an expected `Option` type or a
+typed peer (another `if` arm or block, or another `match` arm) supplies it. A refining `isSome(x)` may stand
+alone or be one conjunct of an `&&` chain; the `then` branch of an expression
+`if`, a statement `if` and a branch-yield `if` are all refined regions. `x` must
+be a local, not a field path. The compiler does not yet accept `match` on an
+`Option`: this spec names no `Option` case labels for its arms. Option-valued
+intent results are not yet lowerable. Native Target independently rechecks each
+call's signature and the presence fact for every `unwrap`.
 
 ## Loops
 
@@ -3480,6 +3498,12 @@ metadata refuses as `InvalidCoreIdentity` before unknown capabilities are checke
 After that check, unknown capabilities refuse as `UnsupportedCoreCapability`
 without an artifact. Provider and runtime variant
 support and variant-valued external results remain separate implementation gates.
+
+The current compiler emits `core.option/v1` whenever Core contains a
+`core.option.*` call (see Option Refinement). Core integrity refuses such a call
+without the capability, and current Target lowering admits the capability only
+with its own Option call checks. Provider and runtime Option support remain
+separate implementation gates.
 
 ## Implementation Plan
 

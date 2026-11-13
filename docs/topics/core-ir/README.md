@@ -237,3 +237,15 @@ required capability set. No Core expression variant or ABI field is added.
 Missing capability fails Core integrity before encoding; signatures, totality
 and result compatibility remain separate Target judgments. Unsupported capability
 versions refuse explicitly. [COREIR-REQ-034]
+
+## Option calls
+
+`core.option.some`, `core.option.none`, `core.option.isSome`,
+`core.option.default` and `core.option.unwrap` use the existing generic call
+encoding under `core.option/v1`. Each retains one type argument, the Option item
+coordinate. Operation, item coordinate, operands and the required capability
+set are hash-significant. No Core expression variant or ABI field is added; a
+source enum is a named `Variant` whose cases carry no payload. A missing
+capability fails Core integrity with `InvalidDefinition` before encoding;
+signatures and `unwrap` presence remain separate Target judgments.
+[COREIR-REQ-040]

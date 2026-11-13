@@ -138,9 +138,42 @@ Constructors such as `Choice::Empty` and `Choice::Data(value)` preserve exact
 variant identity, case and optional payload through Core. Payload types, widths,
 bounds and nominal identities are checked. Variant helper storage uses checked,
 conservative bounds; genuine size overflow remains `InvalidBound`.
-Enums, recursive variants and variant-valued intent result sizing remain
+Recursive variants and variant-valued intent result sizing remain
 unsupported. Provider acceptance and runtime execution are separate gates.
 [CSPINE-REQ-062]
+
+`enum Spine { Boundary, Range }` declares payload-free cases. Core has no enum
+kind, so the compiler's enum encoding is a named Core `Variant` whose cases carry
+no payload; it requires `core.variant/v1` like any variant. Source keeps the two
+case syntaxes apart (`EDICT-LANG-ENUMVARIANT-001`): `Spine.Range` selects an enum
+case, also through a transparent alias or a linked module (`spine.Spine.Range`),
+while `Spine::Range` refuses `TypeMismatch`, as does `Choice.Empty` on a
+variant. An unknown case refuses `UnknownField`. Enum matches follow the variant
+coverage rule and cannot bind a payload. [CSPINE-REQ-075]
+
+`Option<T>` is the structural Core `Option` type. The prelude calls `some(v)`,
+`none()`, `isSome(o)`, `default(o, f)` and `unwrap(o)` lower to typed Core calls
+`core.option.<name><T>(...)`, whose single type argument is the item
+coordinate, and add the hash-significant `core.option/v1` capability. `some` and
+`none` accept an explicit `<T>`. Otherwise `some` takes its item type from an
+expected Option type or its value, and `none()` from an expected Option type or
+a typed peer: the other arm of an expression `if`, another `match` arm, or
+the other block of a branch-yield `if`; with neither it refuses
+`UnsupportedSourceShape`. Mismatched payloads, fallbacks, type arguments and
+non-Option operands refuse `TypeMismatch`. `isSome`, `unwrap` and `default` are
+protected prelude names: no function, parameter or local may use them. Ordered comparisons (`<`, `<=`, `>`, `>=`) on Option, enum or variant values, or on records and lists that contain one, refuse `TypeMismatch`, and an Option conditional join refuses unless one arm's type contains the other's. Option-valued intent results refuse
+`UnsupportedSourceShape`, as variant-valued results do. [CSPINE-REQ-076]
+
+`unwrap(x)` compiles only where `isSome(x)`, alone or as a conjunct of an `&&`
+chain, refines the same local `x` (`EDICT-LANG-OPTION-REFINE-001`): the right
+operand of `&&` and the `then` branch of an expression, statement or
+branch-yield `if`. It refuses `UnsupportedSourceShape` everywhere else,
+including `else` branches, later statements, alias locals, field paths, helper
+calls and an intent body guarded only by a `where` clause. Inside a `where`
+constraint, `isSome(x) && ...` refines its own right operand, as every `&&`
+does. Native Target rechecks the same presence fact on the
+exact local. Provider acceptance and runtime execution are separate gates.
+[CSPINE-REQ-077]
 
 Exhaustive `match value { Empty => fallback, Data(payload) => payload }`
 expressions lower to the match form already reserved by the Core CDDL. Every declared case must
@@ -358,7 +391,7 @@ without its consumer evaluator implementing that call. Successful packaging or
 an accepted verifier report therefore does not establish slice execution,
 input-constraint enforcement, or runtime byte-copy charging.
 
-- The subset lowerable to Core is deliberately narrow: local record and acyclic variant type declarations and transparent aliases,
+- The subset lowerable to Core is deliberately narrow: local record, acyclic variant and enum type declarations, `Option<T>` values with the Option prelude, and transparent aliases,
   first-order nongeneric source functions, one-parameter intents, `profile`, `basis none` or one input-derived explicit
   basis, `budget <=`, `where` predicates, pure `let` bindings, one annotated
   effectful `let ... else` shape, lowerable `require ... else` obstruction

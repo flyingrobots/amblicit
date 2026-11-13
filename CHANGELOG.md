@@ -8,6 +8,23 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Compile source `enum Name { A, B }` declarations as named Core variants
+  whose cases carry no payload, under `core.variant/v1`. `Name.A` selects a
+  case, also through an alias or a linked source module; `Name::A` on an enum
+  and `Name.A` on a variant refuse with `TypeMismatch`. Compile `Option<T>`
+  with the prelude calls `some`, `none`, `isSome`, `default` and `unwrap`,
+  lowered to typed `core.option.*` calls under the new capability
+  `core.option/v1`. `unwrap(x)` compiles only where `isSome(x)` refines the
+  same local; native Target rechecks every Option signature and `unwrap`
+  presence, and fold work now charges Option values. `isSome`, `unwrap` and
+  `default` become protected prelude names, so a module declaring a function,
+  parameter, intent input or local with one of those names now refuses
+  `SurfaceValidation`. Ordered comparisons on Option, enum or variant values, and on
+  records and lists that contain one, now refuse `TypeMismatch`; variants and
+  records holding them were previously accepted. Option `match` and
+  Option-valued intent results remain unsupported; Echo provider and runtime
+  support for `core.option/v1` is separate work (issue #261).
+
 - Let target profile `echo.dpo@2` select the structured `echo.span-ir/v3`
   Target IR when the adapter names it (#319), so effect programs with bounded
   `for` loops and statement branches calling `echo.dpo@2.*` intrinsics lower

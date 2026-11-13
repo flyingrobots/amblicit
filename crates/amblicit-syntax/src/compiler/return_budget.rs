@@ -82,7 +82,8 @@ fn encoded_maximum(shape: &TypeShape) -> Result<u64, BoundFailure> {
                         .ok_or(BoundFailure::Overflow)
                 })
         }
-        TypeKind::ExternalActionRequest { .. } | TypeKind::Variant(_) => {
+        // Variant- and Option-valued results have no result projection yet.
+        TypeKind::ExternalActionRequest { .. } | TypeKind::Variant(_) | TypeKind::Option(_) => {
             Err(BoundFailure::Unsupported)
         }
     }

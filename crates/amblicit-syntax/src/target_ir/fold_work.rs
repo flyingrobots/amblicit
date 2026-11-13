@@ -149,8 +149,9 @@ impl<'a> Meter<'a> {
                         .checked_add(label)?,
                 })
             }
-            CoreType::Option { .. }
-            | CoreType::Map { .. }
+            // A presence cell plus the largest present item; absence is one cell.
+            CoreType::Option { item } => Value::CELL.add(child(&item)?),
+            CoreType::Map { .. }
             | CoreType::CapabilityRef { .. }
             | CoreType::ExternalActionRequest { .. } => None,
         }

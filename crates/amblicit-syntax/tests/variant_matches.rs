@@ -27,10 +27,10 @@ fn encoded(core: &CoreModule) -> V {
 }
 #[test]
 fn variant_matches_preserve_scrutinee_and_arm_local_payloads() {
-    let core = compile("fn unwrap(value: Choice) -> U8 { return match value { Empty => 0u8, Data(payload) => payload, }; }").expect("exhaustive variant match");
+    let core = compile("fn extract(value: Choice) -> U8 { return match value { Empty => 0u8, Data(payload) => payload, }; }").expect("exhaustive variant match");
     let wire = encoded(&core);
     let expr = field(
-        field(field(field(&wire, "functions"), "unwrap"), "body"),
+        field(field(field(&wire, "functions"), "extract"), "body"),
         "result",
     );
     assert_eq!(field(expr, "kind"), &V::Text("match".into()));
@@ -61,8 +61,8 @@ fn variant_matches_preserve_scrutinee_and_arm_local_payloads() {
 }
 #[test]
 fn variant_matches_are_alpha_stable() {
-    let first=compile("fn unwrap(value: Choice) -> U8 { return match value { Empty => 0u8, Data(payload) => payload, }; }").expect("match");
-    let renamed=compile("fn unwrap(input: Choice) -> U8 { return match input { Empty => 0u8, Data(item) => item, }; }").expect("renamed match");
+    let first=compile("fn extract(value: Choice) -> U8 { return match value { Empty => 0u8, Data(payload) => payload, }; }").expect("match");
+    let renamed=compile("fn extract(input: Choice) -> U8 { return match input { Empty => 0u8, Data(item) => item, }; }").expect("renamed match");
     assert_eq!(
         encode_core_module(&first).unwrap(),
         encode_core_module(&renamed).unwrap()
@@ -79,7 +79,7 @@ fn variant_matches_reject_invalid_coverage_payloads_and_results() {
         "match 0u8 { Empty => 0u8, Data(p) => p }",
     ] {
         let errors = compile(&format!(
-            "fn unwrap(value: Choice) -> U8 {{ return {expression}; }}"
+            "fn extract(value: Choice) -> U8 {{ return {expression}; }}"
         ))
         .expect_err("invalid match");
         assert!(
@@ -92,7 +92,7 @@ fn variant_matches_reject_invalid_coverage_payloads_and_results() {
 }
 #[test]
 fn variant_match_payloads_do_not_escape_their_arm() {
-    let errors=compile("fn unwrap(value: Choice) -> U8 { return match value { Data(payload) => payload, Empty => payload, }; }").expect_err("payload is out of scope");
+    let errors=compile("fn extract(value: Choice) -> U8 { return match value { Data(payload) => payload, Empty => payload, }; }").expect_err("payload is out of scope");
     assert!(
         errors
             .iter()
@@ -102,7 +102,7 @@ fn variant_match_payloads_do_not_escape_their_arm() {
 }
 
 fn operation() -> CoreModule {
-    let source = "package choices.matching@1; type Choice = variant { Empty, Data(U8) }; fn unwrap(value: Choice) -> U8 { return match value { Empty => 0u8, Data(payload) => payload, }; } type Input = { value: U8, }; type Output = { value: U8, }; intent run(input: Input) returns Output profile p.read basis none budget <= p.small { let value = unwrap(Choice::Data(input.value)); return { value }; }";
+    let source = "package choices.matching@1; type Choice = variant { Empty, Data(U8) }; fn extract(value: Choice) -> U8 { return match value { Empty => 0u8, Data(payload) => payload, }; } type Input = { value: U8, }; type Output = { value: U8, }; intent run(input: Input) returns Output profile p.read basis none budget <= p.small { let value = extract(Choice::Data(input.value)); return { value }; }";
     let context = CompilerContext::new()
         .with_operation_profile("p.read", "continuum.profile.read-only/v1")
         .with_budget(
@@ -142,7 +142,7 @@ fn target_independently_validates_exhaustive_match_arms() {
     for mutation in 0..5 {
         let mut core = original.clone();
         let amblicit_syntax::CoreExpr::Match { arms, .. } =
-            &mut core.functions.get_mut("unwrap").unwrap().body.result
+            &mut core.functions.get_mut("extract").unwrap().body.result
         else {
             panic!("match")
         };
@@ -253,7 +253,7 @@ fn direct_matches_charge_dispatch_without_a_helper_declaration() {
 fn target_checks_fields_of_record_valued_matches() {
     use amblicit_syntax::CoreExpr;
     let mut core = operation();
-    let result = &mut core.functions.get_mut("unwrap").unwrap().body.result;
+    let result = &mut core.functions.get_mut("extract").unwrap().body.result;
     let mut matched = result.clone();
     let CoreExpr::Match { arms, .. } = &mut matched else {
         panic!("match")
@@ -340,11 +340,11 @@ fn variant_match_infers_bare_integer_width_from_peer_arms() {
         "match value { Data(p) => p, Empty => 0 }",
     ] {
         let core = compile(&format!(
-            "fn unwrap(value: Choice) -> U8 {{ let result = {body}; return result; }}"
+            "fn extract(value: Choice) -> U8 {{ let result = {body}; return result; }}"
         ))
         .unwrap_or_else(|errors| panic!("{body}: {errors:?}"));
         let amblicit_syntax::CoreExpr::Match { arms, .. } =
-            &core.functions["unwrap"].body.bindings[0].value
+            &core.functions["extract"].body.bindings[0].value
         else {
             panic!("match binding")
         };
@@ -362,13 +362,13 @@ fn variant_match_infers_bare_integer_width_from_peer_arms() {
 
 #[test]
 fn conditional_infers_bare_integer_width_from_match_peer() {
-    compile("fn unwrap(value: Choice, flag: Bool) -> U8 { let result = if flag then match value { Empty => 1u8, Data(p) => 2u8 } else 3; return result; }")
+    compile("fn extract(value: Choice, flag: Bool) -> U8 { let result = if flag then match value { Empty => 1u8, Data(p) => 2u8 } else 3; return result; }")
         .expect("conditional infers bare peer from typed match");
 }
 
 #[test]
 fn variant_match_without_a_typed_peer_keeps_integer_width_ambiguous() {
-    let errors = compile("fn unwrap(value: Choice) -> U8 { let result = match value { Empty => 0, Data(p) => 1 }; return result; }")
+    let errors = compile("fn extract(value: Choice) -> U8 { let result = match value { Empty => 0, Data(p) => 1 }; return result; }")
         .expect_err("no inferred width for an all-bare match");
     assert!(errors
         .iter()
@@ -379,11 +379,11 @@ fn variant_match_without_a_typed_peer_keeps_integer_width_ambiguous() {
 fn target_rejects_incompatible_match_results_in_basis() {
     use amblicit_syntax::{CoreExpr, CoreValue, TargetLoweringStatus};
     let mut core = operation();
-    let mut matched = core.functions["unwrap"].body.result.clone();
+    let mut matched = core.functions["extract"].body.result.clone();
     let CoreExpr::Match { scrutinee, arms } = &mut matched else {
         panic!("match")
     };
-    let ty = core.functions["unwrap"].params[0].ty.clone();
+    let ty = core.functions["extract"].params[0].ty.clone();
     **scrutinee = CoreExpr::Variant {
         ty,
         case: "Empty".into(),
@@ -423,12 +423,12 @@ fn target_preserves_empty_and_nested_list_match_metadata() {
     use amblicit_syntax::{CoreExpr, CoreValue, TargetLoweringStatus};
     for nested in [false, true] {
         let mut core = operation();
-        let mut matched = core.functions["unwrap"].body.result.clone();
+        let mut matched = core.functions["extract"].body.result.clone();
         let CoreExpr::Match { scrutinee, arms } = &mut matched else {
             panic!("match")
         };
         **scrutinee = CoreExpr::Variant {
-            ty: core.functions["unwrap"].params[0].ty.clone(),
+            ty: core.functions["extract"].params[0].ty.clone(),
             case: "Empty".into(),
             payload: None,
         };
@@ -458,7 +458,7 @@ fn target_projects_match_record_fields_with_unrelated_list_literals() {
     use amblicit_syntax::{CoreExpr, CoreValue, TargetLoweringStatus};
     for empty in [false, true] {
         let mut core = operation();
-        let result = &mut core.functions.get_mut("unwrap").unwrap().body.result;
+        let result = &mut core.functions.get_mut("extract").unwrap().body.result;
         let mut matched = result.clone();
         let CoreExpr::Match { arms, .. } = &mut matched else {
             panic!("match")
@@ -498,7 +498,7 @@ fn target_projects_match_record_fields_with_unrelated_list_literals() {
 fn target_keeps_list_match_comparisons_outside_the_comparison_language() {
     use amblicit_syntax::{CompareOp, CoreExpr, CorePredicate, CoreValue, TargetLoweringStatus};
     let mut core = operation();
-    let result = &mut core.functions.get_mut("unwrap").unwrap().body.result;
+    let result = &mut core.functions.get_mut("extract").unwrap().body.result;
     let mut matched = result.clone();
     let CoreExpr::Match { arms, .. } = &mut matched else {
         panic!("match")
