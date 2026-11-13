@@ -8,6 +8,18 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Let target profile `echo.dpo@2` select the structured `echo.span-ir/v3`
+  Target IR when the adapter names it (#319), so effect programs with bounded
+  `for` loops and statement branches calling `echo.dpo@2.*` intrinsics lower
+  to v3. `echo.span-ir/v2` stays the profile's default, and the same program
+  under a v2 adapter still refuses with `UnsupportedCoreNode`. The selection,
+  lowering and canonical encoder share one profile-to-domain table. Under v3,
+  the encoder now also refuses a step whose intrinsic is outside the selected
+  profile's namespace, and result projections refuse it with subject
+  `<intent>.targetIntrinsic`; v1 and v2 encoding is unchanged. A new golden,
+  `echo-dpo-2-structured`, is added; every existing golden is byte-identical.
+  Echo's provider support for v3 under `echo.dpo@2` is flyingrobots/echo#947.
+
 - Add function preconditions (#264). A source function may write `where`
   clauses after its return type, as in `fn cut(bytes: Bytes<max=8>, start:
   U64, end: U64) -> Bytes<max=8> where start <= end, end <= len(bytes)`. The

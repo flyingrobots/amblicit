@@ -3975,6 +3975,8 @@ fn digest_text(hex: char) -> String {
 
 #[path = "target_ir/echo_dpo_2.rs"]
 mod echo_dpo_2;
+#[path = "target_ir/echo_dpo_2_structured.rs"]
+mod echo_dpo_2_structured;
 #[path = "target_ir/ordered.rs"]
 mod ordered;
 #[path = "target_ir/structured.rs"]

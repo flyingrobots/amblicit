@@ -440,6 +440,16 @@ impl<'a> ProjectionSemantics<'a> {
                         format!("{intent_name}.structuredHeader"),
                     ));
                 }
+                if !crate::target_ir::execution_order::intent_steps_name_selected_intrinsics(
+                    &target_ir.domain,
+                    &target_ir.target_profile,
+                    target_intent,
+                ) {
+                    return Err(failure(
+                        ResultProjectionFailureKind::CoreTargetMismatch,
+                        format!("{intent_name}.targetIntrinsic"),
+                    ));
+                }
                 structured::resolve_sources(core_intent, target_intent, intent_name, &input)?
             } else {
                 resolve_projection_sources(core_intent, target_intent, intent_name, &input)?
