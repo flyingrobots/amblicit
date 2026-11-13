@@ -467,7 +467,8 @@ impl TypeChecker<'_> {
             } => vec![lhs, rhs],
             Expr::Call { callee, args, .. }
                 if is_prelude_call(callee, &["len", "slice", "isUtf8", "count", "at"])
-                    || is_prelude_call(callee, super::list_operations::NAMES) =>
+                    || is_prelude_call(callee, super::list_operations::NAMES)
+                    || is_prelude_call(callee, super::source_options::NAMES) =>
             {
                 args.iter().collect()
             }
@@ -584,7 +585,10 @@ impl TypeChecker<'_> {
             Expr::Call { callee, args, .. }
                 if is_prelude_call(callee, super::list_operations::NAMES)
                     || (self.meters_list_work()
-                        && is_prelude_call(callee, &["len", "slice", "isUtf8", "count", "at"])) =>
+                        && (is_prelude_call(
+                            callee,
+                            &["len", "slice", "isUtf8", "count", "at"],
+                        ) || is_prelude_call(callee, super::source_options::NAMES))) =>
             {
                 args.iter().collect()
             }

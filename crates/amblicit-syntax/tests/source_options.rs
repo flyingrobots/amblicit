@@ -850,3 +850,42 @@ fn statement_branch_presence_is_not_a_precondition_fact() {
         "precondition proved only by a statement branch",
     );
 }
+
+/// The compiler charges Option calls exactly as native Target's fold/list work
+/// meter does, so a compiler-accepted budget is never one Target refuses.
+#[test]
+fn option_calls_are_charged_like_target_work() {
+    let body = "fn f() -> U64 { let o = some(1u64); return default(o, 0u64); }
+type Input = { marker: U8 }; type Output = { value: U64, size: U64 };
+intent run(input: Input) returns Output profile p.read basis none budget <= p.small {
+  let xs: List<U8, max=1> = [input.marker];
+  let size = listLen(xs);
+  let value = f();
+  return { value, size };
+}";
+    let mut accepted = 0;
+    for steps in (100_u64..=1_200).step_by(4) {
+        let source = format!("package jedit.options@1; {body}");
+        let context = CompilerContext::new()
+            .with_operation_profile("p.read", "continuum.profile.read-only/v1")
+            .with_budget(
+                "p.small",
+                CoreBudget {
+                    max_steps: steps,
+                    max_allocated_bytes: 1_000_000,
+                    max_output_bytes: 1_000_000,
+                },
+            );
+        let Ok(core) = compile_to_core(&parse_module(&source).unwrap(), &context) else {
+            continue;
+        };
+        accepted += 1;
+        let report = lower_to_target_ir(&core, &facts());
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Lowered,
+            "budget {steps} accepted by the compiler but refused by Target: {report:?}"
+        );
+    }
+    assert!(accepted > 0, "no budget compiled; the probe is vacuous");
+}
