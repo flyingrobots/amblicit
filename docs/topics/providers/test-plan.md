@@ -201,8 +201,10 @@ acceptance does not grant provider/runtime support or independent cost admission
 
 The precondition-capable pack is a new explicit publication at
 `fixtures/provider-contracts/function-preconditions-v1/`. Every earlier
-publication, including `bounded-state-fold-v1`, remains byte-identical; a
-frozen pre-precondition Core schema reproduces it. Schema acceptance is not
+publication, including `bounded-state-fold-v1`, remains byte-identical; the
+frozen pre-precondition Core schema, together with the frozen pre-catalog-v2
+target-profile schema, reproduces it. `function-preconditions-v1` is itself now
+frozen: the catalog-v2 publication below carries its Core schema. Schema acceptance is not
 provider support: a provider must implement the specification's Function
 Preconditions contract or refuse the field.
 
