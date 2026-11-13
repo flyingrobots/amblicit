@@ -895,3 +895,58 @@ intent run(input: Input) returns Output profile p.read basis none budget <= p.sm
     }
     assert!(accepted > 0, "no budget compiled; the probe is vacuous");
 }
+
+/// Budget parity for `none()`, whose result storage Target charges although it
+/// has no operands, and for Option calls in a module without list or fold
+/// work, where Target applies no work meter.
+#[test]
+fn option_budget_parity_covers_none_and_unmetered_modules() {
+    let bodies = [
+        // List work active; `none()` carries a large result.
+        "fn f() -> Option<Bytes<max=512>> { return none(); }
+type Input = { marker: U8 }; type Output = { size: U64 };
+intent run(input: Input) returns Output profile p.read basis none budget <= p.small {
+  let xs: List<U8, max=1> = [input.marker];
+  let size = listLen(xs);
+  let empty = f();
+  return { size };
+}",
+        // No source functions, match, list or fold.
+        "type Input = { value: Option<U64> }; type Output = { value: U64 };
+intent run(input: Input) returns Output profile p.read basis none budget <= p.small {
+  let o = input.value;
+  let value = if isSome(o) then unwrap(o) else default(o, 0u64);
+  return { value };
+}",
+    ];
+    for body in bodies {
+        let mut accepted = 0;
+        for steps in (1_u64..=1_600).step_by(3) {
+            let source = format!("package jedit.options@1; {body}");
+            let context = CompilerContext::new()
+                .with_operation_profile("p.read", "continuum.profile.read-only/v1")
+                .with_budget(
+                    "p.small",
+                    CoreBudget {
+                        max_steps: steps,
+                        max_allocated_bytes: 1_000_000,
+                        max_output_bytes: 1_000_000,
+                    },
+                );
+            let Ok(core) = compile_to_core(&parse_module(&source).unwrap(), &context) else {
+                continue;
+            };
+            accepted += 1;
+            let report = lower_to_target_ir(&core, &facts());
+            assert_eq!(
+                report.status,
+                TargetLoweringStatus::Lowered,
+                "budget {steps} accepted by the compiler but refused by Target: {report:?}"
+            );
+        }
+        assert!(
+            accepted > 0,
+            "no budget compiled; the probe is vacuous: {body}"
+        );
+    }
+}

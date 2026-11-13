@@ -604,7 +604,11 @@ impl TypeChecker<'_> {
             }
             _ => Vec::new(),
         };
-        if !arguments.is_empty() {
+        // Target also charges the result storage of an operand-free `none()`.
+        let operand_free_none = self.meters_list_work()
+            && matches!(expr, Expr::Call { callee, args, .. }
+                if args.is_empty() && is_prelude_call(callee, &["none"]));
+        if !arguments.is_empty() || operand_free_none {
             // Match native Target's complete non-arithmetic prelude charge,
             // including byte/text operations mixed with list operations.
             cost.steps = arguments
