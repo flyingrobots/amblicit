@@ -797,3 +797,56 @@ fn branch_yield_none_takes_its_item_type_from_the_typed_peer() {
             .any(|capability| capability == "core.option/v1"));
     }
 }
+
+/// The spec's fact table: a statement branch adds no fact for precondition
+/// proofs. Its `isSome` presence reaches only `core.option.unwrap`, so a
+/// forged call that needs `isSome(o)` as a precondition inside the branch
+/// still refuses, while the same unwrap lowers.
+#[test]
+fn statement_branch_presence_is_not_a_precondition_fact() {
+    let source = format!("{OPTIONAL_INPUT} fn needs(o: Option<U64>) -> U64 where isSome(o) {{ return 0u64; }} fn caller(o: Option<U64>) -> U64 {{ return if isSome(o) then needs(o) else 0u64; }} intent run(input: Input) returns Output profile p.read basis none budget <= p.large {{ let o = input.value; if isSome(o) {{ let inner = unwrap(o); }} return {{ value: 0u64 }}; }}");
+    let original = compile(&source).expect("isSome precondition and statement unwrap compile");
+    lowered_with(&original, &structured_facts());
+    let CoreExpr::If { then_value, .. } = &original.functions["caller"].body.result else {
+        panic!("guarded call")
+    };
+    let call = then_value.as_ref().clone();
+    let mut core = original;
+    let CoreNode::Branch { then_block, .. } = core
+        .intents
+        .get_mut("run")
+        .unwrap()
+        .body
+        .nodes
+        .iter_mut()
+        .find(|node| matches!(node, CoreNode::Branch { .. }))
+        .unwrap()
+    else {
+        unreachable!()
+    };
+    let CoreNode::Let { value, .. } = &mut then_block.nodes[0] else {
+        panic!("let")
+    };
+    let CoreExpr::Call {
+        args: unwrap_args, ..
+    } = value.clone()
+    else {
+        panic!("unwrap")
+    };
+    let CoreExpr::Call {
+        callee, type_args, ..
+    } = call
+    else {
+        panic!("call")
+    };
+    *value = CoreExpr::Call {
+        callee,
+        type_args,
+        args: unwrap_args,
+    };
+    refused_with(
+        &core,
+        &structured_facts(),
+        "precondition proved only by a statement branch",
+    );
+}

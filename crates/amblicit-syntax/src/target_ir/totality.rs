@@ -15,6 +15,9 @@ use crate::core_ir::{CoreBlock, MAX_CORE_GRAPH_DEPTH};
 pub(super) struct Scope<'a> {
     module: &'a CoreModule,
     local_bounds: RefCell<BTreeMap<String, (LocalRef, u64)>>,
+    /// Option presence facts of the enclosing statement-branch `then` blocks.
+    /// Only `core.option.unwrap` reads them; they are not general facts.
+    branch_presence: RefCell<Vec<CorePredicate>>,
 }
 
 impl<'a> Scope<'a> {
@@ -22,6 +25,7 @@ impl<'a> Scope<'a> {
         Self {
             module,
             local_bounds: RefCell::new(BTreeMap::new()),
+            branch_presence: RefCell::new(Vec::new()),
         }
     }
 
@@ -145,12 +149,19 @@ fn node_is_total(
             else_block,
             ..
         } => {
-            // Statement branches extend only Option presence into `then`.
+            // A statement branch gives its `then` block Option presence only,
+            // for `unwrap`; it adds no general fact (see the spec fact table).
             let presence = super::option_operations::then_block_presence(predicate);
-            let mut then_constraints = constraints.to_vec();
-            then_constraints.extend(presence.as_ref());
+            let pushed = presence.is_some();
+            if let Some(presence) = presence {
+                core.branch_presence.borrow_mut().push(presence);
+            }
+            let then_total = block_is_total_at_depth(core, then_block, constraints, depth + 1);
+            if pushed {
+                core.branch_presence.borrow_mut().pop();
+            }
             predicate_is_total_at_depth(core, predicate, constraints, depth)
-                && block_is_total_at_depth(core, then_block, &then_constraints, depth + 1)
+                && then_total
                 && block_is_total_at_depth(core, else_block, constraints, depth + 1)
         }
     }
@@ -309,7 +320,10 @@ fn expression_is_total_at_depth(
                     )
                 }
                 _ if super::option_operations::is_operation(callee) => {
-                    super::option_operations::is_total(callee, args, constraints)
+                    let presence = core.branch_presence.borrow();
+                    let mut facts = constraints.to_vec();
+                    facts.extend(presence.iter());
+                    super::option_operations::is_total(callee, args, &facts)
                 }
                 unsigned_addition::OPERATION => {
                     unsigned_addition::is_total(core, type_args, args, constraints)

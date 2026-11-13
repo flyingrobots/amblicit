@@ -2218,7 +2218,10 @@ position are:
 | a `fold` initial value, `match` scrutinee and arms, record, list, variant payload, field base, call argument, the inner predicate of a `not`, the operands of a comparison, the predicate of an `if` expression | the facts at the enclosing expression |
 
 Statement-level `branch` blocks add no facts of their own, and nothing else
-adds a fact.
+adds a fact. Separately from this table, `core.option.unwrap` alone also
+accepts the `isSome` conjuncts of an enclosing statement branch's predicate
+inside that branch's `then` block (see Option Refinement); those presence facts
+never discharge a precondition.
 
 ## Basis Expressions
 
