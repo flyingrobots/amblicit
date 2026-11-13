@@ -1,0 +1,13 @@
+package jedit.iterative.function_precondition@1;
+use lawpack jedit.text@1 digest "sha256:f50872ced6d229170258ad145c4d1d14ee341716f5b454ab50a27538787eed0b" as text;
+type Input = { bytes: Bytes<max=8>, start: U64, end: U64 }; type Output = { bytes: Bytes<max=8> };
+fn cut(bytes: Bytes<max=8>, start: U64, end: U64) -> Bytes<max=8>
+  where start <= end, end <= len(bytes), start <= len(bytes)
+{
+  return slice(bytes, start, end);
+}
+intent evaluate(input: Input) returns Output profile text.replaceRange basis none budget <= text.replaceRangeBudget
+  where input.start <= input.end && input.end <= len(input.bytes) && input.start <= len(input.bytes)
+{
+  let bytes = cut(input.bytes, input.start, input.end); return { bytes };
+}

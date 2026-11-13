@@ -40,6 +40,14 @@ impl TypeChecker<'_> {
                 span,
             );
         };
+        // A fold calls its step with no call site to prove a precondition at.
+        if !signature.preconditions.is_empty() {
+            return self.fold_failure(
+                CompilerErrorKind::UnsupportedSourceShape,
+                "fold step cannot carry `where` preconditions",
+                span,
+            );
+        }
         if signature.params.len() != 1 || signature.params[0].coord != signature.result.coord {
             return self.fold_failure(
                 CompilerErrorKind::TypeMismatch,

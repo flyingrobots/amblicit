@@ -26,6 +26,7 @@ mod byte_count;
 mod byte_length;
 mod byte_slice;
 mod byte_utf8;
+mod function_preconditions;
 mod list_literal;
 mod list_operations;
 mod return_budget;
@@ -77,6 +78,8 @@ pub enum CompilerErrorKind {
     DuplicateObstructionPayloadField,
     ReservedTypeIdentity,
     InvalidCoreTypeIntegrity,
+    /// A call does not establish one of its callee's `where` preconditions.
+    UnprovenPrecondition,
 }
 
 /// Deterministic signature and canonical identity for one imported pure helper.
@@ -1091,6 +1094,9 @@ struct TypeChecker<'a> {
     input_proof_constraints: Vec<CorePredicate>,
     /// Locals proven present by an enclosing `isSome` refinement, by local id.
     option_presence: Vec<String>,
+    /// The function whose `where` precondition is being checked; source
+    /// calls are refused there because a call site could not instantiate them.
+    checking_precondition_of: Option<String>,
     effect_binding_profile: Option<EffectBindingProfile>,
     errors: Vec<CompilerError>,
     named_types: BTreeMap<String, TypeShape>,
@@ -1127,6 +1133,7 @@ impl<'a> TypeChecker<'a> {
             local_bounds: BTreeMap::new(),
             input_proof_constraints: Vec::new(),
             option_presence: Vec::new(),
+            checking_precondition_of: None,
             effect_binding_profile: None,
             errors: Vec::new(),
             named_types: BTreeMap::new(),
@@ -2963,6 +2970,11 @@ impl<'a> TypeChecker<'a> {
         let name = stmt.name;
         if let Some(handler) = stmt.handler {
             self.check_effectful_let(intent, stmt, handler, env, locals, state);
+        } else if self.is_failure_free_effect_call(stmt.value) {
+            // An effect whose authenticated signature declares no failures has
+            // nothing to map: its binding is an effect node with an empty map.
+            let no_failures = ObstructionHandler::Map(Vec::new());
+            self.check_effectful_let(intent, stmt, &no_failures, env, locals, state);
         } else {
             self.check_pure_let(intent, output_shape, stmt, env, locals, state);
         }
@@ -3564,6 +3576,26 @@ impl<'a> TypeChecker<'a> {
         env.insert(stmt.name.to_owned(), (local, binding_shape));
     }
 
+    /// Whether `value` is a direct call to an exact imported effect whose
+    /// authenticated signature declares no failures. Effects known only by a
+    /// write class carry no failure authority and never qualify.
+    fn is_failure_free_effect_call(&self, value: &Expr) -> bool {
+        let Some(effect) = effect_coordinate(value) else {
+            return false;
+        };
+        self.resolved
+            .effect_signatures
+            .get(&effect)
+            .is_some_and(|signature| {
+                signature.failure_payload_types.is_empty()
+                    && self.fact_matches_source_import(
+                        &effect,
+                        &signature.coordinate,
+                        &signature.lawpack,
+                    )
+            })
+    }
+
     fn check_failed_effect_handler(
         &mut self,
         stmt: &LetStatement<'_>,
@@ -3649,7 +3681,7 @@ impl<'a> TypeChecker<'a> {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
                 CompilerErrorKind::UnsupportedSourceShape,
-                "effectful `let ... else` requires an explicit result type annotation",
+                "effect binding requires an explicit result type annotation",
                 span,
             ));
             return None;
@@ -3698,7 +3730,7 @@ impl<'a> TypeChecker<'a> {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
                 CompilerErrorKind::UnsupportedSourceShape,
-                "effectful `let ... else` does not support effect type arguments",
+                "effect bindings do not support effect type arguments",
                 span,
             ));
             return None;
@@ -3707,7 +3739,7 @@ impl<'a> TypeChecker<'a> {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
                 CompilerErrorKind::UnsupportedSourceShape,
-                "effectful `let ... else` supports exactly one effect argument",
+                "effect bindings support exactly one effect argument",
                 span,
             ));
             return None;
@@ -6376,7 +6408,7 @@ fn effect_mapping_error(
     span: Span,
 ) -> CompilerError {
     let guidance = if signature.failure_payload_types.is_empty() {
-        "no declared failures; effect bindings without a failure map are not supported".to_owned()
+        "no declared failures; call it as the whole value of an annotated `let` binding".to_owned()
     } else if signature.domain_mappable_failures.is_empty() {
         "no domain-mappable failures; effect bindings without an authored failure map are not supported".to_owned()
     } else {

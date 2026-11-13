@@ -127,6 +127,9 @@ impl<'a> Rewrite<'a> {
                 let mut env = Env::new();
                 self.params(&mut definition.params, &mut env)?;
                 self.ty(&mut definition.returns, definition.span)?;
+                for precondition in &mut definition.preconditions {
+                    self.expr(precondition, &env)?;
+                }
                 self.block(&mut definition.body, &mut env)?;
                 self.shift(&mut definition.span)?;
             }

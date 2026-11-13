@@ -299,7 +299,7 @@ an ordered comparison (`<`, `<=`, `>`, `>=`) anywhere in an intent must compare
 integers, per the closed operator set: lowering resolves both operand types and
 refuses any other pairing with `InvalidCoreIdentity` detail
 `inadmissible_comparison_operator`. Under v3 the same rule applies to every
-source function in the module, each judged in its own scope, so a helper
+source function in the module, including its preconditions, each judged in its own scope, so a helper
 reached directly or through another helper cannot carry one. The v3 encoder has
 no type table, so it refuses an ordered comparison only when an operand is
 provably non-integer from the artifact itself (a non-integer constant, a record
@@ -873,8 +873,24 @@ fallback or wrong arity refuses `InvalidCoreIdentity` without an artifact.
 
 `core.option.unwrap` is total only on a local that a dominating `isSome` fact
 names: an expression-if `then` arm, the right operand of a conjunction, or the
-`then` block of a statement branch. Statement branches extend only these
-presence facts, so byte, list and arithmetic proofs keep their existing rule.
+`then` block of a statement branch. Statement-branch presence is held apart
+from the general facts and read only by `unwrap`, so byte, list, arithmetic and
+function-precondition proofs keep their existing rule.
 Branch-yield bindings still refuse `branch_binding` in every domain. Source
 refinement is not trusted. These are native judgments; provider acceptance and
 runtime Option values are separate gates. [TIR-REQ-075]
+
+## Function preconditions
+
+Target judges source-function preconditions itself rather than trusting the
+compiler. Each precondition must be a total, typed predicate whose only locals
+are the function's parameters, with no source-function call, fold or match.
+Each function body is judged total with its preconditions as facts. Every call
+to a precondition-bearing function, in an intent or another function,
+instantiates each precondition with the call's arguments and must prove it
+from the facts that dominate the call, by the specification's order proof or
+an identical fact. A fold whose step carries preconditions refuses. Any failure
+refuses with `InvalidCoreIdentity`, so Core that drops a precondition its body
+needs, adds one its callers do not establish, or reads a non-parameter local is
+refused. Target IR carries the call; the precondition stays in the Core the
+artifact's semantic closure digests. [TIR-REQ-068]

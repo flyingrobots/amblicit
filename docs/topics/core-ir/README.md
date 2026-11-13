@@ -147,6 +147,12 @@ outside the schema under `fixtures/core/canonical/`. [COREIR-REQ-007]
   call paths above 128 frames. Empty maps are omitted from canonical encoding;
   local alpha-renaming preserves identity while signature/body/callee changes
   and unused definitions remain hash-significant. [COREIR-REQ-030]
+- A source function may carry `preconditions`, its `where` predicates in source
+  order. The list is hash-significant and omitted when empty, so a
+  precondition-free function keeps its earlier canonical bytes. Integrity
+  refuses a precondition that reads a non-parameter local, calls a function in
+  the same table, folds or matches, with `InvalidDefinition` at
+  `functions.<name>.preconditions[<index>]`. [COREIR-REQ-035]
 - Edict-authored lawpack pure helper bodies use `core-fn-body`, a pure function
   body shape. They do not reuse the effect-capable `core-block` node algebra.
   [COREIR-REQ-011]

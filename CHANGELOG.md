@@ -24,6 +24,32 @@ versions still track specification maturity rather than a released product.
   Option-valued intent results remain unsupported; Echo provider and runtime
   support for `core.option/v1` is separate work (issue #261).
 
+- Add function preconditions (#264). A source function may write `where`
+  clauses after its return type, as in `fn cut(bytes: Bytes<max=8>, start:
+  U64, end: U64) -> Bytes<max=8> where start <= end, end <= len(bytes)`. The
+  body may assume them, so subtraction and `slice` are proven in range. Every
+  call must prove them from the facts that dominate it, or it refuses with the
+  new compiler error `UnprovenPrecondition` at the call. They are never
+  evaluated and cost nothing. Core carries them as the optional, hash-significant
+  `functions.<name>.preconditions` list, omitted when empty, so every existing
+  Core and Target IR golden is byte-identical. Target re-judges them without
+  the compiler's proof and refuses forged Core with `InvalidCoreIdentity`.
+  Provider contract pack `function-preconditions-v1` publishes the schema;
+  `bounded-state-fold-v1` and earlier packs are unchanged and refuse the field.
+  The language specification defines the syntax, proof rule and Core shape,
+  and carves function `where` out of `EDICT-LANG-WHERE-001`.
+
+- Let source bind an effect whose authenticated signature declares no failures
+  without a failure map: `let done: fx.Done = fx.ensureNode(input);` compiles
+  to a Core effect node and a Target IR step with empty obstruction maps. This
+  makes Echo's five mutation intrinsics (`ensure-node`, `create-node`,
+  `replace-atom`, `ensure-edge`, `replace-edge`), which only emit mutation
+  intents and have no runtime obstruction path, callable from source. An
+  effect that declares any failure still reports
+  `EffectWithoutFailureMapping` without its map, and a failure-free effect
+  used inside a larger expression is still refused. Echo still has to publish
+  a provider profile whose catalog carries these intrinsics (Echo #985).
+
 - Select target profile `echo.dpo@2`, Echo's effect profile. It lowers only
   to the ordered `echo.span-ir/v2` Target IR, and its effect intrinsics are
   named `echo.dpo@2.*`; each Echo profile refuses the other's intrinsics with

@@ -49,8 +49,11 @@ with zero or multiple arguments report the same unsupported shape before map gui
 while checking an intent body and is restored afterward. Every bare exact
 effect call also checks the current profile permission before map guidance,
 including direct or nested returns.
-For a zero-failure effect, it reports that bindings without a failure map are
-unsupported instead of suggesting an empty `else` map.
+A zero-failure effect, whose authenticated signature declares no failures,
+binds without a map when it is the whole value of an annotated `let`; Core and
+Target IR carry its node with an empty obstruction map. Inside a larger
+expression it still reports `EffectWithoutFailureMapping`, naming that binding
+form. Echo's five mutation intrinsics are such effects.
 An unknown effect in an explicit effect binding retains `MissingContextFact`
 and lists available effects from its exact imported owner and source alias.
 A bare unknown call retains `UnresolvedFunction`; the compiler does not infer
@@ -242,6 +245,15 @@ by the callee. Every definition is checked, including unused definitions.
 The [source-function reference](source-functions.md) explains authority,
 canonical identity, conservative budgeting and target restrictions.
 [CSPINE-REQ-044] [CSPINE-REQ-045]
+
+A source function may state `where` preconditions after its return type. They
+are checked once as Boolean predicates over the parameters, before any body,
+and become facts in the function's own body, so subtraction and `slice` there
+can be proven. Every call instantiates them with its argument expressions and
+must prove each one from the facts that dominate the call, or it refuses with
+`UnprovenPrecondition` at the call span. Preconditions add nothing to Core
+intents or costs, and a precondition-bearing function cannot be a fold step.
+[CSPINE-REQ-068] [CSPINE-REQ-069] [CSPINE-REQ-070]
 
 Boolean `&&` and `||` predicates lower to ordered Core `All` and `Any` forms
 where predicate checking is used: input constraints, statement conditionals,

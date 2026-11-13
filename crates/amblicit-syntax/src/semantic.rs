@@ -96,6 +96,9 @@ pub fn validate_surface(module: &Module) -> Result<(), Vec<SemanticError>> {
                     validate_type_ref(&param.ty, param.span, &mut errors);
                 }
                 validate_type_ref(&function.returns, function.span, &mut errors);
+                for precondition in &function.preconditions {
+                    validate_expr(precondition, &mut names, &mut errors);
+                }
                 validate_block(&function.body, &mut names, &mut errors);
             }
             Decl::Intent(intent) => {

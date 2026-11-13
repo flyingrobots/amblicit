@@ -72,6 +72,8 @@ pub struct FunctionDecl {
     pub name: String,
     pub params: Vec<Param>,
     pub returns: TypeRef,
+    /// `where` preconditions in source order, every clause flattened.
+    pub preconditions: Vec<Expr>,
     pub body: Block,
     pub span: Span,
 }
