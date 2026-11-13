@@ -12,7 +12,9 @@ schema in [`fixtures/target-profile/pre-catalog-v2-target-profile.cddl`](../../t
 The source-module, source-function and v1 pairs remain byte-identical. Their
 Target IR schema bytes are preserved in
 [`fixtures/target-ir/pre-structured-target-ir.cddl`](../../target-ir/pre-structured-target-ir.cddl),
-and tests reassemble each prior publication from those bytes and the frozen
+and tests reassemble each prior publication from those bytes, its frozen Core
+schema (`fixtures/core/pre-fold-core.cddl`, or
+`fixtures/lang/functions/legacy-core.cddl` for v1) and the frozen
 target-profile schema. The source-module
 publication refuses a v3 artifact rather than reinterpreting it.
 
