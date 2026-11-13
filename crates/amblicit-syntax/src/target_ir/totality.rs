@@ -289,9 +289,17 @@ fn expression_is_total_at_depth(
             type_args,
             args,
         } => {
+            // A source-function call is total only where its preconditions,
+            // instantiated with these arguments, follow from the facts here.
             if !args
                 .iter()
                 .all(|arg| expression_is_total_at_depth(core, arg, constraints, depth + 1))
+                || !super::function_preconditions::call_is_established(
+                    core.module(),
+                    callee,
+                    args,
+                    constraints,
+                )
             {
                 return false;
             }
@@ -328,17 +336,34 @@ fn expression_is_total_at_depth(
 /// the unsigned bindings before it.
 pub(super) fn bindings_are_total<'a>(
     module: &CoreModule,
+    preconditions: &[CorePredicate],
     bindings: impl IntoIterator<Item = (&'a crate::core_ir::LocalRef, &'a CoreExpr)>,
     result: &CoreExpr,
 ) -> bool {
     let core = &Scope::new(module);
+    // The body may assume its own preconditions: every call proves them.
+    let facts = preconditions.iter().collect::<Vec<_>>();
     for (binding, value) in bindings {
-        if !expression_is_total_at_depth(core, value, &[], 0) {
+        if !expression_is_total_at_depth(core, value, &facts, 0) {
             return false;
         }
-        core.record_binding(binding, value, &[]);
+        core.record_binding(binding, value, &facts);
     }
-    expression_is_total_at_depth(core, result, &[], 0)
+    expression_is_total_at_depth(core, result, &facts, 0)
+}
+
+/// Each precondition must itself be total, assuming the ones before it.
+pub(super) fn preconditions_are_total(
+    module: &CoreModule,
+    preconditions: &[CorePredicate],
+) -> bool {
+    let core = &Scope::new(module);
+    let mut earlier = Vec::new();
+    preconditions.iter().all(|precondition| {
+        let total = predicate_is_total_at_depth(core, precondition, &earlier, 0);
+        earlier.push(precondition);
+        total
+    })
 }
 
 #[cfg(test)]

@@ -1292,6 +1292,7 @@ fn compiler_error_kind_name(kind: CompilerErrorKind) -> &'static str {
         CompilerErrorKind::UnraisedFailure => "UnraisedFailure",
         CompilerErrorKind::UnhandledFailure => "UnhandledFailure",
         CompilerErrorKind::IncompleteFailureMapping => "IncompleteFailureMapping",
+        CompilerErrorKind::UnprovenPrecondition => "UnprovenPrecondition",
     }
 }
 
@@ -1313,16 +1314,19 @@ fn core_review(core: &amblicit_syntax::CoreModule) -> Value {
     if !core.functions.is_empty() {
         review["functions"] = Value::Object(core.functions.iter().map(|(name, function)| {
             let mut entry = json!({
-            "params": function.params.iter().map(local_ref_review).collect::<Vec<_>>(),
-            "returnType": function.return_type,
-            "body": {
-                "locals": function.body.locals.iter().map(local_ref_review).collect::<Vec<_>>(),
-                "bindings": function.body.bindings.iter().map(|binding| json!({
-                    "kind": "let", "binding": local_ref_review(&binding.binding), "value": core_expr_review(&binding.value)
-                })).collect::<Vec<_>>(),
-                "result": core_expr_review(&function.body.result)
-            }
+                "params": function.params.iter().map(local_ref_review).collect::<Vec<_>>(),
+                "returnType": function.return_type,
+                "body": {
+                    "locals": function.body.locals.iter().map(local_ref_review).collect::<Vec<_>>(),
+                    "bindings": function.body.bindings.iter().map(|binding| json!({
+                        "kind": "let", "binding": local_ref_review(&binding.binding), "value": core_expr_review(&binding.value)
+                    })).collect::<Vec<_>>(),
+                    "result": core_expr_review(&function.body.result)
+                }
             });
+            if !function.preconditions.is_empty() {
+                entry["preconditions"] = function.preconditions.iter().map(core_predicate_review).collect();
+            }
             if !function.failures.is_empty() {
                 entry["failures"] = json!(function.failures);
             }

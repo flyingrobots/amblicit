@@ -3,9 +3,9 @@ use std::collections::BTreeMap;
 
 use super::{
     compare_op, compatible, error, expr_span, expression_identity, next_local, BinOp,
-    CompilerErrorKind, CompilerStage, CoreExpr, CoreFunction, CorePureBinding, CorePureBlock, Expr,
-    FunctionDecl, HelperCost, LetStatement, LocalEnvironment, LocalRef, Span, Stmt, TypeChecker,
-    TypeKind, TypeRef, TypeShape, TypedValue, UnOp,
+    CompilerErrorKind, CompilerStage, CoreExpr, CoreFunction, CorePredicate, CorePureBinding,
+    CorePureBlock, Expr, FunctionDecl, HelperCost, LetStatement, LocalEnvironment, Span, Stmt,
+    TypeChecker, TypeKind, TypeRef, TypeShape, TypedValue, UnOp,
 };
 
 const VALUE_CELL_BYTES: u64 = 64;
@@ -18,6 +18,8 @@ const VARIANT_METADATA_KEY_BYTES: u64 = 15;
 pub(super) struct Signature {
     pub(super) params: Vec<TypeShape>,
     pub(super) result: TypeShape,
+    /// Checked `where` preconditions over `arg.N` parameter locals.
+    pub(super) preconditions: Vec<CorePredicate>,
 }
 
 impl TypeChecker<'_> {
@@ -55,11 +57,18 @@ impl TypeChecker<'_> {
                         definition.span,
                     ));
                 } else {
-                    self.function_signatures
-                        .insert(definition.name.clone(), Signature { params, result });
+                    self.function_signatures.insert(
+                        definition.name.clone(),
+                        Signature {
+                            params,
+                            result,
+                            preconditions: Vec::new(),
+                        },
+                    );
                 }
             }
         }
+        self.check_source_preconditions();
         let mut functions = BTreeMap::new();
         for definition in &self.resolved.source_functions {
             if let Some(function) = self.check_source_function(definition) {
@@ -126,24 +135,12 @@ impl TypeChecker<'_> {
         definition: &FunctionDecl,
         signature: Signature,
     ) -> Option<CoreFunction> {
-        self.input_proof_constraints.clear();
+        // The body may assume its own preconditions; callers prove them.
+        self.input_proof_constraints
+            .clone_from(&signature.preconditions);
         self.local_bounds.clear();
-        let mut env = LocalEnvironment::default();
-        let params: Vec<_> = definition
-            .params
-            .iter()
-            .zip(&signature.params)
-            .enumerate()
-            .map(|(index, (param, shape))| {
-                let local = LocalRef {
-                    id: format!("arg.{index}"),
-                    alpha_name: format!("$arg{index}"),
-                    ty: shape.coord.clone(),
-                };
-                env.insert(param.name.clone(), (local.clone(), shape.clone()));
-                local
-            })
-            .collect();
+        let (mut env, params) =
+            super::function_preconditions::parameter_frame(definition, &signature.params);
         let mut locals = Vec::new();
         let mut bindings = Vec::new();
         let mut result = None;
@@ -218,6 +215,7 @@ impl TypeChecker<'_> {
             params,
             return_type: signature.result.coord,
             failures: self.function_failures(&definition.name).to_vec(),
+            preconditions: signature.preconditions,
             body: CorePureBlock {
                 locals,
                 bindings,
@@ -277,6 +275,17 @@ impl TypeChecker<'_> {
         expected: Option<&TypeShape>,
         span: Span,
     ) -> Option<TypedValue> {
+        if let Some(owner) = &self.checking_precondition_of {
+            let message =
+                format!("`where` precondition of `{owner}` cannot call source function `{name}`");
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::UnsupportedSourceShape,
+                message,
+                span,
+            ));
+            return None;
+        }
         if !self.failing_call_is_handled(name, span) {
             return None;
         }
@@ -330,6 +339,18 @@ impl TypeChecker<'_> {
         }
         if !accepted {
             return None;
+        }
+        if !signature.preconditions.is_empty() {
+            let params = super::function_preconditions::parameter_locals(&signature.params);
+            if !self.discharge_preconditions(
+                name,
+                &signature.preconditions,
+                &params,
+                &arguments,
+                span,
+            ) {
+                return None;
+            }
         }
         Some(TypedValue {
             expr: CoreExpr::Call {

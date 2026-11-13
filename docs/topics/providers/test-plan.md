@@ -197,16 +197,29 @@ acceptance does not grant provider/runtime support or independent cost admission
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | PROVIDERS-TP-054 | implemented | Fold schema publication boundary | PROVIDERS-REQ-030 | The frozen structured-control pack reproduces its published bytes and rejects a fold; the new pack accepts compiler-produced fold Core and rejects a missing step field. | fold_contract_requires_new_schema_selection | crates/amblicit-provider-schema/tests/provider_contract_pack.rs, fixtures/core/pre-fold-core.cddl | All previously pinned publication bytes remain unchanged. |
 
+## Function precondition contract publication (#264)
+
+The precondition-capable pack is a new explicit publication at
+`fixtures/provider-contracts/function-preconditions-v1/`. Every earlier
+publication, including `bounded-state-fold-v1`, remains byte-identical; a
+frozen pre-precondition Core schema reproduces it. Schema acceptance is not
+provider support: a provider must implement the specification's Function
+Preconditions contract or refuse the field.
+
+| ID | Status | Case | Requirement | Oracle | Evidence | Fixture | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PROVIDERS-TP-055 | implemented | Precondition schema publication boundary | PROVIDERS-REQ-030 | The frozen bounded-state-fold pack reproduces its published bytes, accepts a precondition-free control and rejects compiler-produced precondition Core; the new pack accepts it and rejects an empty `preconditions` array. | precondition_contract_requires_new_schema_selection | crates/amblicit-provider-schema/tests/provider_contract_pack.rs, fixtures/core/pre-precondition-core.cddl, fixtures/lang/functions/function-precondition.amblicit | All previously pinned publication bytes remain unchanged. |
+
 ## Typed failure contract publication (#265)
 
 The typed-failure pack is a new explicit publication at
-`fixtures/provider-contracts/typed-failures-v1/`. The bounded-state-fold and
-all earlier publications remain byte-identical. The frozen
+`fixtures/provider-contracts/typed-failures-v1/`. The function-preconditions
+and all earlier publications remain byte-identical. The frozen
 `fixtures/core/pre-typed-failure-core.cddl` and
 `fixtures/target-ir/pre-typed-failure-target-ir.cddl` reproduce the
-bounded-state-fold pair. Schema acceptance does not grant provider or runtime
+function-preconditions pair. Schema acceptance does not grant provider or runtime
 support for `core.failure/v1`.
 
 | ID | Status | Case | Requirement | Oracle | Evidence | Fixture | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| PROVIDERS-TP-055 | implemented | Typed failure schema publication boundary | PROVIDERS-REQ-030 | The frozen bounded-state-fold pack reproduces its published bytes and refuses compiler-produced failure-bearing Core and ordered Target IR; the new pack accepts both and refuses an `attempt` node without its `failureMap`. | typed_failure_contract_requires_new_schema_selection | crates/amblicit-provider-schema/tests/provider_contract_pack.rs, fixtures/core/pre-typed-failure-core.cddl, fixtures/target-ir/pre-typed-failure-target-ir.cddl, fixtures/lang/functions/pure-typed-failure.amblicit | All previously pinned publication bytes remain unchanged. |
+| PROVIDERS-TP-056 | implemented | Typed failure schema publication boundary | PROVIDERS-REQ-030 | The frozen function-preconditions pack reproduces its published bytes and refuses compiler-produced failure-bearing Core and ordered Target IR; the new pack accepts both and refuses an `attempt` node without its `failureMap`. | typed_failure_contract_requires_new_schema_selection | crates/amblicit-provider-schema/tests/provider_contract_pack.rs, fixtures/core/pre-typed-failure-core.cddl, fixtures/target-ir/pre-typed-failure-target-ir.cddl, fixtures/lang/functions/pure-typed-failure.amblicit | All previously pinned publication bytes remain unchanged. |

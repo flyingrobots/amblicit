@@ -14,8 +14,9 @@ different publication bytes interchangeable.
 
 This CDDL/manifest pair is now frozen. The generator writes the separate
 [typed-failures publication](../typed-failures-v1/README.md); tests reproduce
-this pair from `fixtures/core/pre-typed-failure-core.cddl` and
-`fixtures/target-ir/pre-typed-failure-target-ir.cddl`. The v1, source-function,
+this pair from `fixtures/core/pre-precondition-core.cddl` and
+`fixtures/target-ir/pre-typed-failure-target-ir.cddl`. The function-preconditions
+pair that followed it is also frozen. The v1, source-function,
 source-module and structured-control pairs also remain byte-identical, and tests
 reproduce them from their frozen Core and Target IR inputs, including
 `fixtures/core/pre-fold-core.cddl`.

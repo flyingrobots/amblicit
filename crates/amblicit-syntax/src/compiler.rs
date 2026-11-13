@@ -26,6 +26,7 @@ mod byte_count;
 mod byte_length;
 mod byte_slice;
 mod byte_utf8;
+mod function_preconditions;
 mod list_literal;
 mod list_operations;
 mod return_budget;
@@ -88,6 +89,8 @@ pub enum CompilerErrorKind {
     UnhandledFailure,
     /// A failure map does not cover every failure of its call.
     IncompleteFailureMapping,
+    /// A call does not establish one of its callee's `where` preconditions.
+    UnprovenPrecondition,
 }
 
 /// Deterministic signature and canonical identity for one imported pure helper.
@@ -1093,6 +1096,9 @@ struct TypeChecker<'a> {
     /// checked, by local id. Ids are unique and bindings immutable within a body.
     local_bounds: BTreeMap<String, (LocalRef, u64)>,
     input_proof_constraints: Vec<CorePredicate>,
+    /// The function whose `where` precondition is being checked; source
+    /// calls are refused there because a call site could not instantiate them.
+    checking_precondition_of: Option<String>,
     effect_binding_profile: Option<EffectBindingProfile>,
     errors: Vec<CompilerError>,
     named_types: BTreeMap<String, TypeShape>,
@@ -1127,6 +1133,7 @@ impl<'a> TypeChecker<'a> {
             count_operand_maxima: BTreeMap::new(),
             local_bounds: BTreeMap::new(),
             input_proof_constraints: Vec::new(),
+            checking_precondition_of: None,
             effect_binding_profile: None,
             errors: Vec::new(),
             named_types: BTreeMap::new(),

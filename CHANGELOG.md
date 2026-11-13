@@ -18,8 +18,24 @@ versions still track specification maturity rather than a released product.
   expression and the `attempt` node under `core.failure/v1`. Ordered and
   structured Target IR carry `failureArms` on pure bindings. All of these are
   omitted when unused, so existing artifacts are byte-identical. The provider
-  contract pack `typed-failures-v1` publishes the schema. Echo must implement
+  contract pack `typed-failures-v1` publishes the schema;
+  `function-preconditions-v1` and earlier packs are unchanged. Echo must implement
   `core.failure/v1` before a failing program can run.
+
+- Add function preconditions (#264). A source function may write `where`
+  clauses after its return type, as in `fn cut(bytes: Bytes<max=8>, start:
+  U64, end: U64) -> Bytes<max=8> where start <= end, end <= len(bytes)`. The
+  body may assume them, so subtraction and `slice` are proven in range. Every
+  call must prove them from the facts that dominate it, or it refuses with the
+  new compiler error `UnprovenPrecondition` at the call. They are never
+  evaluated and cost nothing. Core carries them as the optional, hash-significant
+  `functions.<name>.preconditions` list, omitted when empty, so every existing
+  Core and Target IR golden is byte-identical. Target re-judges them without
+  the compiler's proof and refuses forged Core with `InvalidCoreIdentity`.
+  Provider contract pack `function-preconditions-v1` publishes the schema;
+  `bounded-state-fold-v1` and earlier packs are unchanged and refuse the field.
+  The language specification defines the syntax, proof rule and Core shape,
+  and carves function `where` out of `EDICT-LANG-WHERE-001`.
 
 - Let source bind an effect whose authenticated signature declares no failures
   without a failure map: `let done: fx.Done = fx.ensureNode(input);` compiles

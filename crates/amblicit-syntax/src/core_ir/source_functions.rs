@@ -45,6 +45,7 @@ pub(super) fn validate_functions(
                 return Err(invalid(&path));
             }
         }
+        super::function_preconditions::validate_preconditions(module, state, &path, function)?;
         let mut declarations = BTreeMap::new();
         for local in &function.body.locals {
             validate_core_local_type(
@@ -177,7 +178,7 @@ fn walk_scope(
     }
 }
 
-fn scope_predicate(
+pub(super) fn scope_predicate(
     predicate: &CorePredicate,
     depth: usize,
     scope: &BTreeMap<&str, &LocalRef>,

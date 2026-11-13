@@ -1089,6 +1089,16 @@ fn core_module_value(module: &CoreModule) -> Result<CanonicalValue, CanonicalErr
 fn core_function_value(
     function: &crate::core_ir::CoreFunction,
 ) -> Result<CanonicalValue, CanonicalError> {
+    // Preconditions keep source order and are omitted when absent, so every
+    // precondition-free function keeps its earlier canonical bytes.
+    let preconditions = if function.preconditions.is_empty() {
+        None
+    } else {
+        Some((
+            "preconditions",
+            array_results(function.preconditions.iter().map(core_predicate_value))?,
+        ))
+    };
     let mut entries = vec![
         ("params", array(function.params.iter().map(local_ref_value))),
         ("returnType", text(&function.return_type)),
@@ -1113,6 +1123,7 @@ fn core_function_value(
             ]),
         ),
     ];
+    entries.extend(preconditions);
     if !function.failures.is_empty() {
         entries.push((
             "failures",

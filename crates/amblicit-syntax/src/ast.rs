@@ -90,6 +90,8 @@ pub struct FunctionDecl {
     pub returns: TypeRef,
     /// The declared failure set, in source order; empty without `fails`.
     pub fails: Vec<FailureRef>,
+    /// `where` preconditions in source order, every clause flattened.
+    pub preconditions: Vec<Expr>,
     pub body: Block,
     pub span: Span,
 }

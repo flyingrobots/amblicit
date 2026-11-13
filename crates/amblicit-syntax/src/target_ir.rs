@@ -12,6 +12,7 @@ mod byte_slice;
 mod byte_utf8;
 pub(crate) mod execution_order;
 mod fold_work;
+mod function_preconditions;
 mod list_operations;
 mod pure_intrinsics;
 mod state_fold;
@@ -2137,8 +2138,19 @@ fn validate_source_function_bodies(
             .iter()
             .map(|local| (local.id.as_str(), local))
             .collect::<BTreeMap<_, _>>();
+        if !function.preconditions.iter().all(|precondition| {
+            function_preconditions::has_admissible_shape(core, precondition)
+                && predicate_fits_core_types(core, imported, precondition, &available)
+                && function_preconditions::names_only(precondition, &function.params)
+        }) || !totality::preconditions_are_total(core, &function.preconditions)
+        {
+            return Some(invalid(
+                "a precondition is not a total, typed predicate over the parameters",
+            ));
+        }
         if !totality::bindings_are_total(
             core,
+            &function.preconditions,
             function
                 .body
                 .bindings
@@ -2867,7 +2879,11 @@ fn source_function_comparisons_admissible(
             .iter()
             .map(|local| (local.id.as_str(), local))
             .collect::<BTreeMap<_, _>>();
-        function.body.bindings.iter().all(|binding| {
+        // Preconditions are never evaluated, but they are Core predicates and
+        // obey the same closed operator rule as the body they guard.
+        function.preconditions.iter().all(|precondition| {
+            predicate_comparisons_admissible(core, pure_functions, precondition, &available, 0)
+        }) && function.body.bindings.iter().all(|binding| {
             let admissible = expression_comparisons_admissible(
                 core,
                 pure_functions,

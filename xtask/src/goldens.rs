@@ -141,6 +141,11 @@ const CORE_GOLDEN_CASES: &[CoreGoldenCase] = &[
         bytes: "fixtures/core/canonical/workspace-snapshot.core.cbor",
         digest: "fixtures/core/canonical/workspace-snapshot.core.sha256",
     },
+    CoreGoldenCase {
+        source: "fixtures/lang/functions/function-precondition.amblicit",
+        bytes: "fixtures/core/canonical/function-precondition.core.cbor",
+        digest: "fixtures/core/canonical/function-precondition.core.sha256",
+    },
 ];
 
 pub(crate) fn core_goldens(root: &Path, mode: CoreGoldenMode) -> Result<(), String> {
@@ -190,6 +195,15 @@ fn core_golden_context() -> CompilerContext {
     CompilerContext::new()
         .with_operation_profile("hello.readOnly", "continuum.profile.read-only/v1")
         .with_operation_profile("workspace.read", "continuum.profile.read-only/v1")
+        .with_operation_profile("text.replaceRange", "continuum.profile.read-only/v1")
+        .with_budget(
+            "text.replaceRangeBudget",
+            CoreBudget {
+                max_steps: 512,
+                max_allocated_bytes: 8192,
+                max_output_bytes: 4096,
+            },
+        )
         .with_budget(
             "hello.tinyBudget",
             CoreBudget {
@@ -220,6 +234,7 @@ enum TargetIrGoldenKind {
     Gitwarp,
     ExternalRequest,
     EchoStructuredLoop,
+    EchoFunctionPrecondition,
 }
 
 #[derive(Debug)]
@@ -250,7 +265,16 @@ const TARGET_IR_GOLDEN_CASES: &[TargetIrGoldenCase] = &[
         bytes: "fixtures/target-ir/canonical/echo-structured-loop.target-ir.cbor",
         digest: "fixtures/target-ir/canonical/echo-structured-loop.target-ir.sha256",
     },
+    TargetIrGoldenCase {
+        kind: TargetIrGoldenKind::EchoFunctionPrecondition,
+        bytes: "fixtures/target-ir/canonical/echo-function-precondition.target-ir.cbor",
+        digest: "fixtures/target-ir/canonical/echo-function-precondition.target-ir.sha256",
+    },
 ];
+
+/// Jedit's precondition reproducer: a call proven from the intent `where`.
+const TARGET_IR_FUNCTION_PRECONDITION_SOURCE: &str =
+    include_str!("../../fixtures/lang/functions/function-precondition.amblicit");
 
 const TARGET_IR_ECHO_SOURCE: &str = "package a.b@1;\n\
     type Input = { id: String<max=16>, };\n\
@@ -368,6 +392,16 @@ fn target_ir_golden_artifact(case: &TargetIrGoldenCase) -> Result<TargetIrArtifa
             ),
             TargetIrLoweringFacts {
                 target_ir_domain: ECHO_STRUCTURED_SPAN_IR_DOMAIN.to_owned(),
+                ..target_ir_echo_facts()
+            },
+        ),
+        TargetIrGoldenKind::EchoFunctionPrecondition => (
+            TARGET_IR_FUNCTION_PRECONDITION_SOURCE,
+            core_golden_context(),
+            TargetIrLoweringFacts {
+                operation_profiles: vec!["continuum.profile.read-only/v1".to_owned()],
+                obstruction_coordinates: Vec::new(),
+                effect_lowerings: Vec::new(),
                 ..target_ir_echo_facts()
             },
         ),

@@ -137,6 +137,9 @@ impl<'a> Rewrite<'a> {
                     self.failure_path(&mut failure.path);
                     self.shift(&mut failure.span)?;
                 }
+                for precondition in &mut definition.preconditions {
+                    self.expr(precondition, &env)?;
+                }
                 self.block(&mut definition.body, &mut env)?;
                 self.shift(&mut definition.span)?;
             }

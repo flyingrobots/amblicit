@@ -32,7 +32,9 @@ pub(super) fn state<'a>(
         .strip_prefix(core.coordinate.as_str())?
         .strip_prefix('.')?;
     let function = core.functions.get(name)?;
-    if function.params.len() != 1
+    // A fold calls its step with no call site to prove a precondition at.
+    if !function.preconditions.is_empty()
+        || function.params.len() != 1
         || function.params[0].ty != *state_type
         || function.return_type != *state_type
         || !core_type_fits(core, state_type, &function.params[0].ty)
