@@ -1,0 +1,29 @@
+package app.ids@1;
+
+use target echo.dpo@1 digest "sha256:1111111111111111111111111111111111111111111111111111111111111111" as echo;
+
+type Input = {
+  warp: Bytes<exact=32>,
+  nodeType: Bytes<exact=32>,
+  atomType: Bytes<exact=32>,
+  text: Bytes<max=4096>,
+  anchor: Bytes<exact=32>,
+  buffer: Bytes<exact=32>,
+};
+
+type Output = { node: Bytes<exact=32>, };
+
+intent ids(input: Input) returns Output
+  profile p.read
+  basis none
+  budget <= p.small
+{
+  let node = echo.contentAddress(
+    input.warp,
+    input.nodeType,
+    input.atomType,
+    input.text,
+    [{ edgeType: input.anchor, to: input.buffer }]
+  );
+  return { node };
+}

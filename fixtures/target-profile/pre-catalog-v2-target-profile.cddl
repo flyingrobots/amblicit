@@ -1,0 +1,152 @@
+; edict-target-profile.cddl
+; Canonical schema for the Edict target profile manifest.
+; Authoritative byte encoding: edict.canonical-cbor/v1
+; (see SPEC_continuum-contract-bundle-v1.md). JSON in the prose specs is a
+; review rendering generated from this schema; this CDDL is the single source
+; of truth (EDICT-ABI-NODUP-001).
+
+target-profile-manifest = {
+  apiVersion: "edict.target-profile/v1",
+  id: tstr,                         ; e.g. "echo.dpo"
+  version: tstr,                    ; e.g. "1"
+  acceptedCoreAbi: [+ tstr],        ; e.g. ["edict.core/v1"]
+
+  intrinsics: resource-ref,
+  intrinsicNamespace: tstr,
+  ; publishes this profile's operation-profile records (optic templates that
+  ; `profile`/`implements` clauses resolve against). References an
+  ; operation-profiles-document (EDICT-ABI-OPPROFILE-SLOT-001).
+  operationProfiles: resource-ref,
+  footprintAlgebra: resource-ref,
+  costAlgebra: resource-ref,
+  targetIr: resource-ref,
+  obstructionTaxonomy: resource-ref,
+  verifier: resource-ref,
+  lowerer: resource-ref,
+  sandbox: resource-ref,
+  fuelModel: resource-ref,
+
+  ; fields the language spec requires of every profile
+  bundleProfile: resource-ref,
+  generatedArtifactProfiles: [* resource-ref],
+  canonicalEncodingRules: resource-ref,
+  ; A profile that accepts the direct declarative lawpack-adapter ABI names it
+  ; exactly once. Profiles that do not consume lawpack adapters leave this
+  ; optional slot absent or empty.
+  ? acceptedLawpackAdapterAbi: [] / ["edict.lawpack-adapter/v1"],
+  diagnosticAbi: resource-ref,
+
+  ; application doctrine
+  applicationModel: "atomic",
+  readConsistency: "application-snapshot" / tstr,
+  guardEvaluation: "precommit-atomic" / tstr,
+  obstructionRollback: "no-visible-effects" / tstr,
+  multiTarget: bool,
+  ; whether the target can evaluate precommit postcondition (`guarantee`) checks
+  ; inside the atomic application unit (EDICT-TARGET-POSTCOND-001)
+  postconditionSupport: bool,
+
+  deterministicExecution: resource-ref,
+  conformanceFixtureCorpus: resource-ref,
+}
+
+; Shared types resource-ref and sha256-digest are defined once in
+; edict-common.cddl and assembled with this schema by the build
+; (EDICT-ABI-NODUP-001). They are not redefined here.
+
+; --- intrinsic signature -------------------------------------------------
+; The artifact referenced by the manifest's `intrinsics` resource-ref is the
+; intrinsic-signature corpus document below. Its layout is fixed so two
+; independent profiles validate/hash the corpus identically
+; (EDICT-ABI-INTRINSICS-DOC-001).
+
+; intrinsics is a MAP keyed by coordinate, so the schema itself enforces
+; coordinate uniqueness. A provider receives the resolved corpus as a
+; digest-bound semantic input and resolves coordinates within that artifact.
+; Each map key MUST equal its record's `coordinate` field
+; (EDICT-ABI-INTRINSIC-UNIQUE-001).
+intrinsics-document = {
+  apiVersion: "edict.target-profile.intrinsics/v1",
+  intrinsics: { * tstr => intrinsic },
+}
+
+; The artifact referenced by the manifest's `operationProfiles` resource-ref.
+; operation-profile / optic-template are defined in edict-common.cddl. Keyed by
+; coordinate so resolution can't pick between two same-coordinate profiles
+; (EDICT-ABI-OPPROFILE-SLOT-001, EDICT-ABI-OPPROFILE-UNIQUE-001).
+operation-profiles-document = {
+  apiVersion: "edict.target-profile.operation-profiles/v1",
+  profiles: { * tstr => operation-profile },
+}
+
+; A typed pre-lowering question that can be proposed by Watson or an agent and
+; checked by the compiler. It is canonical-CBOR encoded under
+; `edict.lowering-requirements/v1`; the compiler checks this artifact, not the
+; prose that produced it.
+lowering-requirements = {
+  apiVersion: "edict.lowering-requirements/v1",
+  operationProfile: tstr,
+  semanticEffects: [* semantic-effect-requirement],
+  requiredWriteClasses: [* write-class],
+  guardKinds: [* guard-kind],
+  atomicity: atomicity-requirement,
+  postconditionSupport: bool,
+  obstructionCoordinates: [* tstr],
+  footprintObligations: [* tstr],
+  costObligations: [* tstr],
+  opticContract: tstr,
+}
+
+semantic-effect-requirement = {
+  coordinate: tstr,
+  writeClass: write-class,
+  guardKinds: [* guard-kind],
+  obstructionCoordinates: [* tstr],
+  footprintObligations: [* tstr],
+  costObligations: [* tstr],
+}
+
+write-class = "none" / "read" / "create" / "ensure" / "append" /
+              "replace" / "delete" / tstr
+guard-kind = "precommit-atomic" / tstr
+atomicity-requirement = "atomic" / tstr
+
+; A genuine union: pure constructors carry no effect kind or failures; effect
+; intrinsics must (EDICT-TARGET-INTRINSIC-CLASS-001). The schema enforces this,
+; not a comment.
+
+; The intrinsic's coordinate is the intrinsics map KEY, not a value field, so the
+; key and coordinate can never disagree (EDICT-ABI-INTRINSIC-UNIQUE-001).
+intrinsic = pure-intrinsic / effect-intrinsic
+
+pure-intrinsic = {
+  intrinsicClass: "pure",
+  typeParameters: [* tstr],
+  argumentTypes: [* core-type-ref],
+  returnType: core-type-ref,
+  guardSupport: false,
+  footprintTemplate: tstr,
+  costTemplate: tstr,
+  writeClass: "none",
+}
+
+effect-intrinsic = {
+  intrinsicClass: "effect",
+  typeParameters: [* tstr],
+  argumentTypes: [* core-type-ref],
+  returnType: core-type-ref,
+  effectKind: effect-kind,
+  ; map keyed by failure coordinate (failure-ident); the failure coordinate is
+  ; the key, not a value field, so uniqueness is structural
+  ; (EDICT-ABI-FAILURE-UNIQUE-001).
+  effectFailures: { * failure-ident => effect-failure-body },
+  guardSupport: bool,
+  footprintTemplate: tstr,
+  costTemplate: tstr,
+  writeClass: "read" / "create" / "ensure" / "append" / "replace" /
+              "delete" / "custom",
+  canParticipateInAtomicGuard: bool,
+}
+
+; effect-failure-body, effect-kind, authority-class, and core-type-ref are defined
+; once in edict-common.cddl and assembled with this schema (EDICT-ABI-NODUP-001).
