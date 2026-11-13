@@ -5,7 +5,8 @@ This publication adds `source-closure` and `edict.source-closure/v1` to the
 The old CDDL and manifest pair remain byte-identical. This pair is preserved
 as an exact publication; the current generator writes the separate
 [pure-intrinsic-catalog publication](../pure-intrinsic-catalog-v1/README.md), and
-tests reassemble this pair from the frozen pre-v3 Target IR schema.
+tests reassemble this pair from the frozen pre-v3 Target IR schema and the frozen
+target-profile schema in [`fixtures/target-profile/pre-catalog-v2-target-profile.cddl`](../../target-profile/pre-catalog-v2-target-profile.cddl).
 
 The new root validates the closed canonical source-closure envelope, bounded
 module-map cardinality and typed SHA-256 digests. It rejects a legacy source
