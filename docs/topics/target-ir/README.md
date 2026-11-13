@@ -24,7 +24,7 @@ The current target IR implementation is deliberately narrow:
 - selected Target IR artifact domain: `echo.span-ir/v1`, explicitly ordered
   `echo.span-ir/v2`, explicitly structured `echo.span-ir/v3`, or
   `gitwarp.commit-reducer-ir/v1`; `echo.dpo@2` selects only
-  `echo.span-ir/v2`;
+  `echo.span-ir/v2` and `echo.span-ir/v3`;
 - selected source/Core shape: source-ordered pure `let` bindings, the first
   supported effectful Core effect node, Echo `require` guard requirements, and
   typed external-action request data; under the explicitly selected
@@ -189,26 +189,31 @@ contract. [TIR-REQ-050]
 ### Target profile `echo.dpo@2`
 
 `echo.dpo@2` is Echo's effect profile. It selects the same ordered
-`echo.span-ir/v2` contract described above, and only that contract: no
-projection `target.irDomain` or adapter `acceptedTargetIr` selects
-`echo.span-ir/v1`, `echo.span-ir/v3`, or another domain under it. Those
-refuse with `UnsupportedTargetIrDomain`. Its effect intrinsics are named `echo.dpo@2.*`.
-An `echo.dpo@1.*` intrinsic under `echo.dpo@2`, or an `echo.dpo@2.*`
-intrinsic under `echo.dpo@1`, refuses with `UnsupportedTargetIntrinsic` and no
-artifact. [TIR-REQ-067]
+`echo.span-ir/v2` contract described above by default, and the structured
+`echo.span-ir/v3` contract (see [Structured control flow](#structured-control-flow))
+when the projection `target.irDomain` or adapter `acceptedTargetIr` names it.
+No other domain is selected under it: `echo.span-ir/v1` and the git-warp
+domain refuse with `UnsupportedTargetIrDomain`. Its effect intrinsics are named
+`echo.dpo@2.*` under both domains. An `echo.dpo@1.*` intrinsic under
+`echo.dpo@2`, or an `echo.dpo@2.*` intrinsic under `echo.dpo@1`, refuses with
+`UnsupportedTargetIntrinsic` and no artifact, inside loops and branches too.
+[TIR-REQ-067]
 
 Lowering and the canonical encoder use one selection table for the ordered
 and structured domains. The encoder admits an ordered or structured artifact
-only when its `targetProfile` selects that domain: `echo.span-ir/v2` under
-`echo.dpo@1` or `echo.dpo@2`, and `echo.span-ir/v3` under `echo.dpo@1` only.
-`echo.dpo@1` and `gitwarp.ref_crdt@1` selection, failure kinds, and bytes are
-unchanged.
-[TIR-REQ-067]
+only when its `targetProfile` selects that domain: `echo.span-ir/v2` and
+`echo.span-ir/v3` under `echo.dpo@1` or `echo.dpo@2`. `echo.dpo@1` and
+`gitwarp.ref_crdt@1` selection and bytes are unchanged. The only new refusal
+under `echo.dpo@1` is the v3 step-intrinsic check described under
+[Structured control flow](#structured-control-flow), which lowering never
+triggers. [TIR-REQ-067] [TIR-REQ-080]
 
 A public application build whose lawpack adapter accepts `echo.dpo@2` lowers
-through Target and hands `echo.span-ir/v2` to the selected provider. Whether
-that provider accepts it is the provider's contract; Amblicit ships no
-`echo.dpo@2` provider components. [TIR-REQ-067]
+through Target and hands `echo.span-ir/v2`, or `echo.span-ir/v3` when the
+adapter accepts it, to the selected provider. Whether that provider accepts it
+is the provider's contract; Amblicit ships no `echo.dpo@2` provider components.
+Provider support for v3 under `echo.dpo@2` is tracked by
+flyingrobots/echo#947. [TIR-REQ-067]
 
 The in-process `BuiltinTargetLowerer` seam is unchanged and serves only
 `echo.dpo@1` and `gitwarp.ref_crdt@1`; a request for `echo.dpo@2` through it
@@ -217,12 +222,23 @@ seam. [TIR-REQ-013]
 
 ## Structured control flow
 
-`echo.span-ir/v3` under `echo.dpo@1` extends the v2 execution order with
-bounded `for` loops over a Core `List` and statement-only branches. It uses
-`kind: "structuredTargetIrArtifact"` and requires `executionOrder` on every
-intent. The order is a tree: an instruction entry is the text id of a pure
+`echo.span-ir/v3` under `echo.dpo@1` or `echo.dpo@2` extends the v2 execution
+order with bounded `for` loops over a Core `List` and statement-only branches.
+It uses `kind: "structuredTargetIrArtifact"` and requires `executionOrder` on
+every intent. The order is a tree: an instruction entry is the text id of a pure
 binding, step or requirement in the existing tables; a control entry is a map.
-[TIR-REQ-060]
+[TIR-REQ-060] [TIR-REQ-067]
+
+Every v3 step, at any depth, names an intrinsic in the namespace of the
+artifact's `targetProfile` (`echo.dpo@1.*` or `echo.dpo@2.*`). Lowering refuses
+any other with `UnsupportedTargetIntrinsic`. The canonical encoder refuses a
+supplied v3 artifact that breaks this with `UnsupportedValue`, and result
+projection emission and verification refuse it with `CoreTargetMismatch` and
+subject `<intent>.targetIntrinsic`. v1 and v2 encoding does not check this.
+Obstruction key names are checked only at lowering, against the adapter's
+failure mappings and declared obstruction coordinates (`MissingObstruction`,
+`AmbiguousObstructionMapping`); a supplied artifact carries no mapping, so the
+provider stays responsible for them. [TIR-REQ-080]
 
 This section owns the implemented v3 canonical-format decisions. They refine
 the v2 execution order and the language's bounded-loop and structured-control

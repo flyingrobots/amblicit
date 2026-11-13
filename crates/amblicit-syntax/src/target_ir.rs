@@ -45,8 +45,9 @@ use crate::MAX_CANONICAL_NESTING_DEPTH;
 use crate::{ResultProjectionArtifact, ResultProjectionFailure};
 
 pub const ECHO_DPO_TARGET_PROFILE: &str = "echo.dpo@1";
-/// Echo's effect profile: its intrinsics are named `echo.dpo@2.*` and it
-/// selects only the ordered `echo.span-ir/v2` contract.
+/// Echo's effect profile: its intrinsics are named `echo.dpo@2.*`. It selects
+/// the ordered `echo.span-ir/v2` contract by default and the structured
+/// `echo.span-ir/v3` contract when the adapter names it.
 pub const ECHO_DPO_2_TARGET_PROFILE: &str = "echo.dpo@2";
 pub const ECHO_SPAN_IR_DOMAIN: &str = "echo.span-ir/v1";
 pub const ECHO_ORDERED_SPAN_IR_DOMAIN: &str = "echo.span-ir/v2";
@@ -105,13 +106,17 @@ fn target_selection_for_profile(target_profile: &str) -> Option<TargetSelection>
 
 /// The selection for an explicit profile and Target IR domain, or `None` when
 /// the profile is unknown or does not select that domain. `echo.dpo@1` keeps
-/// v1 by default and selects v2 or v3 only when the domain names it.
+/// v1 by default and selects v2 or v3 only when the domain names it;
+/// `echo.dpo@2` keeps v2 by default and selects v3 only when the domain names
+/// it. Either way the intrinsic namespace stays the profile's own.
 fn target_selection_for_domain(
     target_profile: &str,
     target_ir_domain: &str,
 ) -> Option<TargetSelection> {
     let mut selection = target_selection_for_profile(target_profile)?;
-    if target_profile == ECHO_DPO_TARGET_PROFILE {
+    let echo_profile =
+        target_profile == ECHO_DPO_TARGET_PROFILE || target_profile == ECHO_DPO_2_TARGET_PROFILE;
+    if echo_profile {
         match target_ir_domain {
             ECHO_ORDERED_SPAN_IR_DOMAIN => {
                 selection.target_ir_domain = ECHO_ORDERED_SPAN_IR_DOMAIN;
@@ -134,6 +139,19 @@ pub(crate) fn profile_selects_target_ir_domain(
     target_ir_domain: &str,
 ) -> bool {
     target_selection_for_domain(target_profile, target_ir_domain).is_some()
+}
+
+/// Whether `target_intrinsic` is in the namespace of the profile that selects
+/// `target_ir_domain`; lowering refuses any other intrinsic with
+/// `UnsupportedTargetIntrinsic`, and the v3 encoder and result projections
+/// use this same check on a supplied artifact.
+pub(crate) fn profile_selects_target_intrinsic(
+    target_profile: &str,
+    target_ir_domain: &str,
+    target_intrinsic: &str,
+) -> bool {
+    target_selection_for_domain(target_profile, target_ir_domain)
+        .is_some_and(|selection| selection.supports_intrinsic(target_intrinsic))
 }
 
 /// Canonical non-generic helper signature owned by one exact imported lawpack.

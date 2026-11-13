@@ -11,8 +11,8 @@ use amblicit_syntax::{
     load_authority_facts_file, lower_to_target_ir, parse_module, CompilerContext,
     ContractBundleAssemblyInput, ContractBundleSourceArtifact, CoreBudget, DigestLockedResource,
     ResourceRef, SuppliedTargetIrResource, TargetEffectLowering, TargetIrArtifact,
-    TargetIrLoweringFacts, WriteClass, ECHO_DPO_TARGET_PROFILE, ECHO_SPAN_IR_DOMAIN,
-    ECHO_STRUCTURED_SPAN_IR_DOMAIN, GITWARP_COMMIT_REDUCER_IR_DOMAIN,
+    TargetIrLoweringFacts, WriteClass, ECHO_DPO_2_TARGET_PROFILE, ECHO_DPO_TARGET_PROFILE,
+    ECHO_SPAN_IR_DOMAIN, ECHO_STRUCTURED_SPAN_IR_DOMAIN, GITWARP_COMMIT_REDUCER_IR_DOMAIN,
     GITWARP_REF_CRDT_TARGET_PROFILE,
 };
 
@@ -243,6 +243,7 @@ enum TargetIrGoldenKind {
     EchoStructuredLoop,
     OptionSpine,
     EchoFunctionPrecondition,
+    EchoDpo2Structured,
 }
 
 #[derive(Debug)]
@@ -283,7 +284,37 @@ const TARGET_IR_GOLDEN_CASES: &[TargetIrGoldenCase] = &[
         bytes: "fixtures/target-ir/canonical/echo-function-precondition.target-ir.cbor",
         digest: "fixtures/target-ir/canonical/echo-function-precondition.target-ir.sha256",
     },
+    TargetIrGoldenCase {
+        kind: TargetIrGoldenKind::EchoDpo2Structured,
+        bytes: "fixtures/target-ir/canonical/echo-dpo-2-structured.target-ir.cbor",
+        digest: "fixtures/target-ir/canonical/echo-dpo-2-structured.target-ir.sha256",
+    },
 ];
+
+/// A bounded loop and statement branches calling `echo.dpo@2` intrinsics,
+/// lowered to `echo.span-ir/v3` (#319). The same source is in
+/// `crates/amblicit-syntax/tests/target_ir/echo_dpo_2_structured.rs`.
+const TARGET_IR_ECHO_DPO_2_STRUCTURED_SOURCE: &str = "package a.b@1;\n\
+    type Leaf = { id: String<max=16>, };\n\
+    type Input = { id: String<max=16>, leaves: List<Leaf, max=4>, };\n\
+    type Receipt = { id: String<max=16>, };\n\
+    type Output = { id: String<max=16>, };\n\
+    intent t(input: Input) returns Output\n\
+      profile p.effectful\n\
+      basis none\n\
+      budget <= p.loop {\n\
+      for leaf in input.leaves bounded 4 {\n\
+        if leaf.id != \"\" {\n\
+          let written: Receipt = target.replace(leaf.id)\n\
+            else { rejected(reason) => domain.WriteRejected };\n\
+        }\n\
+      }\n\
+      if input.id != \"\" {\n\
+        let stamped: Receipt = target.replace(input.id)\n\
+          else { rejected(reason) => domain.WriteRejected };\n\
+      }\n\
+      return { id: input.id };\n\
+    }";
 
 /// Jedit's precondition reproducer: a call proven from the intent `where`.
 const TARGET_IR_FUNCTION_PRECONDITION_SOURCE: &str =
@@ -430,6 +461,11 @@ fn target_ir_golden_artifact(case: &TargetIrGoldenCase) -> Result<TargetIrArtifa
                 ..target_ir_echo_facts()
             },
         ),
+        TargetIrGoldenKind::EchoDpo2Structured => (
+            TARGET_IR_ECHO_DPO_2_STRUCTURED_SOURCE,
+            target_ir_loop_context(),
+            target_ir_echo_dpo_2_structured_facts(),
+        ),
         TargetIrGoldenKind::EchoFunctionPrecondition => (
             TARGET_IR_FUNCTION_PRECONDITION_SOURCE,
             core_golden_context(),
@@ -467,6 +503,32 @@ fn target_ir_echo_context() -> CompilerContext {
                 max_output_bytes: 256,
             },
         )
+}
+
+fn target_ir_loop_context() -> CompilerContext {
+    target_ir_echo_context().with_budget(
+        "p.loop",
+        CoreBudget {
+            max_steps: 64,
+            max_allocated_bytes: 4096,
+            max_output_bytes: 256,
+        },
+    )
+}
+
+/// `echo.dpo@2` with an adapter that names `echo.span-ir/v3`. The digest
+/// differs from the `echo.dpo@1` fixtures so the profiles stay distinct.
+fn target_ir_echo_dpo_2_structured_facts() -> TargetIrLoweringFacts {
+    let mut facts = target_ir_echo_facts();
+    facts.target_profile = ResourceRef {
+        coordinate: ECHO_DPO_2_TARGET_PROFILE.to_owned(),
+        digest: Some(digest_text('4')),
+    };
+    ECHO_STRUCTURED_SPAN_IR_DOMAIN.clone_into(&mut facts.target_ir_domain);
+    for lowering in &mut facts.effect_lowerings {
+        "echo.dpo@2.replace".clone_into(&mut lowering.target_intrinsic);
+    }
+    facts
 }
 
 fn target_ir_gitwarp_context() -> CompilerContext {
