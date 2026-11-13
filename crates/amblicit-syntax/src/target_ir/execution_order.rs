@@ -31,6 +31,24 @@ pub(crate) fn header_has_valid_execution_order(domain: &str, target_profile: &Re
         || super::profile_selects_target_ir_domain(&target_profile.coordinate, domain)
 }
 
+/// Under `echo.span-ir/v3`, every step, at any nesting depth, names an
+/// intrinsic in the namespace of the profile that selects the domain. Other
+/// domains are unchanged.
+pub(crate) fn intent_steps_name_selected_intrinsics(
+    domain: &str,
+    target_profile: &ResourceRef,
+    intent: &TargetIrIntent,
+) -> bool {
+    domain != ECHO_STRUCTURED_SPAN_IR_DOMAIN
+        || intent.steps.iter().all(|step| {
+            super::profile_selects_target_intrinsic(
+                &target_profile.coordinate,
+                domain,
+                &step.target_intrinsic,
+            )
+        })
+}
+
 /// The per-intent half of the execution-order check, on a borrowed intent.
 pub(crate) fn intent_has_valid_execution_order(domain: &str, intent: &TargetIrIntent) -> bool {
     match order_mode(domain) {

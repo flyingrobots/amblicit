@@ -1,5 +1,6 @@
 //! Target profile `echo.dpo@2` selects the ordered `echo.span-ir/v2` contract
-//! with its own intrinsic namespace (issue #310).
+//! with its own intrinsic namespace (issue #310), and the structured
+//! `echo.span-ir/v3` contract when the adapter names it (issue #319).
 
 use super::*;
 
@@ -105,12 +106,8 @@ fn echo_dpo_2_and_echo_dpo_1_refuse_each_others_intrinsics() {
 }
 
 #[test]
-fn echo_dpo_2_selects_only_the_ordered_target_ir() {
-    for domain in [
-        ECHO_SPAN_IR_DOMAIN,
-        STRUCTURED,
-        GITWARP_COMMIT_REDUCER_IR_DOMAIN,
-    ] {
+fn echo_dpo_2_selects_only_the_ordered_and_structured_target_ir() {
+    for domain in [ECHO_SPAN_IR_DOMAIN, GITWARP_COMMIT_REDUCER_IR_DOMAIN] {
         let mut facts = echo_dpo_2_facts("echo.dpo@2.replace");
         domain.clone_into(&mut facts.target_ir_domain);
 
@@ -131,15 +128,17 @@ fn echo_dpo_2_selects_only_the_ordered_target_ir() {
 fn ordered_encoding_requires_a_profile_that_selects_its_domain() {
     let ordered = echo_dpo_2_artifact();
 
-    let mut structured_under_echo_dpo_2 = ordered.clone();
-    STRUCTURED.clone_into(&mut structured_under_echo_dpo_2.domain);
+    let mut structured_under_gitwarp = ordered.clone();
+    STRUCTURED.clone_into(&mut structured_under_gitwarp.domain);
+    GITWARP_REF_CRDT_TARGET_PROFILE
+        .clone_into(&mut structured_under_gitwarp.target_profile.coordinate);
     let mut ordered_under_gitwarp = ordered.clone();
     GITWARP_REF_CRDT_TARGET_PROFILE
         .clone_into(&mut ordered_under_gitwarp.target_profile.coordinate);
     let mut ordered_under_unknown_profile = ordered.clone();
     "echo.dpo@3".clone_into(&mut ordered_under_unknown_profile.target_profile.coordinate);
     for refused in [
-        structured_under_echo_dpo_2,
+        structured_under_gitwarp,
         ordered_under_gitwarp,
         ordered_under_unknown_profile,
     ] {
@@ -149,12 +148,11 @@ fn ordered_encoding_requires_a_profile_that_selects_its_domain() {
     }
 
     // Control: the same instruction tree is a valid structured artifact under
-    // the profile that does select `echo.span-ir/v3`.
-    let mut structured_under_echo_dpo_1 = ordered;
-    STRUCTURED.clone_into(&mut structured_under_echo_dpo_1.domain);
-    ECHO_DPO_TARGET_PROFILE.clone_into(&mut structured_under_echo_dpo_1.target_profile.coordinate);
-    encode_target_ir_artifact(&structured_under_echo_dpo_1)
-        .expect("echo.dpo@1 selects the structured domain");
+    // `echo.dpo@2`, which selects `echo.span-ir/v3` (#319).
+    let mut structured_under_echo_dpo_2 = ordered;
+    STRUCTURED.clone_into(&mut structured_under_echo_dpo_2.domain);
+    encode_target_ir_artifact(&structured_under_echo_dpo_2)
+        .expect("echo.dpo@2 selects the structured domain");
 }
 
 #[test]
