@@ -16,8 +16,9 @@ the evidence.
   reports `UnknownFailure`. A repeated or ambiguous entry (two failures with the
   same bare name) reports `UnsupportedSourceShape`. A repeated declaration
   reports the usual duplicate-name `SurfaceValidation` refusal.
-- The set must equal what the body produces with `fail` and `expect`. An extra
-  failure reports `UndeclaredFailure` and a missing one `UnraisedFailure`.
+- The set must equal what the body produces with `fail` and `expect`. A declared
+  failure the body never produces reports `UnraisedFailure`. A failure the body
+  produces but does not declare reports `UndeclaredFailure`.
 - `fail Name` takes its type from its context: a `return`, a conditional or
   `match` peer, or an annotated `let`. Without one it reports `TypeMismatch`.
 - `expect f(...)` is legal only inside a function whose set covers the

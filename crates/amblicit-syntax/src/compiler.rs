@@ -4285,6 +4285,7 @@ impl<'a> TypeChecker<'a> {
             Expr::Ident { .. }
             | Expr::Field { .. }
             | Expr::Call { .. }
+            | Expr::Expect { .. }
             | Expr::If { .. }
             | Expr::Match { .. } => {
                 let expected = TypeShape::canonical_structural(TypeKind::Bool)?;
@@ -4375,6 +4376,15 @@ impl<'a> TypeChecker<'a> {
                         }),
                 );
                 (left?, right?)
+            }
+            _ if matches!(lhs, Expr::Fail { .. }) => {
+                let right = self.check_expr(rhs, env)?;
+                let left = self.check_expr_with_effect_expectation(
+                    lhs,
+                    env,
+                    EffectOutputExpectation::Comparison(&right.ty),
+                )?;
+                (left, right)
             }
             _ => {
                 let left = self.check_expr(lhs, env);
@@ -4555,10 +4565,27 @@ impl<'a> TypeChecker<'a> {
                 ..
             }
             | Expr::Unary { op: UnOp::Not, .. } => self.check_predicate_value(expr, env),
-            Expr::Fail { failure, span } => self.check_fail_expr(failure, expected, *span),
+            Expr::Fail { failure, span } => {
+                let expected = match expectation {
+                    EffectOutputExpectation::Comparison(peer) => Some(peer),
+                    _ => expected,
+                };
+                self.check_fail_expr(failure, expected, *span)
+            }
             // The call records its own cost; `expect` adds none.
             Expr::Expect { call, span } => {
-                return self.check_expect_expr(call, env, expectation, *span);
+                let checked = self.check_expect_expr(call, env, expectation, *span)?;
+                // Preserve operand bounds under the wrapper's identity without
+                // recording the inner call's evaluation cost a second time.
+                if let Some(bound) = self
+                    .source_value_bounds
+                    .get(&expression_identity(call))
+                    .copied()
+                {
+                    self.source_value_bounds
+                        .insert(expression_identity(expr), bound);
+                }
+                return Some(checked);
             }
             Expr::Binary { .. } | Expr::Digest { .. } | Expr::IfYield { .. } => {
                 self.errors.push(error(

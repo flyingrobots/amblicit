@@ -7,8 +7,9 @@ pack refuses the field with a schema mismatch. Accepting the field in a schema i
 not support for it: a consumer must implement the language specification's
 Function Preconditions contract or refuse.
 
-This CDDL/manifest pair is now frozen. The pure-intrinsic-catalog publication
-and the current typed-failure publication both carry the same Core schema. This
+This CDDL/manifest pair is now frozen. It shares the pre-typed-failure Core
+schema with the pure-intrinsic-catalog publication. The current typed-failure
+publication adds Core failure forms that these older packs do not accept. This
 pair's `intrinsics-document` root admits only
 `edict.target-profile.intrinsics/v1` catalogs; tests reproduce the pair from the
 frozen target-profile schema in

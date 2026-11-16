@@ -20,6 +20,15 @@ const CONFLICT: &str = "rope.example@1.ConflictingContent";
 #[path = "typed_failure_lowering/charged_intrinsics.rs"]
 mod charged_intrinsics;
 
+#[path = "typed_failure_lowering/terminal_work.rs"]
+mod terminal_work;
+
+#[path = "typed_failure_lowering/option_contract.rs"]
+mod option_contract;
+
+#[path = "typed_failure_lowering/predicate_cost.rs"]
+mod predicate_cost;
+
 const BASE: &str = r"package rope.example@1;
 failure ClosureTooSmall;
 failure ConflictingContent;

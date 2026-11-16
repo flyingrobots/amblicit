@@ -15,8 +15,9 @@ use crate::core_ir::{
 };
 use crate::{
     decode_canonical_cbor, digest_canonical_artifact, encode_canonical_cbor, CanonicalValue,
-    CoreDigest, CoreExpr, CoreIntent, CoreModule, CoreNode, CoreObstructionReason, CoreType,
-    LocalRef, TargetIrArtifact, TargetIrIntent, TargetIrPureBinding, TargetIrSemanticClosure,
+    CoreDigest, CoreExpr, CoreIntent, CoreModule, CoreNode, CoreObstructionReason,
+    CoreRequireFailureArm, CoreType, LocalRef, TargetIrArtifact, TargetIrIntent,
+    TargetIrOrderEntry, TargetIrPureBinding, TargetIrRequireFailure, TargetIrSemanticClosure,
     TargetIrStep,
 };
 
@@ -453,6 +454,14 @@ impl<'a> ProjectionSemantics<'a> {
                 }
                 structured::resolve_sources(core_intent, target_intent, intent_name, &input)?
             } else {
+                if target_ir.domain == crate::ECHO_ORDERED_SPAN_IR_DOMAIN
+                    && !v2_core_order_matches(core_intent, target_intent, intent_name)
+                {
+                    return Err(failure(
+                        ResultProjectionFailureKind::CoreTargetMismatch,
+                        format!("{intent_name}.executionOrder"),
+                    ));
+                }
                 resolve_projection_sources(core_intent, target_intent, intent_name, &input)?
             };
 
@@ -691,6 +700,81 @@ fn core_pure_bindings(core_intent: &CoreIntent) -> Vec<CorePureBindingView<'_>> 
             _ => None,
         })
         .collect()
+}
+
+/// v2 carries a flat instruction sequence. Bind every Core instruction to
+/// the corresponding Target table entry in source order; a reordered guard,
+/// effect or failure-mapped binding can change which result or obstruction is
+/// observed first.
+fn v2_core_order_matches(
+    core_intent: &CoreIntent,
+    target_intent: &TargetIrIntent,
+    intent_name: &str,
+) -> bool {
+    let Some(order) = target_intent.execution_order.as_deref() else {
+        return false;
+    };
+    let mut pure_index = 0;
+    let mut step_index = 0;
+    let mut requirement_index = 0;
+    let mut expected = Vec::with_capacity(core_intent.body.nodes.len());
+    for node in &core_intent.body.nodes {
+        let id = match node {
+            CoreNode::Let { .. } | CoreNode::Attempt { .. } => {
+                let Some(binding) = target_intent.pure_bindings.get(pure_index) else {
+                    return false;
+                };
+                pure_index += 1;
+                &binding.id
+            }
+            CoreNode::Effect {
+                binding,
+                effect,
+                input,
+                ..
+            } => {
+                let Some(step) = target_intent.steps.get(step_index) else {
+                    return false;
+                };
+                if validate_step_matches_core(step, &[(binding, effect, input)], intent_name)
+                    .is_err()
+                {
+                    return false;
+                }
+                step_index += 1;
+                &step.id
+            }
+            CoreNode::Require { predicate, arm } => {
+                let Some(requirement) = target_intent.requirements.get(requirement_index) else {
+                    return false;
+                };
+                let failure_matches = match (arm, &requirement.on_failure) {
+                    (
+                        CoreRequireFailureArm::Terminal { reason: core },
+                        TargetIrRequireFailure::Terminal { reason: target },
+                    )
+                    | (
+                        CoreRequireFailureArm::ContinueObstructed { reason: core },
+                        TargetIrRequireFailure::ContinueObstructed { reason: target },
+                    ) => core == target,
+                    _ => false,
+                };
+                if &requirement.predicate != predicate || !failure_matches {
+                    return false;
+                }
+                requirement_index += 1;
+                &requirement.id
+            }
+            CoreNode::ExternalActionRequest { .. }
+            | CoreNode::For { .. }
+            | CoreNode::Branch { .. } => return false,
+        };
+        expected.push(TargetIrOrderEntry::Instruction(id.clone()));
+    }
+    pure_index == target_intent.pure_bindings.len()
+        && step_index == target_intent.steps.len()
+        && requirement_index == target_intent.requirements.len()
+        && order == expected.as_slice()
 }
 
 fn validate_pure_binding_matches_core(

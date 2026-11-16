@@ -22,6 +22,12 @@ versions still track specification maturity rather than a released product.
   `function-preconditions-v1` and earlier packs are unchanged. Echo must implement
   `core.failure/v1` before a failing program can run.
 
+- Preserve typed-failure expression context in Boolean predicates, both
+  comparison operands, and bounded list results propagated with `expect`.
+  Result-projection verification for ordered Target v2 now binds the full
+  Core instruction order and corresponding requirement/effect rows, refusing
+  substitutions that could change the first obstruction.
+
 - Compile source `enum Name { A, B }` declarations as named Core variants
   whose cases carry no payload, under `core.variant/v1`. `Name.A` selects a
   case, also through an alias or a linked source module; `Name::A` on an enum

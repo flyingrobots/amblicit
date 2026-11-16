@@ -7,7 +7,7 @@ maps whose nested arrays use the same entry rule. This CDDL/manifest pair is now
 frozen. The generator writes the cumulative
 [typed-failures publication](../typed-failures-v1/README.md). Tests reproduce
 this pair from the pre-fold Core schema, the pre-typed-failure Target IR schema,
-and the frozen catalog-v2 target-profile schema in
+and the frozen pre-catalog-v2 target-profile schema in
 [`fixtures/target-profile/pre-catalog-v2-target-profile.cddl`](../../target-profile/pre-catalog-v2-target-profile.cddl).
 
 The source-module, source-function and v1 pairs remain byte-identical. Their
