@@ -380,3 +380,266 @@ fn pre_step_guard_target_refuses_failure_mapped_bindings() {
         "{report:#?}"
     );
 }
+
+/// List-capable modules meter called helpers, including their terminal failures.
+#[test]
+fn typed_failures_lower_when_list_work_is_active() {
+    let source = BASE.replace(
+        "let kept = retain(value);",
+        "let xs: List<U64, max=1> = [value]; let length = listLen(xs); let kept = retain(value);",
+    );
+    let compiled = core(&source);
+    validate_core_module_type_integrity(&compiled).expect("typed-failure Core is valid");
+    assert!(
+        compiled
+            .required_core_capabilities
+            .iter()
+            .any(|capability| capability == "core.list/v1"),
+        "the witness must activate Target's independent work meter"
+    );
+    for domain in ["echo.span-ir/v2", "echo.span-ir/v3"] {
+        let report = lower_to_target_ir(&compiled, &facts(domain));
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Lowered,
+            "{domain}: {report:#?}"
+        );
+        assert!(report.artifact.is_some(), "{domain}");
+    }
+}
+
+/// A terminal failure takes its Option type from context and produces no value.
+#[test]
+fn contextual_option_failure_branches_lower_as_bottom() {
+    let source = BASE.replace(
+        "return if value < 10u64 then value else fail ClosureTooSmall;",
+        "return default(if value < 10u64 then some(value) else fail ClosureTooSmall, 0u64);",
+    );
+    let compiled = core(&source);
+    validate_core_module_type_integrity(&compiled)
+        .expect("contextually typed failure Core is valid");
+    assert!(
+        compiled
+            .required_core_capabilities
+            .iter()
+            .any(|capability| capability == "core.option/v1"),
+        "the witness must exercise the typed Option operand"
+    );
+    for domain in ["echo.span-ir/v2", "echo.span-ir/v3"] {
+        let report = lower_to_target_ir(&compiled, &facts(domain));
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Lowered,
+            "{domain}: {report:#?}"
+        );
+        assert!(report.artifact.is_some(), "{domain}");
+    }
+}
+
+/// The successful arm types a terminal-failure conditional used as an operand.
+#[test]
+fn terminal_failure_conditional_can_feed_a_comparison() {
+    let source = BASE.replace(
+        "intent evaluate",
+        "fn compare(flag: Bool, value: U64) -> Bool fails ClosureTooSmall { return (if flag then value else fail ClosureTooSmall) == value; }\nintent evaluate",
+    );
+    let compiled = core(&source);
+    validate_core_module_type_integrity(&compiled)
+        .expect("contextually typed failure Core is valid");
+    for domain in ["echo.span-ir/v2", "echo.span-ir/v3"] {
+        let report = lower_to_target_ir(&compiled, &facts(domain));
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Lowered,
+            "{domain}: {report:#?}"
+        );
+        assert!(report.artifact.is_some(), "{domain}");
+    }
+}
+
+#[test]
+fn terminal_failure_match_can_feed_a_comparison() {
+    let source = BASE.replace(
+        "intent evaluate",
+        "enum FailureChoice { Pass, Stop }\nfn compare(choice: FailureChoice, value: U64) -> Bool fails ClosureTooSmall { return (match choice { Pass => value, Stop => fail ClosureTooSmall }) == value; }\nintent evaluate",
+    );
+    let compiled = core(&source);
+    validate_core_module_type_integrity(&compiled).expect("contextually typed match Core is valid");
+    for domain in ["echo.span-ir/v2", "echo.span-ir/v3"] {
+        let report = lower_to_target_ir(&compiled, &facts(domain));
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Lowered,
+            "{domain}: {report:#?}"
+        );
+        assert!(report.artifact.is_some(), "{domain}");
+    }
+}
+
+#[test]
+fn option_operations_accept_terminal_failure_operands_without_weakening_signatures() {
+    let source = BASE.replace(
+        "intent evaluate",
+        "fn present(flag: Bool, o: Option<U64>) -> Bool fails ClosureTooSmall { return isSome(if flag then o else fail ClosureTooSmall); }\nfn directDefault(value: U64) -> U64 fails ClosureTooSmall { return default<U64>(fail ClosureTooSmall, value); }\nintent evaluate",
+    );
+    let compiled = core(&source);
+    validate_core_module_type_integrity(&compiled).expect("terminal Option operand Core is valid");
+    for domain in ["echo.span-ir/v2", "echo.span-ir/v3"] {
+        let report = lower_to_target_ir(&compiled, &facts(domain));
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Lowered,
+            "{domain}: {report:#?}"
+        );
+        assert!(report.artifact.is_some(), "{domain}");
+
+        let mut wrong_fallback = compiled.clone();
+        let CoreExpr::Call { args, .. } = &mut wrong_fallback
+            .functions
+            .get_mut("directDefault")
+            .expect("helper")
+            .body
+            .result
+        else {
+            panic!("default call")
+        };
+        args[1] = CoreExpr::Const(amblicit_syntax::CoreValue::Bool(true));
+        validate_core_module_type_integrity(&wrong_fallback)
+            .expect("fallback forgery reaches Target's Option signature judgment");
+        let report = lower_to_target_ir(&wrong_fallback, &facts(domain));
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Unsupported,
+            "{report:#?}"
+        );
+        assert!(report.artifact.is_none());
+        assert!(
+            report
+                .failures
+                .iter()
+                .any(|failure| failure.kind == TargetLoweringFailureKind::InvalidCoreIdentity),
+            "{report:#?}"
+        );
+
+        let mut missing_capability = compiled.clone();
+        missing_capability
+            .required_core_capabilities
+            .retain(|capability| capability != "core.option/v1");
+        let report = lower_to_target_ir(&missing_capability, &facts(domain));
+        assert_eq!(
+            report.status,
+            TargetLoweringStatus::Unsupported,
+            "{report:#?}"
+        );
+        assert!(report.artifact.is_none());
+        assert!(
+            report
+                .failures
+                .iter()
+                .any(|failure| failure.kind == TargetLoweringFailureKind::InvalidCoreIdentity),
+            "{report:#?}"
+        );
+    }
+}
+
+#[test]
+fn terminal_failure_string_branches_can_feed_concatenation() {
+    for helper in [
+        "fn concatenate(flag: Bool, value: String<max=2>) -> String<max=4> fails ClosureTooSmall { return (if flag then value else fail ClosureTooSmall) + value; }\n",
+        "enum FailureChoice { Pass, Stop }\nfn concatenate(choice: FailureChoice, value: String<max=2>) -> String<max=4> fails ClosureTooSmall { return (match choice { Pass => value, Stop => fail ClosureTooSmall }) + value; }\n",
+    ] {
+        let source = BASE.replace("intent evaluate", &format!("{helper}intent evaluate"));
+        let compiled = core(&source);
+        validate_core_module_type_integrity(&compiled).expect("terminal String branch Core is valid");
+        for domain in ["echo.span-ir/v2", "echo.span-ir/v3"] {
+            let report = lower_to_target_ir(&compiled, &facts(domain));
+            assert_eq!(report.status, TargetLoweringStatus::Lowered, "{domain}: {report:#?}");
+            assert!(report.artifact.is_some(), "{domain}");
+        }
+    }
+}
+
+/// Source reserves contextual result storage conservatively. This boundary is
+/// Target's own reconstruction, not a claim that both minimum budgets coincide.
+#[test]
+fn terminal_failure_work_keeps_an_exact_target_step_boundary() {
+    let source = BASE.replace(
+        "let kept = retain(value);",
+        "let xs: List<U64, max=1> = [value]; let length = listLen(xs); let kept = retain(value);",
+    );
+    let compiled = core(&source);
+    assert!(compiled
+        .required_core_capabilities
+        .iter()
+        .any(|capability| capability == "core.list/v1"));
+    for domain in ["echo.span-ir/v2", "echo.span-ir/v3"] {
+        let at = |steps| {
+            let mut candidate = compiled.clone();
+            candidate
+                .intents
+                .get_mut("evaluate")
+                .expect("intent")
+                .core_evaluation_budget
+                .max_steps = steps;
+            lower_to_target_ir(&candidate, &facts(domain))
+        };
+        let ample = at(100_000);
+        assert_eq!(ample.status, TargetLoweringStatus::Lowered, "{ample:#?}");
+        assert!(ample.artifact.is_some());
+        let mut low = 0_u64;
+        let mut high = 100_000_u64;
+        while low < high {
+            let middle = low + (high - low) / 2;
+            let report = at(middle);
+            if report.status == TargetLoweringStatus::Lowered {
+                assert!(report.artifact.is_some());
+                high = middle;
+            } else {
+                assert_eq!(
+                    report.status,
+                    TargetLoweringStatus::Unsupported,
+                    "{report:#?}"
+                );
+                assert!(report.artifact.is_none());
+                assert_eq!(report.failures.len(), 1, "{report:#?}");
+                assert_eq!(
+                    report.failures[0].kind,
+                    TargetLoweringFailureKind::InvalidCoreIdentity
+                );
+                assert_eq!(report.failures[0].intent.as_deref(), Some("evaluate"));
+                assert_eq!(report.failures[0].node_index, None);
+                assert_eq!(
+                    report.failures[0].detail,
+                    "fold-capable Core work is unestablished or exceeds the evaluation budget"
+                );
+                low = middle + 1;
+            }
+        }
+        assert!(high > 1, "terminal failure must not erase surrounding work");
+        let boundary = at(high);
+        assert_eq!(
+            boundary.status,
+            TargetLoweringStatus::Lowered,
+            "{boundary:#?}"
+        );
+        assert!(boundary.artifact.is_some());
+        let short = at(high - 1);
+        assert_eq!(
+            short.status,
+            TargetLoweringStatus::Unsupported,
+            "{short:#?}"
+        );
+        assert!(short.artifact.is_none());
+        assert_eq!(short.failures.len(), 1, "{short:#?}");
+        assert_eq!(
+            short.failures[0].kind,
+            TargetLoweringFailureKind::InvalidCoreIdentity
+        );
+        assert_eq!(short.failures[0].intent.as_deref(), Some("evaluate"));
+        assert_eq!(short.failures[0].node_index, None);
+        assert_eq!(
+            short.failures[0].detail,
+            "fold-capable Core work is unestablished or exceeds the evaluation budget"
+        );
+    }
+}

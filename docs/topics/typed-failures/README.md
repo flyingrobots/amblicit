@@ -53,6 +53,21 @@ the evidence.
   publishes the schema; earlier packs stay byte-identical and refuse these
   forms.
 
+### Terminal values and work
+
+A terminal failure produces no returned value. Native Target's static work
+accounting assigns that explicit terminal expression zero result cells and zero
+result bytes, while its evaluation still contributes one step. Enclosing
+predicates, calls, parameter/result validation and mapped obstruction payloads
+keep their existing charges. Unknown or invalid expressions still refuse; they
+are not terminal failures.
+
+The source compiler gives a failure its contextual type and conservatively
+reserves that type's result storage. Source and Target minimum budgets therefore
+need not coincide. The typed-failure tests exercise Target's own minimum step
+budget and a one-step-short refusal; they do not claim universal compiler/Target
+budget parity or runtime metering.
+
 ## Not implemented here
 
 Echo's provider lowerer, verifier and runtime do not implement

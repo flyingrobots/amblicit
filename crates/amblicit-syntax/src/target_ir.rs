@@ -14,6 +14,7 @@ pub(crate) mod execution_order;
 mod fold_work;
 mod function_preconditions;
 mod list_operations;
+mod option_operations;
 mod pure_intrinsics;
 mod state_fold;
 mod totality;
@@ -973,7 +974,11 @@ fn validate_core_module(
         .filter(|capability| {
             !matches!(
                 capability.as_str(),
-                "core.variant/v1" | "core.fold/v1" | "core.list/v1" | "core.failure/v1"
+                "core.variant/v1"
+                    | "core.fold/v1"
+                    | "core.list/v1"
+                    | "core.failure/v1"
+                    | option_operations::CAPABILITY
             )
         })
         .map(|capability| TargetLoweringFailure {
@@ -1952,6 +1957,7 @@ fn is_typed_prelude_operation(callee: &str) -> bool {
     ]
     .contains(&callee)
         || list_operations::is_operation(callee)
+        || option_operations::is_operation(callee)
         || is_unsigned_arithmetic(callee)
 }
 
@@ -1966,6 +1972,9 @@ fn prelude_type_coordinate(
     match callee {
         _ if list_operations::is_operation(callee) => {
             list_operations::type_coordinate(core, functions, callee, type_args, args, available)
+        }
+        _ if option_operations::is_operation(callee) => {
+            option_operations::type_coordinate(core, functions, callee, type_args, args, available)
         }
         byte_at::OPERATION => byte_at::type_coordinate(core, functions, type_args, args, available),
         byte_concat::OPERATION => {
@@ -2096,6 +2105,24 @@ fn expression_fits_declared_type(
                 )
         }
     }
+}
+
+/// The result coordinate of a call: typed prelude results (`core.option.default`,
+/// `core.list.at`, ...) are derived by Target itself, other calls by their
+/// validated function fact.
+fn call_result_coordinate(
+    core: &CoreModule,
+    pure_functions: &[TargetPureFunctionFact],
+    callee: &str,
+    type_args: &[String],
+    args: &[CoreExpr],
+    available: &BTreeMap<&str, &LocalRef>,
+) -> Option<String> {
+    if is_typed_prelude_operation(callee) {
+        return prelude_type_coordinate(core, pure_functions, callee, type_args, args, available);
+    }
+    validated_function_return_type(core, pure_functions, callee, type_args, args, available)
+        .map(str::to_owned)
 }
 
 fn validated_function_return_type<'a>(
@@ -2279,36 +2306,15 @@ fn expression_string_shape(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<(u64, String)> {
     match expression {
-        CoreExpr::Match { scrutinee, arms } => {
-            let mut shape: Option<(u64, String)> = None;
-            let valid = variant_matches::every(
-                core,
-                pure_functions,
-                scrutinee,
-                arms,
-                available,
-                |body, scope| {
-                    let Some((max, canonical)) =
-                        expression_string_shape(core, pure_functions, body, scope)
-                    else {
-                        return false;
-                    };
-                    if let Some((prior, prior_canonical)) = &shape {
-                        if prior_canonical != &canonical {
-                            return false;
-                        }
-                        shape = Some(((*prior).max(max), canonical));
-                    } else {
-                        shape = Some((max, canonical));
-                    }
-                    true
-                },
-            );
-            if valid {
-                shape
-            } else {
-                None
-            }
+        CoreExpr::Match { .. } | CoreExpr::If { .. } => {
+            // A terminal arm contributes no returned value or String bound.
+            // The shared shape judgment still checks every returning arm.
+            let coordinate = comparison_operand_shape(core, pure_functions, expression, available)?
+                .type_coordinate()?;
+            let CoreType::String { max, canonical } = resolved_core_type(core, &coordinate)? else {
+                return None;
+            };
+            Some((max, canonical))
         }
         CoreExpr::Const(CoreValue::String(value)) => Some((
             u64::try_from(value.chars().count()).ok()?,
@@ -2343,32 +2349,12 @@ fn expression_string_shape(
             type_args,
             args,
         } => {
-            let fact = validated_function_return_type(
-                core,
-                pure_functions,
-                callee,
-                type_args,
-                args,
-                available,
-            )?;
-            let CoreType::String { max, canonical } = resolved_core_type(core, fact)? else {
+            let coordinate =
+                call_result_coordinate(core, pure_functions, callee, type_args, args, available)?;
+            let CoreType::String { max, canonical } = resolved_core_type(core, &coordinate)? else {
                 return None;
             };
             Some((max, canonical))
-        }
-        CoreExpr::If {
-            predicate,
-            then_value,
-            else_value,
-        } => {
-            if !predicate_fits_core_types(core, pure_functions, predicate, available) {
-                return None;
-            }
-            let (then_max, then_canonical) =
-                expression_string_shape(core, pure_functions, then_value, available)?;
-            let (else_max, else_canonical) =
-                expression_string_shape(core, pure_functions, else_value, available)?;
-            (then_canonical == else_canonical).then_some((then_max.max(else_max), then_canonical))
         }
         CoreExpr::Const(
             CoreValue::Null | CoreValue::Bool(_) | CoreValue::Int { .. } | CoreValue::Bytes(_),
@@ -2778,11 +2764,16 @@ fn ordered_operands_are_integers(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> bool {
     operands.into_iter().all(|operand| {
-        matches!(
-            comparison_operand_shape(core, pure_functions, operand, available),
-            Some(ComparisonOperandShape::Coordinate(coordinate))
-                if matches!(resolved_core_type(core, &coordinate), Some(CoreType::Int { .. }))
-        )
+        match comparison_operand_shape(core, pure_functions, operand, available) {
+            Some(ComparisonOperandShape::Never) => true,
+            Some(ComparisonOperandShape::Coordinate(coordinate)) => {
+                matches!(
+                    resolved_core_type(core, &coordinate),
+                    Some(CoreType::Int { .. })
+                )
+            }
+            _ => false,
+        }
     })
 }
 
@@ -3030,6 +3021,8 @@ fn predicate_operands_are_comparable(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ComparisonOperandShape {
+    // A validated terminal failure returns no value; it is not an unknown type.
+    Never,
     // Result inference only; an empty literal has no element type yet.
     EmptyList,
     Coordinate(String),
@@ -3055,7 +3048,7 @@ impl ComparisonOperandShape {
                         .collect::<Option<BTreeMap<_, _>>>()?,
                 })
             }
-            Self::EmptyList => None,
+            Self::Never | Self::EmptyList => None,
         }
     }
 }
@@ -3068,6 +3061,9 @@ fn field_expression_shape(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<ComparisonOperandShape> {
     let base_shape = variant_matches::result_body_shape(core, pure_functions, base, available)?;
+    if matches!(base_shape, ComparisonOperandShape::Never) {
+        return Some(ComparisonOperandShape::Never);
+    }
     comparison_record_fields(core, &base_shape)?.remove(field)
 }
 
@@ -3078,6 +3074,7 @@ fn comparison_operand_shape(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<ComparisonOperandShape> {
     match expression {
+        CoreExpr::Fail { .. } => Some(ComparisonOperandShape::Never),
         CoreExpr::Fold { .. } => state_fold::state(core, pure_functions, expression, available)
             .map(|ty| ComparisonOperandShape::Coordinate(ty.to_owned())),
         CoreExpr::Match { scrutinee, arms } => {
@@ -3123,6 +3120,13 @@ fn join_conditional_shapes(
 ) -> Option<ComparisonOperandShape> {
     if depth > MAX_CORE_TYPE_DEPTH {
         return None;
+    }
+    // Only an explicit terminal-failure shape is neutral in a value join.
+    // Missing/invalid shapes never reach this function as a successful value.
+    if let (ComparisonOperandShape::Never, other) | (other, ComparisonOperandShape::Never) =
+        (left, right)
+    {
+        return Some(other.clone());
     }
     // Preserve declared list item coordinates before structural joins erase
     // record names. This also applies to fields of anonymous record results.
@@ -3208,6 +3212,12 @@ fn comparison_shape_fits(
     if depth > MAX_CORE_TYPE_DEPTH {
         return false;
     }
+    if matches!(source, ComparisonOperandShape::Never) {
+        return true;
+    }
+    if matches!(target, ComparisonOperandShape::Never) {
+        return false;
+    }
     match (
         comparison_record_fields(core, source),
         comparison_record_fields(core, target),
@@ -3253,7 +3263,9 @@ fn comparison_record_fields(
 ) -> Option<BTreeMap<String, ComparisonOperandShape>> {
     match shape {
         ComparisonOperandShape::Record(fields) => Some(fields.clone()),
-        ComparisonOperandShape::List { .. } | ComparisonOperandShape::EmptyList => None,
+        ComparisonOperandShape::Never
+        | ComparisonOperandShape::List { .. }
+        | ComparisonOperandShape::EmptyList => None,
         ComparisonOperandShape::Coordinate(coordinate) => {
             let CoreType::Record { fields } = resolved_core_type(core, coordinate)? else {
                 return None;
@@ -3276,7 +3288,9 @@ fn comparison_list_shape(
 ) -> Option<(ComparisonOperandShape, u64)> {
     match shape {
         ComparisonOperandShape::List { item, max } => Some((item.as_ref().clone(), *max)),
-        ComparisonOperandShape::Record(_) | ComparisonOperandShape::EmptyList => None,
+        ComparisonOperandShape::Never
+        | ComparisonOperandShape::Record(_)
+        | ComparisonOperandShape::EmptyList => None,
         ComparisonOperandShape::Coordinate(coordinate) => {
             let CoreType::List { item, max } = resolved_core_type(core, coordinate)? else {
                 return None;

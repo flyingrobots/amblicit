@@ -142,6 +142,11 @@ const CORE_GOLDEN_CASES: &[CoreGoldenCase] = &[
         digest: "fixtures/core/canonical/workspace-snapshot.core.sha256",
     },
     CoreGoldenCase {
+        source: "fixtures/lang/types/option-spine.amblicit",
+        bytes: "fixtures/core/canonical/option-spine.core.cbor",
+        digest: "fixtures/core/canonical/option-spine.core.sha256",
+    },
+    CoreGoldenCase {
         source: "fixtures/lang/functions/function-precondition.amblicit",
         bytes: "fixtures/core/canonical/function-precondition.core.cbor",
         digest: "fixtures/core/canonical/function-precondition.core.sha256",
@@ -212,6 +217,8 @@ fn core_golden_context() -> CompilerContext {
                 max_output_bytes: 4096,
             },
         )
+        .with_operation_profile("spines.read", "continuum.profile.read-only/v1")
+        .with_budget("spines.budget", option_spine_budget())
         .with_budget(
             "workspace.tiny",
             CoreBudget {
@@ -234,6 +241,7 @@ enum TargetIrGoldenKind {
     Gitwarp,
     ExternalRequest,
     EchoStructuredLoop,
+    OptionSpine,
     EchoFunctionPrecondition,
     EchoDpo2Structured,
 }
@@ -265,6 +273,11 @@ const TARGET_IR_GOLDEN_CASES: &[TargetIrGoldenCase] = &[
         kind: TargetIrGoldenKind::EchoStructuredLoop,
         bytes: "fixtures/target-ir/canonical/echo-structured-loop.target-ir.cbor",
         digest: "fixtures/target-ir/canonical/echo-structured-loop.target-ir.sha256",
+    },
+    TargetIrGoldenCase {
+        kind: TargetIrGoldenKind::OptionSpine,
+        bytes: "fixtures/target-ir/canonical/option-spine.target-ir.cbor",
+        digest: "fixtures/target-ir/canonical/option-spine.target-ir.sha256",
     },
     TargetIrGoldenCase {
         kind: TargetIrGoldenKind::EchoFunctionPrecondition,
@@ -354,6 +367,18 @@ const TARGET_IR_ECHO_STRUCTURED_LOOP_SOURCE: &str = "package a.b@1;\n\
 const TARGET_IR_EXTERNAL_REQUEST_SOURCE: &str =
     include_str!("../../fixtures/lang/external-actions/workspace-snapshot.amblicit");
 
+/// An enum, Option prelude calls and the `isSome` refinement (issue #261).
+const TARGET_IR_OPTION_SPINE_SOURCE: &str =
+    include_str!("../../fixtures/lang/types/option-spine.amblicit");
+
+fn option_spine_budget() -> CoreBudget {
+    CoreBudget {
+        max_steps: 4096,
+        max_allocated_bytes: 64 * 1024,
+        max_output_bytes: 4096,
+    }
+}
+
 pub(crate) fn target_ir_goldens(root: &Path, mode: TargetIrGoldenMode) -> Result<(), String> {
     for case in TARGET_IR_GOLDEN_CASES {
         check_or_write_target_ir_golden(root, case, mode)?;
@@ -423,6 +448,16 @@ fn target_ir_golden_artifact(case: &TargetIrGoldenCase) -> Result<TargetIrArtifa
             ),
             TargetIrLoweringFacts {
                 target_ir_domain: ECHO_STRUCTURED_SPAN_IR_DOMAIN.to_owned(),
+                ..target_ir_echo_facts()
+            },
+        ),
+        TargetIrGoldenKind::OptionSpine => (
+            TARGET_IR_OPTION_SPINE_SOURCE,
+            core_golden_context(),
+            TargetIrLoweringFacts {
+                operation_profiles: vec!["continuum.profile.read-only/v1".to_owned()],
+                obstruction_coordinates: Vec::new(),
+                effect_lowerings: Vec::new(),
                 ..target_ir_echo_facts()
             },
         ),

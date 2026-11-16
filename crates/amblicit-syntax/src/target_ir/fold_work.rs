@@ -149,8 +149,9 @@ impl<'a> Meter<'a> {
                         .checked_add(label)?,
                 })
             }
-            CoreType::Option { .. }
-            | CoreType::Map { .. }
+            // A presence cell plus the largest present item; absence is one cell.
+            CoreType::Option { item } => Value::CELL.add(child(&item)?),
+            CoreType::Map { .. }
             | CoreType::CapabilityRef { .. }
             | CoreType::ExternalActionRequest { .. } => None,
         }
@@ -169,6 +170,7 @@ impl<'a> Meter<'a> {
             return None;
         }
         match shape {
+            Shape::Never => Some(Value { cells: 0, bytes: 0 }),
             Shape::Coordinate(ty) => self.value_type(ty, depth),
             Shape::EmptyList => Some(Value::CELL),
             Shape::Record(fields) => fields.iter().try_fold(Value::CELL, |total, (key, item)| {
@@ -189,6 +191,9 @@ impl<'a> Meter<'a> {
             return None;
         }
         match expr {
+            // A terminal failure returns no value. Its evaluation still costs
+            // one step through Value::evaluation; enclosing work stays charged.
+            CoreExpr::Fail { .. } => Some(Value { cells: 0, bytes: 0 }),
             CoreExpr::Const(CoreValue::Null) => Some(Value::CELL),
             CoreExpr::Field { base, field } => self.shape_value(
                 &super::field_expression_shape(self.core, self.facts, base, field, available)?,
