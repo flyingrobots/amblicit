@@ -1436,11 +1436,24 @@ fn target_ir_intent_review(intent: &TargetIrIntent) -> Value {
             Some(json!(intent
                 .pure_bindings
                 .iter()
-                .map(|binding| json!({
-                    "id": binding.id,
-                    "binding": local_ref_review(&binding.binding),
-                    "value": core_expr_review(&binding.value),
-                }))
+                .map(|binding| {
+                    let mut review = json!({
+                        "id": binding.id,
+                        "binding": local_ref_review(&binding.binding),
+                        "value": core_expr_review(&binding.value),
+                    });
+                    if !binding.failure_arms.is_empty() {
+                        review["failureArms"] = json!(binding
+                            .failure_arms
+                            .iter()
+                            .map(|(failure, reason)| (
+                                failure.clone(),
+                                core_obstruction_reason_review(reason),
+                            ))
+                            .collect::<BTreeMap<_, _>>());
+                    }
+                    review
+                })
                 .collect::<Vec<_>>())),
         );
     }

@@ -50,6 +50,9 @@ the evidence.
   lower an `attempt` to a pure binding with `failureArms`. A binding without
   arms encodes as before. The pre-step-guard model (`echo.span-ir/v1`) refuses
   with `UnsupportedCoreNode` and the detail `failure_mapped_binding`.
+  The CLI's `targetIr` review includes each nonempty failure map, including
+  its failure coordinate, obstruction reason and payload; ordinary bindings
+  continue to omit `failureArms`.
 - The [typed-failures contract pack](../../../fixtures/provider-contracts/typed-failures-v1/README.md)
   publishes the schema; earlier packs stay byte-identical and refuse these
   forms.
