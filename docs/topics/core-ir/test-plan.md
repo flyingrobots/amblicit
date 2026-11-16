@@ -1,5 +1,15 @@
 # Core IR Test Plan
 
+## Option operation identity (#261)
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| COREIR-REQ-040 | implemented | Option operations use typed generic Core calls `core.option.*` and require `core.option/v1`; canonical bytes retain operation, item coordinate, operands and capability. Missing capability refuses before encoding. | issue #261 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COREIR-TP-060 | implemented | Option identity | COREIR-REQ-040 | Specified: repeat compilation preserves bytes; changing the operation or item coordinate moves identity; stripping the capability refuses structured Core integrity with `InvalidDefinition`; the reviewed Core golden for the Option and enum specimen matches. | option_identity_is_repeatable_and_capability_bound, core_goldens_match_executable_encoder | crates/amblicit-syntax/tests/source_options.rs, xtask/src/tests.rs, fixtures/core/canonical/option-spine.core.cbor | Core golden pins the canonical bytes. Mutation-checked: removing the capability check turns the identity test red. |
+
 ## Bounded list operation identity (#289)
 
 | ID | Status | Requirement | Source |

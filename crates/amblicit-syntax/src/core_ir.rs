@@ -1693,6 +1693,17 @@ fn validate_core_call_types(
             path,
         ));
     }
+    if callee.starts_with("core.option.")
+        && !module
+            .required_core_capabilities
+            .iter()
+            .any(|c| c == "core.option/v1")
+    {
+        return Err(CoreTypeIntegrityFailure::new(
+            CoreTypeIntegrityFailureKind::InvalidDefinition,
+            path,
+        ));
+    }
     for (index, reference) in type_args.iter().enumerate() {
         validate_core_type_reference(
             module,

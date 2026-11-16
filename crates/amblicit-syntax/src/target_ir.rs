@@ -14,6 +14,7 @@ pub(crate) mod execution_order;
 mod fold_work;
 mod function_preconditions;
 mod list_operations;
+mod option_operations;
 mod pure_intrinsics;
 mod state_fold;
 mod totality;
@@ -969,7 +970,7 @@ fn validate_core_module(
         .filter(|capability| {
             !matches!(
                 capability.as_str(),
-                "core.variant/v1" | "core.fold/v1" | "core.list/v1"
+                "core.variant/v1" | "core.fold/v1" | "core.list/v1" | option_operations::CAPABILITY
             )
         })
         .map(|capability| TargetLoweringFailure {
@@ -1929,6 +1930,7 @@ fn is_typed_prelude_operation(callee: &str) -> bool {
     ]
     .contains(&callee)
         || list_operations::is_operation(callee)
+        || option_operations::is_operation(callee)
         || is_unsigned_arithmetic(callee)
 }
 
@@ -1943,6 +1945,9 @@ fn prelude_type_coordinate(
     match callee {
         _ if list_operations::is_operation(callee) => {
             list_operations::type_coordinate(core, functions, callee, type_args, args, available)
+        }
+        _ if option_operations::is_operation(callee) => {
+            option_operations::type_coordinate(core, functions, callee, type_args, args, available)
         }
         byte_at::OPERATION => byte_at::type_coordinate(core, functions, type_args, args, available),
         byte_concat::OPERATION => {
@@ -2071,6 +2076,24 @@ fn expression_fits_declared_type(
                 )
         }
     }
+}
+
+/// The result coordinate of a call: typed prelude results (`core.option.default`,
+/// `core.list.at`, ...) are derived by Target itself, other calls by their
+/// validated function fact.
+fn call_result_coordinate(
+    core: &CoreModule,
+    pure_functions: &[TargetPureFunctionFact],
+    callee: &str,
+    type_args: &[String],
+    args: &[CoreExpr],
+    available: &BTreeMap<&str, &LocalRef>,
+) -> Option<String> {
+    if is_typed_prelude_operation(callee) {
+        return prelude_type_coordinate(core, pure_functions, callee, type_args, args, available);
+    }
+    validated_function_return_type(core, pure_functions, callee, type_args, args, available)
+        .map(str::to_owned)
 }
 
 fn validated_function_return_type<'a>(
@@ -2318,15 +2341,9 @@ fn expression_string_shape(
             type_args,
             args,
         } => {
-            let fact = validated_function_return_type(
-                core,
-                pure_functions,
-                callee,
-                type_args,
-                args,
-                available,
-            )?;
-            let CoreType::String { max, canonical } = resolved_core_type(core, fact)? else {
+            let coordinate =
+                call_result_coordinate(core, pure_functions, callee, type_args, args, available)?;
+            let CoreType::String { max, canonical } = resolved_core_type(core, &coordinate)? else {
                 return None;
             };
             Some((max, canonical))

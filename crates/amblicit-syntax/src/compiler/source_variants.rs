@@ -32,6 +32,15 @@ impl TypeChecker<'_> {
             ));
             return None;
         };
+        if self.enum_coordinates.contains(&ty.coord) {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::TypeMismatch,
+                format!("enum cases are selected with `.{case}`, not constructed with `::`"),
+                span,
+            ));
+            return None;
+        }
         let Some(declared) = cases.get(case) else {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
@@ -82,6 +91,73 @@ impl TypeChecker<'_> {
                 payload: value,
             },
             ty,
+        })
+    }
+
+    /// The declared type named by `Name` in `Name.CASE`, when `Name` is not a
+    /// local. Ordinary field access keeps its own diagnostics otherwise.
+    pub(super) fn case_selection_type(
+        &self,
+        name: &str,
+        env: &LocalEnvironment,
+    ) -> Option<TypeShape> {
+        if env.contains_key(name) {
+            return None;
+        }
+        self.named_types.get(name).cloned()
+    }
+
+    /// `Name.CASE`: select a payload-free enum case (`EDICT-LANG-ENUMVARIANT-001`).
+    pub(super) fn check_enum_case(
+        &mut self,
+        ty: &TypeShape,
+        case: &str,
+        expected: Option<&TypeShape>,
+        span: Span,
+    ) -> Option<TypedValue> {
+        let TypeKind::Variant(cases) = &ty.kind else {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::TypeMismatch,
+                "case selection requires an enum type",
+                span,
+            ));
+            return None;
+        };
+        if !self.enum_coordinates.contains(&ty.coord) {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::TypeMismatch,
+                format!("variant cases are constructed with `::{case}`, not selected with `.`"),
+                span,
+            ));
+            return None;
+        }
+        if !cases.contains_key(case) {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::UnknownField,
+                format!("unknown enum case `{case}`"),
+                span,
+            ));
+            return None;
+        }
+        if expected.is_some_and(|expected| !compatible(expected, ty)) {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::TypeMismatch,
+                "enum case type does not match its use",
+                span,
+            ));
+            return None;
+        }
+        Some(TypedValue {
+            expr: CoreExpr::Variant {
+                ty: ty.value_type_coord(),
+                case: case.to_owned(),
+                payload: None,
+            },
+            ty: ty.clone(),
         })
     }
 

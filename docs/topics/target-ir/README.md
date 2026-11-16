@@ -865,8 +865,9 @@ executing consumer separately.
 
 Portable accounting uses 64-byte value cells, bounded byte/text/list storage,
 record keys, variant metadata and maximum branch work. Payload-bound matches
-include surrounding-frame storage. Fold-capable modules currently refuse types
-outside this accounting subset (option/map/capability/request values), symbolic
+include surrounding-frame storage. An Option value is one presence cell plus its
+item. Fold-capable modules currently refuse types outside this accounting
+subset (map/capability/request values), symbolic
 collection-loop bounds and external-action request nodes. Modules without the
 fold capability retain their existing cost checks. Native bounds are conservative
 and can reject a compiler-accepted operation near its budget ceiling.
@@ -875,6 +876,25 @@ and can reject a compiler-accepted operation near its budget ceiling.
 provider verification, effect execution costs, output encoding limits and runtime
 admission retain their separate authorities; this meter does not establish the
 full #268 runtime contract or the authored rope cutover.
+
+## Option validation
+
+Native Target admits `core.option/v1` and derives the result of each
+`core.option.*` call itself from its item type argument: `some` checks its value
+against the item, `isSome` and `unwrap` require an operand whose independently
+derived type is `Option` of exactly that item, and `default` also checks its
+fallback. A missing capability, forged item coordinate, wrong operand, wrong
+fallback or wrong arity refuses `InvalidCoreIdentity` without an artifact.
+[TIR-REQ-075]
+
+`core.option.unwrap` is total only on a local that a dominating `isSome` fact
+names: an expression-if `then` arm, the right operand of a conjunction, or the
+`then` block of a statement branch. Statement-branch presence is held apart
+from the general facts and read only by `unwrap`, so byte, list, arithmetic and
+function-precondition proofs keep their existing rule.
+Branch-yield bindings still refuse `branch_binding` in every domain. Source
+refinement is not trusted. These are native judgments; provider acceptance and
+runtime Option values are separate gates. [TIR-REQ-075]
 
 ## Function preconditions
 
