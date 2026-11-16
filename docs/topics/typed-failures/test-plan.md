@@ -33,7 +33,7 @@ Out of scope:
 | TFAIL-REQ-004 | implemented | An intent `let` whose whole value is a failing source call maps each callee failure exactly once to a terminal obstruction; one-failure shorthand only; missing, unknown, repeated and binding arms refuse. | EDICT-LANG-FAIL-MAP-001 |
 | TFAIL-REQ-005 | implemented | Core carries sorted function `failures`, `fail` expressions and `attempt` nodes and requires `core.failure/v1`. It omits them all when unused, so existing artifacts stay byte-identical, and its integrity judgment independently refuses forged sets, placements and maps. | EDICT-CORE-FAIL-001 |
 | TFAIL-REQ-006 | implemented | Target lowers an `attempt` to a pure binding with `failureArms` under the ordered and structured models; the pre-step-guard model refuses `failure_mapped_binding`. | EDICT-TARGET-FAIL-001 |
-| TFAIL-REQ-007 | implemented | Target treats an explicit terminal failure as producing no returned value, while retaining its evaluation step and surrounding work. Valid contextual comparison, Option and String operands preserve that terminal path without admitting invalid ordinary operands. | EDICT-LANG-FAIL-SET-001, Typed Function Failures evaluation |
+| TFAIL-REQ-007 | implemented | Target treats an explicit terminal failure as producing no returned value, while retaining its evaluation step and surrounding work. Valid contextual comparison, Option and String operands preserve that terminal path without admitting invalid ordinary operands. | EDICT-LANG-FAIL-SET-001, EDICT-TARGET-FAIL-001 |
 
 ## Test Cases
 
