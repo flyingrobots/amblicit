@@ -697,6 +697,7 @@ impl TypeChecker<'_> {
                 | Expr::Field { .. }
                 | Expr::Call { .. }
                 | Expr::Expect { .. }
+                | Expr::Fail { .. }
                 | Expr::If { .. }
                 | Expr::Match { .. }
         ) {

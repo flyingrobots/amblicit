@@ -512,14 +512,16 @@ impl<'a> Meter<'a> {
             CoreNode::Attempt {
                 value, failure_map, ..
             } => {
-                let mut cost = self.expression(value, available, depth + 1)?;
-                for payload in failure_map
-                    .values()
-                    .flat_map(|reason| reason.payload.values())
-                {
-                    cost = cost.add(self.expression(payload, available, depth + 1)?)?;
+                let cost = self.expression(value, available, depth + 1)?;
+                let mut selected = Cost::default();
+                for reason in failure_map.values() {
+                    let mut arm = Cost::default();
+                    for payload in reason.payload.values() {
+                        arm = arm.add(self.expression(payload, available, depth + 1)?)?;
+                    }
+                    selected = selected.maximum(arm);
                 }
-                cost
+                cost.add(selected)?
             }
             CoreNode::Require { predicate, arm } => {
                 let (CoreRequireFailureArm::Terminal { reason }

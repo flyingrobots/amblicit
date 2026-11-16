@@ -69,6 +69,13 @@ predicates, calls, parameter/result validation and mapped obstruction payloads
 keep their existing charges. Unknown or invalid expressions still refuse; they
 are not terminal failures.
 
+A failure map executes only its selected arm. Work accounting sums every field
+in that arm, then takes separate maxima for steps and allocated bytes across
+arms. Different arms may establish the two maxima; the call's work is added
+once. Explicit failures in Boolean conditions retain the generated Boolean
+comparison charge. Integer operands retain the existing source overflow and
+underflow proof rules; accepting a terminal operand's type does not relax them.
+
 For a size-charged intrinsic argument, a terminal arm contributes no returned
 bytes or elements to its bound maximum. Returning arms keep their validated
 bounds; predicate, operand and evaluation work retain their existing charges.

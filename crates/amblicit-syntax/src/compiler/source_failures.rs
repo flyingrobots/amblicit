@@ -8,8 +8,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
     error, expression_identity, CompilerErrorKind, CompilerStage, CoreExpr,
-    EffectOutputExpectation, Expr, FunctionDecl, LocalEnvironment, Span, TypeChecker, TypeShape,
-    TypedValue,
+    EffectOutputExpectation, Expr, FunctionDecl, LocalEnvironment, Span, TypeChecker, TypeKind,
+    TypeShape, TypedValue,
 };
 
 /// The capability a Core module requires once any function declares failures.
@@ -150,9 +150,15 @@ impl TypeChecker<'_> {
     pub(super) fn check_fail_expr(
         &mut self,
         failure: &[String],
-        expected: Option<&TypeShape>,
+        expectation: EffectOutputExpectation<'_>,
         span: Span,
     ) -> Option<TypedValue> {
+        let boolean = TypeShape::canonical_structural(TypeKind::Bool)?;
+        let expected = match expectation {
+            EffectOutputExpectation::Comparison(peer) => Some(peer),
+            EffectOutputExpectation::Predicate => Some(&boolean),
+            _ => expectation.value(),
+        };
         let written = failure.join(".");
         let Some(coordinate) = self.failures.coordinates.get(&written).cloned() else {
             self.errors.push(error(

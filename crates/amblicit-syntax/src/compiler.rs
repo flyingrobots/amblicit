@@ -4286,31 +4286,9 @@ impl<'a> TypeChecker<'a> {
             | Expr::Field { .. }
             | Expr::Call { .. }
             | Expr::Expect { .. }
+            | Expr::Fail { .. }
             | Expr::If { .. }
-            | Expr::Match { .. } => {
-                let expected = TypeShape::canonical_structural(TypeKind::Bool)?;
-                // Check the operand on its own terms before applying the
-                // predicate requirement; nested typing failures stay distinct.
-                let value = self.check_expr_with_effect_expectation(
-                    expr,
-                    env,
-                    EffectOutputExpectation::Predicate,
-                )?;
-                if !compatible(&expected, &value.ty) {
-                    self.errors.push(error(
-                        CompilerStage::TypeCheck,
-                        CompilerErrorKind::ExpectedPredicate,
-                        "predicate value must have type Bool",
-                        expr_span(expr),
-                    ));
-                    return None;
-                }
-                Some(CorePredicate::Compare {
-                    op: CompareOp::Eq,
-                    left: value.expr,
-                    right: CoreExpr::Const(CoreValue::Bool(true)),
-                })
-            }
+            | Expr::Match { .. } => self.check_boolean_value_predicate(expr, env),
             _ => {
                 self.errors.push(error(
                     CompilerStage::TypeCheck,
@@ -4325,6 +4303,32 @@ impl<'a> TypeChecker<'a> {
             self.record_source_predicate_cost(expr)?;
         }
         Some(checked)
+    }
+
+    fn check_boolean_value_predicate(
+        &mut self,
+        expr: &Expr,
+        env: &LocalEnvironment,
+    ) -> Option<CorePredicate> {
+        let expected = TypeShape::canonical_structural(TypeKind::Bool)?;
+        // Check the operand on its own terms before applying the
+        // predicate requirement; nested typing failures stay distinct.
+        let value =
+            self.check_expr_with_effect_expectation(expr, env, EffectOutputExpectation::Predicate)?;
+        if !compatible(&expected, &value.ty) {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::ExpectedPredicate,
+                "predicate value must have type Bool",
+                expr_span(expr),
+            ));
+            return None;
+        }
+        Some(CorePredicate::Compare {
+            op: CompareOp::Eq,
+            left: value.expr,
+            right: CoreExpr::Const(CoreValue::Bool(true)),
+        })
     }
 
     fn check_compare_predicate(
@@ -4565,13 +4569,7 @@ impl<'a> TypeChecker<'a> {
                 ..
             }
             | Expr::Unary { op: UnOp::Not, .. } => self.check_predicate_value(expr, env),
-            Expr::Fail { failure, span } => {
-                let expected = match expectation {
-                    EffectOutputExpectation::Comparison(peer) => Some(peer),
-                    _ => expected,
-                };
-                self.check_fail_expr(failure, expected, *span)
-            }
+            Expr::Fail { failure, span } => self.check_fail_expr(failure, expectation, *span),
             // The call records its own cost; `expect` adds none.
             Expr::Expect { call, span } => {
                 return self.check_expect_expr(expr, call, env, expectation, *span);

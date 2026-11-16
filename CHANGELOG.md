@@ -24,6 +24,9 @@ versions still track specification maturity rather than a released product.
 
 - Preserve typed-failure expression context in Boolean predicates, both
   comparison operands, and bounded list results propagated with `expect`.
+  Native integer signatures admit validated terminal operands in source-accepted
+  arithmetic. Failure-map work reserves the largest complete arm separately
+  for steps and allocated bytes, retaining each selected payload field's charge.
   Result-projection verification for ordered Target v2 now binds the full
   Core instruction order and corresponding requirement/effect rows, refusing
   substitutions that could change the first obstruction.

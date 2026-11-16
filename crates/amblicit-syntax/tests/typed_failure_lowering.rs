@@ -29,6 +29,12 @@ mod option_contract;
 #[path = "typed_failure_lowering/predicate_cost.rs"]
 mod predicate_cost;
 
+#[path = "typed_failure_lowering/terminal_failure_arithmetic.rs"]
+mod terminal_failure_arithmetic;
+
+#[path = "typed_failure_lowering/failure_arm_work.rs"]
+mod failure_arm_work;
+
 const BASE: &str = r"package rope.example@1;
 failure ClosureTooSmall;
 failure ConflictingContent;
