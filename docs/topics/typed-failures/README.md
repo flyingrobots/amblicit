@@ -55,6 +55,12 @@ the evidence.
 
 ### Terminal values and work
 
+When encoding ordered or structured Target IR, each failure-arm payload is
+checked in the instruction's incoming scope. It may reference the application
+input or earlier bindings, but not the failed call's result, a later binding or
+an out-of-scope local. Invalid payload references refuse with
+CanonicalErrorKind::UnsupportedValue.
+
 A terminal failure produces no returned value. Native Target's static work
 accounting assigns that explicit terminal expression zero result cells and zero
 result bytes, while its evaluation still contributes one step. Enclosing

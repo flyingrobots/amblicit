@@ -266,7 +266,16 @@ impl<'a> LocalAvailability<'a> {
     fn instruction(&mut self, instruction: Instruction<'a>) -> bool {
         match instruction {
             Instruction::Binding(node) => {
-                self.expression(&node.value, 0) && self.introduce(&node.binding)
+                // A failed call has not produced its binding. Failure payloads
+                // can read only locals available before this instruction.
+                self.expression(&node.value, 0)
+                    && node.failure_arms.values().all(|reason| {
+                        reason
+                            .payload
+                            .values()
+                            .all(|value| self.expression(value, 0))
+                    })
+                    && self.introduce(&node.binding)
             }
             Instruction::Step(node) => {
                 if !self.expression(&node.input, 0) {

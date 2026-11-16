@@ -8,10 +8,10 @@ use std::collections::BTreeMap;
 
 use amblicit_syntax::{
     compile_to_core, decode_canonical_cbor, encode_core_module, encode_target_ir_artifact,
-    lower_to_target_ir, parse_module, validate_core_module_type_integrity, CanonicalValue,
-    CompilerContext, CoreBudget, CoreExpr, CoreModule, CoreNode, CoreTypeIntegrityFailureKind,
-    ResourceRef, TargetIrArtifact, TargetIrLoweringFacts, TargetIrOrderEntry,
-    TargetLoweringFailureKind, TargetLoweringStatus,
+    lower_to_target_ir, parse_module, validate_core_module_type_integrity, CanonicalErrorKind,
+    CanonicalValue, CompilerContext, CoreBudget, CoreExpr, CoreModule, CoreNode,
+    CoreTypeIntegrityFailureKind, ResourceRef, TargetIrArtifact, TargetIrLoweringFacts,
+    TargetIrOrderEntry, TargetLoweringFailureKind, TargetLoweringStatus,
 };
 
 const TOO_SMALL: &str = "rope.example@1.ClosureTooSmall";
@@ -644,5 +644,80 @@ fn terminal_failure_work_keeps_an_exact_target_step_boundary() {
             short.failures[0].detail,
             "fold-capable Core work is unestablished or exceeds the evaluation budget"
         );
+    }
+}
+
+#[test]
+fn failure_arm_payloads_reference_only_prior_locals_in_execution_order() {
+    let source = BASE.replace(
+        "let value = both(input.value, input.other)",
+        "let prior = input.value; let value = both(input.value, input.other)",
+    );
+    let compiled = core(&source);
+    for domain in ["echo.span-ir/v2", "echo.span-ir/v3"] {
+        let report = lower_to_target_ir(&compiled, &facts(domain));
+        assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:#?}");
+        let mut valid = report.artifact.expect("compiler artifact");
+        let bindings = &valid.intents["evaluate"].pure_bindings;
+        assert_eq!(bindings.len(), 3, "prior, attempt, then retained result");
+        let prior = bindings[0].binding.clone();
+        let failed = bindings[1].binding.clone();
+        let later = bindings[2].binding.clone();
+        let CoreExpr::Field { base, .. } = &bindings[0].value else {
+            panic!("the prior binding reads the input")
+        };
+        let CoreExpr::Local { reference: input } = base.as_ref() else {
+            panic!("the input is a local")
+        };
+        let input = input.clone();
+        let mut outside = prior.clone();
+        outside.id = "outside.failure.payload".into();
+        outside.alpha_name = "$outsideFailurePayload".into();
+        valid
+            .intents
+            .get_mut("evaluate")
+            .expect("intent")
+            .pure_bindings[1]
+            .failure_arms
+            .get_mut(TOO_SMALL)
+            .expect("failure arm")
+            .payload
+            .insert("observed".into(), CoreExpr::Local { reference: prior });
+        encode_target_ir_artifact(&valid).expect("a prior local is available in the failure arm");
+        let mut valid_input = valid.clone();
+        valid_input
+            .intents
+            .get_mut("evaluate")
+            .expect("intent")
+            .pure_bindings[1]
+            .failure_arms
+            .get_mut(TOO_SMALL)
+            .expect("failure arm")
+            .payload
+            .insert("observed".into(), CoreExpr::Local { reference: input });
+        encode_target_ir_artifact(&valid_input)
+            .expect("the application input is available in the failure arm");
+        for (case, reference) in [
+            ("failed result itself", failed),
+            ("later local", later),
+            ("out-of-scope local", outside),
+        ] {
+            let mut forged = valid.clone();
+            forged
+                .intents
+                .get_mut("evaluate")
+                .expect("intent")
+                .pure_bindings[1]
+                .failure_arms
+                .get_mut(TOO_SMALL)
+                .expect("failure arm")
+                .payload
+                .insert("observed".into(), CoreExpr::Local { reference });
+            assert_eq!(
+                encode_target_ir_artifact(&forged).expect_err(case).kind(),
+                CanonicalErrorKind::UnsupportedValue,
+                "{domain}: {case}"
+            );
+        }
     }
 }
