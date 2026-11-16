@@ -1158,9 +1158,13 @@ impl<'a> TypeChecker<'a> {
                 intents.push(typed);
             }
         }
-        // Capability discovery precedes full-module accounting. Recheck once so
-        // earlier intents/operands are also charged when a later call uses lists.
-        if !self.meters_list_work() && self.core_capabilities.contains("core.list/v1") {
+        // Capability discovery precedes full-module accounting. Lists and Option
+        // calls in fold-capable modules need Target's complete accounting for
+        // earlier intents and operands too.
+        let needs_complete_work = self.core_capabilities.contains("core.list/v1")
+            || (self.core_capabilities.contains("core.fold/v1")
+                && self.core_capabilities.contains(source_options::CAPABILITY));
+        if !self.meters_list_work() && needs_complete_work {
             let mut metered = Self::new(self.resolved);
             metered.list_work_pass = list_operations::WorkPass::Meter;
             return metered.check();
@@ -3230,7 +3234,15 @@ impl<'a> TypeChecker<'a> {
                 ));
                 return None;
             }
-            Some(annotation_shape.clone())
+            if matches!(&annotation_shape.kind, TypeKind::Option(_)) {
+                // Context can guide some/none, but a raw Option conditional
+                // must retain the arm join Target can derive independently.
+                // In particular, the context cannot widen an exact item or
+                // invent a join between incomparable item bounds.
+                self.join_branch_shapes(None, then_shape, else_shape, messages, span)
+            } else {
+                Some(annotation_shape.clone())
+            }
         } else if let Some(shape) = compatible_shape(then_shape, else_shape) {
             Some(shape)
         } else {

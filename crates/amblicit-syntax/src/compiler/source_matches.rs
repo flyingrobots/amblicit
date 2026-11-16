@@ -47,7 +47,11 @@ impl TypeChecker<'_> {
         {
             return self.invalid_match("match must cover every case exactly once", span);
         }
-        let mut result_type = expected.cloned();
+        // Context guides Option constructors but does not replace the actual
+        // arm join that Target must infer from the emitted match expression.
+        let contextual_option =
+            expected.is_some_and(|shape| matches!(&shape.kind, TypeKind::Option(_)));
+        let mut result_type = expected.filter(|_| !contextual_option).cloned();
         let mut lowered = vec![None; arms.len()];
         // Infer typed peers before bare literals, while retaining source arm order
         // in Core. Like conditionals, no width is invented for all-bare arms.
@@ -89,9 +93,13 @@ impl TypeChecker<'_> {
                     .flatten()
             });
             let body = self.check_expr_with_expected(&arm.body, &scope, arm_expected)?;
+            if contextual_option && expected.is_some_and(|expected| !compatible(expected, &body.ty))
+            {
+                return self.invalid_match("match result type mismatch", arm.span);
+            }
             result_type = match result_type {
                 None => Some(body.ty.clone()),
-                Some(prior) if expected.is_some() => {
+                Some(prior) if expected.is_some() && !contextual_option => {
                     if !compatible(&prior, &body.ty) {
                         return self.invalid_match("match result type mismatch", arm.span);
                     }

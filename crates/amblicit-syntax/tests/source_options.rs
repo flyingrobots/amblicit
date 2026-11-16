@@ -787,6 +787,56 @@ fn option_joins_need_one_arm_to_contain_the_other() {
     lowered(&core);
 }
 
+/// A result context cannot make incomparable Option arms joinable at Target.
+#[test]
+fn contextual_option_conditional_refuses_incomparable_arms() {
+    let body = "fn f(flag: Bool, a: Option<Bytes<exact=1>>, b: Option<Bytes<exact=2>>, fallback: Bytes<max=2>) -> Bytes<max=2> { return default(if flag then a else b, fallback); }";
+    let errors = compile(body).expect_err("context cannot widen incomparable Option arms");
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.kind == CompilerErrorKind::TypeMismatch),
+        "{errors:?}"
+    );
+}
+
+/// A match operand obeys the same contextual Option join rule as a conditional.
+#[test]
+fn contextual_option_match_refuses_incomparable_arms() {
+    let body = "enum Choice { Left, Right } fn f(choice: Choice, a: Option<Bytes<exact=1>>, b: Option<Bytes<exact=2>>, fallback: Bytes<max=2>) -> Bytes<max=2> { return default(match choice { Left => a, Right => b }, fallback); }";
+    let errors = compile(body).expect_err("context cannot widen incomparable Option match arms");
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.kind == CompilerErrorKind::TypeMismatch),
+        "{errors:?}"
+    );
+}
+
+/// Context guides construction but preserves the contained arms' actual item,
+/// including nested Options, so Target can independently type the default call.
+#[test]
+fn contextual_option_conditional_preserves_actual_items() {
+    let source = format!(
+        "fn direct(flag: Bool, a: Option<Bytes<max=1>>, b: Option<Bytes<max=2>>, fallback: Bytes<max=2>) -> Bytes<max=3> {{ return default(if flag then a else b, fallback); }}
+         fn nested(flag: Bool, a: Option<Option<Bytes<max=1>>>, b: Option<Option<Bytes<max=2>>>, fallback: Option<Bytes<max=2>>) -> Option<Bytes<max=3>> {{ return default(if flag then a else b, fallback); }} {WITNESS}"
+    );
+    let core = compile(&source).expect("contained conditional Option arms compile");
+    lowered(&core);
+}
+
+/// Match inference also preserves contained actual items under wider results.
+#[test]
+fn contextual_option_match_preserves_actual_items() {
+    let source = format!(
+        "enum Choice {{ Left, Right }}
+         fn direct(choice: Choice, a: Option<Bytes<max=1>>, b: Option<Bytes<max=2>>, fallback: Bytes<max=2>) -> Bytes<max=3> {{ return default(match choice {{ Left => a, Right => b }}, fallback); }}
+         fn nested(choice: Choice, a: Option<Option<Bytes<max=1>>>, b: Option<Option<Bytes<max=2>>>, fallback: Option<Bytes<max=2>>) -> Option<Bytes<max=3>> {{ return default(match choice {{ Left => a, Right => b }}, fallback); }} {WITNESS}"
+    );
+    let core = compile(&source).expect("contained match Option arms compile");
+    lowered(&core);
+}
+
 /// An untyped `none()` in either branch-yield block takes its item type from a
 /// typed `some(...)` yielded by the other block, as in expression conditionals.
 #[test]
@@ -857,8 +907,7 @@ fn statement_branch_presence_is_not_a_precondition_fact() {
     );
 }
 
-/// The compiler charges Option calls exactly as native Target's fold/list work
-/// meter does, so a compiler-accepted budget is never one Target refuses.
+/// Option calls mixed with list work agree with Target over the tested budgets.
 #[test]
 fn option_calls_are_charged_like_target_work() {
     let body = "fn f() -> U64 { let o = some(1u64); return default(o, 0u64); }
@@ -949,4 +998,67 @@ intent run(input: Input) returns Output profile p.read basis none budget <= p.sm
             "no budget compiled; the probe is vacuous: {body}"
         );
     }
+}
+
+/// The smallest compiler-accepted budget for fold-only Option calls also lowers
+/// at Target; the ample-budget control and capability checks prevent vacuity.
+#[test]
+fn fold_only_option_calls_are_charged_at_compiler_budget_boundary() {
+    let source = "package jedit.options@1;
+fn step(s: Option<Bytes<max=512>>) -> Option<Bytes<max=512>> { return none(); }
+type Input = { marker: U8 }; type Output = { present: Bool };
+intent run(input: Input) returns Output profile p.read basis none budget <= p.small {
+  let init: Option<Bytes<max=512>> = none();
+  let result = fold(init, step, 1u64);
+  return { present: isSome(result) };
+}";
+    let module = parse_module(source).expect("source parses");
+    let compile_at = |steps| {
+        let context = CompilerContext::new()
+            .with_operation_profile("p.read", "continuum.profile.read-only/v1")
+            .with_budget(
+                "p.small",
+                CoreBudget {
+                    max_steps: steps,
+                    max_allocated_bytes: 1_000_000,
+                    max_output_bytes: 1_000_000,
+                },
+            );
+        compile_to_core(&module, &context)
+    };
+    let mut low = 0_u64;
+    let mut high = 100_000_u64;
+    let ample = compile_at(high).expect("ample compiler control");
+    assert!(ample
+        .required_core_capabilities
+        .iter()
+        .any(|c| c == "core.fold/v1"));
+    assert!(!ample
+        .required_core_capabilities
+        .iter()
+        .any(|c| c == "core.list/v1"));
+    lowered(&ample);
+    while low < high {
+        let middle = low + (high - low) / 2;
+        match compile_at(middle) {
+            Ok(_) => high = middle,
+            Err(errors) => {
+                assert!(
+                    errors
+                        .iter()
+                        .any(|e| e.kind == CompilerErrorKind::InvalidBound),
+                    "unexpected compiler refusal at {middle}: {errors:?}"
+                );
+                low = middle + 1;
+            }
+        }
+    }
+    let core = compile_at(high).expect("minimal compiler budget compiles");
+    let report = lower_to_target_ir(&core, &facts());
+    assert_eq!(
+        report.status,
+        TargetLoweringStatus::Lowered,
+        "fold-only none budget {high} accepted by compiler but refused by Target: {report:?}"
+    );
+    assert!(report.artifact.is_some());
 }
