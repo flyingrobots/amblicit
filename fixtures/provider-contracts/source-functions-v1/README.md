@@ -3,8 +3,9 @@
 This publication adds the optional nonempty Core `functions` table. Its
 `edict-provider-contracts.cddl` and `manifest.json` are preserved together as
 an exact publication. The current generator writes the separate
-[bounded-state-fold publication](../bounded-state-fold-v1/README.md). Assembly without
-the optional source-closure fragment still reproduces this pair exactly.
+[pure-intrinsic-catalog publication](../pure-intrinsic-catalog-v1/README.md). Assembly from
+its frozen Core, Target IR and target-profile schemas ([`fixtures/target-profile/pre-catalog-v2-target-profile.cddl`](../../target-profile/pre-catalog-v2-target-profile.cddl)),
+without the optional source-closure fragment, still reproduces this pair exactly.
 
 Consumers select these exact explicit bytes and verify the manifest's schema
 SHA-256 and embedded byte identity. The API/domain coordinates retain v1; the
