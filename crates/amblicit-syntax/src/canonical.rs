@@ -499,6 +499,25 @@ fn target_ir_order_error() -> CanonicalError {
     )
 }
 
+/// A v3 step must name an intrinsic of its artifact's selected profile.
+fn check_target_ir_step_intrinsics(
+    artifact: &TargetIrArtifact,
+    intent: &TargetIrIntent,
+) -> Result<(), CanonicalError> {
+    if crate::target_ir::execution_order::intent_steps_name_selected_intrinsics(
+        &artifact.domain,
+        &artifact.target_profile,
+        intent,
+    ) {
+        Ok(())
+    } else {
+        Err(CanonicalError::new(
+            CanonicalErrorKind::UnsupportedValue,
+            "Target IR step intrinsic is outside its selected target profile",
+        ))
+    }
+}
+
 fn target_ir_closure_required_error() -> CanonicalError {
     CanonicalError::new(
         CanonicalErrorKind::UnsupportedValue,
@@ -593,6 +612,9 @@ fn target_ir_artifact_value(artifact: &TargetIrArtifact) -> Result<CanonicalValu
             "Target IR source Core coordinate is empty",
         ));
     }
+    for intent in artifact.intents.values() {
+        check_target_ir_step_intrinsics(artifact, intent)?;
+    }
     if artifact.semantic_closure.is_none()
         && artifact
             .intents
@@ -657,6 +679,7 @@ pub(crate) fn check_target_ir_intent(
     ) {
         return Err(target_ir_order_error());
     }
+    check_target_ir_step_intrinsics(artifact, intent)?;
     match &artifact.semantic_closure {
         None if target_ir_intent_requires_closure(intent) => {
             return Err(target_ir_closure_required_error());

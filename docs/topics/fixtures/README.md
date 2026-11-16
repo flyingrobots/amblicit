@@ -31,6 +31,9 @@ Current checked-in fixture families are:
   [`fixtures/provider-contracts/typed-failures-v1/`](../../../fixtures/provider-contracts/typed-failures-v1/)
   for self-contained CDDL, root bindings, exact schema/resource bytes, raw and
   domain-framed digests, and reviewed provenance;
+- frozen earlier provider-pack publications, including
+  [`pure-intrinsic-catalog-v1/`](../../../fixtures/provider-contracts/pure-intrinsic-catalog-v1/),
+  retain their exact CDDL/manifest bytes for explicitly pinned consumers;
 - golden CLI cases under [`fixtures/cli/`](../../../fixtures/cli/) replayed
   end-to-end through the `amblicit` binary for byte-exact stdout, stderr, and exit
   code.

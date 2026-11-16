@@ -1,6 +1,7 @@
 //! An application whose adapter accepts target profile `echo.dpo@2` lowers to
 //! the ordered `echo.span-ir/v2` Target IR on the application build path
-//! (issue #310).
+//! (issue #310), or to the structured `echo.span-ir/v3` Target IR when the
+//! adapter names it (issue #319).
 //!
 //! Amblicit carries no `echo.dpo@2` provider components, so a public build here
 //! cannot publish an executable package. The in-process test drives the exact
@@ -26,14 +27,16 @@ use amblicit_syntax::{
     author_lawpack, compile_to_core, decode_canonical_cbor, decode_lawpack_adapter,
     decode_lawpack_bundle, digest_canonical_artifact, encode_canonical_cbor,
     encode_target_ir_artifact, lower_to_target_ir, parse_module, prepare_lawpack_compilation,
-    CanonicalValue, LawpackArtifactKind, LawpackAuthoringDefinition, TargetLoweringStatus,
-    TARGET_PROFILE_API_VERSION, TARGET_PROVIDER_ABI, TARGET_PROVIDER_MANIFEST_API_VERSION,
+    CanonicalValue, LawpackArtifactKind, LawpackAuthoringDefinition, TargetIrArtifact,
+    TargetIrOrderEntry, TargetLoweringStatus, TARGET_PROFILE_API_VERSION, TARGET_PROVIDER_ABI,
+    TARGET_PROVIDER_MANIFEST_API_VERSION,
 };
 use limits::Limits;
 use serde_json::{json, Value};
 
 const ECHO_DPO_2: &str = "echo.dpo@2";
 const ORDERED: &str = "echo.span-ir/v2";
+const STRUCTURED: &str = "echo.span-ir/v3";
 const INTRINSIC: &str = "echo.dpo@2.anchored-node-attachment-create-if-absent";
 const ECHO_DPO_1_PROFILE: &[u8] = include_bytes!(
     "../../../fixtures/providers/echo-target-profile/generated/primary/target-profile.echo-dpo.cbor"
@@ -79,8 +82,35 @@ fn echo_dpo_2_lawpack_document(profile_digest: &str, target_ir: &str) -> Value {
 
 #[test]
 fn echo_dpo_2_adapter_lowers_the_application_to_ordered_target_ir() {
+    let target_ir = lower_through_adapter(ORDERED);
+    assert!(target_ir.intents["create"]
+        .execution_order
+        .as_deref()
+        .expect("ordered execution order")
+        .iter()
+        .all(|entry| matches!(entry, TargetIrOrderEntry::Instruction(_))));
+}
+
+#[test]
+fn echo_dpo_2_adapter_naming_v3_lowers_the_application_to_structured_target_ir() {
+    let target_ir = lower_through_adapter(STRUCTURED);
+    let bytes = encode_target_ir_artifact(&target_ir).expect("structured Target IR encodes");
+    let value = decode_canonical_cbor(&bytes).expect("canonical Target IR");
+    let CanonicalValue::Map(entries) = &value else {
+        panic!("Target IR map")
+    };
+    assert!(entries.contains(&(
+        CanonicalValue::Text("kind".to_owned()),
+        CanonicalValue::Text("structuredTargetIrArtifact".to_owned())
+    )));
+}
+
+/// Author the example lawpack against an `echo.dpo@2` adapter that accepts
+/// `target_ir`, then run the build's adapter, preparation and lowering
+/// functions on the example source.
+fn lower_through_adapter(target_ir_domain: &str) -> TargetIrArtifact {
     let (_, profile_digest) = echo_dpo_2_profile();
-    let document = echo_dpo_2_lawpack_document(&profile_digest, ORDERED);
+    let document = echo_dpo_2_lawpack_document(&profile_digest, target_ir_domain);
     let definition: LawpackAuthoringDefinition =
         serde_json::from_value(document["lawpack"].clone()).expect("typed authoring document");
     let authored = author_lawpack(&definition, &[]).expect("author echo.dpo@2 lawpack");
@@ -108,7 +138,7 @@ fn echo_dpo_2_adapter_lowers_the_application_to_ordered_target_ir() {
 
     assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:?}");
     let target_ir = report.artifact.expect("Target IR");
-    assert_eq!(target_ir.domain, ORDERED);
+    assert_eq!(target_ir.domain, target_ir_domain);
     assert_eq!(target_ir.target_profile.coordinate, ECHO_DPO_2);
     assert_eq!(
         target_ir.target_profile.digest.as_deref(),
@@ -117,21 +147,23 @@ fn echo_dpo_2_adapter_lowers_the_application_to_ordered_target_ir() {
     let intent = &target_ir.intents["create"];
     assert_eq!(intent.steps.len(), 1);
     assert_eq!(intent.steps[0].target_intrinsic, INTRINSIC);
-    assert!(intent.execution_order.is_some());
-    encode_target_ir_artifact(&target_ir).expect("ordered Target IR encodes");
+    encode_target_ir_artifact(&target_ir).expect("Target IR encodes");
+    target_ir
 }
 
 #[test]
 fn public_build_of_an_echo_dpo_2_application_passes_target_lowering() {
     // The control differs only in the adapter's accepted Target IR, which
     // `echo.dpo@2` does not select: the same package then fails exactly at
-    // Target lowering, so the ordered build's later failure is past it.
-    // Before #310 the ordered build also failed with `TargetLoweringFailed`.
-    // The first stage after Target lowering reads the provider's artifact
-    // schema, which this package declares but does not ship.
+    // Target lowering, so the ordered and structured builds' later failure is
+    // past it. Before #310 the ordered build, and before #319 the structured
+    // build, also failed with `TargetLoweringFailed`. The first stage after
+    // Target lowering reads the provider's artifact schema, which this package
+    // declares but does not ship.
     for (target_ir, expected) in [
         (ORDERED, "ProviderPackageReadFailed"),
-        ("echo.span-ir/v3", "TargetLoweringFailed"),
+        (STRUCTURED, "ProviderPackageReadFailed"),
+        ("echo.span-ir/v1", "TargetLoweringFailed"),
     ] {
         let directory = tempfile::Builder::new()
             .prefix("amblicit-echo-dpo-2-")

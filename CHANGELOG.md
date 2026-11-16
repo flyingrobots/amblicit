@@ -22,6 +22,29 @@ versions still track specification maturity rather than a released product.
   `function-preconditions-v1` and earlier packs are unchanged. Echo must implement
   `core.failure/v1` before a failing program can run.
 
+- Publish the `pure-intrinsic-catalog-v1` provider contract pack, whose
+  `intrinsics-document` root admits `edict.target-profile.intrinsics/v2`
+  catalogs: every pure intrinsic, called or not, is monomorphic and carries a
+  non-empty `contractVersion` and a `costRule`, and the catalog may publish
+  provider-owned `types`. It also carries the function-preconditions Core
+  schema. The new pack refuses a v1 catalog; the `function-preconditions-v1`
+  pack and every earlier publication keep their bytes and refuse a v2
+  catalog. `docs/abi/edict-target-profile.cddl` now defines the v2 catalog,
+  and `docs/abi/edict-target-pure-intrinsics.cddl` is removed because its
+  rules moved there. Schema acceptance is not provider or runtime support for
+  any intrinsic.
+
+- Let target profile `echo.dpo@2` select the structured `echo.span-ir/v3`
+  Target IR when the adapter names it (#319), so effect programs with bounded
+  `for` loops and statement branches calling `echo.dpo@2.*` intrinsics lower
+  to v3. `echo.span-ir/v2` stays the profile's default, and the same program
+  under a v2 adapter still refuses with `UnsupportedCoreNode`. The selection,
+  lowering and canonical encoder share one profile-to-domain table. Under v3,
+  the encoder now also refuses a step whose intrinsic is outside the selected
+  profile's namespace, and result projections refuse it with subject
+  `<intent>.targetIntrinsic`; v1 and v2 encoding is unchanged. A new golden,
+  `echo-dpo-2-structured`, is added; every existing golden is byte-identical.
+  Echo's provider support for v3 under `echo.dpo@2` is flyingrobots/echo#947.
 - Add function preconditions (#264). A source function may write `where`
   clauses after its return type, as in `fn cut(bytes: Bytes<max=8>, start:
   U64, end: U64) -> Bytes<max=8> where start <= end, end <= len(bytes)`. The

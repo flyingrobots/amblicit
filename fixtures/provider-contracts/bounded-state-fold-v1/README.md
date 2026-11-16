@@ -13,10 +13,13 @@ CDDL/manifest pair and verify its schema digest; the same coordinate does not ma
 different publication bytes interchangeable.
 
 This CDDL/manifest pair is now frozen. The generator writes the separate
-[typed-failures publication](../typed-failures-v1/README.md); tests reproduce
+[typed-failures publication](../typed-failures-v1/README.md). Tests reproduce
 this pair from `fixtures/core/pre-precondition-core.cddl` and
-`fixtures/target-ir/pre-typed-failure-target-ir.cddl`. The function-preconditions
-pair that followed it is also frozen. The v1, source-function,
-source-module and structured-control pairs also remain byte-identical, and tests
-reproduce them from their frozen Core and Target IR inputs, including
-`fixtures/core/pre-fold-core.cddl`.
+`fixtures/target-ir/pre-typed-failure-target-ir.cddl` and the frozen v1 catalog
+schema in
+[`fixtures/target-profile/pre-catalog-v2-target-profile.cddl`](../../target-profile/pre-catalog-v2-target-profile.cddl)
+plus `fixtures/core/pre-precondition-core.cddl`; the exact inputs are covered by
+the frozen-publication tests. The v1, source-function, source-module,
+structured-control, function-preconditions and pure-intrinsic-catalog
+CDDL/manifest pairs remain byte-identical; tests reproduce the earlier pairs
+from their frozen inputs, including `fixtures/core/pre-fold-core.cddl`.

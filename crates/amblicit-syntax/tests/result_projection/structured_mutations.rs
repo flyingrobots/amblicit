@@ -180,6 +180,66 @@ fn structured_header_refusal_names_its_own_subject() {
     );
 }
 
+/// Rename each step's intrinsic namespace from `echo.dpo@1` to `to`.
+fn retarget_steps(target: &mut TargetIrArtifact, to: &str) {
+    for step in &mut intent_mut(target).steps {
+        let suffix = step
+            .target_intrinsic
+            .strip_prefix("echo.dpo@1.")
+            .expect("fixture steps name echo.dpo@1 intrinsics")
+            .to_owned();
+        step.target_intrinsic = format!("{to}.{suffix}");
+    }
+}
+
+#[test]
+fn structured_projection_refuses_a_step_intrinsic_outside_the_selected_profile() {
+    let (core, target) = pair();
+    let projection = emit_result_projection(&core, &target, INTENT).expect("projection");
+    // Control: `echo.dpo@2` selects v3, so the same pair under it, with its
+    // own intrinsic namespace, still emits (#319).
+    let mut echo_dpo_2 = target.clone();
+    "echo.dpo@2".clone_into(&mut echo_dpo_2.target_profile.coordinate);
+    retarget_steps(&mut echo_dpo_2, "echo.dpo@2");
+    emit_result_projection(&core, &echo_dpo_2, INTENT).expect("echo.dpo@2 projection");
+
+    let subject = format!("{INTENT}.targetIntrinsic");
+    for (profile, foreign) in [("echo.dpo@1", "echo.dpo@2"), ("echo.dpo@2", "echo.dpo@1")] {
+        let mut changed = target.clone();
+        profile.clone_into(&mut changed.target_profile.coordinate);
+        retarget_steps(&mut changed, profile);
+        let step = &mut intent_mut(&mut changed).steps[NESTED_STEP];
+        let suffix = step.target_intrinsic.rsplit_once('.').expect("suffix").1;
+        step.target_intrinsic = format!("{foreign}.{suffix}");
+
+        let emitted = emit_result_projection(&core, &changed, INTENT).expect_err(profile);
+        assert_eq!(
+            (emitted.kind(), emitted.subject()),
+            (
+                ResultProjectionFailureKind::CoreTargetMismatch,
+                subject.as_str()
+            ),
+            "{profile}"
+        );
+        let verified = verify_result_projection(
+            &core,
+            &changed,
+            INTENT,
+            projection.canonical_bytes(),
+            projection.digest(),
+        )
+        .expect_err(profile);
+        assert_eq!(
+            (verified.kind(), verified.subject()),
+            (
+                ResultProjectionFailureKind::CoreTargetMismatch,
+                subject.as_str()
+            ),
+            "{profile}"
+        );
+    }
+}
+
 #[test]
 fn flat_source_under_v3_emits_and_verifies_through_the_structured_path() {
     let (core, report) = lower_structured(SOURCE);
