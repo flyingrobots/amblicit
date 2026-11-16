@@ -349,7 +349,8 @@ impl<'a> Meter<'a> {
     }
 
     /// The size bound Target itself establishes for a charged argument.
-    /// A conditional is bounded by its larger branch, each established the same way.
+    /// A conditional is bounded by its larger returning branch; a terminal
+    /// failure contributes no returned bytes or elements.
     fn established_max(
         &self,
         argument: &CoreExpr,
@@ -368,6 +369,7 @@ impl<'a> Meter<'a> {
             return None;
         }
         match argument {
+            CoreExpr::Fail { .. } => Some(0),
             CoreExpr::Match { scrutinee, arms } => {
                 let mut largest = 0;
                 let valid = super::variant_matches::every(

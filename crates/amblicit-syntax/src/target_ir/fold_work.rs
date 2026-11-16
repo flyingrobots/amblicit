@@ -429,6 +429,9 @@ impl<'a> Meter<'a> {
             return None;
         }
         match expr {
+            // Size charging sees no returned sequence; expression() separately
+            // retains the terminal failure's evaluation step.
+            CoreExpr::Fail { .. } => Some(0),
             CoreExpr::If {
                 then_value,
                 else_value,

@@ -62,6 +62,11 @@ predicates, calls, parameter/result validation and mapped obstruction payloads
 keep their existing charges. Unknown or invalid expressions still refuse; they
 are not terminal failures.
 
+For a size-charged intrinsic argument, a terminal arm contributes no returned
+bytes or elements to its bound maximum. Returning arms keep their validated
+bounds; predicate, operand and evaluation work retain their existing charges.
+This does not turn failure into a successful empty value.
+
 The source compiler gives a failure its contextual type and conservatively
 reserves that type's result storage. Source and Target minimum budgets therefore
 need not coincide. The typed-failure tests exercise Target's own minimum step

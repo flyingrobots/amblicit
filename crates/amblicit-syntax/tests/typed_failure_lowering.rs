@@ -17,6 +17,9 @@ use amblicit_syntax::{
 const TOO_SMALL: &str = "rope.example@1.ClosureTooSmall";
 const CONFLICT: &str = "rope.example@1.ConflictingContent";
 
+#[path = "typed_failure_lowering/charged_intrinsics.rs"]
+mod charged_intrinsics;
+
 const BASE: &str = r"package rope.example@1;
 failure ClosureTooSmall;
 failure ConflictingContent;
