@@ -29,7 +29,10 @@ fn a_terminal_expression_retains_its_independently_counted_evaluation_step() {
         .any(|c| c == "core.list/v1"));
     let intent = compiled.intents.get("evaluate").expect("intent");
     assert!(intent.basis.is_none());
-    assert!(intent.input_constraints.is_empty());
+    assert_eq!(
+        intent.input_constraints,
+        [] as [amblicit_syntax::InputConstraint; 0]
+    );
     assert!(matches!(intent.body.nodes.as_slice(), [
         CoreNode::Let { value: CoreExpr::List { values }, .. },
         CoreNode::Let { value: CoreExpr::Call { callee, args, .. }, .. },
@@ -38,8 +41,11 @@ fn a_terminal_expression_retains_its_independently_counted_evaluation_step() {
         && matches!(args.as_slice(), [CoreExpr::Local { .. }])));
     assert!(matches!(&intent.body.result, CoreExpr::Record { fields } if fields.is_empty()));
     let function = compiled.functions.get("stop").expect("terminal helper");
-    assert!(function.params.is_empty());
-    assert!(function.body.bindings.is_empty());
+    assert_eq!(function.params, [] as [amblicit_syntax::LocalRef; 0]);
+    assert_eq!(
+        function.body.bindings,
+        [] as [amblicit_syntax::CorePureBinding; 0]
+    );
     assert!(matches!(&function.body.result, CoreExpr::Fail { .. }));
 
     // Fixed ledger from the portable cell/node rules (target-ir README,
