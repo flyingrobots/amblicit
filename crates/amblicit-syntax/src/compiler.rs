@@ -4574,18 +4574,7 @@ impl<'a> TypeChecker<'a> {
             }
             // The call records its own cost; `expect` adds none.
             Expr::Expect { call, span } => {
-                let checked = self.check_expect_expr(call, env, expectation, *span)?;
-                // Preserve operand bounds under the wrapper's identity without
-                // recording the inner call's evaluation cost a second time.
-                if let Some(bound) = self
-                    .source_value_bounds
-                    .get(&expression_identity(call))
-                    .copied()
-                {
-                    self.source_value_bounds
-                        .insert(expression_identity(expr), bound);
-                }
-                return Some(checked);
+                return self.check_expect_expr(expr, call, env, expectation, *span);
             }
             Expr::Binary { .. } | Expr::Digest { .. } | Expr::IfYield { .. } => {
                 self.errors.push(error(

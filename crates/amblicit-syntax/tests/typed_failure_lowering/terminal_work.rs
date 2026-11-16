@@ -20,6 +20,7 @@ intent evaluate(input: Input) returns Output profile p.read basis none budget <=
 
 #[test]
 fn a_terminal_expression_retains_its_independently_counted_evaluation_step() {
+    const REQUIRED_STEPS: u64 = 149;
     let compiled = core(SOURCE);
     validate_core_module_type_integrity(&compiled).expect("valid public-source Core");
     assert!(compiled
@@ -52,7 +53,6 @@ fn a_terminal_expression_retains_its_independently_counted_evaluation_step() {
     //             + terminal evaluation + statement = 6;
     // empty-record result: one cell + evaluation = 2. Total = 149.
     // This constant is neither searched nor obtained from the meter under test.
-    const REQUIRED_STEPS: u64 = 149;
     for domain in ["echo.span-ir/v2", "echo.span-ir/v3"] {
         for (steps, expected) in [
             (REQUIRED_STEPS, TargetLoweringStatus::Lowered),

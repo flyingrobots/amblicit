@@ -7,8 +7,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
-    error, CompilerErrorKind, CompilerStage, CoreExpr, EffectOutputExpectation, Expr, FunctionDecl,
-    LocalEnvironment, Span, TypeChecker, TypeShape, TypedValue,
+    error, expression_identity, CompilerErrorKind, CompilerStage, CoreExpr,
+    EffectOutputExpectation, Expr, FunctionDecl, LocalEnvironment, Span, TypeChecker, TypeShape,
+    TypedValue,
 };
 
 /// The capability a Core module requires once any function declares failures.
@@ -201,6 +202,7 @@ impl TypeChecker<'_> {
     /// `expect call`: propagate the callee's whole declared set.
     pub(super) fn check_expect_expr(
         &mut self,
+        wrapper: &Expr,
         call: &Expr,
         env: &LocalEnvironment,
         expectation: EffectOutputExpectation<'_>,
@@ -246,9 +248,20 @@ impl TypeChecker<'_> {
             return None;
         }
         scope.produced.extend(failures);
-        self.with_permitted_call(call, |this| {
+        let checked = self.with_permitted_call(call, |this| {
             this.check_expr_with_effect_expectation(call, env, expectation)
-        })
+        })?;
+        // Preserve operand bounds under the wrapper's identity without
+        // recording the inner call's evaluation cost a second time.
+        if let Some(bound) = self
+            .source_value_bounds
+            .get(&expression_identity(call))
+            .copied()
+        {
+            self.source_value_bounds
+                .insert(expression_identity(wrapper), bound);
+        }
+        Some(checked)
     }
 
     /// Refuse a failing source call that neither `expect` nor a mapped `let`
