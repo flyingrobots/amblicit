@@ -2,7 +2,7 @@
 use super::{core, facts, CoreExpr, CoreModule, TargetLoweringFailureKind, TargetLoweringStatus};
 use amblicit_syntax::{
     compile_to_core, lower_to_target_ir, parse_module, CompilerContext, CompilerErrorKind,
-    CoreBudget,
+    CoreBudget, CoreValue,
 };
 
 fn source(width: &str, expression: &str) -> String {
@@ -43,6 +43,29 @@ fn call_mut(core: &mut CoreModule) -> (&mut Vec<String>, &mut Vec<CoreExpr>) {
         "core.integer.add" | "core.integer.subtract"
     ));
     (type_args, args)
+}
+
+fn with_nonzero_peer(width: &str, expression: &str, failure_on_left: bool) -> CoreModule {
+    let mut compiled = lowered_core(width, expression);
+    let (_, args) = call_mut(&mut compiled);
+    let peer_index = usize::from(failure_on_left);
+    let CoreExpr::Const(CoreValue::Int {
+        width: peer_width,
+        value,
+    }) = &args[peer_index]
+    else {
+        panic!("numeric peer literal")
+    };
+    assert_eq!(
+        peer_width, width,
+        "the source baseline has the intended width"
+    );
+    assert_eq!(value, "0", "the source baseline is the accepted zero peer");
+    args[peer_index] = CoreExpr::Const(CoreValue::Int {
+        width: width.to_owned(),
+        value: "1".to_owned(),
+    });
+    compiled
 }
 
 fn assert_lowered_on_both_domains(core: &CoreModule) {
@@ -94,6 +117,44 @@ fn terminal_failure_arithmetic_accepts_addition_on_either_side_and_left_subtract
     ] {
         let compiled = lowered_core(width, expression);
         assert_lowered_on_both_domains(&compiled);
+    }
+}
+
+#[test]
+fn terminal_failure_arithmetic_accepts_nonzero_add_peers_on_both_sides_at_u32_and_u64() {
+    // Source's bound proof rejects these nonzero sums even though the validated
+    // failure terminates first. Mutate only the accepted zero literal in Core;
+    // Target must still prove the terminal operand prevents addition.
+    for (width, expression, failure_on_left) in [
+        ("U32", "fail Stop + 0u32", true),
+        ("U32", "0u32 + fail Stop", false),
+        ("U64", "fail Stop + 0u64", true),
+        ("U64", "0u64 + fail Stop", false),
+    ] {
+        let compiled = with_nonzero_peer(width, expression, failure_on_left);
+        assert_lowered_on_both_domains(&compiled);
+    }
+}
+
+#[test]
+fn terminal_addition_source_still_requires_the_overflow_proof() {
+    for (width, expression) in [
+        ("U32", "fail Stop + 1u32"),
+        ("U32", "1u32 + fail Stop"),
+        ("U64", "fail Stop + 1u64"),
+        ("U64", "1u64 + fail Stop"),
+    ] {
+        let parsed = parse_module(&source(width, expression)).expect("addition source parses");
+        let errors = compile_to_core(&parsed, &context())
+            .expect_err("source still requires an overflow proof for a nonzero peer");
+        assert!(
+            errors.iter().any(|error| {
+                error.kind == CompilerErrorKind::UnsupportedSourceShape
+                    && error.message
+                        == "unsigned addition requires a dominating proof of no overflow"
+            }),
+            "{expression}: {errors:#?}"
+        );
     }
 }
 

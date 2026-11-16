@@ -1013,6 +1013,13 @@ enum EffectOutputExpectation<'a> {
 }
 
 impl<'a> EffectOutputExpectation<'a> {
+    fn without_conditional_peers(mut self) -> Self {
+        while let Self::ConditionalPeer { next, .. } = self {
+            self = *next;
+        }
+        self
+    }
+
     fn value(self) -> Option<&'a TypeShape> {
         match self {
             Self::Value(shape) | Self::Unsigned(shape) => shape,
@@ -4489,6 +4496,22 @@ impl<'a> TypeChecker<'a> {
         self.check_expr_with_effect_expectation(expr, env, EffectOutputExpectation::Value(expected))
     }
 
+    fn check_match_with_effect_expectation(
+        &mut self,
+        scrutinee: &Expr,
+        arms: &[crate::ast::MatchArm],
+        env: &LocalEnvironment,
+        expectation: EffectOutputExpectation<'_>,
+        span: Span,
+    ) -> Option<TypedValue> {
+        let boolean = TypeShape::canonical_structural(TypeKind::Bool)?;
+        let expected = match expectation.without_conditional_peers() {
+            EffectOutputExpectation::Predicate => Some(&boolean),
+            _ => expectation.value(),
+        };
+        self.check_variant_match(scrutinee, arms, env, expected, span)
+    }
+
     fn check_expr_with_effect_expectation(
         &mut self,
         expr: &Expr,
@@ -4536,7 +4559,7 @@ impl<'a> TypeChecker<'a> {
                 scrutinee,
                 arms,
                 span,
-            } => self.check_variant_match(scrutinee, arms, env, expected, *span),
+            } => self.check_match_with_effect_expectation(scrutinee, arms, env, expectation, *span),
             Expr::VariantLit {
                 ty_path,
                 case,

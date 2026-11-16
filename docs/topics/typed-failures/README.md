@@ -73,7 +73,9 @@ A failure map executes only its selected arm. Work accounting sums every field
 in that arm, then takes separate maxima for steps and allocated bytes across
 arms. Different arms may establish the two maxima; the call's work is added
 once. Explicit failures in Boolean conditions retain the generated Boolean
-comparison charge. Integer operands retain the existing source overflow and
+comparison charge. That Boolean context also reaches failures inside nested
+conditional and match arms; genuinely context-free failures still refuse.
+Integer operands retain the existing source overflow and
 underflow proof rules; accepting a terminal operand's type does not relax them.
 
 For a size-charged intrinsic argument, a terminal arm contributes no returned

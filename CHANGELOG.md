@@ -22,7 +22,8 @@ versions still track specification maturity rather than a released product.
   `function-preconditions-v1` and earlier packs are unchanged. Echo must implement
   `core.failure/v1` before a failing program can run.
 
-- Preserve typed-failure expression context in Boolean predicates, both
+- Preserve typed-failure expression context in Boolean predicates (including
+  nested conditional and match arms), both
   comparison operands, and bounded list results propagated with `expect`.
   Native integer signatures admit validated terminal operands in source-accepted
   arithmetic. Failure-map work reserves the largest complete arm separately

@@ -35,6 +35,23 @@ fn selection(condition: &str, failures: &str) -> String {
     )
 }
 
+fn selection_with_choice(condition: &str) -> String {
+    selection(condition, "fails Stop")
+        .replace(
+            "failure Stop;",
+            "failure Stop; enum Choice { First, Second }",
+        )
+        .replace(
+            "type Input = { flag: Bool, }",
+            "type Input = { flag: Bool, choice: Choice, }",
+        )
+        .replace(
+            "fn select(flag: Bool)",
+            "fn select(flag: Bool, choice: Choice)",
+        )
+        .replace("select(input.flag)", "select(input.flag, input.choice)")
+}
+
 fn compile(source: &str, steps: u64) -> CoreModule {
     let module = parse_module(source).expect("terminal predicate source parses");
     compile_to_core(&module, &context(steps))
@@ -101,6 +118,81 @@ fn direct_terminal_failure_is_a_boolean_condition() {
 #[test]
 fn negated_terminal_failure_is_a_boolean_condition() {
     accepted("!(fail Stop)");
+}
+
+#[test]
+fn nested_terminal_conditionals_keep_the_boolean_predicate_context() {
+    for condition in [
+        "(if flag then fail Stop else fail Stop)",
+        "!(if flag then fail Stop else fail Stop)",
+        "(if flag then (if flag then fail Stop else fail Stop) else fail Stop)",
+        "flag && (if flag then fail Stop else fail Stop)",
+        "flag || (if flag then fail Stop else fail Stop)",
+    ] {
+        accepted(condition);
+    }
+}
+
+#[test]
+fn a_match_with_a_returning_boolean_arm_contextualizes_nested_terminal_conditionals() {
+    let source = selection_with_choice(
+        "(match choice { First => flag, Second => if flag then fail Stop else fail Stop })",
+    );
+    native_accepts(&compile(&source, 1_000_000));
+}
+
+#[test]
+fn terminal_matches_keep_boolean_context_through_nested_predicate_values() {
+    for condition in [
+        "(match choice { First => fail Stop, Second => fail Stop })",
+        "!(match choice { First => fail Stop, Second => fail Stop })",
+        "(if flag then (match choice { First => fail Stop, Second => fail Stop }) else fail Stop)",
+        "(match choice { First => if flag then fail Stop else fail Stop, Second => fail Stop })",
+    ] {
+        native_accepts(&compile(&selection_with_choice(condition), 1_000_000));
+    }
+}
+
+#[test]
+fn nested_terminal_conditionals_without_a_value_context_still_refuse() {
+    let source = selection("flag", "fails Stop").replace(
+        "return if flag then 1u64 else 2u64;",
+        "let lost = if flag then fail Stop else fail Stop; return 1u64;",
+    );
+    let module = parse_module(&source).expect("context-free conditional parses");
+    let errors = compile_to_core(&module, &context(1_000_000))
+        .expect_err("terminal conditionals cannot invent a value type");
+    // With no contextual type, the else arm is checked first to infer the
+    // then arm's peer type. Its terminal expression has no type to supply.
+    let start = source.find("else fail Stop").expect("else failure exists") + "else ".len();
+    assert!(
+        errors.iter().any(|error| {
+            error.stage == CompilerStage::TypeCheck
+                && error.kind == CompilerErrorKind::TypeMismatch
+                && error.span.start == start
+        }),
+        "expected contextual typing refusal, got {errors:#?}"
+    );
+}
+
+#[test]
+fn terminal_matches_without_a_value_context_still_refuse() {
+    let source = selection_with_choice("flag").replace(
+        "return if flag then 1u64 else 2u64;",
+        "let lost = match choice { First => fail Stop, Second => fail Stop }; return 1u64;",
+    );
+    let module = parse_module(&source).expect("context-free match parses");
+    let errors = compile_to_core(&module, &context(1_000_000))
+        .expect_err("terminal matches cannot invent a value type");
+    let start = source.find("fail Stop").expect("terminal anchor exists");
+    assert!(
+        errors.iter().any(|error| {
+            error.stage == CompilerStage::TypeCheck
+                && error.kind == CompilerErrorKind::TypeMismatch
+                && error.span.start == start
+        }),
+        "expected contextual typing refusal, got {errors:#?}"
+    );
 }
 
 #[test]

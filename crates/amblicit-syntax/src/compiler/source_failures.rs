@@ -154,6 +154,7 @@ impl TypeChecker<'_> {
         span: Span,
     ) -> Option<TypedValue> {
         let boolean = TypeShape::canonical_structural(TypeKind::Bool)?;
+        let expectation = expectation.without_conditional_peers();
         let expected = match expectation {
             EffectOutputExpectation::Comparison(peer) => Some(peer),
             EffectOutputExpectation::Predicate => Some(&boolean),
