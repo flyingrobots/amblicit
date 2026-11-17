@@ -104,15 +104,15 @@ impl<'a> Meter<'a> {
                 CoreNode::Attempt {
                     value, failure_map, ..
                 } => {
-                    let mut steps = self.expression(value, available, depth + 1)?;
-                    for payload in failure_map
-                        .values()
-                        .flat_map(|reason| reason.payload.values())
-                    {
-                        steps =
-                            steps.checked_add(self.expression(payload, available, depth + 1)?)?;
-                    }
-                    steps
+                    let steps = self.expression(value, available, depth + 1)?;
+                    let largest_arm = failure_map.values().try_fold(0_u64, |largest, reason| {
+                        let arm_steps =
+                            reason.payload.values().try_fold(0_u64, |steps, payload| {
+                                steps.checked_add(self.expression(payload, available, depth + 1)?)
+                            })?;
+                        Some(largest.max(arm_steps))
+                    })?;
+                    steps.checked_add(largest_arm)?
                 }
                 CoreNode::Require { predicate, arm } => {
                     let (CoreRequireFailureArm::Terminal { reason }
@@ -253,6 +253,11 @@ impl<'a> Meter<'a> {
             CoreExpr::Record { fields } => fields.values().try_fold(0_u64, |steps, value| {
                 steps.checked_add(self.expression(value, available, depth + 1)?)
             }),
+            CoreExpr::OrderedRecord { fields } => {
+                fields.iter().try_fold(0_u64, |steps, (_, value)| {
+                    steps.checked_add(self.expression(value, available, depth + 1)?)
+                })
+            }
             CoreExpr::List { values } | CoreExpr::Call { args: values, .. } => {
                 values.iter().try_fold(0_u64, |steps, value| {
                     steps.checked_add(self.expression(value, available, depth + 1)?)
@@ -390,6 +395,9 @@ impl<'a> Meter<'a> {
             }
             CoreExpr::List { values } => u64::try_from(values.len()).ok(),
             CoreExpr::Const(CoreValue::Bytes(bytes)) => u64::try_from(bytes.len()).ok(),
+            // Records have no intrinsic size coefficient of their own. Their
+            // fields are traversed for call cost by `expression` above.
+            CoreExpr::Record { .. } | CoreExpr::OrderedRecord { .. } => None,
             CoreExpr::If {
                 then_value,
                 else_value,

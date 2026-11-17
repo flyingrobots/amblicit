@@ -3,6 +3,7 @@
 //! It runs after the type-integrity judgment, so graph depth is already
 //! bounded. Every rule here is checked from Core alone; nothing trusts the
 //! source compiler.
+use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::source_functions::{walk, walk_predicate};
@@ -13,6 +14,7 @@ use super::{
 
 /// The Core capability a module needs once any function declares failures.
 pub(crate) const CORE_FAILURE_CAPABILITY: &str = "core.failure/v1";
+pub(crate) const MAX_RECORD_ORDER_WORK: usize = 1 << 22;
 
 type Failure = CoreTypeIntegrityFailure;
 
@@ -20,9 +22,32 @@ fn invalid(path: &str) -> Failure {
     CoreTypeIntegrityFailure::new(CoreTypeIntegrityFailureKind::InvalidDefinition, path)
 }
 
+/// Checked expressions expose failures through explicit terminals or through
+/// a source callee's declared set. No unknown call is assumed to fail.
+pub(crate) fn expression_can_fail(
+    expression: &CoreExpr,
+    mut callee_can_fail: impl FnMut(&str) -> bool,
+    remaining: &mut usize,
+) -> Result<bool, Failure> {
+    let mut can_fail = false;
+    walk(expression, 0, &mut |node| {
+        *remaining = remaining
+            .checked_sub(1)
+            .ok_or_else(|| invalid("records.failureOrderWork"))?;
+        can_fail |= match node {
+            CoreExpr::Fail { .. } => true,
+            CoreExpr::Call { callee, .. } => callee_can_fail(callee),
+            _ => false,
+        };
+        Ok(())
+    })?;
+    Ok(can_fail)
+}
+
 struct Sets<'a> {
     module: &'a CoreModule,
     declared: BTreeMap<&'a str, &'a [String]>,
+    record_order_work: Cell<usize>,
 }
 
 impl<'a> Sets<'a> {
@@ -49,6 +74,18 @@ impl<'a> Sets<'a> {
             }
             CoreExpr::Fold { step, .. } if !self.callee(step).unwrap_or_default().is_empty() => {
                 return Err(invalid(path));
+            }
+            CoreExpr::Record { .. } | CoreExpr::OrderedRecord { .. } => {
+                let mut remaining = self.record_order_work.get();
+                let can_fail = expression_can_fail(
+                    expression,
+                    |callee| !self.callee(callee).unwrap_or_default().is_empty(),
+                    &mut remaining,
+                )?;
+                self.record_order_work.set(remaining);
+                if can_fail != matches!(expression, CoreExpr::OrderedRecord { .. }) {
+                    return Err(invalid(path));
+                }
             }
             _ => {}
         }
@@ -206,6 +243,7 @@ pub(super) fn validate_failure_sets(module: &CoreModule) -> Result<(), Failure> 
     }
     let sets = Sets {
         module,
+        record_order_work: Cell::new(MAX_RECORD_ORDER_WORK),
         declared: module
             .functions
             .iter()
@@ -229,4 +267,46 @@ pub(super) fn validate_failure_sets(module: &CoreModule) -> Result<(), Failure> 
         sets.block(&intent.body, &format!("{path}.body"))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::expression_can_fail;
+    use crate::core_ir::{CoreExpr, CoreTypeIntegrityFailureKind};
+
+    #[test]
+    fn record_failure_analysis_refuses_exhausted_work_without_assuming_totality() {
+        let record = CoreExpr::OrderedRecord {
+            fields: vec![
+                (
+                    "z".into(),
+                    CoreExpr::Fail {
+                        failure: "test@1.Stop".into(),
+                    },
+                ),
+                (
+                    "a".into(),
+                    CoreExpr::Call {
+                        callee: "test@1.partial".into(),
+                        type_args: vec![],
+                        args: vec![],
+                    },
+                ),
+            ],
+        };
+        let mut exact = 3;
+        assert!(
+            expression_can_fail(&record, |callee| callee == "test@1.partial", &mut exact)
+                .expect("three expression nodes fit")
+        );
+        assert_eq!(exact, 0);
+        let mut short = 2;
+        let failure = expression_can_fail(&record, |_| false, &mut short)
+            .expect_err("a terminal does not excuse unvisited expressions");
+        assert_eq!(
+            failure.kind(),
+            CoreTypeIntegrityFailureKind::InvalidDefinition
+        );
+        assert_eq!(failure.path(), "records.failureOrderWork");
+    }
 }

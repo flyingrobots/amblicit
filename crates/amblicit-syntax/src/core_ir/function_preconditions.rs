@@ -41,6 +41,9 @@ pub(crate) fn precondition_nodes(preconditions: &[CorePredicate]) -> usize {
                 expression(scrutinee) + arms.iter().map(|arm| expression(&arm.body)).sum::<usize>()
             }
             CoreExpr::Record { fields } => fields.values().map(expression).sum(),
+            CoreExpr::OrderedRecord { fields } => {
+                fields.iter().map(|(_, value)| expression(value)).sum()
+            }
             CoreExpr::List { values } | CoreExpr::Call { args: values, .. } => {
                 values.iter().map(expression).sum()
             }
@@ -116,6 +119,7 @@ pub(super) fn validate_preconditions(
             | CoreExpr::Const(_)
             | CoreExpr::Variant { .. }
             | CoreExpr::Record { .. }
+            | CoreExpr::OrderedRecord { .. }
             | CoreExpr::List { .. }
             | CoreExpr::Field { .. }
             | CoreExpr::If { .. } => Ok(()),
@@ -203,6 +207,12 @@ fn expression(value: &CoreExpr, bindings: &Bindings<'_>) -> CoreExpr {
                 .collect(),
         },
         CoreExpr::Record { fields } => CoreExpr::Record {
+            fields: fields
+                .iter()
+                .map(|(name, field)| (name.clone(), expression(field, bindings)))
+                .collect(),
+        },
+        CoreExpr::OrderedRecord { fields } => CoreExpr::OrderedRecord {
             fields: fields
                 .iter()
                 .map(|(name, field)| (name.clone(), expression(field, bindings)))

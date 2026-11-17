@@ -204,6 +204,11 @@ impl<'a> Meter<'a> {
                     total.add(Self::field(key, self.value(expr, available, depth + 1)?)?)
                 })
             }
+            CoreExpr::OrderedRecord { fields } => {
+                fields.iter().try_fold(Value::CELL, |total, (key, expr)| {
+                    total.add(Self::field(key, self.value(expr, available, depth + 1)?)?)
+                })
+            }
             CoreExpr::List { values } => values.iter().try_fold(Value::CELL, |total, expr| {
                 total.add(self.value(expr, available, depth + 1)?)
             }),
@@ -298,6 +303,11 @@ impl<'a> Meter<'a> {
             },
             CoreExpr::Record { fields } => {
                 fields.values().try_fold(Cost::default(), |sum, expr| {
+                    sum.add(self.expression(expr, available, depth + 1)?)
+                })?
+            }
+            CoreExpr::OrderedRecord { fields } => {
+                fields.iter().try_fold(Cost::default(), |sum, (_, expr)| {
                     sum.add(self.expression(expr, available, depth + 1)?)
                 })?
             }

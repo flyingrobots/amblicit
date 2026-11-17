@@ -15,7 +15,11 @@ versions still track specification maturity rather than a released product.
   other way to fail compiles, and each violation has its own diagnostic kind
   (`UnknownFailure`, `UndeclaredFailure`, `UnraisedFailure`, `UnhandledFailure`,
   `IncompleteFailureMapping`). Core gains function `failures`, the `fail`
-  expression and the `attempt` node under `core.failure/v1`. Ordered and
+  expression and the `attempt` node under `core.failure/v1`. Fallible record
+  fields use an `orderedRecord` entry array so their first failure follows
+  authored evaluation order; total record maps remain byte-identical. Core
+  independently checks the representation choice and unique field names.
+  Ordered and
   structured Target IR carry `failureArms` on pure bindings. All of these are
   omitted when unused, so existing artifacts are byte-identical. The provider
   contract pack `typed-failures-v1` publishes the schema;
@@ -28,6 +32,7 @@ versions still track specification maturity rather than a released product.
   Native integer signatures admit validated terminal operands in source-accepted
   arithmetic. Failure-map work reserves the largest complete arm separately
   for steps and allocated bytes, retaining each selected payload field's charge.
+  The independent intrinsic meter also reserves only its largest complete arm.
   Result-projection verification for ordered Target v2 now binds the full
   Core instruction order and corresponding requirement/effect rows, refusing
   substitutions that could change the first obstruction.

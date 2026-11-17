@@ -175,13 +175,19 @@ pure-let-node = {
 
 ; --- expressions and predicates -----------------------------------------
 
-core-expr = local-expr / const-expr / record-expr / field-expr /
+core-expr = local-expr / const-expr / record-expr / ordered-record-expr / field-expr /
             variant-expr / match-expr / fold-expr / call-expr / list-expr / map-expr /
             if-expr / fail-expr
 
 local-expr = { kind: "local", ref: local-ref }
 const-expr = { kind: "const", value: core-value }
 record-expr = { kind: "record", fields: { * tstr => core-expr } }
+; Fallible record construction evaluates entries strictly in array order.
+; Core integrity requires unique names and checks the field set and types.
+ordered-record-expr = {
+  kind: "orderedRecord",
+  fields: [1* { name: tstr, value: core-expr }],
+}
 field-expr = { kind: "field", base: core-expr, field: tstr }
 variant-expr = {
   kind: "variant",

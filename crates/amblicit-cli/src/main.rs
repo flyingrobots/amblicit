@@ -1823,6 +1823,13 @@ fn core_expr_review(expr: &CoreExpr) -> Value {
                 .map(|(name, value)| (name.clone(), core_expr_review(value)))
                 .collect::<BTreeMap<_, _>>(),
         }),
+        CoreExpr::OrderedRecord { fields } => json!({
+            "kind": "orderedRecord",
+            "fields": fields.iter().map(|(name, value)| json!({
+                "name": name,
+                "value": core_expr_review(value),
+            })).collect::<Vec<_>>(),
+        }),
         CoreExpr::List { values } => json!({
             "kind": "list",
             "values": values.iter().map(core_expr_review).collect::<Vec<_>>(),

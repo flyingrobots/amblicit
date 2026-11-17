@@ -1623,6 +1623,7 @@ fn core_expr_value(expr: &CoreExpr) -> Result<CanonicalValue, CanonicalError> {
                 )?,
             ),
         ]),
+        CoreExpr::OrderedRecord { fields } => ordered_record_expression_value(fields)?,
         CoreExpr::List { values } => map([
             ("kind", text("list")),
             ("values", array_results(values.iter().map(core_expr_value))?),
@@ -1683,6 +1684,23 @@ fn int_text_value(width: &str, value: &str) -> Result<CanonicalValue, CanonicalE
         )
     })?;
     Ok(CanonicalValue::Integer(value))
+}
+
+fn ordered_record_expression_value(
+    fields: &[(String, CoreExpr)],
+) -> Result<CanonicalValue, CanonicalError> {
+    Ok(map([
+        ("kind", text("orderedRecord")),
+        (
+            "fields",
+            array_results(fields.iter().map(|(name, value)| {
+                Ok(map([
+                    ("name", text(name)),
+                    ("value", core_expr_value(value)?),
+                ]))
+            }))?,
+        ),
+    ]))
 }
 
 fn core_predicate_value(predicate: &CorePredicate) -> Result<CanonicalValue, CanonicalError> {

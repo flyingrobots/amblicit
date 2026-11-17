@@ -57,6 +57,15 @@ the evidence.
   publishes the schema; earlier packs stay byte-identical and refuse these
   forms.
 
+Fallible record construction uses `orderedRecord` with one array of
+`{name, value}` entries in source evaluation order. Nested failures and calls
+to functions with declared failure sets require this form, including calls
+written with `expect`. Core checks unique names, record field types and the
+choice of representation: fallible fields cannot use the unordered `record`
+map, and total fields cannot use `orderedRecord`. Total records keep the old
+canonical map and bytes, even within a partial function. Canonical result-key
+ordering is unchanged. The CLI review retains the ordered entry array.
+
 ### Terminal values and work
 
 When encoding ordered or structured Target IR, each failure-arm payload is
@@ -98,3 +107,6 @@ Echo's provider lowerer, verifier and runtime do not implement
 `core.failure/v1`, so no failing program executes yet. Failure payloads,
 mapping inside function bodies, and the other forms the Jedit rope drafts
 mark as proposed are outside this feature.
+Those downstream consumers also need explicit `orderedRecord` support before
+they can execute failure-bearing records in source order; schema acceptance
+and native Target lowering do not establish that execution.

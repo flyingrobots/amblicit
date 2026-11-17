@@ -3,6 +3,9 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+#[path = "provider_contract_pack/ordered_records.rs"]
+mod ordered_records;
+
 use cddl_cat::flatten::flatten_from_str;
 
 use amblicit_provider_schema::{

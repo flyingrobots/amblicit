@@ -154,6 +154,12 @@ fn walk_scope(
             }
             Ok(())
         }
+        CoreExpr::OrderedRecord { fields } => {
+            for (_, value) in fields {
+                walk_scope(value, depth + 1, scope, path)?;
+            }
+            Ok(())
+        }
         CoreExpr::List { values } => {
             for value in values {
                 walk_scope(value, depth + 1, scope, path)?;
@@ -227,6 +233,12 @@ pub(super) fn walk(
         CoreExpr::Field { base, .. } => walk(base, depth + 1, check),
         CoreExpr::Record { fields } => {
             for value in fields.values() {
+                walk(value, depth + 1, check)?;
+            }
+            Ok(())
+        }
+        CoreExpr::OrderedRecord { fields } => {
+            for (_, value) in fields {
                 walk(value, depth + 1, check)?;
             }
             Ok(())

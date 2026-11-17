@@ -14,7 +14,9 @@ mod function_preconditions;
 mod source_functions;
 mod variant_expressions;
 
-pub(crate) use failure_sets::CORE_FAILURE_CAPABILITY;
+pub(crate) use failure_sets::{
+    expression_can_fail, CORE_FAILURE_CAPABILITY, MAX_RECORD_ORDER_WORK,
+};
 pub(crate) use function_preconditions::{
     instantiate_precondition, precondition_conjuncts, precondition_nodes,
 };
@@ -1666,6 +1668,9 @@ fn validate_core_expression_types(
             }
             Ok(())
         }
+        CoreExpr::OrderedRecord { fields } => {
+            validate_core_ordered_record_types(module, state, fields, path, depth)
+        }
         CoreExpr::List { values } => {
             for (index, value) in values.iter().enumerate() {
                 validate_core_expression_types(
@@ -1718,6 +1723,32 @@ fn validate_core_expression_types(
             )
         }
     }
+}
+
+fn validate_core_ordered_record_types(
+    module: &CoreModule,
+    state: &mut CoreTypeIntegrityState,
+    fields: &[(String, CoreExpr)],
+    path: &str,
+    depth: usize,
+) -> Result<(), CoreTypeIntegrityFailure> {
+    let mut names = BTreeSet::new();
+    for (name, value) in fields {
+        if name.is_empty() || !names.insert(name) {
+            return Err(CoreTypeIntegrityFailure::new(
+                CoreTypeIntegrityFailureKind::InvalidDefinition,
+                format!("{path}.orderedRecord.{name}"),
+            ));
+        }
+        validate_core_expression_types(
+            module,
+            state,
+            value,
+            &format!("{path}.orderedRecord.{name}"),
+            depth + 1,
+        )?;
+    }
+    Ok(())
 }
 
 fn validate_core_call_types(
@@ -1937,6 +1968,10 @@ pub enum CoreExpr {
     },
     Record {
         fields: BTreeMap<String, CoreExpr>,
+    },
+    /// A fallible record evaluates every field in this source order.
+    OrderedRecord {
+        fields: Vec<(String, CoreExpr)>,
     },
     /// Ordered bounded list; its type comes from the declared binding context.
     List {

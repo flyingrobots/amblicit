@@ -1151,6 +1151,7 @@ struct TypeChecker<'a> {
     expected_type_unavailable: bool,
     checking_diagnostic_peer: bool,
     failures: source_failures::FailureState,
+    record_order_work: usize,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -1188,6 +1189,7 @@ impl<'a> TypeChecker<'a> {
             expected_type_unavailable: false,
             checking_diagnostic_peer: false,
             failures: source_failures::FailureState::default(),
+            record_order_work: crate::core_ir::MAX_RECORD_ORDER_WORK,
         }
     }
 
@@ -5802,10 +5804,8 @@ impl<'a> TypeChecker<'a> {
             return None;
         }
         let ty = TypeShape::canonical_structural(TypeKind::Record(field_types))?;
-        Some(TypedValue {
-            expr: CoreExpr::Record { fields },
-            ty,
-        })
+        let expr = self.check_record_order(entries, fields, span)?;
+        Some(TypedValue { expr, ty })
     }
     fn report_unavailable_record_mismatches(
         &mut self,

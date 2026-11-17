@@ -334,6 +334,9 @@ impl<'a> LocalAvailability<'a> {
             CoreExpr::Record { fields } => fields
                 .values()
                 .all(|value| self.expression(value, depth + 1)),
+            CoreExpr::OrderedRecord { fields } => fields
+                .iter()
+                .all(|(_, value)| self.expression(value, depth + 1)),
             CoreExpr::List { values } => {
                 values.iter().all(|value| self.expression(value, depth + 1))
             }
@@ -399,6 +402,7 @@ fn provably_non_integer(expression: &CoreExpr, depth: usize) -> bool {
             .any(|arm| provably_non_integer(&arm.body, depth + 1)),
         // A failure is never an integer value; treating it as non-integer fails closed.
         CoreExpr::Record { .. }
+        | CoreExpr::OrderedRecord { .. }
         | CoreExpr::List { .. }
         | CoreExpr::Variant { .. }
         | CoreExpr::Fail { .. } => true,

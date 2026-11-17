@@ -102,6 +102,7 @@ impl TypeChecker<'_> {
             | CoreExpr::Const(_)
             | CoreExpr::Variant { .. }
             | CoreExpr::Record { .. }
+            | CoreExpr::OrderedRecord { .. }
             | CoreExpr::List { .. }
             | CoreExpr::Field { .. }
             | CoreExpr::If { .. } => None,
@@ -256,6 +257,9 @@ fn find_in_expression(
         CoreExpr::Record { fields } => fields
             .values()
             .find_map(|value| find_in_expression(value, visit)),
+        CoreExpr::OrderedRecord { fields } => fields
+            .iter()
+            .find_map(|(_, value)| find_in_expression(value, visit)),
         CoreExpr::List { values } | CoreExpr::Call { args: values, .. } => values
             .iter()
             .find_map(|value| find_in_expression(value, visit)),

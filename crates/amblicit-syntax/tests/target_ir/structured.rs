@@ -276,6 +276,9 @@ fn rename_expr(expr: &mut CoreExpr, from: &str, to: &LocalRef) {
         CoreExpr::Record { fields } => fields
             .values_mut()
             .for_each(|value| rename_expr(value, from, to)),
+        CoreExpr::OrderedRecord { fields } => fields
+            .iter_mut()
+            .for_each(|(_, value)| rename_expr(value, from, to)),
         CoreExpr::List { values } => values
             .iter_mut()
             .for_each(|value| rename_expr(value, from, to)),

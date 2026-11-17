@@ -296,13 +296,17 @@ intent evaluate",
     );
     let core = compile(&source);
     assert_eq!(function_failures(&core, "pair"), [TOO_SMALL]);
-    let CoreExpr::Record { fields } = &core.functions["pair"].body.result else {
-        panic!("pair returns a record")
+    let CoreExpr::OrderedRecord { fields } = &core.functions["pair"].body.result else {
+        panic!("fallible pair preserves record evaluation order")
     };
+    let [(left_name, left), (right_name, right)] = fields.as_slice() else {
+        panic!("pair has two ordered fields")
+    };
+    assert_eq!([left_name.as_str(), right_name.as_str()], ["left", "right"]);
     // `expect` leaves an ordinary call in Core.
     let checked = "rope.example@1.checked";
-    assert!(matches!(&fields["left"], CoreExpr::Call { callee, .. } if callee == checked));
-    let CoreExpr::Call { args, .. } = &fields["right"] else {
+    assert!(matches!(left, CoreExpr::Call { callee, .. } if callee == checked));
+    let CoreExpr::Call { args, .. } = right else {
         panic!("right calls retain")
     };
     assert!(matches!(&args[0], CoreExpr::Call { callee, .. } if callee == checked));

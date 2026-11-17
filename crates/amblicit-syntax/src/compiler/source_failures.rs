@@ -8,8 +8,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
     error, expression_identity, CompilerErrorKind, CompilerStage, CoreExpr,
-    EffectOutputExpectation, Expr, FunctionDecl, LocalEnvironment, Span, TypeChecker, TypeKind,
-    TypeShape, TypedValue,
+    EffectOutputExpectation, Expr, FunctionDecl, LocalEnvironment, RecordEntry, Span, TypeChecker,
+    TypeKind, TypeShape, TypedValue,
 };
 
 /// The capability a Core module requires once any function declares failures.
@@ -38,6 +38,73 @@ struct FunctionScope {
 }
 
 impl TypeChecker<'_> {
+    pub(super) fn check_record_order(
+        &mut self,
+        entries: &[RecordEntry],
+        mut fields: BTreeMap<String, CoreExpr>,
+        span: Span,
+    ) -> Option<CoreExpr> {
+        if fields.len() != entries.len() {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::TypeMismatch,
+                "record fields must have distinct names",
+                span,
+            ));
+            return None;
+        }
+        if !self.record_fields_can_fail(&fields, span)? {
+            return Some(CoreExpr::Record { fields });
+        }
+        let mut ordered = Vec::with_capacity(fields.len());
+        for entry in entries {
+            let name = match entry {
+                RecordEntry::Field { name, .. } | RecordEntry::Shorthand { name, .. } => name,
+                RecordEntry::Spread(_) => {
+                    return self.failure_shape("unsupported record spread", span)
+                }
+            };
+            let Some(value) = fields.remove(name) else {
+                return self.failure_shape("record field has no checked value", span);
+            };
+            ordered.push((name.clone(), value));
+        }
+        Some(CoreExpr::OrderedRecord { fields: ordered })
+    }
+
+    fn record_fields_can_fail(
+        &mut self,
+        fields: &BTreeMap<String, CoreExpr>,
+        span: Span,
+    ) -> Option<bool> {
+        let prefix = format!("{}.", self.resolved.coordinate);
+        let mut remaining = self.record_order_work;
+        let result = fields.values().try_fold(false, |can_fail, value| {
+            crate::core_ir::expression_can_fail(
+                value,
+                |callee| {
+                    callee
+                        .strip_prefix(&prefix)
+                        .is_some_and(|name| !self.function_failures(name).is_empty())
+                },
+                &mut remaining,
+            )
+            .map(|field_can_fail| can_fail || field_can_fail)
+        });
+        self.record_order_work = remaining;
+        if let Ok(can_fail) = result {
+            Some(can_fail)
+        } else {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::InvalidBound,
+                "record failure analysis exceeds its bounded work",
+                span,
+            ));
+            None
+        }
+    }
+
     /// Record every `failure` declaration under its module-owned coordinate.
     pub(super) fn declare_source_failures(&mut self) {
         for declaration in &self.resolved.failures {

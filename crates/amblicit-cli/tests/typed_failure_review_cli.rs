@@ -19,6 +19,10 @@ intent evaluate(input: Input) returns Output profile p.read basis none budget <=
 ";
 
 fn project(domain: &str) -> Vec<Value> {
+    project_source(domain, SOURCE)
+}
+
+fn project_source(domain: &str, source: &str) -> Vec<Value> {
     let settings = json!({
         "schema": "edict.compiler.settings/v1", "type": "compilerSettings",
         "operation": "project", "emit": ["diagnostics", "core", "targetIr"],
@@ -38,7 +42,7 @@ fn project(domain: &str) -> Vec<Value> {
     });
     let input = json!({
         "schema": "edict.compiler.input/v1", "type": "compilerInput",
-        "kind": "source", "name": "TypedFailureReview.edict", "source": SOURCE,
+        "kind": "source", "name": "TypedFailureReview.edict", "source": source,
     });
     let mut child = Command::new(env!("CARGO_BIN_EXE_amblicit"))
         .stdin(Stdio::piped())
@@ -120,6 +124,40 @@ fn target_review_omits_failure_arms_for_an_ordinary_binding() {
         assert!(
             bindings[1].get("failureArms").is_none(),
             "{domain}: ordinary binding retains its existing review shape"
+        );
+    }
+}
+
+#[test]
+fn public_review_preserves_ordered_record_entry_sequence() {
+    let source = format!(
+        "{SOURCE}\n{}",
+        r"
+failure First;
+failure Second;
+type Pair = { z: U64, a: U64 };
+fn ordered() -> Pair fails First, Second { return { z: fail First, a: fail Second }; }
+fn total() -> Pair { return { z: 1u64, a: 2u64 }; }
+"
+    );
+    for domain in ["echo.span-ir/v2", "echo.span-ir/v3"] {
+        let records = project_source(domain, &source);
+        let functions = &record(&records, "core")["review"]["functions"];
+        assert_eq!(
+            functions["ordered"]["body"]["result"],
+            json!({
+                "kind": "orderedRecord",
+                "fields": [
+                    {"name":"z", "value":{"kind":"fail", "failure":"review.example@1.First"}},
+                    {"name":"a", "value":{"kind":"fail", "failure":"review.example@1.Second"}},
+                ],
+            }),
+            "{domain}: review retains source evaluation order"
+        );
+        assert_eq!(functions["total"]["body"]["result"]["kind"], "record");
+        assert!(
+            functions["total"]["body"]["result"]["fields"].is_object(),
+            "{domain}: total record retains its existing review shape"
         );
     }
 }

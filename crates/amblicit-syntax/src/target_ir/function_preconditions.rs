@@ -51,7 +51,10 @@ pub(super) fn has_admissible_shape(module: &CoreModule, predicate: &CorePredicat
 
 fn expression_is_admissible(module: &CoreModule, expression: &CoreExpr) -> bool {
     match expression {
-        CoreExpr::Fold { .. } | CoreExpr::Match { .. } | CoreExpr::Fail { .. } => false,
+        CoreExpr::Fold { .. }
+        | CoreExpr::Match { .. }
+        | CoreExpr::Fail { .. }
+        | CoreExpr::OrderedRecord { .. } => false,
         CoreExpr::Local { .. } | CoreExpr::Const(_) => true,
         CoreExpr::Variant { payload, .. } => payload
             .as_deref()
@@ -101,7 +104,10 @@ fn expression_names_only(expression: &CoreExpr, params: &[LocalRef]) -> bool {
     match expression {
         CoreExpr::Local { reference } => params.contains(reference),
         CoreExpr::Const(_) => true,
-        CoreExpr::Fold { .. } | CoreExpr::Match { .. } | CoreExpr::Fail { .. } => false,
+        CoreExpr::Fold { .. }
+        | CoreExpr::Match { .. }
+        | CoreExpr::Fail { .. }
+        | CoreExpr::OrderedRecord { .. } => false,
         CoreExpr::Variant { payload, .. } => payload
             .as_deref()
             .is_none_or(|payload| expression_names_only(payload, params)),

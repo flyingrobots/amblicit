@@ -895,6 +895,17 @@ byte-identical to the same module before this feature existed.
 - `{ kind: "fail", failure }` is the Core expression for `fail Name`.
 - `expect` leaves no Core node. A call keeps its ordinary `call` form, and
   propagation follows from the callee's declared set.
+- A record whose field expressions can fail uses
+  `{ kind: "orderedRecord", fields: [{ name, value }, ...] }`
+  (`EDICT-CORE-FAIL-RECORD-001`). The entry array is the single authority for
+  strict source evaluation order: the first failure ends construction and the
+  enclosing function. Field names are unique and the field set and types match
+  the ordinary record type. Core independently rejects a fallible unordered
+  `record` or an `orderedRecord` whose fields cannot fail. Nested failures and
+  calls to functions with declared failures count, including calls written
+  with `expect`. Total record construction keeps its existing canonical field
+  map and bytes, even inside a function that declares failures. Result record
+  keys still use canonical value ordering; evaluation order is separate.
 - A mapped `let` becomes `{ kind: "attempt", binding, value, failureMap }`.
   `value` is the call, and `failureMap` maps every failure coordinate of the
   callee to a terminal obstruction reason (`reasonKind` plus payload), the

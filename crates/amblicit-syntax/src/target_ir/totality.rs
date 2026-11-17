@@ -282,6 +282,9 @@ fn expression_is_total_at_depth(
         CoreExpr::Record { fields } => fields
             .values()
             .all(|value| expression_is_total_at_depth(core, value, constraints, depth + 1)),
+        CoreExpr::OrderedRecord { fields } => fields
+            .iter()
+            .all(|(_, value)| expression_is_total_at_depth(core, value, constraints, depth + 1)),
         CoreExpr::List { values } => values
             .iter()
             .all(|value| expression_is_total_at_depth(core, value, constraints, depth + 1)),

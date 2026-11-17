@@ -416,6 +416,9 @@ fn mutate_first_local_reference_type(expression: &mut CoreExpr, ty: &str) -> boo
         CoreExpr::Record { fields } => fields
             .values_mut()
             .any(|value| mutate_first_local_reference_type(value, ty)),
+        CoreExpr::OrderedRecord { fields } => fields
+            .iter_mut()
+            .any(|(_, value)| mutate_first_local_reference_type(value, ty)),
         CoreExpr::List { values } => values
             .iter_mut()
             .any(|value| mutate_first_local_reference_type(value, ty)),

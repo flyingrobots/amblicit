@@ -95,6 +95,7 @@ fn rewrite(e: &mut CoreExpr, f: &mut impl FnMut(&mut CoreExpr) -> bool) -> bool 
             rewrite(scrutinee, f) || arms.iter_mut().any(|arm| rewrite(&mut arm.body, f))
         }
         CoreExpr::Record { fields } => fields.values_mut().any(|v| rewrite(v, f)),
+        CoreExpr::OrderedRecord { fields } => fields.iter_mut().any(|(_, value)| rewrite(value, f)),
         CoreExpr::List { values } => values.iter_mut().any(|v| rewrite(v, f)),
         CoreExpr::Field { base, .. } => rewrite(base, f),
         CoreExpr::Call { args, .. } => args.iter_mut().any(|v| rewrite(v, f)),

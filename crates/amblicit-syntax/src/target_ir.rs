@@ -1860,6 +1860,9 @@ fn expression_has_closed_authority(
         CoreExpr::Record { fields } => fields
             .values()
             .all(|value| expression_has_closed_authority(core, pure_functions, value, available)),
+        CoreExpr::OrderedRecord { fields } => fields.iter().all(|(_, value)| {
+            expression_has_closed_authority(core, pure_functions, value, available)
+        }),
         CoreExpr::List { values } => values
             .iter()
             .all(|value| expression_has_closed_authority(core, pure_functions, value, available)),
@@ -1924,6 +1927,29 @@ fn record_fits_declared_type(
                 expected_fields.get(field).expect("equal record field keys"),
                 available,
             )
+        })
+}
+
+fn ordered_record_fits_declared_type(
+    core: &CoreModule,
+    pure_functions: &[TargetPureFunctionFact],
+    fields: &[(String, CoreExpr)],
+    expected: &str,
+    available: &BTreeMap<&str, &LocalRef>,
+) -> bool {
+    let Some(CoreType::Record {
+        fields: expected_fields,
+    }) = resolved_core_type(core, expected)
+    else {
+        return false;
+    };
+    let mut seen = BTreeSet::new();
+    fields.len() == expected_fields.len()
+        && fields.iter().all(|(name, value)| {
+            seen.insert(name)
+                && expected_fields.get(name).is_some_and(|expected| {
+                    expression_fits_declared_type(core, pure_functions, value, expected, available)
+                })
         })
 }
 
@@ -1999,6 +2025,26 @@ fn prelude_type_coordinate(
     }
 }
 
+fn field_fits_declared_type(
+    core: &CoreModule,
+    pure_functions: &[TargetPureFunctionFact],
+    base: &CoreExpr,
+    field: &str,
+    expected: &str,
+    available: &BTreeMap<&str, &LocalRef>,
+) -> bool {
+    let Some(field_shape) = field_expression_shape(core, pure_functions, base, field, available)
+    else {
+        return false;
+    };
+    comparison_shape_fits(
+        core,
+        &field_shape,
+        &ComparisonOperandShape::Coordinate(expected.to_owned()),
+        0,
+    )
+}
+
 fn expression_fits_declared_type(
     core: &CoreModule,
     pure_functions: &[TargetPureFunctionFact],
@@ -2035,18 +2081,11 @@ fn expression_fits_declared_type(
         CoreExpr::Record { fields } => {
             record_fits_declared_type(core, pure_functions, fields, expected, available)
         }
+        CoreExpr::OrderedRecord { fields } => {
+            ordered_record_fits_declared_type(core, pure_functions, fields, expected, available)
+        }
         CoreExpr::Field { base, field } => {
-            let Some(field_shape) =
-                field_expression_shape(core, pure_functions, base, field, available)
-            else {
-                return false;
-            };
-            comparison_shape_fits(
-                core,
-                &field_shape,
-                &ComparisonOperandShape::Coordinate(expected.to_owned()),
-                0,
-            )
+            field_fits_declared_type(core, pure_functions, base, field, expected, available)
         }
         CoreExpr::Call { callee, .. } if is_typed_prelude_operation(callee) => {
             expression_type_coordinate(core, pure_functions, expression, available)
@@ -2360,6 +2399,7 @@ fn expression_string_shape(
             CoreValue::Null | CoreValue::Bool(_) | CoreValue::Int { .. } | CoreValue::Bytes(_),
         )
         | CoreExpr::Record { .. }
+        | CoreExpr::OrderedRecord { .. }
         | CoreExpr::List { .. }
         | CoreExpr::Fail { .. }
         | CoreExpr::Variant { .. } => None,
@@ -2452,6 +2492,7 @@ fn expression_type_coordinate(
         | CoreExpr::Const(CoreValue::Null)
         | CoreExpr::Fail { .. }
         | CoreExpr::Record { .. }
+        | CoreExpr::OrderedRecord { .. }
         | CoreExpr::List { .. }
         | CoreExpr::Call { .. } => None,
     }
@@ -2577,6 +2618,9 @@ fn expression_references_are_available(
         CoreExpr::Record { fields } => fields
             .values()
             .all(|value| expression_references_are_available(value, available)),
+        CoreExpr::OrderedRecord { fields } => fields
+            .iter()
+            .all(|(_, value)| expression_references_are_available(value, available)),
         CoreExpr::List { values } => values
             .iter()
             .all(|value| expression_references_are_available(value, available)),
@@ -2736,6 +2780,9 @@ fn expression_has_empty_aggregate(expression: &CoreExpr, depth: usize) -> bool {
         CoreExpr::Record { fields } => fields
             .values()
             .any(|value| expression_has_empty_aggregate(value, depth + 1)),
+        CoreExpr::OrderedRecord { fields } => fields
+            .iter()
+            .any(|(_, value)| expression_has_empty_aggregate(value, depth + 1)),
         CoreExpr::List { values } | CoreExpr::Call { args: values, .. } => values
             .iter()
             .any(|value| expression_has_empty_aggregate(value, depth + 1)),
@@ -2860,6 +2907,7 @@ fn expression_comparisons_admissible(
         CoreExpr::Variant { payload, .. } => payload.as_deref().is_none_or(child),
         CoreExpr::Local { .. } | CoreExpr::Const(_) | CoreExpr::Fail { .. } => true,
         CoreExpr::Record { fields } => fields.values().all(child),
+        CoreExpr::OrderedRecord { fields } => fields.iter().all(|(_, value)| child(value)),
         CoreExpr::List { values } | CoreExpr::Call { args: values, .. } => values.iter().all(child),
         CoreExpr::Field { base, .. } => child(base),
         CoreExpr::If {
@@ -3092,6 +3140,16 @@ fn comparison_operand_shape(
             })
             .collect::<Option<BTreeMap<_, _>>>()
             .map(ComparisonOperandShape::Record),
+        CoreExpr::OrderedRecord { fields } => {
+            let mut shapes = BTreeMap::new();
+            for (name, value) in fields {
+                let shape = comparison_operand_shape(core, pure_functions, value, available)?;
+                if shapes.insert(name.clone(), shape).is_some() {
+                    return None;
+                }
+            }
+            Some(ComparisonOperandShape::Record(shapes))
+        }
         CoreExpr::Field { base, field } => {
             field_expression_shape(core, pure_functions, base, field, available)
         }
@@ -3820,6 +3878,9 @@ fn expr_references_step_output(expr: &CoreExpr, step_outputs: &BTreeSet<String>)
         CoreExpr::Record { fields } => fields
             .values()
             .any(|field| expr_references_step_output(field, step_outputs)),
+        CoreExpr::OrderedRecord { fields } => fields
+            .iter()
+            .any(|(_, value)| expr_references_step_output(value, step_outputs)),
         CoreExpr::List { values } => values
             .iter()
             .any(|value| expr_references_step_output(value, step_outputs)),

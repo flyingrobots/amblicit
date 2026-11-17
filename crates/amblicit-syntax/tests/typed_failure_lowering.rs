@@ -35,6 +35,9 @@ mod terminal_failure_arithmetic;
 #[path = "typed_failure_lowering/failure_arm_work.rs"]
 mod failure_arm_work;
 
+#[path = "typed_failure_lowering/intrinsic_failure_arm_cost.rs"]
+mod intrinsic_failure_arm_cost;
+
 const BASE: &str = r"package rope.example@1;
 failure ClosureTooSmall;
 failure ConflictingContent;

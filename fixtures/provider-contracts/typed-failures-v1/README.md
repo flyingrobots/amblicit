@@ -10,6 +10,13 @@ sets, `fail` placement, map keys and the `core.failure/v1` capability are
 semantic checks owned by Core validation and its consumers. A provider runs
 none of this until it implements `core.failure/v1`.
 
+Fallible record expressions use `orderedRecord` with a nonempty array of
+`{name, value}` entries. The array retains evaluation order; ordinary total
+records keep their existing field map. The schema checks entry shape, while
+Core checks unique names, record field types and whether the fields can fail.
+Consumers need explicit ordered-record evaluation in addition to recognizing
+the schema; this publication does not claim downstream Echo execution.
+
 The pack coordinate remains `edict.provider-contract-pack.cddl@1` and the manifest
 API version remains `edict.provider-contract-pack/v1`. Consumers select the exact
 CDDL/manifest pair and verify its schema digest; the same coordinate does not make
