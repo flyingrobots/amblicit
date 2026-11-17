@@ -33,9 +33,11 @@ sized for v2.
 Under v2 values are immutable and shared by reference. Only building a value
 costs work proportional to its size. Reading a local, a parameter, a field, a
 list element or fold state, passing an argument and returning a result each
-cost one step and allocate nothing. Building a record, list, variant or
-constant, appending to or concatenating lists, and byte and integer
-operations keep their v1 charges.
+cost one step and allocate nothing. Building a value charges only its shell,
+because its children are shared. Byte, text, integer and other operations
+keep their v1 charges. An earlier draft kept full v1 charges for building
+records and lists; that still copied the whole arena into every new fold
+state, so it was dropped.
 
 The source checker and native Target use one meter for v2, so their minimum
 budgets are equal by construction. Target still recomputes it from Core alone

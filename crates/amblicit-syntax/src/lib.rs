@@ -76,6 +76,7 @@ pub mod canonical;
 pub mod compiler;
 pub mod contract_bundle;
 pub mod core_ir;
+mod cost_schedule;
 pub mod highlight;
 pub mod lawpack;
 pub mod lawpack_adapter;
@@ -148,6 +149,7 @@ pub use core_ir::{
     ResourceRef, ValidatedCoreModule, CORE_API_VERSION, MAX_FUNCTION_PRECONDITION_CONJUNCTS,
     MAX_FUNCTION_PRECONDITION_NODES,
 };
+pub use cost_schedule::CoreCostSchedule;
 pub use highlight::{highlight_source, HighlightRole, HighlightToken};
 pub use lawpack::{
     decode_lawpack_bundle, validate_lawpack_dependency_graph, LawpackApertureRequirement,

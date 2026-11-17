@@ -183,6 +183,7 @@ pub struct CompilerContext {
     bounds: BTreeMap<String, BoundFact>,
     budgets: BTreeMap<String, CoreBudget>,
     target_pure_intrinsics: Vec<TargetPureIntrinsicFact>,
+    cost_schedule: crate::CoreCostSchedule,
 }
 
 impl CompilerContext {
@@ -331,6 +332,17 @@ impl CompilerContext {
     }
 
     #[must_use]
+    /// Select the Core work schedule for every intent in the module.
+    ///
+    /// [`crate::CoreCostSchedule::SharedReads`] adds the required capability
+    /// `core.cost.shared-reads/v1` to Core and admits budgets with native
+    /// Target's shared-read meter.
+    pub fn with_core_cost_schedule(mut self, schedule: crate::CoreCostSchedule) -> Self {
+        self.cost_schedule = schedule;
+        self
+    }
+
+    #[must_use]
     pub fn with_budget(mut self, source_coordinate: impl Into<String>, budget: CoreBudget) -> Self {
         self.budgets.insert(source_coordinate.into(), budget);
         self
@@ -371,6 +383,7 @@ pub struct ResolvedModule {
     /// `failure` declarations, in source order.
     pub failures: Vec<FailureDecl>,
     pub intents: Vec<ResolvedIntent>,
+    pub(crate) cost_schedule: crate::CoreCostSchedule,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -452,7 +465,42 @@ pub fn compile_to_core(
     })?;
     let resolved = resolve_module(module, context)?;
     let typed = type_check(&resolved)?;
-    lower_core(&typed)
+    let core = lower_core(&typed)?;
+    shared_read_budgets_fit(&resolved, &core)?;
+    Ok(core)
+}
+
+/// Under the shared-read schedule the source checker admits budgets with the
+/// same meter native Target uses, so both minimums are equal.
+fn shared_read_budgets_fit(
+    resolved: &ResolvedModule,
+    core: &CoreModule,
+) -> Result<(), Vec<CompilerError>> {
+    if resolved.cost_schedule != crate::CoreCostSchedule::SharedReads {
+        return Ok(());
+    }
+    let errors: Vec<_> = resolved
+        .intents
+        .iter()
+        .filter(|intent| {
+            core.intents.get(&intent.name).is_none_or(|lowered| {
+                !crate::target_ir::fold_work::intent_cost_fits(core, &[], lowered)
+            })
+        })
+        .map(|intent| {
+            error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::InvalidBound,
+                "shared-read Core work is unestablished or exceeds the operation budget",
+                intent.source.span,
+            )
+        })
+        .collect();
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
 }
 
 /// Resolve source names and explicit profile/budget facts.
@@ -536,6 +584,7 @@ pub fn resolve_module(
             source_functions,
             failures,
             intents,
+            cost_schedule: context.cost_schedule,
         },
     )
 }
@@ -1217,6 +1266,10 @@ impl<'a> TypeChecker<'a> {
             metered.list_work_pass = list_operations::WorkPass::Meter;
             return metered.check();
         }
+        if self.resolved.cost_schedule == crate::CoreCostSchedule::SharedReads {
+            self.core_capabilities
+                .insert(crate::target_ir::fold_work::SHARED_READS_CAPABILITY.into());
+        }
         let module = TypedModule {
             required_core_capabilities: self.core_capabilities.into_iter().collect(),
             coordinate: self.resolved.coordinate.clone(),
@@ -1642,8 +1695,12 @@ impl<'a> TypeChecker<'a> {
             let frame = self.source_intent_frame_cost(&input, &output, intent.source.span)?;
             cost = self.checked_helper_cost_add(cost, frame, intent.source.span)?;
         }
-        if cost.steps > intent.budget.max_steps
-            || cost.allocated_bytes > intent.budget.max_allocated_bytes
+        // Under the shared-read schedule, steps and allocation are admitted by
+        // the shared meter after lowering; output bytes are schedule-neutral.
+        let copying = self.resolved.cost_schedule == crate::CoreCostSchedule::Copying;
+        if (copying
+            && (cost.steps > intent.budget.max_steps
+                || cost.allocated_bytes > intent.budget.max_allocated_bytes))
             || cost.output_bytes > intent.budget.max_output_bytes
         {
             self.errors.push(error(
