@@ -4,10 +4,11 @@ This publication adds the `echo.span-ir/v3` variant of the `target-ir-artifact`
 root to the [source-module publication](../source-modules-v1/README.md). Its
 `executionOrder` is a tree: instruction ids as text, plus `for` and `branch`
 maps whose nested arrays use the same entry rule. This CDDL/manifest pair is now
-frozen. The generator writes the separate
-[pure-intrinsic-catalog publication](../pure-intrinsic-catalog-v1/README.md); tests
-reproduce this pair from the pre-fold Core schema and the frozen target-profile
-schema in [`fixtures/target-profile/pre-catalog-v2-target-profile.cddl`](../../target-profile/pre-catalog-v2-target-profile.cddl).
+frozen. The generator writes the cumulative
+[typed-failures publication](../typed-failures-v1/README.md). Tests reproduce
+this pair from the pre-fold Core schema, the pre-typed-failure Target IR schema,
+and the frozen pre-catalog-v2 target-profile schema in
+[`fixtures/target-profile/pre-catalog-v2-target-profile.cddl`](../../target-profile/pre-catalog-v2-target-profile.cddl).
 
 The source-module, source-function and v1 pairs remain byte-identical. Their
 Target IR schema bytes are preserved in

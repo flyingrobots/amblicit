@@ -1744,6 +1744,7 @@ fn semantic_effects_required_by_block(
                     blocks.push(then_block);
                 }
                 amblicit_syntax::CoreNode::Let { .. }
+                | amblicit_syntax::CoreNode::Attempt { .. }
                 | amblicit_syntax::CoreNode::Require { .. }
                 | amblicit_syntax::CoreNode::ExternalActionRequest { .. } => {}
             }

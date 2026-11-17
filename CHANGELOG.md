@@ -20,6 +20,35 @@ versions still track specification maturity rather than a released product.
   `SurfaceValidation`. Signed checked forms and provider/runtime support are
   separate work (issue #263).
 
+- Add typed failures to source functions. `failure ClosureTooSmall;`
+  declares a failure. `fn f(...) -> T fails ClosureTooSmall` declares the
+  exact set the body produces with `fail` and `expect`. An intent maps every
+  failure with `let x = f(...) else { ClosureTooSmall => Obstruction };`. No
+  other way to fail compiles, and each violation has its own diagnostic kind
+  (`UnknownFailure`, `UndeclaredFailure`, `UnraisedFailure`, `UnhandledFailure`,
+  `IncompleteFailureMapping`). Core gains function `failures`, the `fail`
+  expression and the `attempt` node under `core.failure/v1`. Fallible record
+  fields use an `orderedRecord` entry array so their first failure follows
+  authored evaluation order; total record maps remain byte-identical. Core
+  independently checks the representation choice and unique field names.
+  Ordered and
+  structured Target IR carry `failureArms` on pure bindings. All of these are
+  omitted when unused, so existing artifacts are byte-identical. The provider
+  contract pack `typed-failures-v1` publishes the schema;
+  `function-preconditions-v1` and earlier packs are unchanged. Echo must implement
+  `core.failure/v1` before a failing program can run.
+
+- Preserve typed-failure expression context in Boolean predicates (including
+  nested conditional and match arms), both
+  comparison operands, and bounded list results propagated with `expect`.
+  Native integer signatures admit validated terminal operands in source-accepted
+  arithmetic. Failure-map work reserves the largest complete arm separately
+  for steps and allocated bytes, retaining each selected payload field's charge.
+  The independent intrinsic meter also reserves only its largest complete arm.
+  Result-projection verification for ordered Target v2 now binds the full
+  Core instruction order and corresponding requirement/effect rows, refusing
+  substitutions that could change the first obstruction.
+
 - Compile source `enum Name { A, B }` declarations as named Core variants
   whose cases carry no payload, under `core.variant/v1`. `Name.A` selects a
   case, also through an alias or a linked source module; `Name::A` on an enum
@@ -60,7 +89,6 @@ versions still track specification maturity rather than a released product.
   `<intent>.targetIntrinsic`; v1 and v2 encoding is unchanged. A new golden,
   `echo-dpo-2-structured`, is added; every existing golden is byte-identical.
   Echo's provider support for v3 under `echo.dpo@2` is flyingrobots/echo#947.
-
 - Add function preconditions (#264). A source function may write `where`
   clauses after its return type, as in `fn cut(bytes: Bytes<max=8>, start:
   U64, end: U64) -> Bytes<max=8> where start <= end, end <= len(bytes)`. The

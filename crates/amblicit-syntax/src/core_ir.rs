@@ -9,9 +9,14 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+mod failure_sets;
 mod function_preconditions;
 mod source_functions;
 mod variant_expressions;
+
+pub(crate) use failure_sets::{
+    expression_can_fail, CORE_FAILURE_CAPABILITY, MAX_RECORD_ORDER_WORK,
+};
 pub(crate) use function_preconditions::{
     instantiate_precondition, precondition_conjuncts, precondition_nodes,
 };
@@ -55,6 +60,9 @@ pub struct CoreFunction {
     /// Canonical Core omits the field when the list is empty.
     pub preconditions: Vec<CorePredicate>,
     pub body: CorePureBlock,
+    /// Sorted coordinates of the failures this function may end with; empty
+    /// for a total function, in which case canonical Core omits the field.
+    pub failures: Vec<String>,
 }
 
 /// Ordered immutable pure bindings followed by one result expression.
@@ -899,6 +907,7 @@ pub fn validate_core_module_type_integrity(
             &format!("intents.{intent_name}"),
         )?;
     }
+    failure_sets::validate_failure_sets(module)?;
 
     Ok(ValidatedCoreModule { module })
 }
@@ -1327,6 +1336,47 @@ fn validate_core_block_types(
     )
 }
 
+/// Type integrity of a failure-mapped call; its failure set is judged later.
+fn validate_core_attempt_types(
+    module: &CoreModule,
+    state: &mut CoreTypeIntegrityState,
+    node: &CoreNode,
+    path: &str,
+    depth: usize,
+) -> Result<(), CoreTypeIntegrityFailure> {
+    let CoreNode::Attempt {
+        binding,
+        value,
+        failure_map,
+    } = node
+    else {
+        return Ok(());
+    };
+    validate_core_local_type(
+        module,
+        state,
+        binding,
+        &format!("{path}.attempt.binding.type"),
+    )?;
+    validate_core_expression_types(
+        module,
+        state,
+        value,
+        &format!("{path}.attempt.value"),
+        depth,
+    )?;
+    for (failure, reason) in failure_map {
+        validate_core_obstruction_reason_types(
+            module,
+            state,
+            reason,
+            &format!("{path}.attempt.failureMap.{failure}"),
+            depth,
+        )?;
+    }
+    Ok(())
+}
+
 fn validate_core_local_type(
     module: &CoreModule,
     state: &mut CoreTypeIntegrityState,
@@ -1374,6 +1424,7 @@ fn validate_core_node_types(
                 depth,
             )
         }
+        CoreNode::Attempt { .. } => validate_core_attempt_types(module, state, node, path, depth),
         CoreNode::Effect { .. } => validate_core_effect_types(module, state, node, path, depth),
         CoreNode::ExternalActionRequest { .. } => {
             validate_external_action_request_types(module, state, node, path, depth)
@@ -1592,7 +1643,7 @@ fn validate_core_expression_types(
         CoreExpr::Local { reference } => {
             validate_core_local_type(module, state, reference, &format!("{path}.local.type"))
         }
-        CoreExpr::Const(_) => Ok(()),
+        CoreExpr::Const(_) | CoreExpr::Fail { .. } => Ok(()),
         CoreExpr::Variant { ty, case, payload } => {
             variant_expressions::validate(module, state, ty, case, payload.as_deref(), path, depth)
         }
@@ -1616,6 +1667,9 @@ fn validate_core_expression_types(
                 )?;
             }
             Ok(())
+        }
+        CoreExpr::OrderedRecord { fields } => {
+            validate_core_ordered_record_types(module, state, fields, path, depth)
         }
         CoreExpr::List { values } => {
             for (index, value) in values.iter().enumerate() {
@@ -1669,6 +1723,32 @@ fn validate_core_expression_types(
             )
         }
     }
+}
+
+fn validate_core_ordered_record_types(
+    module: &CoreModule,
+    state: &mut CoreTypeIntegrityState,
+    fields: &[(String, CoreExpr)],
+    path: &str,
+    depth: usize,
+) -> Result<(), CoreTypeIntegrityFailure> {
+    let mut names = BTreeSet::new();
+    for (name, value) in fields {
+        if name.is_empty() || !names.insert(name) {
+            return Err(CoreTypeIntegrityFailure::new(
+                CoreTypeIntegrityFailureKind::InvalidDefinition,
+                format!("{path}.orderedRecord.{name}"),
+            ));
+        }
+        validate_core_expression_types(
+            module,
+            state,
+            value,
+            &format!("{path}.orderedRecord.{name}"),
+            depth + 1,
+        )?;
+    }
+    Ok(())
 }
 
 fn validate_core_call_types(
@@ -1889,6 +1969,10 @@ pub enum CoreExpr {
     Record {
         fields: BTreeMap<String, CoreExpr>,
     },
+    /// A fallible record evaluates every field in this source order.
+    OrderedRecord {
+        fields: Vec<(String, CoreExpr)>,
+    },
     /// Ordered bounded list; its type comes from the declared binding context.
     List {
         values: Vec<CoreExpr>,
@@ -1906,6 +1990,10 @@ pub enum CoreExpr {
         predicate: Box<CorePredicate>,
         then_value: Box<CoreExpr>,
         else_value: Box<CoreExpr>,
+    },
+    /// Ends the enclosing source function with one of its declared failures.
+    Fail {
+        failure: String,
     },
 }
 
@@ -2658,6 +2746,13 @@ pub enum CoreNode {
         effect: String,
         input: CoreExpr,
         obstruction_map: BTreeMap<String, CoreObstructionArm>,
+    },
+    /// Binds a call to a failing source function, mapping each of its declared
+    /// failures to a terminal obstruction.
+    Attempt {
+        binding: LocalRef,
+        value: CoreExpr,
+        failure_map: BTreeMap<String, CoreObstructionReason>,
     },
     ExternalActionRequest {
         binding: LocalRef,

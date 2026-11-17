@@ -20,10 +20,12 @@ bytes, so its pinned digest, and every target profile, package and piece of
 evidence that pins it, must be regenerated. A generic pure constructor cannot be
 listed in a v2 catalog at all; only the frozen v1 publications can carry one.
 
-The publications are disjoint for catalogs. This pack refuses a v1 catalog, and
-the bounded-state-fold and function-precondition packs refuse a v2 catalog. The compiler
-admits pure intrinsics only from a v2 catalog, so a provider whose source
-programs call pure intrinsics must select this pack.
+The publications are disjoint for catalogs. This frozen pack refuses a v1
+catalog, and the bounded-state-fold and function-precondition packs refuse a v2
+catalog. The later cumulative typed-failure pack also carries the v2 catalog
+schema. The compiler admits pure intrinsics only from a v2 catalog, so a
+provider whose source programs call pure intrinsics must select this pack or the
+current typed-failure pack.
 
 CDDL establishes structural shape only. For the pure intrinsics a consumer
 requires, admission (`admit_target_pure_intrinsics`) owns the checks this schema
@@ -52,9 +54,10 @@ API version remains `edict.provider-contract-pack/v1`. Consumers select the exac
 CDDL/manifest pair and verify its schema digest; the same coordinate does not make
 different publication bytes interchangeable.
 
-Run `cargo xtask provider-contract-pack --write` to regenerate this current pair.
-`cargo xtask provider-contract-pack --check` and `cargo xtask verify` check it.
-The v1, source-function, source-module, structured-control, bounded-state-fold
-and function-precondition CDDL/manifest pairs remain byte-identical. Tests
-reproduce them from frozen inputs, including
-[`fixtures/target-profile/pre-catalog-v2-target-profile.cddl`](../../target-profile/pre-catalog-v2-target-profile.cddl).
+This CDDL/manifest pair is frozen. Tests reproduce it from the pre-typed-failure
+Core and Target IR schemas plus the v2 target-profile schema. The current owner
+generator writes and checks
+[`typed-failures-v1`](../typed-failures-v1/README.md), which retains these
+catalog rules and adds typed-failure support. The v1, source-function,
+source-module, structured-control, bounded-state-fold and function-precondition
+CDDL/manifest pairs also remain byte-identical for pinned consumers.

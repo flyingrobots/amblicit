@@ -18,6 +18,11 @@ pub(super) fn is_total(
         _ => return false,
     };
     let [left, right] = args else { return false };
+    // Core integrity validates terminal failures before Target's proof runs;
+    // either one ends evaluation before addition can overflow.
+    if matches!(left, CoreExpr::Fail { .. }) || matches!(right, CoreExpr::Fail { .. }) {
+        return true;
+    }
     let mut limits = Vec::new();
     for constraint in constraints {
         collect_limits(constraint, &mut limits);

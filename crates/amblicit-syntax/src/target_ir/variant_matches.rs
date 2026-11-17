@@ -158,6 +158,16 @@ pub(super) fn result_body_shape(
             })
             .collect::<Option<BTreeMap<_, _>>>()
             .map(Shape::Record),
+        CoreExpr::OrderedRecord { fields } => {
+            let mut shapes = BTreeMap::new();
+            for (name, value) in fields {
+                let shape = result_body_shape(core, functions, value, scope)?;
+                if shapes.insert(name.clone(), shape).is_some() {
+                    return None;
+                }
+            }
+            Some(Shape::Record(shapes))
+        }
         CoreExpr::If {
             predicate,
             then_value,

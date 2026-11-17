@@ -94,6 +94,7 @@ impl TypeChecker<'_> {
                 Some("cannot call a source function")
             }
             CoreExpr::Fold { .. } => Some("cannot fold"),
+            CoreExpr::Fail { .. } => Some("cannot fail"),
             CoreExpr::Match { .. } => Some("cannot match"),
             // Exhaustive on purpose: a new expression form must decide here.
             CoreExpr::Call { .. }
@@ -101,6 +102,7 @@ impl TypeChecker<'_> {
             | CoreExpr::Const(_)
             | CoreExpr::Variant { .. }
             | CoreExpr::Record { .. }
+            | CoreExpr::OrderedRecord { .. }
             | CoreExpr::List { .. }
             | CoreExpr::Field { .. }
             | CoreExpr::If { .. } => None,
@@ -241,7 +243,10 @@ fn find_in_expression(
         return Some(found);
     }
     match expression {
-        CoreExpr::Local { .. } | CoreExpr::Const(_) | CoreExpr::Fold { .. } => None,
+        CoreExpr::Local { .. }
+        | CoreExpr::Const(_)
+        | CoreExpr::Fold { .. }
+        | CoreExpr::Fail { .. } => None,
         CoreExpr::Match { scrutinee, .. }
         | CoreExpr::Field {
             base: scrutinee, ..
@@ -252,6 +257,9 @@ fn find_in_expression(
         CoreExpr::Record { fields } => fields
             .values()
             .find_map(|value| find_in_expression(value, visit)),
+        CoreExpr::OrderedRecord { fields } => fields
+            .iter()
+            .find_map(|(_, value)| find_in_expression(value, visit)),
         CoreExpr::List { values } | CoreExpr::Call { args: values, .. } => values
             .iter()
             .find_map(|value| find_in_expression(value, visit)),

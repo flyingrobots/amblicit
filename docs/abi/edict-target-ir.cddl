@@ -63,7 +63,7 @@ target-ir-ordered-legacy = {
 target-ir-ordered-intent = {
   target-ir-intent-common,
   ? basis: core-expr,
-  ? pureBindings: [1* target-ir-pure-binding],
+  ? pureBindings: [1* target-ir-ordered-pure-binding],
   executionOrder: [* tstr .regexp "(?s).+"],
 }
 
@@ -100,7 +100,7 @@ target-ir-structured-legacy = {
 target-ir-structured-intent = {
   target-ir-intent-common,
   ? basis: core-expr,
-  ? pureBindings: [1* target-ir-pure-binding],
+  ? pureBindings: [1* target-ir-ordered-pure-binding],
   executionOrder: [* target-ir-order-entry],
 }
 
@@ -184,6 +184,16 @@ target-ir-pure-binding = {
   id: tstr .regexp "(?s).+",
   binding: local-ref,
   value: core-expr,
+}
+
+; Ordered (v2) and structured (v3) bindings may carry failure arms: the value
+; is a call to a failing source function, and each of its failure coordinates
+; maps to a terminal obstruction reason.
+target-ir-ordered-pure-binding = {
+  id: tstr .regexp "(?s).+",
+  binding: local-ref,
+  value: core-expr,
+  ? failureArms: { + tstr => obstruction-reason },
 }
 
 target-ir-step = {

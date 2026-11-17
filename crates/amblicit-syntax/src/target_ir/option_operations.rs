@@ -1,8 +1,8 @@
 //! Target-owned Option signatures and presence proofs; source refinement is not trusted.
 use super::{
-    core_type_fits, expression_fits_declared_type, expression_type_coordinate, resolved_core_type,
-    BTreeMap, CompareOp, CoreExpr, CoreModule, CorePredicate, CoreType, CoreValue, LocalRef,
-    TargetPureFunctionFact,
+    comparison_operand_shape, core_type_fits, expression_fits_declared_type, resolved_core_type,
+    BTreeMap, CompareOp, ComparisonOperandShape, CoreExpr, CoreModule, CorePredicate, CoreType,
+    CoreValue, LocalRef, TargetPureFunctionFact,
 };
 use crate::core_ir::render_self_describing_core_type;
 
@@ -60,7 +60,8 @@ pub(super) fn type_coordinate(
     }
 }
 
-/// The operand is independently an `Option` whose item is exactly `item`.
+/// Every returning operand is independently an `Option` whose item is exactly
+/// `item`; an explicitly terminal operand produces no value to mismatch it.
 fn has_option_item(
     core: &CoreModule,
     functions: &[TargetPureFunctionFact],
@@ -68,7 +69,13 @@ fn has_option_item(
     item: &str,
     available: &BTreeMap<&str, &LocalRef>,
 ) -> bool {
-    let Some(coordinate) = expression_type_coordinate(core, functions, operand, available) else {
+    let Some(shape) = comparison_operand_shape(core, functions, operand, available) else {
+        return false;
+    };
+    if matches!(shape, ComparisonOperandShape::Never) {
+        return true;
+    }
+    let Some(coordinate) = shape.type_coordinate() else {
         return false;
     };
     let Some(CoreType::Option { item: actual }) = resolved_core_type(core, &coordinate) else {

@@ -17,6 +17,11 @@ matching Target IR artifact, and an intent name. The emitter requires:
   judgment, including unused definitions, every graph-carried reference, and
   the fully expanded named-type depth of each occurrence;
 - the intent to exist in both artifacts;
+- for an explicitly selected `echo.span-ir/v2` artifact, the complete flat
+  instruction order to follow Core node order. Each consumed table row must
+  correspond to that Core node: pure binding contents, effect binding/input,
+  and requirement predicate/failure disposition cannot be exchanged while
+  retaining instruction IDs;
 - for an explicitly selected `echo.span-ir/v3` artifact, the Core/order
   correspondence described in
   [Structured Target v3 bodies](#structured-target-v3-bodies), with result
