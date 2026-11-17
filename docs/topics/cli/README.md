@@ -183,6 +183,14 @@ has this shape:
 }
 ```
 
+`coreCostSchedule` selects the Core work schedule for every intent. It is
+optional: omitted or `"edict.core-cost/v1"` keeps the copying schedule and
+produces byte-identical Core and Target IR. `"edict.core-cost/v2"` selects the
+shared-read schedule described in
+[Core cost schedules](../core-cost-schedules/README.md); Core then requires
+`core.cost.shared-reads/v1`, so a provider that does not implement it refuses
+the package. Any other value is `InvalidApplicationConfig`.
+
 `buildKind` defaults to `executableOperation`. Setting it to `externalAction`
 selects the request-only route explicitly:
 
