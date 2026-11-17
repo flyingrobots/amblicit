@@ -35,6 +35,8 @@ cargo xtask verify
   for Edict-owned artifact and invocation evidence semantics.
 - [Assurance](./assurance/README.md): optional, hash-bound HOLMES, Watson, and
   Moriarty evidence references at the contract-bundle boundary.
+- [Core Cost Schedules](./core-cost-schedules/README.md): how Core evaluation
+  is charged against `coreEvaluationBudget`.
 - [Bounded Descent](./bounded-descent/README.md): iterative descent and
   rebuild over depth-bounded arena trees with bounded folds and lists.
 - [Authority Facts](./authority-facts/README.md): JSON and canonical-CBOR
