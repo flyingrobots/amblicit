@@ -292,7 +292,11 @@ instances, memories, Wasm fuel, and bounded engine diagnostics. The
 application build uses `ProviderHostLimits::APPLICATION_BUILD`, whose fuel
 ceiling is its 1 MiB input cap times 4,096 fuel per input byte
 (4,294,967,296); the derivation is in
-[architecture.md](architecture.md#application-build-fuel). Component
+[architecture.md](architecture.md#application-build-fuel). Its requests cap
+each response at the 1 MiB verifier input cap, and a package that would
+overflow verifier input is refused with `ProviderPackageExceedsVerifierInput`
+before verification; see
+[architecture.md](architecture.md#application-build-response-limit). Component
 outputs carry role-tagged bytes and an optional logical path, but no digest. The
 pure validator checks canonicality and logical-path syntax and computes
 authoritative output identity before the host exposes it. Typed provider refusal

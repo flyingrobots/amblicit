@@ -134,6 +134,45 @@ succeed or fail with `FuelExhausted` on every host. A guest that never stops
 still fails with `FuelExhausted`; at this ceiling that takes a few seconds of
 guest execution. No other application-build limit changed.
 
+## Application-Build Response Limit
+
+`APPLICATION_BUILD_RESPONSE_LIMITS` is the response limit the application
+build puts in every lowerer and verifier request: one output, eight
+diagnostics, and 1,048,576 provider-authored response bytes. The byte cap is
+derived from the host limits:
+
+```text
+max_total_response_bytes = max_input_bytes = 1,048,576
+                         ≤ max_output_bytes = 3,145,728
+```
+
+The lowerer's package is sent back to the verifier as input, so a package
+larger than the verifier input cap could pass lowering and never be
+verifiable. The host already refuses a request that authorizes more than
+`max_output_bytes`. The old 64 KiB cap was below both and refused real
+packages.
+
+Issue #329 measured Echo's components (bytes):
+
+| Request | Lowerer input | Package response | Verifier input | Report response |
+| --- | ---: | ---: | ---: | ---: |
+| Precondition fixture | 9,607 | 6,009 | 15,699 | 987 |
+| Step fixture | 14,120 | 14,596 | 28,799 | 985 |
+| Structured fixture | 15,554 | 16,006 | 31,643 | 1,003 |
+| Mutation fixture | 18,263 | 18,744 | 37,090 | 985 |
+| Identity fixture (echo#972) | 29,930 | 29,956 | 59,969 | 985 |
+| Synthetic 64-leaf branch tree | 97,763 | 98,219 | 196,065 | 1,003 |
+| Synthetic 256-leaf branch tree | 359,455 | 359,915 | 719,453 | 1,003 |
+
+The verifier input is the lowerer input plus the package plus 80 to 100
+bytes, so the 1 MiB input cap is the binding limit. A package can fit the
+response cap and still make the verification request too large. The build
+checks the request's WIT logical size before it invokes the verifier, and
+refuses with `ProviderPackageExceedsVerifierInput`, naming both sizes. On
+Echo's current lowerer this case is not reachable: the 512-leaf tree
+exhausts the lowerer's 16 MiB guest memory first. Raising the input cap is
+a separate change, together with fuel, which scales per input byte.
+
 ## Failure Boundary
 
 `ProviderHostFailureKind` owns stable categories for component digest, decode,
