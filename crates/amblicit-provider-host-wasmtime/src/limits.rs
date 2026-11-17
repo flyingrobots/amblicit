@@ -38,10 +38,28 @@ const APPLICATION_BUILD_MAX_INPUT_BYTES: u64 = 1024 * 1024;
 /// the input cap instead of from today's programs. Measured on Echo's
 /// `echo.dpo@2` lowerer and verifier (issue #326), the highest rate was about
 /// 2,550 fuel per input byte: the lowerer on a 546,592-byte request, the
-/// largest that fits its 16 MiB memory limit, used 1,393,523,207 fuel. The
+/// largest that fit the then 16 MiB memory limit, used 1,393,523,207 fuel. The
 /// verifier's highest rate was about 1,440 per byte. 4,096 leaves at least
 /// 1.6 times headroom over the measured rate at every admitted input size.
 pub const WASM_FUEL_PER_INPUT_BYTE: u64 = 4096;
+
+/// Guest linear-memory bytes the application build grants per admitted
+/// input byte.
+///
+/// Measured on Echo's `echo.dpo@2` components (issue #333), peak guest
+/// memory grows linearly with the request: the lowerer uses about 1 MiB plus
+/// 34 to 35 bytes per input byte (2,097,152 at 33,418 bytes; 25,427,968 at
+/// 711,997 bytes), and the verifier about 15 bytes per input byte. At the
+/// 1 MiB input cap the lowerer needs about 36 MiB. 64 leaves about 1.8 times
+/// headroom.
+const WASM_MEMORY_PER_INPUT_BYTE: usize = 64;
+
+/// The input cap as a host-memory quantity. 1 MiB fits every `usize`.
+const APPLICATION_BUILD_MAX_INPUT_BYTES_USIZE: usize = 1024 * 1024;
+
+// The two spellings of the input cap must agree.
+const _: () =
+    assert!(APPLICATION_BUILD_MAX_INPUT_BYTES_USIZE as u64 == APPLICATION_BUILD_MAX_INPUT_BYTES);
 
 impl ProviderHostLimits {
     /// The containment policy the application build applies to every
@@ -51,11 +69,15 @@ impl ProviderHostLimits {
     /// 4,294,967,296. It is one fixed constant because fuel exhaustion is
     /// part of the build verdict: the same request must succeed or fail with
     /// `FuelExhausted` on every host.
+    ///
+    /// `max_wasm_memory_bytes` is `max_input_bytes * 64`, 64 MiB, for the
+    /// same reason: provider memory grows with the request, and growth past
+    /// the limit is a deterministic `ResourceLimitExceeded` refusal.
     pub const APPLICATION_BUILD: Self = Self {
         max_input_bytes: APPLICATION_BUILD_MAX_INPUT_BYTES,
         max_output_bytes: 3 * 1024 * 1024,
         max_diagnostic_bytes: 3 * 1024 * 1024,
-        max_wasm_memory_bytes: 16 * 1024 * 1024,
+        max_wasm_memory_bytes: APPLICATION_BUILD_MAX_INPUT_BYTES_USIZE * WASM_MEMORY_PER_INPUT_BYTE,
         max_table_elements: 10_000,
         max_instances: 100,
         max_memories: 8,

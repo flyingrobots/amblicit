@@ -296,7 +296,9 @@ ceiling is its 1 MiB input cap times 4,096 fuel per input byte
 each response at the 1 MiB verifier input cap, and a package that would
 overflow verifier input is refused with `ProviderPackageExceedsVerifierInput`
 before verification; see
-[architecture.md](architecture.md#application-build-response-limit). Component
+[architecture.md](architecture.md#application-build-response-limit). Guest
+memory is capped at the input cap times 64, 64 MiB; see
+[architecture.md](architecture.md#application-build-guest-memory). Component
 outputs carry role-tagged bytes and an optional logical path, but no digest. The
 pure validator checks canonicality and logical-path syntax and computes
 authoritative output identity before the host exposes it. Typed provider refusal
