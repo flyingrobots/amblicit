@@ -11,7 +11,7 @@ mod byte_length;
 mod byte_slice;
 mod byte_utf8;
 pub(crate) mod execution_order;
-mod fold_work;
+pub(crate) mod fold_work;
 mod function_preconditions;
 mod integer_operations;
 mod list_operations;
@@ -980,6 +980,7 @@ fn validate_core_module(
                     | "core.list/v1"
                     | "core.failure/v1"
                     | option_operations::CAPABILITY
+                    | fold_work::SHARED_READS_CAPABILITY
             )
         })
         .map(|capability| TargetLoweringFailure {

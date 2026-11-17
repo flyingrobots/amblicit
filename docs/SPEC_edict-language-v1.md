@@ -1050,6 +1050,18 @@ Core budget units are pinned (`EDICT-LANG-BUDGET-UNITS-001`):
 - `maxOutputBytes`: maximum `edict.canonical-cbor/v1` encoded output size in
   octets.
 
+A module may instead select the shared-read schedule `edict.core-cost/v2`
+(`EDICT-LANG-COST-SCHEDULE-001`). Core then requires the capability
+`core.cost.shared-reads/v1`, and a consumer that does not meter that schedule
+must refuse the module. Under v2 values are shared: reads of locals,
+parameters, fields, list elements and fold state, argument passing and
+results cost one step and allocate nothing, and building a value charges only
+its shell (one cell per field, item slot or case header). Comparisons, intent
+input and output, and every other operation keep their v1 charges. The static
+charge must never fall below the work a conforming v2 meter records. The
+[cost schedule shelf](topics/core-cost-schedules/README.md) lists the exact
+rules.
+
 `targetBudget` in semantic Core has exactly two **hash-significant** members
 (`EDICT-LANG-TARGETBUDGET-HASH-001`): the digest-locked `costAlgebra` resource
 reference and the resolved typed `ceiling`. **Both** are in the Core preimage —

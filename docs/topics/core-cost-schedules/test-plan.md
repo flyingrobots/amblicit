@@ -1,0 +1,28 @@
+# Core Cost Schedules Test Plan
+
+## Scope
+
+This shelf owns the selectable Core work schedules that convert evaluation into
+steps and allocated bytes: the default copying schedule `edict.core-cost/v1`
+and the shared-read schedule `edict.core-cost/v2`. Runtime metering belongs to
+each consumer.
+
+## Requirements
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| COST-REQ-001 | implemented | Without an explicit selection, compilation and Target accounting are unchanged, including the bounded-descent fixture's minimum budgets. | EDICT-LANG-COST-SCHEDULE-001 |
+| COST-REQ-002 | implemented | Selecting the shared-read schedule records `core.cost.shared-reads/v1` in Core, and native Target applies the schedule only when that capability is present. | EDICT-LANG-COST-SCHEDULE-001 |
+| COST-REQ-003 | implemented | Under the shared-read schedule, reads, arguments, results and fold state cost one step; construction keeps its v1 charge; source and native Target minimum budgets are equal. | EDICT-LANG-COST-SCHEDULE-001 |
+| COST-REQ-004 | implemented | The bounded-descent fixture's minimum step and byte budgets fall by at least two orders of magnitude under the shared-read schedule. | EDICT-LANG-COST-SCHEDULE-001 |
+| COST-REQ-005 | implemented | No program accepted under a shared-read budget does more metered work than the budget on a reference evaluator that implements the schedule. | EDICT-LANG-COST-SCHEDULE-001 |
+
+## Test Cases
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COST-TP-001 | implemented | Regression | COST-REQ-001 | The default schedule keeps the fixture's minimum budgets at 647,943,859 steps and 1,805,252,203 bytes. | copying_schedule_keeps_the_rope_minimum_budgets | fixtures/lang/bounded-descent/avl-rope.amblicit | Values measured on main at 1a0178cb. |
+| COST-TP-002 | implemented | Capability | COST-REQ-002 | The shared-read schedule records the capability; removing it from Core makes Target apply v1 and refuse the v2 budget. | shared_read_schedule_records_its_capability, target_without_the_capability_applies_the_copying_schedule | fixtures/lang/bounded-descent/avl-rope.amblicit | Fails closed. |
+| COST-TP-003 | implemented | Equality | COST-REQ-003 | Source and native Target minimum budgets are equal under the shared-read schedule. | shared_read_source_and_native_minimums_are_equal | fixtures/lang/bounded-descent/avl-rope.amblicit | One meter. |
+| COST-TP-004 | implemented | Reduction | COST-REQ-004 | Both shared-read minimums are at most 1/100 of the copying minimums. | shared_read_schedule_cuts_the_rope_budget_by_two_orders | fixtures/lang/bounded-descent/avl-rope.amblicit | |
+| COST-TP-005 | implemented | Soundness | COST-REQ-005 | Adversarial programs run on worst-case inputs never exceed their minimum accepted budget on the reference evaluator. | shared_reads_of_a_full_list_in_fold_state_stay_within_budget, full_scans_and_appends_to_capacity_stay_within_budget, nested_folds_that_rebuild_lists_stay_within_budget, variant_state_with_payload_binders_stays_within_budget, rope_split_on_a_deep_tree_stays_within_budget | crates/amblicit-syntax/tests/core_cost_schedules/reference.rs | Reference evaluator is test-only. Calibrated: charging list appends or record construction one step makes three and two of these tests fail. |

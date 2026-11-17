@@ -133,8 +133,9 @@ Measured on the reference fixture (`A = 64`, `H = 8`, join and split bounds
 647,943,859 steps, and the smallest allocation budget is 1,805,252,203 bytes.
 These are conservative static ceilings, not runtime measurements. A rope at
 Jedit's envelope multiplies them. Whether that fits `text.replaceRangeBudget`
-is a cost-model question for the Core work contract and Echo's metering; this
-shelf does not change either.
+depends on the Core cost schedule. Under the shared-read schedule the same
+fixture needs 1,324,669 steps and 11,615,315 bytes; see
+[Core cost schedules](../core-cost-schedules/README.md).
 
 ## Refused
 

@@ -10,6 +10,9 @@ use super::{
 };
 use std::collections::BTreeMap;
 
+mod shared_reads;
+pub(crate) use shared_reads::SHARED_READS_CAPABILITY;
+
 #[derive(Clone, Copy, Default)]
 struct Cost {
     steps: u64,
@@ -75,7 +78,7 @@ fn scope<'a>(items: impl Iterator<Item = &'a LocalRef>) -> Scope<'a> {
     items.map(|local| (local.id.as_str(), local)).collect()
 }
 
-pub(super) fn intent_cost_fits(
+pub(crate) fn intent_cost_fits(
     core: &CoreModule,
     facts: &[TargetPureFunctionFact],
     intent: &CoreIntent,
@@ -83,11 +86,15 @@ pub(super) fn intent_cost_fits(
     if !core
         .required_core_capabilities
         .iter()
-        .any(|c| c == "core.fold/v1" || c == "core.list/v1")
+        .any(|c| c == "core.fold/v1" || c == "core.list/v1" || c == SHARED_READS_CAPABILITY)
     {
         return true;
     }
     let mut meter = Meter {
+        shared: core
+            .required_core_capabilities
+            .iter()
+            .any(|c| c == SHARED_READS_CAPABILITY),
         core,
         facts,
         visiting: Vec::new(),
@@ -100,6 +107,8 @@ pub(super) fn intent_cost_fits(
 }
 
 struct Meter<'a> {
+    /// `edict.core-cost/v2`: reads share values; only construction is sized.
+    shared: bool,
     core: &'a CoreModule,
     facts: &'a [TargetPureFunctionFact],
     visiting: Vec<&'a str>,
@@ -269,12 +278,18 @@ impl<'a> Meter<'a> {
         self.visiting.push(name);
         let available = scope(function.params.iter().chain(&function.body.locals));
         let mut cost = Cost::steps(1);
-        for parameter in &function.params {
-            cost = cost.add(Cost::steps(self.value_type(&parameter.ty, 0)?.cells))?;
+        if self.shared {
+            // Arguments and the result are passed by reference.
+            let params = u64::try_from(function.params.len()).ok()?;
+            cost = cost.add(Cost::steps(params.checked_add(1)?))?;
+        } else {
+            for parameter in &function.params {
+                cost = cost.add(Cost::steps(self.value_type(&parameter.ty, 0)?.cells))?;
+            }
+            cost = cost.add(Cost::steps(
+                self.value_type(&function.return_type, 0)?.cells,
+            ))?;
         }
-        cost = cost.add(Cost::steps(
-            self.value_type(&function.return_type, 0)?.cells,
-        ))?;
         for binding in &function.body.bindings {
             cost = cost.add(self.expression(&binding.value, &available, 0)?)?;
         }
@@ -293,7 +308,11 @@ impl<'a> Meter<'a> {
         if depth > MAX_CORE_GRAPH_DEPTH {
             return None;
         }
-        let own = self.value(expr, available, depth)?.evaluation()?;
+        let own = if self.shared {
+            self.shared_own(expr, available, depth)?
+        } else {
+            self.value(expr, available, depth)?.evaluation()?
+        };
         let children = match expr {
             CoreExpr::Local { .. } | CoreExpr::Const(_) | CoreExpr::Fail { .. } => Cost::default(),
             CoreExpr::Field { base, .. } => self.expression(base, available, depth + 1)?,
@@ -349,6 +368,17 @@ impl<'a> Meter<'a> {
                     let mut inner = available.clone();
                     let mut storage = Cost::default();
                     if let Some(binder) = &arm.binder {
+                        if self.shared {
+                            // The payload binder is one shared reference.
+                            storage = Cost::steps(1);
+                            inner.insert(&binder.id, binder);
+                            selected = selected.maximum(storage.add(self.expression(
+                                &arm.body,
+                                &inner,
+                                depth + 1,
+                            )?)?);
+                            continue;
+                        }
                         // Payload-bound environments copy the surrounding frame.
                         for local in available.values() {
                             storage = storage.add(self.value_type(&local.ty, 0)?.evaluation()?)?;
@@ -365,8 +395,9 @@ impl<'a> Meter<'a> {
                         depth + 1,
                     )?)?);
                 }
+                let dispatch = if self.shared { 1 } else { value.cells };
                 before.add(selected)?.add(Cost::steps(
-                    value.cells.checked_add(u64::try_from(arms.len()).ok()?)?,
+                    dispatch.checked_add(u64::try_from(arms.len()).ok()?)?,
                 ))?
             }
         };
@@ -416,6 +447,9 @@ impl<'a> Meter<'a> {
                 steps: *max_steps,
                 bytes: *max_allocated_bytes,
             });
+        }
+        if self.shared && Self::has_shared_rule(callee) {
+            return self.shared_prelude(callee, expr, available, depth);
         }
         if is_typed_prelude_operation(callee) || callee == "core.string.concat" {
             let mut steps = 0_u64;
