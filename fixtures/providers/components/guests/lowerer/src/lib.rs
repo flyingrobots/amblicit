@@ -24,6 +24,10 @@ impl Guest for Fixture {
             "fixture.loop" => loop {
                 core::hint::spin_loop();
             },
+            "fixture.fuel-burn" => {
+                burn_fuel();
+                valid(request)
+            }
             "fixture.trap" => panic!("explicit provider fixture trap"),
             "fixture.memory" => {
                 let mut pressure = Vec::new();
@@ -52,6 +56,19 @@ impl Guest for Fixture {
             _ => valid(request),
         }
     }
+}
+
+/// Loop iterations for `fixture.fuel-burn`. The host tests calibrate the
+/// resulting fuel need to lie above the former 50,000,000 ceiling and far
+/// below the input-scaled ceiling.
+const FUEL_BURN_STEPS: u64 = 20_000_000;
+
+fn burn_fuel() {
+    let mut accumulator = 0_u64;
+    for step in 0..FUEL_BURN_STEPS {
+        accumulator = core::hint::black_box(accumulator.wrapping_add(step));
+    }
+    core::hint::black_box(accumulator);
 }
 
 fn schema_invalid(request: LoweringRequestV1) -> LoweringResultV1 {

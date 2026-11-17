@@ -224,6 +224,9 @@ fn bound(coordinate: &str, domain: &str) -> ProviderBoundArtifact {
     }
 }
 
+#[path = "invocation/fuel_ceiling.rs"]
+mod fuel_ceiling;
+
 fn response_limits() -> ProviderResponseLimits {
     ProviderResponseLimits {
         max_output_count: 4,

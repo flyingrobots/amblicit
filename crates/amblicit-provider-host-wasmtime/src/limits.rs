@@ -27,6 +27,44 @@ pub struct ProviderHostLimits {
     pub max_host_diagnostic_bytes: usize,
 }
 
+/// Maximum WIT logical request bytes the application build sends to one
+/// provider invocation.
+const APPLICATION_BUILD_MAX_INPUT_BYTES: u64 = 1024 * 1024;
+
+/// Wasm fuel the application build grants per admitted input byte.
+///
+/// Provider work grows with the request, so the fuel ceiling is sized from
+/// the input cap instead of from today's programs. Measured on Echo's
+/// `echo.dpo@2` lowerer and verifier (issue #326), the highest rate was about
+/// 2,550 fuel per input byte: the lowerer on a 546,592-byte request, the
+/// largest that fits its 16 MiB memory limit, used 1,393,523,207 fuel. The
+/// verifier's highest rate was about 1,440 per byte. 4,096 leaves at least
+/// 1.6 times headroom over the measured rate at every admitted input size.
+pub const WASM_FUEL_PER_INPUT_BYTE: u64 = 4096;
+
+impl ProviderHostLimits {
+    /// The containment policy the application build applies to every
+    /// lowerer and verifier invocation.
+    ///
+    /// `max_wasm_fuel` is `max_input_bytes * WASM_FUEL_PER_INPUT_BYTE`,
+    /// 4,294,967,296. It is one fixed constant because fuel exhaustion is
+    /// part of the build verdict: the same request must succeed or fail with
+    /// `FuelExhausted` on every host.
+    pub const APPLICATION_BUILD: Self = Self {
+        max_input_bytes: APPLICATION_BUILD_MAX_INPUT_BYTES,
+        max_output_bytes: 3 * 1024 * 1024,
+        max_diagnostic_bytes: 3 * 1024 * 1024,
+        max_wasm_memory_bytes: 16 * 1024 * 1024,
+        max_table_elements: 10_000,
+        max_instances: 100,
+        max_memories: 8,
+        max_tables: 8,
+        max_wasm_fuel: APPLICATION_BUILD_MAX_INPUT_BYTES * WASM_FUEL_PER_INPUT_BYTE,
+        max_hostcall_bytes: 4 * 1024 * 1024,
+        max_host_diagnostic_bytes: 512,
+    };
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DeniedResource {
     Memory,
