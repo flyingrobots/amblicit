@@ -1,3 +1,4 @@
+use amblicit_syntax::ProviderResponseLimits;
 use wasmtime::ResourceLimiter;
 
 /// Complete explicit containment policy for one provider invocation.
@@ -64,6 +65,29 @@ impl ProviderHostLimits {
         max_host_diagnostic_bytes: 512,
     };
 }
+
+/// The response limits the application build places in every lowerer and
+/// verifier request.
+///
+/// `max_total_response_bytes` counts every provider-authored byte: output
+/// artifacts, diagnostics, roles and paths. It equals the 1 MiB input cap
+/// (`APPLICATION_BUILD_MAX_INPUT_BYTES`), because the lowerer's package is
+/// sent back to the verifier as input. A package larger than the input cap
+/// could pass lowering and never be verifiable. The cap is within the host's
+/// 3 MiB `max_output_bytes`, which the host requires of every request.
+///
+/// The input cap is the binding limit: the verifier request also carries
+/// Core, Target IR and the other semantic inputs, so its size is about the
+/// lowerer request plus the package (issue #329 measured 80 to 100 extra
+/// bytes). A package that fits this cap can still overflow verifier input.
+/// The application build refuses that case before invoking the verifier.
+/// Raising the input cap is a separate change, together with fuel, which
+/// scales per input byte.
+pub const APPLICATION_BUILD_RESPONSE_LIMITS: ProviderResponseLimits = ProviderResponseLimits {
+    max_output_count: 1,
+    max_diagnostic_count: 8,
+    max_total_response_bytes: APPLICATION_BUILD_MAX_INPUT_BYTES,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DeniedResource {

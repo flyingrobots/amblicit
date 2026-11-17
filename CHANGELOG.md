@@ -21,6 +21,16 @@ versions still track specification maturity rather than a released product.
   26,468,042 bytes under it, against 6,457,252,919 steps and 16,528,953,978
   bytes under the copying schedule (issue #330).
 
+- Size the provider response limit from the verifier input cap. Each
+  lowerer and verifier response may now carry 1,048,576 provider-authored
+  bytes (was 65,536), equal to the 1 MiB input cap, because the package is
+  sent back to the verifier. Packages above 64 KiB now build. A response
+  above 1 MiB is still refused with `ResponseLimitExceeded`. A package that
+  passes lowering but would make the verification request exceed the input
+  cap is refused before verification with the new build failure kind
+  `ProviderPackageExceedsVerifierInput`. The policy is public as
+  `APPLICATION_BUILD_RESPONSE_LIMITS` (issue #329).
+
 - Size the provider-host Wasm fuel ceiling from the input cap. The
   application build now gives each lowerer and verifier call 4,294,967,296
   fuel: its 1 MiB input cap times 4,096 fuel per input byte. The old fixed

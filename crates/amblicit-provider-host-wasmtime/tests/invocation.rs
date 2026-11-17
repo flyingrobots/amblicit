@@ -227,6 +227,9 @@ fn bound(coordinate: &str, domain: &str) -> ProviderBoundArtifact {
 #[path = "invocation/fuel_ceiling.rs"]
 mod fuel_ceiling;
 
+#[path = "invocation/response_ceiling.rs"]
+mod response_ceiling;
+
 fn response_limits() -> ProviderResponseLimits {
     ProviderResponseLimits {
         max_output_count: 4,
@@ -266,10 +269,33 @@ fn lower_harness_with_component(role: &str, component: &'static [u8]) -> LowerHa
     }
 }
 
+fn lower_harness_with_response_limits(
+    role: &str,
+    response: ProviderResponseLimits,
+) -> LowerHarness {
+    let host = ProviderComponentHost::new().expect("host configures");
+    let invocation = prepared_lowerer_invocation_with(&host, role, LOWERER_BYTES, response);
+    LowerHarness {
+        host,
+        prepared: invocation.prepared,
+        request: invocation.request,
+        schema: invocation.schema,
+    }
+}
+
 fn prepared_lowerer_invocation(
     host: &ProviderComponentHost,
     role: &str,
     component: &'static [u8],
+) -> PreparedLowerInvocation {
+    prepared_lowerer_invocation_with(host, role, component, response_limits())
+}
+
+fn prepared_lowerer_invocation_with(
+    host: &ProviderComponentHost,
+    role: &str,
+    component: &'static [u8],
+    response: ProviderResponseLimits,
 ) -> PreparedLowerInvocation {
     let manifest = provider_manifest_with_lowerer(component);
     let manifest_proof = Box::leak(Box::new(
@@ -284,11 +310,12 @@ fn prepared_lowerer_invocation(
     let resolved = ResolvedProviderComponent::new(selected, Arc::from(component));
     let prepared = host.prepare(&resolved).expect("lowerer prepares");
     let schema = registry(manifest);
-    let request = validated_lowering_request(
+    let request = validated_lowering_request_with(
         schema,
         role,
         ProviderLoweringOutputKind::GeneratedArtifact,
         OUTPUT_DOMAIN,
+        response,
     );
     PreparedLowerInvocation {
         prepared,
@@ -302,6 +329,16 @@ fn validated_lowering_request(
     role: &str,
     kind: ProviderLoweringOutputKind,
     domain: &str,
+) -> ValidatedProviderLoweringRequest<'static> {
+    validated_lowering_request_with(schema, role, kind, domain, response_limits())
+}
+
+fn validated_lowering_request_with(
+    schema: &'static ProviderArtifactSchemaRegistry,
+    role: &str,
+    kind: ProviderLoweringOutputKind,
+    domain: &str,
+    response: ProviderResponseLimits,
 ) -> ValidatedProviderLoweringRequest<'static> {
     let contract = Box::leak(Box::new(ProviderLoweringInvocationContract {
         core: binding("core@1", CORE_MODULE_DIGEST_DOMAIN),
@@ -318,7 +355,7 @@ fn validated_lowering_request(
             kind,
             domain: domain.to_owned(),
         }],
-        limits: response_limits(),
+        limits: response,
     }));
     validate_provider_lowering_request(schema, contract, request)
         .expect("lowering request validates")
