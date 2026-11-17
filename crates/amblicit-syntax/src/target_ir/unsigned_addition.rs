@@ -107,6 +107,19 @@ fn bound(
                 limits,
                 depth + 1,
             )?)?
+        } else if callee == super::integer_operations::MIN
+            || callee == super::integer_operations::MAX
+        {
+            let [left, right] = args.as_slice() else {
+                return None;
+            };
+            let left = bound(core, left, max, limits, depth + 1)?;
+            let right = bound(core, right, max, limits, depth + 1)?;
+            if callee == super::integer_operations::MIN {
+                left.min(right)
+            } else {
+                left.max(right)
+            }
         } else if callee == super::byte_count::OPERATION {
             let CoreExpr::Call { type_args, .. } = expr else {
                 return None;

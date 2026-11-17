@@ -1,5 +1,15 @@
 # Core IR Test Plan
 
+## Checked integer operation identity (#263)
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| COREIR-REQ-041 | implemented | Checked integer operations use generic Core calls `core.integer.checked*` and require `core.option/v1`, because they return `Option<T>`; a missing capability fails Core integrity before encoding. `core.integer.min` and `core.integer.max` need no capability. | issue #263 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COREIR-TP-061 | implemented | Checked capability | COREIR-REQ-041 | Specified: stripping `core.option/v1` from a module with a checked call refuses structured Core integrity with `InvalidDefinition`. | target_rechecks_integer_signatures_and_capability | crates/amblicit-syntax/tests/checked_arithmetic.rs | No Core expression variant or ABI field is added. |
+
 ## Option operation identity (#261)
 
 | ID | Status | Requirement | Source |

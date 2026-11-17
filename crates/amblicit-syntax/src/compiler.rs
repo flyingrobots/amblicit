@@ -27,6 +27,7 @@ mod byte_length;
 mod byte_slice;
 mod byte_utf8;
 mod function_preconditions;
+mod integer_operations;
 mod list_literal;
 mod list_operations;
 mod return_budget;
@@ -4567,6 +4568,15 @@ impl<'a> TypeChecker<'a> {
             Expr::Ident { name, .. } if source_options::NAMES.contains(&name.as_str()) => {
                 self.check_option_operation(name, type_args, args, env, expectation.value(), *span)
             }
+            Expr::Ident { name, .. } if integer_operations::NAMES.contains(&name.as_str()) => self
+                .check_integer_operation(
+                    name,
+                    type_args.len(),
+                    args,
+                    env,
+                    expectation.value(),
+                    *span,
+                ),
             Expr::Ident { name, .. } if name == "len" => {
                 self.check_byte_length(type_args, args, env, *span)
             }

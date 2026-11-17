@@ -8,6 +8,18 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Compile the checked integer forms `checkedAdd`, `checkedSub`, `checkedMul`,
+  `checkedDiv` and `checkedRem` over `U8`, `U32` and `U64`. Each lowers to a
+  typed `core.integer.checked*` call that returns `Option<T>` under
+  `core.option/v1`, so overflow, underflow and division by zero are a `none`
+  case the caller must handle. Compile total `min` and `max`, lowered to
+  `core.integer.min` and `core.integer.max`, whose results carry their operand
+  bounds into later addition proofs. Native Target rechecks every signature
+  and bound. The seven names become protected prelude names, so a module
+  declaring a function, parameter or local with one of them now refuses
+  `SurfaceValidation`. Signed checked forms and provider/runtime support are
+  separate work (issue #263).
+
 - Compile source `enum Name { A, B }` declarations as named Core variants
   whose cases carry no payload, under `core.variant/v1`. `Name.A` selects a
   case, also through an alias or a linked source module; `Name::A` on an enum

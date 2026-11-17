@@ -1693,7 +1693,7 @@ fn validate_core_call_types(
             path,
         ));
     }
-    if callee.starts_with("core.option.")
+    if (callee.starts_with("core.option.") || callee.starts_with("core.integer.checked"))
         && !module
             .required_core_capabilities
             .iter()

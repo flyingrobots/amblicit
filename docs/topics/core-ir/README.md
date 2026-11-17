@@ -238,6 +238,15 @@ Missing capability fails Core integrity before encoding; signatures, totality
 and result compatibility remain separate Target judgments. Unsupported capability
 versions refuse explicitly. [COREIR-REQ-034]
 
+## Checked integer calls
+
+`core.integer.checkedAdd`, `checkedSub`, `checkedMul`, `checkedDiv` and
+`checkedRem` use the generic call encoding with one unsigned width type
+argument and two operands. They return `Option<T>`, so a module that uses one
+must require `core.option/v1`; otherwise Core integrity fails with
+`InvalidDefinition` before encoding. `core.integer.min` and `core.integer.max`
+need no capability. [COREIR-REQ-041]
+
 ## Option calls
 
 `core.option.some`, `core.option.none`, `core.option.isSome`,

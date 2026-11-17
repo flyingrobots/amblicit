@@ -194,6 +194,13 @@ const PRELUDE_NAMES: &[&str] = &[
     "some",
     "true",
     "unwrap",
+    "checkedAdd",
+    "checkedSub",
+    "checkedMul",
+    "checkedDiv",
+    "checkedRem",
+    "min",
+    "max",
 ];
 
 #[derive(Debug, Clone)]
