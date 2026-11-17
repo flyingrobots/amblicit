@@ -2548,6 +2548,31 @@ not relax them. This is distinct from effect-emitting `for` over a list that
 already exists. Generic provider/runtime execution of `core.fold/v1` remains a
 separate implementation gate; this source/Core contract is not execution proof.
 
+### Bounded descent and rebuild
+
+v1 has no recursive types and no recursive functions. A depth-bounded tree is
+walked and rebuilt iteratively (`EDICT-LANG-DESCENT-001`):
+
+- The tree is an arena, a `List<Node, max=A>` whose nodes name their children
+  by index. An index not below the arena length denotes the empty tree.
+- Descent is a `fold` whose state carries the arena, a current index and a
+  path stack `List<Frame, max=H>` for maximum height H. Each push carries the
+  ordinary `listAppend` capacity proof.
+- Rebuild pops with a cursor: the state keeps the path and a remaining count,
+  and reads `listAt(path, remaining - 1u64)` under a guard that proves both the
+  subtraction and the index. Fresh nodes are appended to the arena; unchanged
+  subtrees keep their indexes.
+- Completion is represented in the state. A walk that exhausts its bound
+  without completing must end in a declared typed failure, never a result.
+- The nodes an edit created are collected into a bounded list.
+
+This adds no syntax, Core node or Target node: Core contains only `fold`
+expressions and typed `core.list.*` calls, and the work rules for `fold` and
+list operations apply unchanged. Recursive variants with a `depth <= N`
+clause and `decreases` termination measures are not v1 syntax. The
+[bounded descent shelf](topics/bounded-descent/README.md) records the
+reference fixture, refusals and measured work.
+
 ## Standard Functions
 
 The Edict Core prelude is intentionally small:
