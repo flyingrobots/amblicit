@@ -1,3 +1,4 @@
+use amblicit_syntax::ProviderResponseLimits;
 use wasmtime::ResourceLimiter;
 
 /// Complete explicit containment policy for one provider invocation.
@@ -64,6 +65,14 @@ impl ProviderHostLimits {
         max_host_diagnostic_bytes: 512,
     };
 }
+
+/// The response limits the application build places in every lowerer and
+/// verifier request.
+pub const APPLICATION_BUILD_RESPONSE_LIMITS: ProviderResponseLimits = ProviderResponseLimits {
+    max_output_count: 1,
+    max_diagnostic_count: 8,
+    max_total_response_bytes: 64 * 1024,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DeniedResource {

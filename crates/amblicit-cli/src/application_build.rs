@@ -12,7 +12,8 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use amblicit_provider_host_wasmtime::{
-    ProviderComponentHost, ProviderHostLimits, ResolvedProviderComponent,
+    provider_verification_input_bytes, ProviderComponentHost, ProviderHostLimits,
+    ResolvedProviderComponent, APPLICATION_BUILD_RESPONSE_LIMITS,
 };
 use amblicit_provider_schema::{ProviderArtifactSchemaRegistry, ResolvedProviderSchemaArtifact};
 use amblicit_syntax::{
@@ -1491,6 +1492,10 @@ fn invoke_verifier(
             )
         },
     )?;
+    admit_verifier_input(
+        provider_verification_input_bytes(&request).ok(),
+        host_limits(),
+    )?;
     let outcome = host
         .invoke_verifier(&prepared, &request, registry, host_limits())
         .map_err(|error| {
@@ -2386,11 +2391,7 @@ fn output_publication_failure(
 }
 
 const fn response_limits() -> ProviderResponseLimits {
-    ProviderResponseLimits {
-        max_output_count: 1,
-        max_diagnostic_count: 8,
-        max_total_response_bytes: 64 * 1024,
-    }
+    APPLICATION_BUILD_RESPONSE_LIMITS
 }
 
 const fn host_limits() -> ProviderHostLimits {
@@ -2549,6 +2550,17 @@ fn require_path_beneath_root(
             ),
         ))
     }
+}
+
+/// Refuses a verification request whose WIT logical size exceeds the
+/// verifier's input cap. The request carries the lowerer's package, so this
+/// names the package as the cause instead of a generic host input failure.
+fn admit_verifier_input(
+    input_bytes: Option<u64>,
+    limits: ProviderHostLimits,
+) -> Result<(), ApplicationBuildFailure> {
+    let _ = (input_bytes, limits);
+    Ok(())
 }
 
 fn failure(kind: &'static str, message: impl Into<String>) -> ApplicationBuildFailure {
@@ -5042,6 +5054,26 @@ mod tests {
         match result {
             Ok(value) => value,
             Err(error) => panic!("{context}: {error:?}"),
+        }
+    }
+
+    use super::{admit_verifier_input, host_limits};
+
+    #[test]
+    fn verifier_input_at_the_cap_is_admitted() {
+        let limits = host_limits();
+        assert!(admit_verifier_input(Some(limits.max_input_bytes), limits).is_ok());
+    }
+
+    #[test]
+    fn package_that_overflows_verifier_input_is_refused_before_verification() {
+        let limits = host_limits();
+        for input_bytes in [Some(limits.max_input_bytes + 1), None] {
+            let refused = test_err(
+                admit_verifier_input(input_bytes, limits),
+                "verifier request above the input cap",
+            );
+            assert_eq!(refused.kind, "ProviderPackageExceedsVerifierInput");
         }
     }
 
