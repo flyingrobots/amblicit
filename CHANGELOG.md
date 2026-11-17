@@ -8,6 +8,16 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Size the provider-host Wasm fuel ceiling from the input cap. The
+  application build now gives each lowerer and verifier call 4,294,967,296
+  fuel: its 1 MiB input cap times 4,096 fuel per input byte. The old fixed
+  ceiling, 50,000,000, refused real Echo programs such as the echo#972
+  `ContentAddressV1` identity fixture, which needs about 70M fuel to lower and
+  83M to verify. The ceiling is still one fixed, deterministic constant, a
+  guest that never stops still fails with `FuelExhausted`, and every other
+  host limit is unchanged. The policy is public as
+  `ProviderHostLimits::APPLICATION_BUILD` (issue #326).
+
 - Compile the checked integer forms `checkedAdd`, `checkedSub`, `checkedMul`,
   `checkedDiv` and `checkedRem` over `U8`, `U32` and `U64`. Each lowers to a
   typed `core.integer.checked*` call that returns `Option<T>` under

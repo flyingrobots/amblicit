@@ -88,7 +88,7 @@ The host keeps distinct limits because their units and replay meaning differ:
 | `max_diagnostic_bytes` | Checked provider-authored diagnostic UTF-8 bytes after lifting. |
 | `max_wasm_memory_bytes` | Guest linear-memory allocation enforced by the store resource limiter. |
 | table/instance/memory counts | Store resource counts enforced by the resource limiter. |
-| `max_wasm_fuel` | Deterministic Wasm guest-work fuel. |
+| `max_wasm_fuel` | Deterministic Wasm guest-work fuel shared by instantiation and the exported call. The application build sizes it from the input cap; see [Application-Build Fuel](#application-build-fuel). |
 | `max_hostcall_bytes` | Wasmtime host-call fuel for guest-to-host list/string lifting; approximately byte-scaled and separate from Edict logical accounting. |
 | `max_host_diagnostic_bytes` | Maximum engine diagnostic bytes retained by the host-owned error adapter. |
 
@@ -96,6 +96,43 @@ The pure response validator separately applies the request's exact output count,
 diagnostic count, and logical response-byte limits. Post-lift validation alone is
 not treated as allocation containment; guest memory and Wasmtime host-call fuel
 bound the earlier phases.
+
+## Application-Build Fuel
+
+`ProviderHostLimits::APPLICATION_BUILD` is the policy the application build
+applies to every lowerer and verifier call. Its fuel ceiling is derived from
+its input cap, because provider work grows with the request:
+
+```text
+max_wasm_fuel = max_input_bytes × WASM_FUEL_PER_INPUT_BYTE
+              = 1,048,576 × 4,096
+              = 4,294,967,296
+```
+
+The rate comes from Echo's `echo.dpo@2` lowerer and verifier, measured in
+issue #326 as fuel used per WIT logical input byte:
+
+| Request | Input bytes | Fuel used | Fuel per byte |
+| --- | ---: | ---: | ---: |
+| Precondition fixture, lower / verify | 9,607 / 15,699 | 18,293,130 / 22,578,227 | 1,904 / 1,438 |
+| Step fixture, lower / verify | 14,120 / 28,799 | 28,425,715 / 34,389,523 | 2,013 / 1,194 |
+| Structured fixture, lower / verify | 15,554 / 31,643 | 32,392,681 / 39,078,521 | 2,083 / 1,235 |
+| Mutation fixture, lower / verify | 18,263 / 37,090 | 37,379,698 / 45,240,394 | 2,047 / 1,220 |
+| Identity fixture (echo#972), lower / verify | 29,930 / 59,969 | 69,752,721 / 83,485,303 | 2,330 / 1,392 |
+| Largest lowerer request that fits 16 MiB of guest memory | 546,592 | 1,393,523,207 | 2,549 |
+
+The per-byte rate rises slowly with size and is highest for the largest
+request. A larger request exhausts guest memory (`ResourceLimitExceeded`)
+before it exhausts fuel, so no 1 MiB request could be measured. The ceiling
+gives 4,096 per byte, at least 1.6 times the highest measured rate at every
+admitted size. The old fixed ceiling, 50,000,000, refused the identity
+fixture.
+
+The ceiling is one fixed constant, not a per-request or per-profile budget.
+Fuel exhaustion is part of the build verdict, so the same request must
+succeed or fail with `FuelExhausted` on every host. A guest that never stops
+still fails with `FuelExhausted`; at this ceiling that takes a few seconds of
+guest execution. No other application-build limit changed.
 
 ## Failure Boundary
 

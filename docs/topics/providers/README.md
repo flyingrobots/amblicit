@@ -288,7 +288,11 @@ types so neither world can claim the other's evidence roles. Deterministic
 response limits cross the ABI. The component host separately enforces
 WIT-logical input bytes, the request-authorized logical output ceiling, provider
 diagnostic bytes, Wasmtime guest-to-host lifting fuel, linear memory, tables,
-instances, memories, Wasm fuel, and bounded engine diagnostics. Component
+instances, memories, Wasm fuel, and bounded engine diagnostics. The
+application build uses `ProviderHostLimits::APPLICATION_BUILD`, whose fuel
+ceiling is its 1 MiB input cap times 4,096 fuel per input byte
+(4,294,967,296); the derivation is in
+[architecture.md](architecture.md#application-build-fuel). Component
 outputs carry role-tagged bytes and an optional logical path, but no digest. The
 pure validator checks canonicality and logical-path syntax and computes
 authoritative output identity before the host exposes it. Typed provider refusal
