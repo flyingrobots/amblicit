@@ -87,6 +87,22 @@ impl Meter<'_> {
         }
     }
 
+    /// A foreign call (lawpack helper or target intrinsic) runs outside the
+    /// shared heap: every argument is copied in and the result copied out in
+    /// full, as under the copying schedule, on top of its declared template.
+    pub(super) fn shared_foreign_copies(
+        &self,
+        args: &[CoreExpr],
+        expr: &CoreExpr,
+        available: &Scope<'_>,
+        depth: usize,
+    ) -> Option<Cost> {
+        args.iter().try_fold(
+            self.value(expr, available, depth + 1)?.evaluation()?,
+            |total, arg| total.add(self.value(arg, available, depth + 1)?.evaluation()?),
+        )
+    }
+
     fn list_shell(&self, expr: &CoreExpr, available: &Scope<'_>, depth: usize) -> Option<Cost> {
         if depth > super::MAX_CORE_GRAPH_DEPTH {
             return None;

@@ -183,6 +183,7 @@ fn assert_sound(name: &str, source: &str, intent: &str, input: V) {
     let mut evaluator = Evaluator {
         core: &core,
         meter: reference::Meter::default(),
+        foreign: BTreeMap::new(),
     };
     let outcome = evaluator.intent(intent, input, Clone::clone);
     let metered = evaluator.meter;

@@ -8,7 +8,7 @@ of two schedules.
 | Schedule | Selected by | Core marker |
 | --- | --- | --- |
 | Copying, `edict.core-cost/v1` | Default | None |
-| Shared-read, `edict.core-cost/v2` | `CompilerContext::with_core_cost_schedule(CoreCostSchedule::SharedReads)` | Required capability `core.cost.shared-reads/v1` |
+| Shared-read, `edict.core-cost/v2` | `"coreCostSchedule": "edict.core-cost/v2"` in `edict.application/v1`, or `CompilerContext::with_core_cost_schedule(CoreCostSchedule::SharedReads)` | Required capability `core.cost.shared-reads/v1` |
 
 ## Copying schedule
 
@@ -46,9 +46,17 @@ Native Target applies the schedule only when Core requires the capability.
 Removing the capability makes Target apply the copying schedule, which refuses
 the smaller budget with `InvalidCoreIdentity`.
 
-The source checker passes no imported pure-function facts to the meter, so a
-shared-read module that calls an imported lawpack helper or a target pure
-intrinsic is refused with `InvalidBound`.
+A call to an imported lawpack helper or a target pure intrinsic runs outside
+the shared heap. Each argument is charged as a full copy in and the result as
+a full copy out, as under the copying schedule, plus the callee's declared
+cost template: the lawpack adapter's helper budget, or the intrinsic's
+`base + perArgumentMax × operand maximum` rule. The source checker reads the
+same authenticated helper and intrinsic facts that native Target receives.
+
+The meter has no rule for an external-action request or a `for` loop over a
+non-literal bound, so a shared-read module containing one is refused with
+`InvalidBound`. A refused shared-read budget reports the static steps and
+allocated bytes it needs.
 
 ## Effect on the bounded-descent fixture
 
@@ -61,13 +69,30 @@ For `fixtures/lang/bounded-descent/avl-rope.amblicit`, measured by
 | Copying | 647,943,859 | 1,805,252,203 |
 | Shared-read | 1,324,669 | 11,615,315 |
 
+## Effect on Jedit's rope modules
+
+Measured through the public CLI with `jedit#410`'s Octets, Codec, Identity and
+Rope modules (head `10b8d82`, intrinsic import retargeted to the measuring
+provider's profile) and one entry intent that calls `rope.join`, `ids.leafId`
+over `codec.leafAtom`, and a lawpack helper. The shared-read minimum is
+exact: one step less is refused.
+
+| Schedule | Minimum steps | Minimum allocated bytes |
+| --- | ---: | ---: |
+| Copying | 6,457,252,919 | 16,528,953,978 |
+| Shared-read | 1,570,430 | 26,468,042 |
+
+`join` alone needs 1,505,486 steps and 25,854,213 bytes under the shared-read
+schedule. The shared-read byte figure is higher than the step figure suggests
+because a list shell is charged at its declared 512-node maximum on every
+append; it is still about 600 times smaller than the copying figure.
+
 ## Consumers
 
 A consumer that executes shared-read Core must meter it at no more than this
 schedule, and its static checks must use the same rules. Echo's evaluator and
 provider lowerer do not yet do so; they recognise only the capabilities they
-implement, so they refuse shared-read modules. Selecting the schedule from the
-CLI application configuration is not implemented.
+implement, so they refuse shared-read modules.
 
 ## Soundness evidence
 
