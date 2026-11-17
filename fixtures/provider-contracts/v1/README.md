@@ -26,7 +26,7 @@ Both artifacts carry the Apache-2.0 license. Consumers receive their bytes as
 explicit inputs. The provenance paths are review evidence, not discovery or
 filesystem lookup handles.
 
-The current owner generator writes and checks the separately selected
-[pure-intrinsic-catalog publication](../pure-intrinsic-catalog-v1/README.md). These
+The current owner generator writes and checks the cumulative
+[typed-failures publication](../typed-failures-v1/README.md). These
 prior CDDL/manifest bytes are retained unchanged; selecting the new publication
 requires an explicit downstream contract/digest update.

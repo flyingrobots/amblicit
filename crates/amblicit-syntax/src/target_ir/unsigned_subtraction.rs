@@ -23,8 +23,15 @@ pub(super) fn type_coordinate(
     }
     [left, right]
         .iter()
-        .all(|operand| {
-            expression_type_coordinate(core, functions, operand, available).as_ref() == Some(width)
+        .all(|operand| match operand {
+            // Core integrity has already established that this failure is
+            // declared and placed in a function that raises it. It has no
+            // value width, so only the other operand constrains the operation.
+            CoreExpr::Fail { .. } => true,
+            _ => {
+                expression_type_coordinate(core, functions, operand, available).as_ref()
+                    == Some(width)
+            }
         })
         .then(|| width.clone())
 }

@@ -559,6 +559,9 @@ pub struct TargetIrPureBinding {
     pub id: String,
     pub binding: LocalRef,
     pub value: CoreExpr,
+    /// Terminal obstruction per failure of a failing source call; empty for an
+    /// ordinary binding, in which case canonical Target IR omits the field.
+    pub failure_arms: BTreeMap<String, CoreObstructionReason>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -810,7 +813,7 @@ pub(crate) fn semantic_closure_for_core(
 fn block_has_pure_binding(block: &CoreBlock, depth: usize) -> bool {
     depth <= MAX_CORE_GRAPH_DEPTH
         && block.nodes.iter().any(|node| match node {
-            CoreNode::Let { .. } => true,
+            CoreNode::Let { .. } | CoreNode::Attempt { .. } => true,
             CoreNode::For { body, .. } => block_has_pure_binding(body, depth + 1),
             CoreNode::Branch {
                 then_block,
@@ -967,10 +970,15 @@ fn validate_core_module(
         .required_core_capabilities
         .iter()
         // Constructor identities and payloads are independently checked below.
+        // Failure sets were judged by the Core integrity check above.
         .filter(|capability| {
             !matches!(
                 capability.as_str(),
-                "core.variant/v1" | "core.fold/v1" | "core.list/v1" | option_operations::CAPABILITY
+                "core.variant/v1"
+                    | "core.fold/v1"
+                    | "core.list/v1"
+                    | "core.failure/v1"
+                    | option_operations::CAPABILITY
             )
         })
         .map(|capability| TargetLoweringFailure {
@@ -1212,7 +1220,7 @@ fn validate_flat_nodes<'a>(
             ));
         }
         let binding = match node {
-            CoreNode::Let { binding, .. } => Some(binding),
+            CoreNode::Let { binding, .. } | CoreNode::Attempt { binding, .. } => Some(binding),
             CoreNode::Effect { binding, .. } | CoreNode::ExternalActionRequest { binding, .. } => {
                 Some(binding)
             }
@@ -1268,6 +1276,7 @@ fn structured_shape_failure(
             } => vec![then_block, else_block],
             CoreNode::For { body, .. } => vec![body],
             CoreNode::Let { .. }
+            | CoreNode::Attempt { .. }
             | CoreNode::Effect { .. }
             | CoreNode::Require { .. }
             | CoreNode::ExternalActionRequest { .. } => continue,
@@ -1316,6 +1325,7 @@ fn validate_structured_block<'a>(
                 validate_structured_control(context, node, node_index, available, claimed, depth)
             }
             CoreNode::Let { .. }
+            | CoreNode::Attempt { .. }
             | CoreNode::Effect { .. }
             | CoreNode::Require { .. }
             | CoreNode::ExternalActionRequest { .. } => validate_structured_instruction(
@@ -1345,7 +1355,9 @@ fn validate_structured_instruction<'a>(
         ))
     };
     let binding = match node {
-        CoreNode::Let { binding, .. } | CoreNode::Effect { binding, .. } => Some(binding),
+        CoreNode::Let { binding, .. }
+        | CoreNode::Attempt { binding, .. }
+        | CoreNode::Effect { binding, .. } => Some(binding),
         CoreNode::Require { .. } => None,
         CoreNode::ExternalActionRequest { .. } | CoreNode::For { .. } | CoreNode::Branch { .. } => {
             return invalid("structured Target IR does not support this Core node");
@@ -1461,6 +1473,7 @@ fn validate_structured_control<'a>(
         }
         CoreNode::Branch { .. }
         | CoreNode::Let { .. }
+        | CoreNode::Attempt { .. }
         | CoreNode::Effect { .. }
         | CoreNode::Require { .. }
         | CoreNode::ExternalActionRequest { .. } => {
@@ -1531,9 +1544,9 @@ fn block_local_identities_are_valid(block: &CoreBlock, depth: usize) -> bool {
         return false;
     }
     block.nodes.iter().all(|node| match node {
-        CoreNode::Let { binding, .. } | CoreNode::ExternalActionRequest { binding, .. } => {
-            !binding.id.is_empty()
-        }
+        CoreNode::Let { binding, .. }
+        | CoreNode::Attempt { binding, .. }
+        | CoreNode::ExternalActionRequest { binding, .. } => !binding.id.is_empty(),
         CoreNode::Effect {
             binding,
             obstruction_map,
@@ -1574,6 +1587,18 @@ fn node_expressions_have_closed_authority(
     match node {
         CoreNode::Let { binding, value } => {
             expression_fits_declared_type(core, pure_functions, value, &binding.ty, available)
+        }
+        CoreNode::Attempt {
+            binding,
+            value,
+            failure_map,
+        } => {
+            expression_fits_declared_type(core, pure_functions, value, &binding.ty, available)
+                && failure_map.values().all(|reason| {
+                    reason.payload.values().all(|payload| {
+                        expression_has_closed_authority(core, pure_functions, payload, available)
+                    })
+                })
         }
         CoreNode::Require { predicate, arm } => {
             predicate_fits_core_types(core, pure_functions, predicate, available)
@@ -1827,12 +1852,17 @@ fn expression_has_closed_authority(
         CoreExpr::Const(CoreValue::Int { width, value }) => {
             crate::core_ir::parse_core_integer(width, value).is_some()
         }
+        // A `fail`'s placement and declared set are judged by Core integrity.
         CoreExpr::Const(
             CoreValue::Null | CoreValue::Bool(_) | CoreValue::String(_) | CoreValue::Bytes(_),
-        ) => true,
+        )
+        | CoreExpr::Fail { .. } => true,
         CoreExpr::Record { fields } => fields
             .values()
             .all(|value| expression_has_closed_authority(core, pure_functions, value, available)),
+        CoreExpr::OrderedRecord { fields } => fields.iter().all(|(_, value)| {
+            expression_has_closed_authority(core, pure_functions, value, available)
+        }),
         CoreExpr::List { values } => values
             .iter()
             .all(|value| expression_has_closed_authority(core, pure_functions, value, available)),
@@ -1897,6 +1927,29 @@ fn record_fits_declared_type(
                 expected_fields.get(field).expect("equal record field keys"),
                 available,
             )
+        })
+}
+
+fn ordered_record_fits_declared_type(
+    core: &CoreModule,
+    pure_functions: &[TargetPureFunctionFact],
+    fields: &[(String, CoreExpr)],
+    expected: &str,
+    available: &BTreeMap<&str, &LocalRef>,
+) -> bool {
+    let Some(CoreType::Record {
+        fields: expected_fields,
+    }) = resolved_core_type(core, expected)
+    else {
+        return false;
+    };
+    let mut seen = BTreeSet::new();
+    fields.len() == expected_fields.len()
+        && fields.iter().all(|(name, value)| {
+            seen.insert(name)
+                && expected_fields.get(name).is_some_and(|expected| {
+                    expression_fits_declared_type(core, pure_functions, value, expected, available)
+                })
         })
 }
 
@@ -1972,6 +2025,26 @@ fn prelude_type_coordinate(
     }
 }
 
+fn field_fits_declared_type(
+    core: &CoreModule,
+    pure_functions: &[TargetPureFunctionFact],
+    base: &CoreExpr,
+    field: &str,
+    expected: &str,
+    available: &BTreeMap<&str, &LocalRef>,
+) -> bool {
+    let Some(field_shape) = field_expression_shape(core, pure_functions, base, field, available)
+    else {
+        return false;
+    };
+    comparison_shape_fits(
+        core,
+        &field_shape,
+        &ComparisonOperandShape::Coordinate(expected.to_owned()),
+        0,
+    )
+}
+
 fn expression_fits_declared_type(
     core: &CoreModule,
     pure_functions: &[TargetPureFunctionFact],
@@ -2003,21 +2076,16 @@ fn expression_fits_declared_type(
             list_fits_declared_type(core, pure_functions, values, expected, available)
         }
         CoreExpr::Const(value) => core_value_fits_declared_type(core, value, expected),
+        // A failure ends the call, so it fits any expected type.
+        CoreExpr::Fail { .. } => true,
         CoreExpr::Record { fields } => {
             record_fits_declared_type(core, pure_functions, fields, expected, available)
         }
+        CoreExpr::OrderedRecord { fields } => {
+            ordered_record_fits_declared_type(core, pure_functions, fields, expected, available)
+        }
         CoreExpr::Field { base, field } => {
-            let Some(field_shape) =
-                field_expression_shape(core, pure_functions, base, field, available)
-            else {
-                return false;
-            };
-            comparison_shape_fits(
-                core,
-                &field_shape,
-                &ComparisonOperandShape::Coordinate(expected.to_owned()),
-                0,
-            )
+            field_fits_declared_type(core, pure_functions, base, field, expected, available)
         }
         CoreExpr::Call { callee, .. } if is_typed_prelude_operation(callee) => {
             expression_type_coordinate(core, pure_functions, expression, available)
@@ -2277,36 +2345,15 @@ fn expression_string_shape(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<(u64, String)> {
     match expression {
-        CoreExpr::Match { scrutinee, arms } => {
-            let mut shape: Option<(u64, String)> = None;
-            let valid = variant_matches::every(
-                core,
-                pure_functions,
-                scrutinee,
-                arms,
-                available,
-                |body, scope| {
-                    let Some((max, canonical)) =
-                        expression_string_shape(core, pure_functions, body, scope)
-                    else {
-                        return false;
-                    };
-                    if let Some((prior, prior_canonical)) = &shape {
-                        if prior_canonical != &canonical {
-                            return false;
-                        }
-                        shape = Some(((*prior).max(max), canonical));
-                    } else {
-                        shape = Some((max, canonical));
-                    }
-                    true
-                },
-            );
-            if valid {
-                shape
-            } else {
-                None
-            }
+        CoreExpr::Match { .. } | CoreExpr::If { .. } => {
+            // A terminal arm contributes no returned value or String bound.
+            // The shared shape judgment still checks every returning arm.
+            let coordinate = comparison_operand_shape(core, pure_functions, expression, available)?
+                .type_coordinate()?;
+            let CoreType::String { max, canonical } = resolved_core_type(core, &coordinate)? else {
+                return None;
+            };
+            Some((max, canonical))
         }
         CoreExpr::Const(CoreValue::String(value)) => Some((
             u64::try_from(value.chars().count()).ok()?,
@@ -2348,25 +2395,13 @@ fn expression_string_shape(
             };
             Some((max, canonical))
         }
-        CoreExpr::If {
-            predicate,
-            then_value,
-            else_value,
-        } => {
-            if !predicate_fits_core_types(core, pure_functions, predicate, available) {
-                return None;
-            }
-            let (then_max, then_canonical) =
-                expression_string_shape(core, pure_functions, then_value, available)?;
-            let (else_max, else_canonical) =
-                expression_string_shape(core, pure_functions, else_value, available)?;
-            (then_canonical == else_canonical).then_some((then_max.max(else_max), then_canonical))
-        }
         CoreExpr::Const(
             CoreValue::Null | CoreValue::Bool(_) | CoreValue::Int { .. } | CoreValue::Bytes(_),
         )
         | CoreExpr::Record { .. }
+        | CoreExpr::OrderedRecord { .. }
         | CoreExpr::List { .. }
+        | CoreExpr::Fail { .. }
         | CoreExpr::Variant { .. } => None,
     }
 }
@@ -2455,7 +2490,9 @@ fn expression_type_coordinate(
         }
         CoreExpr::Local { .. }
         | CoreExpr::Const(CoreValue::Null)
+        | CoreExpr::Fail { .. }
         | CoreExpr::Record { .. }
+        | CoreExpr::OrderedRecord { .. }
         | CoreExpr::List { .. }
         | CoreExpr::Call { .. } => None,
     }
@@ -2577,10 +2614,13 @@ fn expression_references_are_available(
         CoreExpr::Local { reference } => {
             available.get(reference.id.as_str()).copied() == Some(reference)
         }
-        CoreExpr::Const(_) => true,
+        CoreExpr::Const(_) | CoreExpr::Fail { .. } => true,
         CoreExpr::Record { fields } => fields
             .values()
             .all(|value| expression_references_are_available(value, available)),
+        CoreExpr::OrderedRecord { fields } => fields
+            .iter()
+            .all(|(_, value)| expression_references_are_available(value, available)),
         CoreExpr::List { values } => values
             .iter()
             .all(|value| expression_references_are_available(value, available)),
@@ -2676,6 +2716,11 @@ fn node_has_empty_aggregate(node: &CoreNode, depth: usize) -> bool {
     };
     match node {
         CoreNode::Let { value, .. } => expression_has_empty_aggregate(value, depth + 1),
+        CoreNode::Attempt {
+            value, failure_map, ..
+        } => {
+            expression_has_empty_aggregate(value, depth + 1) || failure_map.values().any(reason_has)
+        }
         CoreNode::Require { predicate, arm } => {
             let (CoreRequireFailureArm::Terminal { reason }
             | CoreRequireFailureArm::ContinueObstructed { reason }) = arm;
@@ -2731,10 +2776,13 @@ fn expression_has_empty_aggregate(expression: &CoreExpr, depth: usize) -> bool {
         CoreExpr::Variant { payload, .. } => payload
             .as_ref()
             .is_some_and(|value| expression_has_empty_aggregate(value, depth + 1)),
-        CoreExpr::Local { .. } | CoreExpr::Const(_) => false,
+        CoreExpr::Local { .. } | CoreExpr::Const(_) | CoreExpr::Fail { .. } => false,
         CoreExpr::Record { fields } => fields
             .values()
             .any(|value| expression_has_empty_aggregate(value, depth + 1)),
+        CoreExpr::OrderedRecord { fields } => fields
+            .iter()
+            .any(|(_, value)| expression_has_empty_aggregate(value, depth + 1)),
         CoreExpr::List { values } | CoreExpr::Call { args: values, .. } => values
             .iter()
             .any(|value| expression_has_empty_aggregate(value, depth + 1)),
@@ -2763,11 +2811,16 @@ fn ordered_operands_are_integers(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> bool {
     operands.into_iter().all(|operand| {
-        matches!(
-            comparison_operand_shape(core, pure_functions, operand, available),
-            Some(ComparisonOperandShape::Coordinate(coordinate))
-                if matches!(resolved_core_type(core, &coordinate), Some(CoreType::Int { .. }))
-        )
+        match comparison_operand_shape(core, pure_functions, operand, available) {
+            Some(ComparisonOperandShape::Never) => true,
+            Some(ComparisonOperandShape::Coordinate(coordinate)) => {
+                matches!(
+                    resolved_core_type(core, &coordinate),
+                    Some(CoreType::Int { .. })
+                )
+            }
+            _ => false,
+        }
     })
 }
 
@@ -2852,8 +2905,9 @@ fn expression_comparisons_admissible(
                 )
         }
         CoreExpr::Variant { payload, .. } => payload.as_deref().is_none_or(child),
-        CoreExpr::Local { .. } | CoreExpr::Const(_) => true,
+        CoreExpr::Local { .. } | CoreExpr::Const(_) | CoreExpr::Fail { .. } => true,
         CoreExpr::Record { fields } => fields.values().all(child),
+        CoreExpr::OrderedRecord { fields } => fields.iter().all(|(_, value)| child(value)),
         CoreExpr::List { values } | CoreExpr::Call { args: values, .. } => values.iter().all(child),
         CoreExpr::Field { base, .. } => child(base),
         CoreExpr::If {
@@ -2934,6 +2988,17 @@ fn node_comparisons_admissible<'a>(
     };
     match node {
         CoreNode::Let { value, .. } => expression(value, available),
+        CoreNode::Attempt {
+            value, failure_map, ..
+        } => {
+            expression(value, available)
+                && failure_map.values().all(|reason| {
+                    reason
+                        .payload
+                        .values()
+                        .all(|value| expression(value, available))
+                })
+        }
         CoreNode::Require { predicate, arm } => {
             let (CoreRequireFailureArm::Terminal { reason }
             | CoreRequireFailureArm::ContinueObstructed { reason }) = arm;
@@ -3004,6 +3069,8 @@ fn predicate_operands_are_comparable(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ComparisonOperandShape {
+    // A validated terminal failure returns no value; it is not an unknown type.
+    Never,
     // Result inference only; an empty literal has no element type yet.
     EmptyList,
     Coordinate(String),
@@ -3029,7 +3096,7 @@ impl ComparisonOperandShape {
                         .collect::<Option<BTreeMap<_, _>>>()?,
                 })
             }
-            Self::EmptyList => None,
+            Self::Never | Self::EmptyList => None,
         }
     }
 }
@@ -3042,6 +3109,9 @@ fn field_expression_shape(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<ComparisonOperandShape> {
     let base_shape = variant_matches::result_body_shape(core, pure_functions, base, available)?;
+    if matches!(base_shape, ComparisonOperandShape::Never) {
+        return Some(ComparisonOperandShape::Never);
+    }
     comparison_record_fields(core, &base_shape)?.remove(field)
 }
 
@@ -3052,6 +3122,7 @@ fn comparison_operand_shape(
     available: &BTreeMap<&str, &LocalRef>,
 ) -> Option<ComparisonOperandShape> {
     match expression {
+        CoreExpr::Fail { .. } => Some(ComparisonOperandShape::Never),
         CoreExpr::Fold { .. } => state_fold::state(core, pure_functions, expression, available)
             .map(|ty| ComparisonOperandShape::Coordinate(ty.to_owned())),
         CoreExpr::Match { scrutinee, arms } => {
@@ -3069,6 +3140,16 @@ fn comparison_operand_shape(
             })
             .collect::<Option<BTreeMap<_, _>>>()
             .map(ComparisonOperandShape::Record),
+        CoreExpr::OrderedRecord { fields } => {
+            let mut shapes = BTreeMap::new();
+            for (name, value) in fields {
+                let shape = comparison_operand_shape(core, pure_functions, value, available)?;
+                if shapes.insert(name.clone(), shape).is_some() {
+                    return None;
+                }
+            }
+            Some(ComparisonOperandShape::Record(shapes))
+        }
         CoreExpr::Field { base, field } => {
             field_expression_shape(core, pure_functions, base, field, available)
         }
@@ -3097,6 +3178,13 @@ fn join_conditional_shapes(
 ) -> Option<ComparisonOperandShape> {
     if depth > MAX_CORE_TYPE_DEPTH {
         return None;
+    }
+    // Only an explicit terminal-failure shape is neutral in a value join.
+    // Missing/invalid shapes never reach this function as a successful value.
+    if let (ComparisonOperandShape::Never, other) | (other, ComparisonOperandShape::Never) =
+        (left, right)
+    {
+        return Some(other.clone());
     }
     // Preserve declared list item coordinates before structural joins erase
     // record names. This also applies to fields of anonymous record results.
@@ -3182,6 +3270,12 @@ fn comparison_shape_fits(
     if depth > MAX_CORE_TYPE_DEPTH {
         return false;
     }
+    if matches!(source, ComparisonOperandShape::Never) {
+        return true;
+    }
+    if matches!(target, ComparisonOperandShape::Never) {
+        return false;
+    }
     match (
         comparison_record_fields(core, source),
         comparison_record_fields(core, target),
@@ -3227,7 +3321,9 @@ fn comparison_record_fields(
 ) -> Option<BTreeMap<String, ComparisonOperandShape>> {
     match shape {
         ComparisonOperandShape::Record(fields) => Some(fields.clone()),
-        ComparisonOperandShape::List { .. } | ComparisonOperandShape::EmptyList => None,
+        ComparisonOperandShape::Never
+        | ComparisonOperandShape::List { .. }
+        | ComparisonOperandShape::EmptyList => None,
         ComparisonOperandShape::Coordinate(coordinate) => {
             let CoreType::Record { fields } = resolved_core_type(core, coordinate)? else {
                 return None;
@@ -3250,7 +3346,9 @@ fn comparison_list_shape(
 ) -> Option<(ComparisonOperandShape, u64)> {
     match shape {
         ComparisonOperandShape::List { item, max } => Some((item.as_ref().clone(), *max)),
-        ComparisonOperandShape::Record(_) | ComparisonOperandShape::EmptyList => None,
+        ComparisonOperandShape::Never
+        | ComparisonOperandShape::Record(_)
+        | ComparisonOperandShape::EmptyList => None,
         ComparisonOperandShape::Coordinate(coordinate) => {
             let CoreType::List { item, max } = resolved_core_type(core, coordinate)? else {
                 return None;
@@ -3310,7 +3408,9 @@ fn lower_intent(
         lower_node(intent_name, node_index, node, context, &mut state, failures);
         if context.target_selection.execution_model == ExecutionModel::Ordered {
             let id = match node {
-                CoreNode::Let { .. } => state.pure_bindings.last().map(|node| &node.id),
+                CoreNode::Let { .. } | CoreNode::Attempt { .. } => {
+                    state.pure_bindings.last().map(|node| &node.id)
+                }
                 CoreNode::Effect { .. } => state.steps.last().map(|node| &node.id),
                 CoreNode::Require { .. } => state.requirements.last().map(|node| &node.id),
                 _ => None,
@@ -3432,6 +3532,7 @@ fn lower_structured_nodes(
                 }))
             }
             CoreNode::Let { .. }
+            | CoreNode::Attempt { .. }
             | CoreNode::Effect { .. }
             | CoreNode::Require { .. }
             | CoreNode::ExternalActionRequest { .. } => lower_structured_instruction(
@@ -3470,7 +3571,10 @@ fn structured_node_refusal(node: &CoreNode) -> Option<&'static str> {
             ..
         } => (then_block.result != null || else_block.result != null)
             .then_some("control_block_result"),
-        CoreNode::Let { .. } | CoreNode::Effect { .. } | CoreNode::Require { .. } => None,
+        CoreNode::Let { .. }
+        | CoreNode::Attempt { .. }
+        | CoreNode::Effect { .. }
+        | CoreNode::Require { .. } => None,
     }
 }
 
@@ -3586,7 +3690,11 @@ fn lower_node(
                 id: format!("{}.binding.{}", intent_name, state.pure_bindings.len()),
                 binding: binding.clone(),
                 value: value.clone(),
+                failure_arms: BTreeMap::new(),
             });
+        }
+        CoreNode::Attempt { .. } => {
+            lower_attempt_node(intent_name, node_index, node, context, state, failures);
         }
         CoreNode::Require { predicate, arm } => lower_require_node(
             intent_name,
@@ -3610,6 +3718,44 @@ fn lower_node(
             detail: "branch".to_owned(),
         }),
     }
+}
+
+/// A failure-mapped call becomes a pure binding with failure arms. Only an
+/// explicit execution order says which instruction runs first, and so which
+/// obstruction a failing call reports.
+fn lower_attempt_node(
+    intent_name: &str,
+    node_index: usize,
+    node: &CoreNode,
+    context: &TargetLoweringContext<'_>,
+    state: &mut IntentLoweringState,
+    failures: &mut Vec<TargetLoweringFailure>,
+) {
+    let CoreNode::Attempt {
+        binding,
+        value,
+        failure_map,
+    } = node
+    else {
+        return;
+    };
+    if context.target_selection.execution_model == ExecutionModel::PreStepGuards
+        || !context.target_selection.supports_requirements
+    {
+        failures.push(TargetLoweringFailure {
+            kind: TargetLoweringFailureKind::UnsupportedCoreNode,
+            intent: Some(intent_name.to_owned()),
+            node_index: Some(node_index),
+            detail: "failure_mapped_binding".to_owned(),
+        });
+        return;
+    }
+    state.pure_bindings.push(TargetIrPureBinding {
+        id: format!("{}.binding.{}", intent_name, state.pure_bindings.len()),
+        binding: binding.clone(),
+        value: value.clone(),
+        failure_arms: failure_map.clone(),
+    });
 }
 
 fn lower_require_node(
@@ -3728,10 +3874,13 @@ fn expr_references_step_output(expr: &CoreExpr, step_outputs: &BTreeSet<String>)
             .as_ref()
             .is_some_and(|value| expr_references_step_output(value, step_outputs)),
         CoreExpr::Local { reference } => step_outputs.contains(&reference.id),
-        CoreExpr::Const(_) => false,
+        CoreExpr::Const(_) | CoreExpr::Fail { .. } => false,
         CoreExpr::Record { fields } => fields
             .values()
             .any(|field| expr_references_step_output(field, step_outputs)),
+        CoreExpr::OrderedRecord { fields } => fields
+            .iter()
+            .any(|(_, value)| expr_references_step_output(value, step_outputs)),
         CoreExpr::List { values } => values
             .iter()
             .any(|value| expr_references_step_output(value, step_outputs)),

@@ -2,7 +2,7 @@
 //! Original sources stay immutable; a separate surface carries hygienic names
 //! and mapped spans. Linking grants no runtime authority.
 use crate::ast::{Decl, ImportKind, Module};
-use crate::compiler::SourceTypeOrigin;
+use crate::compiler::{SourceFailureOrigin, SourceTypeOrigin};
 use crate::core_ir::{classify_core_type_reference, CoreTypeReference};
 use crate::source_closure::SourceClosure;
 use crate::token::{lex, Span, TokenKind};
@@ -69,6 +69,7 @@ pub struct LinkedSourceClosure<'a> {
     module: Module,
     ranges: Vec<SourceRange>,
     type_origins: BTreeMap<String, SourceTypeOrigin>,
+    failure_origins: BTreeMap<String, SourceFailureOrigin>,
 }
 impl LinkedSourceClosure<'_> {
     /// Borrow the immutable compiler-owned surface for authority preparation.
@@ -140,7 +141,8 @@ impl LinkedSourceClosure<'_> {
         }
         let context = context
             .clone()
-            .with_linked_source_types(self.type_origins.clone());
+            .with_linked_source_types(self.type_origins.clone())
+            .with_linked_source_failures(self.failure_origins.clone());
         compile_to_core(&self.module, &context).map_err(|failures| {
             failures
                 .into_iter()
@@ -167,6 +169,7 @@ enum DefinitionKind {
     Type,
     Function,
     Intent,
+    Failure,
 }
 #[derive(Debug)]
 struct Definition {
@@ -200,6 +203,7 @@ pub fn link_source_closure(
     let fresh = fresh_namespace(closure)?;
     let units = collect_names(closure, &fresh)?;
     let type_origins = collect_type_origins(closure, &units);
+    let failure_origins = collect_failure_origins(closure, &units);
     let root_name = closure.root_coordinate();
     let root = &closure.modules()[root_name];
     let mut linked = Module {
@@ -266,6 +270,7 @@ pub fn link_source_closure(
         module: linked,
         ranges,
         type_origins,
+        failure_origins,
     })
 }
 fn collect_type_origins(
@@ -296,6 +301,30 @@ fn collect_type_origins(
                     },
                 },
             );
+        }
+    }
+    origins
+}
+
+/// Linked failure names keep the coordinate of the module that declares them.
+fn collect_failure_origins(
+    closure: &SourceClosure,
+    units: &BTreeMap<String, UnitNames>,
+) -> BTreeMap<String, SourceFailureOrigin> {
+    let mut origins = BTreeMap::new();
+    for (coordinate, unit) in closure.modules() {
+        for declaration in &unit.parsed().decls {
+            if let Decl::Failure(definition) = declaration {
+                origins.insert(
+                    units[coordinate].definitions[&definition.name]
+                        .linked
+                        .clone(),
+                    SourceFailureOrigin {
+                        coordinate: format!("{coordinate}.{}", definition.name),
+                        name: definition.name.clone(),
+                    },
+                );
+            }
         }
     }
     origins
@@ -357,6 +386,9 @@ fn collect_names(
                 Decl::Enum(definition) => (&definition.name, DefinitionKind::Type, definition.span),
                 Decl::Function(definition) => {
                     (&definition.name, DefinitionKind::Function, definition.span)
+                }
+                Decl::Failure(definition) => {
+                    (&definition.name, DefinitionKind::Failure, definition.span)
                 }
                 Decl::Intent(definition) => {
                     if coordinate != closure.root_coordinate() {

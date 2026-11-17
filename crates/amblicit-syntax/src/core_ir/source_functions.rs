@@ -140,7 +140,7 @@ fn walk_scope(
             }
             Ok(())
         }
-        CoreExpr::Const(_) | CoreExpr::Local { .. } => Ok(()),
+        CoreExpr::Const(_) | CoreExpr::Local { .. } | CoreExpr::Fail { .. } => Ok(()),
         CoreExpr::Variant { payload, .. } => {
             if let Some(payload) = payload {
                 walk_scope(payload, depth + 1, scope, path)?;
@@ -150,6 +150,12 @@ fn walk_scope(
         CoreExpr::Field { base, .. } => walk_scope(base, depth + 1, scope, path),
         CoreExpr::Record { fields } => {
             for value in fields.values() {
+                walk_scope(value, depth + 1, scope, path)?;
+            }
+            Ok(())
+        }
+        CoreExpr::OrderedRecord { fields } => {
+            for (_, value) in fields {
                 walk_scope(value, depth + 1, scope, path)?;
             }
             Ok(())
@@ -201,7 +207,7 @@ pub(super) fn scope_predicate(
     }
 }
 
-fn walk(
+pub(super) fn walk(
     expression: &CoreExpr,
     depth: usize,
     check: &mut impl FnMut(&CoreExpr) -> Result<(), CoreTypeIntegrityFailure>,
@@ -217,7 +223,7 @@ fn walk(
             }
             Ok(())
         }
-        CoreExpr::Const(_) | CoreExpr::Local { .. } => Ok(()),
+        CoreExpr::Const(_) | CoreExpr::Local { .. } | CoreExpr::Fail { .. } => Ok(()),
         CoreExpr::Variant { payload, .. } => {
             if let Some(payload) = payload {
                 walk(payload, depth + 1, check)?;
@@ -227,6 +233,12 @@ fn walk(
         CoreExpr::Field { base, .. } => walk(base, depth + 1, check),
         CoreExpr::Record { fields } => {
             for value in fields.values() {
+                walk(value, depth + 1, check)?;
+            }
+            Ok(())
+        }
+        CoreExpr::OrderedRecord { fields } => {
+            for (_, value) in fields {
                 walk(value, depth + 1, check)?;
             }
             Ok(())

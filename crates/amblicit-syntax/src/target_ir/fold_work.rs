@@ -170,6 +170,7 @@ impl<'a> Meter<'a> {
             return None;
         }
         match shape {
+            Shape::Never => Some(Value { cells: 0, bytes: 0 }),
             Shape::Coordinate(ty) => self.value_type(ty, depth),
             Shape::EmptyList => Some(Value::CELL),
             Shape::Record(fields) => fields.iter().try_fold(Value::CELL, |total, (key, item)| {
@@ -190,12 +191,20 @@ impl<'a> Meter<'a> {
             return None;
         }
         match expr {
+            // A terminal failure returns no value. Its evaluation still costs
+            // one step through Value::evaluation; enclosing work stays charged.
+            CoreExpr::Fail { .. } => Some(Value { cells: 0, bytes: 0 }),
             CoreExpr::Const(CoreValue::Null) => Some(Value::CELL),
             CoreExpr::Field { base, field } => self.shape_value(
                 &super::field_expression_shape(self.core, self.facts, base, field, available)?,
                 0,
             ),
             CoreExpr::Record { fields } => {
+                fields.iter().try_fold(Value::CELL, |total, (key, expr)| {
+                    total.add(Self::field(key, self.value(expr, available, depth + 1)?)?)
+                })
+            }
+            CoreExpr::OrderedRecord { fields } => {
                 fields.iter().try_fold(Value::CELL, |total, (key, expr)| {
                     total.add(Self::field(key, self.value(expr, available, depth + 1)?)?)
                 })
@@ -286,7 +295,7 @@ impl<'a> Meter<'a> {
         }
         let own = self.value(expr, available, depth)?.evaluation()?;
         let children = match expr {
-            CoreExpr::Local { .. } | CoreExpr::Const(_) => Cost::default(),
+            CoreExpr::Local { .. } | CoreExpr::Const(_) | CoreExpr::Fail { .. } => Cost::default(),
             CoreExpr::Field { base, .. } => self.expression(base, available, depth + 1)?,
             CoreExpr::Variant { payload, .. } => match payload {
                 Some(value) => self.expression(value, available, depth + 1)?,
@@ -294,6 +303,11 @@ impl<'a> Meter<'a> {
             },
             CoreExpr::Record { fields } => {
                 fields.values().try_fold(Cost::default(), |sum, expr| {
+                    sum.add(self.expression(expr, available, depth + 1)?)
+                })?
+            }
+            CoreExpr::OrderedRecord { fields } => {
+                fields.iter().try_fold(Cost::default(), |sum, (_, expr)| {
                     sum.add(self.expression(expr, available, depth + 1)?)
                 })?
             }
@@ -425,6 +439,9 @@ impl<'a> Meter<'a> {
             return None;
         }
         match expr {
+            // Size charging sees no returned sequence; expression() separately
+            // retains the terminal failure's evaluation step.
+            CoreExpr::Fail { .. } => Some(0),
             CoreExpr::If {
                 then_value,
                 else_value,
@@ -502,6 +519,20 @@ impl<'a> Meter<'a> {
         }
         let cost = match node {
             CoreNode::Let { value, .. } => self.expression(value, available, depth + 1)?,
+            CoreNode::Attempt {
+                value, failure_map, ..
+            } => {
+                let cost = self.expression(value, available, depth + 1)?;
+                let mut selected = Cost::default();
+                for reason in failure_map.values() {
+                    let mut arm = Cost::default();
+                    for payload in reason.payload.values() {
+                        arm = arm.add(self.expression(payload, available, depth + 1)?)?;
+                    }
+                    selected = selected.maximum(arm);
+                }
+                cost.add(selected)?
+            }
             CoreNode::Require { predicate, arm } => {
                 let (CoreRequireFailureArm::Terminal { reason }
                 | CoreRequireFailureArm::ContinueObstructed { reason }) = arm;

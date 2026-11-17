@@ -6,9 +6,9 @@ use super::{
     ProjectionSources, ResultProjectionFailure, ResultProjectionFailureKind,
 };
 use crate::{
-    CoreBlock, CoreExpr, CoreIntent, CoreNode, CoreRequireFailureArm, CoreValue, LocalRef,
-    TargetIrIntent, TargetIrOrderEntry, TargetIrRequireFailure, ECHO_STRUCTURED_SPAN_IR_DOMAIN,
-    MAX_CANONICAL_NESTING_DEPTH,
+    CoreBlock, CoreExpr, CoreIntent, CoreNode, CoreObstructionReason, CoreRequireFailureArm,
+    CoreValue, LocalRef, TargetIrIntent, TargetIrOrderEntry, TargetIrRequireFailure,
+    ECHO_STRUCTURED_SPAN_IR_DOMAIN, MAX_CANONICAL_NESTING_DEPTH,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -51,9 +51,9 @@ pub(super) fn resolve_sources(
         .nodes
         .iter()
         .filter_map(|node| match node {
-            CoreNode::Let { binding, .. } | CoreNode::Effect { binding, .. } => {
-                Some(binding.id.as_str())
-            }
+            CoreNode::Let { binding, .. }
+            | CoreNode::Attempt { binding, .. }
+            | CoreNode::Effect { binding, .. } => Some(binding.id.as_str()),
             _ => None,
         })
         .collect::<BTreeSet<_>>();
@@ -132,7 +132,10 @@ impl BodyMatch<'_> {
             return false;
         }
         for (node, entry) in core.nodes.iter().zip(order) {
-            if let CoreNode::Let { binding, .. } | CoreNode::Effect { binding, .. } = node {
+            if let CoreNode::Let { binding, .. }
+            | CoreNode::Attempt { binding, .. }
+            | CoreNode::Effect { binding, .. } = node
+            {
                 if locals.get(binding.id.as_str()).copied() != Some(binding) {
                     return false;
                 }
@@ -144,23 +147,42 @@ impl BodyMatch<'_> {
         true
     }
 
+    fn pure_binding(
+        &mut self,
+        binding: &LocalRef,
+        value: &CoreExpr,
+        failure_map: Option<&BTreeMap<String, CoreObstructionReason>>,
+        id: &str,
+    ) -> bool {
+        let index = self.counts.bindings;
+        self.counts.bindings += 1;
+        self.target.pure_bindings.get(index).is_some_and(|target| {
+            target.id == id
+                && validate_pure_binding_matches_core(
+                    target,
+                    binding,
+                    value,
+                    failure_map,
+                    self.intent_name,
+                    index,
+                )
+                .is_ok()
+        })
+    }
+
     fn node(&mut self, core: &CoreNode, entry: &TargetIrOrderEntry, depth: usize) -> bool {
         match (core, entry) {
             (CoreNode::Let { binding, value }, TargetIrOrderEntry::Instruction(id)) => {
-                let index = self.counts.bindings;
-                self.counts.bindings += 1;
-                self.target.pure_bindings.get(index).is_some_and(|target| {
-                    &target.id == id
-                        && validate_pure_binding_matches_core(
-                            target,
-                            binding,
-                            value,
-                            self.intent_name,
-                            index,
-                        )
-                        .is_ok()
-                })
+                self.pure_binding(binding, value, None, id)
             }
+            (
+                CoreNode::Attempt {
+                    binding,
+                    value,
+                    failure_map,
+                },
+                TargetIrOrderEntry::Instruction(id),
+            ) => self.pure_binding(binding, value, Some(failure_map), id),
             (
                 CoreNode::Effect {
                     binding,

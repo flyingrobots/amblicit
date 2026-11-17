@@ -101,6 +101,19 @@ impl<'a> Meter<'a> {
         for node in &block.nodes {
             let node_steps = match node {
                 CoreNode::Let { value, .. } => self.expression(value, available, depth + 1)?,
+                CoreNode::Attempt {
+                    value, failure_map, ..
+                } => {
+                    let steps = self.expression(value, available, depth + 1)?;
+                    let largest_arm = failure_map.values().try_fold(0_u64, |largest, reason| {
+                        let arm_steps =
+                            reason.payload.values().try_fold(0_u64, |steps, payload| {
+                                steps.checked_add(self.expression(payload, available, depth + 1)?)
+                            })?;
+                        Some(largest.max(arm_steps))
+                    })?;
+                    steps.checked_add(largest_arm)?
+                }
                 CoreNode::Require { predicate, arm } => {
                     let (CoreRequireFailureArm::Terminal { reason }
                     | CoreRequireFailureArm::ContinueObstructed { reason }) = arm;
@@ -206,7 +219,7 @@ impl<'a> Meter<'a> {
             return None;
         }
         let children = match expression {
-            CoreExpr::Local { .. } | CoreExpr::Const(_) => Some(0),
+            CoreExpr::Local { .. } | CoreExpr::Const(_) | CoreExpr::Fail { .. } => Some(0),
             CoreExpr::Fold {
                 initial,
                 step,
@@ -240,6 +253,11 @@ impl<'a> Meter<'a> {
             CoreExpr::Record { fields } => fields.values().try_fold(0_u64, |steps, value| {
                 steps.checked_add(self.expression(value, available, depth + 1)?)
             }),
+            CoreExpr::OrderedRecord { fields } => {
+                fields.iter().try_fold(0_u64, |steps, (_, value)| {
+                    steps.checked_add(self.expression(value, available, depth + 1)?)
+                })
+            }
             CoreExpr::List { values } | CoreExpr::Call { args: values, .. } => {
                 values.iter().try_fold(0_u64, |steps, value| {
                     steps.checked_add(self.expression(value, available, depth + 1)?)
@@ -336,7 +354,8 @@ impl<'a> Meter<'a> {
     }
 
     /// The size bound Target itself establishes for a charged argument.
-    /// A conditional is bounded by its larger branch, each established the same way.
+    /// A conditional is bounded by its larger returning branch; a terminal
+    /// failure contributes no returned bytes or elements.
     fn established_max(
         &self,
         argument: &CoreExpr,
@@ -355,6 +374,7 @@ impl<'a> Meter<'a> {
             return None;
         }
         match argument {
+            CoreExpr::Fail { .. } => Some(0),
             CoreExpr::Match { scrutinee, arms } => {
                 let mut largest = 0;
                 let valid = super::variant_matches::every(
@@ -375,6 +395,9 @@ impl<'a> Meter<'a> {
             }
             CoreExpr::List { values } => u64::try_from(values.len()).ok(),
             CoreExpr::Const(CoreValue::Bytes(bytes)) => u64::try_from(bytes.len()).ok(),
+            // Records have no intrinsic size coefficient of their own. Their
+            // fields are traversed for call cost by `expression` above.
+            CoreExpr::Record { .. } | CoreExpr::OrderedRecord { .. } => None,
             CoreExpr::If {
                 then_value,
                 else_value,

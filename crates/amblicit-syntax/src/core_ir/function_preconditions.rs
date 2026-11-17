@@ -34,13 +34,16 @@ pub(crate) fn precondition_nodes(preconditions: &[CorePredicate]) -> usize {
     }
     fn expression(value: &CoreExpr) -> usize {
         1 + match value {
-            CoreExpr::Local { .. } | CoreExpr::Const(_) => 0,
+            CoreExpr::Local { .. } | CoreExpr::Const(_) | CoreExpr::Fail { .. } => 0,
             CoreExpr::Variant { payload, .. } => payload.as_deref().map_or(0, expression),
             CoreExpr::Fold { initial, .. } => expression(initial),
             CoreExpr::Match { scrutinee, arms } => {
                 expression(scrutinee) + arms.iter().map(|arm| expression(&arm.body)).sum::<usize>()
             }
             CoreExpr::Record { fields } => fields.values().map(expression).sum(),
+            CoreExpr::OrderedRecord { fields } => {
+                fields.iter().map(|(_, value)| expression(value)).sum()
+            }
             CoreExpr::List { values } | CoreExpr::Call { args: values, .. } => {
                 values.iter().map(expression).sum()
             }
@@ -107,13 +110,16 @@ pub(super) fn validate_preconditions(
             {
                 Err(invalid(&at))
             }
-            CoreExpr::Fold { .. } | CoreExpr::Match { .. } => Err(invalid(&at)),
+            CoreExpr::Fold { .. } | CoreExpr::Match { .. } | CoreExpr::Fail { .. } => {
+                Err(invalid(&at))
+            }
             // Exhaustive on purpose: a new expression form must decide here.
             CoreExpr::Call { .. }
             | CoreExpr::Local { .. }
             | CoreExpr::Const(_)
             | CoreExpr::Variant { .. }
             | CoreExpr::Record { .. }
+            | CoreExpr::OrderedRecord { .. }
             | CoreExpr::List { .. }
             | CoreExpr::Field { .. }
             | CoreExpr::If { .. } => Ok(()),
@@ -172,7 +178,7 @@ fn expression(value: &CoreExpr, bindings: &Bindings<'_>) -> CoreExpr {
             .iter()
             .find(|(param, _)| *param == reference)
             .map_or_else(|| value.clone(), |(_, argument)| (*argument).clone()),
-        CoreExpr::Const(_) => value.clone(),
+        CoreExpr::Const(_) | CoreExpr::Fail { .. } => value.clone(),
         CoreExpr::Variant { ty, case, payload } => CoreExpr::Variant {
             ty: ty.clone(),
             case: case.clone(),
@@ -201,6 +207,12 @@ fn expression(value: &CoreExpr, bindings: &Bindings<'_>) -> CoreExpr {
                 .collect(),
         },
         CoreExpr::Record { fields } => CoreExpr::Record {
+            fields: fields
+                .iter()
+                .map(|(name, field)| (name.clone(), expression(field, bindings)))
+                .collect(),
+        },
+        CoreExpr::OrderedRecord { fields } => CoreExpr::OrderedRecord {
             fields: fields
                 .iter()
                 .map(|(name, field)| (name.clone(), expression(field, bindings)))

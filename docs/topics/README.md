@@ -92,6 +92,9 @@ cargo xtask verify
   boundary for Echo Span IR and later target profiles.
 - [Target Profiles](./target-profiles/README.md): typed v1 target-profile
   manifest conformance and runtime-neutral profile validation.
+- [Typed Function Failures](./typed-failures/README.md): declared failure sets
+  on source functions, `expect` propagation, intent `else` mapping, and their
+  Core and Target IR forms.
 - [Testing Workflow](./tests/README.md): RED/GREEN development discipline,
   fixture reuse, and local verification workflow.
 - [v2 Design](./v2-design/README.md): current HEAD boundary and planned test

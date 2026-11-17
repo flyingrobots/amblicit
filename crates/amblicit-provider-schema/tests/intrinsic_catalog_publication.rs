@@ -28,6 +28,12 @@ const EDGE: &str = "Record<edgeType:Bytes<exact=32>,to:Bytes<exact=32>>";
 /// Target-profile schema as published before the catalog v2 pack.
 const PRE_CATALOG_V2_TARGET_PROFILE_CDDL: &[u8] =
     include_bytes!("../../../fixtures/target-profile/pre-catalog-v2-target-profile.cddl");
+/// Core schema as published before typed failures.
+const PRE_TYPED_FAILURE_CORE_CDDL: &[u8] =
+    include_bytes!("../../../fixtures/core/pre-typed-failure-core.cddl");
+/// Target IR schema as published before typed failures.
+const PRE_TYPED_FAILURE_TARGET_IR_CDDL: &[u8] =
+    include_bytes!("../../../fixtures/target-ir/pre-typed-failure-target-ir.cddl");
 
 /// A CBOR text value.
 fn text(value: &str) -> V {
@@ -166,7 +172,11 @@ const CORE_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-core.cddl");
 
 /// A contract pack assembled from the authoritative ABI sources, except for
 /// the Core and target-profile schemas, which the caller selects.
-fn pack_with(core_cddl: &'static [u8], target_profile_cddl: &'static [u8]) -> ProviderContractPack {
+fn pack_with(
+    core_cddl: &'static [u8],
+    target_profile_cddl: &'static [u8],
+    target_ir_cddl: &'static [u8],
+) -> ProviderContractPack {
     assemble_provider_contract_pack(ProviderContractPackInput {
         common_cddl: include_bytes!("../../../docs/abi/edict-common.cddl"),
         core_cddl,
@@ -175,7 +185,7 @@ fn pack_with(core_cddl: &'static [u8], target_profile_cddl: &'static [u8]) -> Pr
         target_profile_cddl,
         authority_facts_cddl: include_bytes!("../../../docs/abi/edict-authority-facts.cddl"),
         result_projection_cddl: include_bytes!("../../../docs/abi/edict-result-projection.cddl"),
-        target_ir_cddl: include_bytes!("../../../docs/abi/edict-target-ir.cddl"),
+        target_ir_cddl,
         source_closure_cddl: Some(include_bytes!(
             "../../../docs/abi/edict-source-closure.cddl"
         )),
@@ -190,7 +200,11 @@ fn frozen_v1_catalog_packs() -> [(&'static str, ProviderContractPack); 2] {
     let packs = [
         (
             "bounded-state-fold-v1",
-            pack_with(PRE_PRECONDITION_CORE_CDDL, PRE_CATALOG_V2_TARGET_PROFILE_CDDL),
+            pack_with(
+                PRE_PRECONDITION_CORE_CDDL,
+                PRE_CATALOG_V2_TARGET_PROFILE_CDDL,
+                PRE_TYPED_FAILURE_TARGET_IR_CDDL,
+            ),
             include_bytes!(
                 "../../../fixtures/provider-contracts/bounded-state-fold-v1/edict-provider-contracts.cddl"
             )
@@ -200,7 +214,11 @@ fn frozen_v1_catalog_packs() -> [(&'static str, ProviderContractPack); 2] {
         ),
         (
             "function-preconditions-v1",
-            pack_with(CORE_CDDL, PRE_CATALOG_V2_TARGET_PROFILE_CDDL),
+            pack_with(
+                PRE_TYPED_FAILURE_CORE_CDDL,
+                PRE_CATALOG_V2_TARGET_PROFILE_CDDL,
+                PRE_TYPED_FAILURE_TARGET_IR_CDDL,
+            ),
             include_bytes!(
                 "../../../fixtures/provider-contracts/function-preconditions-v1/edict-provider-contracts.cddl"
             )
@@ -224,6 +242,42 @@ fn frozen_v1_catalog_packs() -> [(&'static str, ProviderContractPack); 2] {
         );
         (name, pack)
     })
+}
+
+/// The pure-catalog publication remains an exact frozen pair after the
+/// cumulative typed-failure publication becomes current.
+#[test]
+fn pure_intrinsic_catalog_publication_is_reproduced_from_frozen_failure_inputs() {
+    let pack = assemble_provider_contract_pack(ProviderContractPackInput {
+        common_cddl: include_bytes!("../../../docs/abi/edict-common.cddl"),
+        core_cddl: PRE_TYPED_FAILURE_CORE_CDDL,
+        lawpack_cddl: include_bytes!("../../../docs/abi/edict-lawpack.cddl"),
+        lawpack_adapter_cddl: include_bytes!("../../../docs/abi/edict-lawpack-adapter.cddl"),
+        target_profile_cddl: include_bytes!("../../../docs/abi/edict-target-profile.cddl"),
+        authority_facts_cddl: include_bytes!("../../../docs/abi/edict-authority-facts.cddl"),
+        result_projection_cddl: include_bytes!("../../../docs/abi/edict-result-projection.cddl"),
+        target_ir_cddl: PRE_TYPED_FAILURE_TARGET_IR_CDDL,
+        source_closure_cddl: Some(include_bytes!(
+            "../../../docs/abi/edict-source-closure.cddl"
+        )),
+        contract_resources: canonical_target_profile_contract_resources(),
+    })
+    .expect("frozen pure-catalog publication assembles");
+
+    assert_eq!(
+        pack.cddl_bytes(),
+        include_bytes!(
+            "../../../fixtures/provider-contracts/pure-intrinsic-catalog-v1/edict-provider-contracts.cddl"
+        ),
+        "pure-catalog CDDL bytes remain frozen"
+    );
+    assert_eq!(
+        pack.manifest_bytes(),
+        include_bytes!(
+            "../../../fixtures/provider-contracts/pure-intrinsic-catalog-v1/manifest.json"
+        ),
+        "pure-catalog manifest bytes remain frozen"
+    );
 }
 
 /// Each frozen v1-catalog pack refuses a v2 catalog that compiler admission
@@ -270,6 +324,7 @@ fn catalog_v2_pack() -> ProviderContractPack {
     pack_with(
         CORE_CDDL,
         include_bytes!("../../../docs/abi/edict-target-profile.cddl"),
+        include_bytes!("../../../docs/abi/edict-target-ir.cddl"),
     )
 }
 

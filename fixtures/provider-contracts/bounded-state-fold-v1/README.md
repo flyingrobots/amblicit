@@ -13,14 +13,13 @@ CDDL/manifest pair and verify its schema digest; the same coordinate does not ma
 different publication bytes interchangeable.
 
 This CDDL/manifest pair is now frozen. The generator writes the separate
-[pure-intrinsic-catalog publication](../pure-intrinsic-catalog-v1/README.md).
-This pair's `intrinsics-document` root admits only
-`edict.target-profile.intrinsics/v1` catalogs, and its Core schema has no
-function `preconditions`; tests reproduce the pair from the frozen target-profile
+[typed-failures publication](../typed-failures-v1/README.md). Tests reproduce
+this pair from `fixtures/core/pre-precondition-core.cddl` and
+`fixtures/target-ir/pre-typed-failure-target-ir.cddl` and the frozen v1 catalog
 schema in
 [`fixtures/target-profile/pre-catalog-v2-target-profile.cddl`](../../target-profile/pre-catalog-v2-target-profile.cddl)
-and the frozen Core schema in
-[`fixtures/core/pre-precondition-core.cddl`](../../core/pre-precondition-core.cddl).
-The v1, source-function, source-module and structured-control CDDL/manifest pairs
-remain byte-identical. Tests reproduce the earlier pairs using their frozen Core,
-Target IR and target-profile inputs, including `fixtures/core/pre-fold-core.cddl`.
+plus `fixtures/core/pre-precondition-core.cddl`; the exact inputs are covered by
+the frozen-publication tests. The v1, source-function, source-module,
+structured-control, function-preconditions and pure-intrinsic-catalog
+CDDL/manifest pairs remain byte-identical; tests reproduce the earlier pairs
+from their frozen inputs, including `fixtures/core/pre-fold-core.cddl`.

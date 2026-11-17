@@ -7,9 +7,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ast::{
     BinOp, Block, BoundRef, BytesRefine, Decl, DigestLockedPackageRef, ElseClause, EnumDecl, Expr,
-    FieldDecl, FunctionDecl, Import, ImportKind, IntentClause, IntentDecl, Module, ObstructionArm,
-    ObstructionHandler, ObstructionTarget, RecordEntry, RequireElseArm, ScalarRefine, Stmt,
-    TypeDecl, TypeExpr, TypeRef, UnOp, VariantCase, YieldBlock,
+    FailureDecl, FieldDecl, FunctionDecl, Import, ImportKind, IntentClause, IntentDecl, Module,
+    ObstructionArm, ObstructionHandler, ObstructionTarget, RecordEntry, RequireElseArm,
+    ScalarRefine, Stmt, TypeDecl, TypeExpr, TypeRef, UnOp, VariantCase, YieldBlock,
 };
 use crate::core_ir::{
     classify_core_type_reference, is_lowercase_sha256_review_digest, parse_core_integer,
@@ -31,6 +31,8 @@ mod list_literal;
 mod list_operations;
 mod return_budget;
 mod signature_diagnostic;
+mod source_failure_maps;
+mod source_failures;
 mod source_fold;
 mod source_functions;
 mod source_matches;
@@ -78,6 +80,16 @@ pub enum CompilerErrorKind {
     DuplicateObstructionPayloadField,
     ReservedTypeIdentity,
     InvalidCoreTypeIntegrity,
+    /// A `fails`, `fail` or map arm names no declared failure.
+    UnknownFailure,
+    /// A body produces a failure its function does not declare.
+    UndeclaredFailure,
+    /// A function declares a failure its body never produces.
+    UnraisedFailure,
+    /// A failing call is neither propagated with `expect` nor mapped with `else`.
+    UnhandledFailure,
+    /// A failure map does not cover every failure of its call.
+    IncompleteFailureMapping,
     /// A call does not establish one of its callee's `where` preconditions.
     UnprovenPrecondition,
 }
@@ -166,6 +178,7 @@ pub struct CompilerContext {
     pure_helper_costs: BTreeMap<String, PureHelperCostFact>,
     type_shapes: BTreeMap<String, TypeShapeFact>,
     source_type_origins: BTreeMap<String, SourceTypeOrigin>,
+    source_failure_origins: BTreeMap<String, SourceFailureOrigin>,
     bounds: BTreeMap<String, BoundFact>,
     budgets: BTreeMap<String, CoreBudget>,
     target_pure_intrinsics: Vec<TargetPureIntrinsicFact>,
@@ -177,6 +190,14 @@ impl CompilerContext {
         origins: BTreeMap<String, SourceTypeOrigin>,
     ) -> Self {
         self.source_type_origins = origins;
+        self
+    }
+
+    pub(crate) fn with_linked_source_failures(
+        mut self,
+        origins: BTreeMap<String, SourceFailureOrigin>,
+    ) -> Self {
+        self.source_failure_origins = origins;
         self
     }
 
@@ -335,6 +356,7 @@ pub struct ResolvedModule {
     pub pure_helper_costs: BTreeMap<String, PureHelperCostFact>,
     pub type_shapes: BTreeMap<String, TypeShapeFact>,
     pub(crate) source_type_origins: BTreeMap<String, SourceTypeOrigin>,
+    pub(crate) source_failure_origins: BTreeMap<String, SourceFailureOrigin>,
     pub bounds: BTreeMap<String, BoundFact>,
     pub budgets: BTreeMap<String, CoreBudget>,
     pub(crate) target_pure_intrinsics: BTreeMap<String, TargetPureIntrinsicFact>,
@@ -345,6 +367,8 @@ pub struct ResolvedModule {
     /// Declarations written as `enum`, whose cases use `Name.CASE` selection.
     pub(crate) enum_types: BTreeSet<String>,
     pub source_functions: Vec<FunctionDecl>,
+    /// `failure` declarations, in source order.
+    pub failures: Vec<FailureDecl>,
     pub intents: Vec<ResolvedIntent>,
 }
 
@@ -352,6 +376,14 @@ pub struct ResolvedModule {
 pub(crate) struct SourceTypeOrigin {
     pub(crate) coordinate: String,
     pub(crate) table_key: String,
+}
+
+/// The module that declared a linked failure, by its original coordinate and
+/// bare name; linking hygiene never reaches Core.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SourceFailureOrigin {
+    pub(crate) coordinate: String,
+    pub(crate) name: String,
 }
 
 /// Resolved type declaration.
@@ -449,10 +481,12 @@ pub fn resolve_module(
     let mut enum_types = BTreeSet::new();
     let mut intents = Vec::new();
     let mut source_functions = Vec::new();
+    let mut failures = Vec::new();
 
     for decl in &module.decls {
         match decl {
             Decl::Function(decl) => source_functions.push(decl.clone()),
+            Decl::Failure(decl) => failures.push(decl.clone()),
             Decl::Type(decl) => types.push(ResolvedTypeDecl {
                 name: decl.name.clone(),
                 source: decl.clone(),
@@ -487,6 +521,7 @@ pub fn resolve_module(
             pure_helper_costs: context.pure_helper_costs.clone(),
             type_shapes: context.type_shapes.clone(),
             source_type_origins: context.source_type_origins.clone(),
+            source_failure_origins: context.source_failure_origins.clone(),
             bounds: context.bounds.clone(),
             budgets: context.budgets.clone(),
             target_intrinsic_coordinates: context
@@ -498,6 +533,7 @@ pub fn resolve_module(
             types,
             enum_types,
             source_functions,
+            failures,
             intents,
         },
     )
@@ -977,6 +1013,13 @@ enum EffectOutputExpectation<'a> {
 }
 
 impl<'a> EffectOutputExpectation<'a> {
+    fn without_conditional_peers(mut self) -> Self {
+        while let Self::ConditionalPeer { next, .. } = self {
+            self = *next;
+        }
+        self
+    }
+
     fn value(self) -> Option<&'a TypeShape> {
         match self {
             Self::Value(shape) | Self::Unsigned(shape) => shape,
@@ -1107,6 +1150,8 @@ struct TypeChecker<'a> {
     inferred_yield_envs: BTreeMap<usize, LocalEnvironment>,
     expected_type_unavailable: bool,
     checking_diagnostic_peer: bool,
+    failures: source_failures::FailureState,
+    record_order_work: usize,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -1143,6 +1188,8 @@ impl<'a> TypeChecker<'a> {
             inferred_yield_envs: BTreeMap::new(),
             expected_type_unavailable: false,
             checking_diagnostic_peer: false,
+            failures: source_failures::FailureState::default(),
+            record_order_work: crate::core_ir::MAX_RECORD_ORDER_WORK,
         }
     }
 
@@ -1788,10 +1835,11 @@ impl<'a> TypeChecker<'a> {
             | Expr::Str { .. }
             | Expr::Bytes { .. }
             | Expr::Bool { .. }
-            | Expr::Digest { .. } => Some(HelperCost::default()),
-            Expr::Field { base, .. } | Expr::Unary { operand: base, .. } => {
-                self.helper_cost_for_expr(base)
-            }
+            | Expr::Digest { .. }
+            | Expr::Fail { .. } => Some(HelperCost::default()),
+            Expr::Field { base, .. }
+            | Expr::Unary { operand: base, .. }
+            | Expr::Expect { call: base, .. } => self.helper_cost_for_expr(base),
             Expr::Call {
                 callee, args, span, ..
             } => {
@@ -2973,7 +3021,11 @@ impl<'a> TypeChecker<'a> {
         let previous_id = env.get(stmt.name).map(|(local, _)| local.id.clone());
         let name = stmt.name;
         if let Some(handler) = stmt.handler {
-            self.check_effectful_let(intent, stmt, handler, env, locals, state);
+            if self.source_call_name(stmt.value).is_some() {
+                self.check_failure_mapped_let(&stmt, handler, env, locals, state);
+            } else {
+                self.check_effectful_let(intent, stmt, handler, env, locals, state);
+            }
         } else if self.is_failure_free_effect_call(stmt.value) {
             // An effect whose authenticated signature declares no failures has
             // nothing to map: its binding is an effect node with an empty map.
@@ -3989,7 +4041,8 @@ impl<'a> TypeChecker<'a> {
             | Expr::Str { .. }
             | Expr::Bytes { .. }
             | Expr::Bool { .. }
-            | Expr::Digest { .. } => {}
+            | Expr::Digest { .. }
+            | Expr::Fail { .. } => {}
             Expr::Field { base, .. } => {
                 accepted &= self.check_known_effect_profiles(intent, base);
             }
@@ -4045,6 +4098,9 @@ impl<'a> TypeChecker<'a> {
                 for arm in arms {
                     accepted &= self.check_known_effect_profiles(intent, &arm.body);
                 }
+            }
+            Expr::Expect { call, .. } => {
+                accepted &= self.check_known_effect_profiles(intent, call);
             }
         }
         accepted
@@ -4238,31 +4294,10 @@ impl<'a> TypeChecker<'a> {
             Expr::Ident { .. }
             | Expr::Field { .. }
             | Expr::Call { .. }
+            | Expr::Expect { .. }
+            | Expr::Fail { .. }
             | Expr::If { .. }
-            | Expr::Match { .. } => {
-                let expected = TypeShape::canonical_structural(TypeKind::Bool)?;
-                // Check the operand on its own terms before applying the
-                // predicate requirement; nested typing failures stay distinct.
-                let value = self.check_expr_with_effect_expectation(
-                    expr,
-                    env,
-                    EffectOutputExpectation::Predicate,
-                )?;
-                if !compatible(&expected, &value.ty) {
-                    self.errors.push(error(
-                        CompilerStage::TypeCheck,
-                        CompilerErrorKind::ExpectedPredicate,
-                        "predicate value must have type Bool",
-                        expr_span(expr),
-                    ));
-                    return None;
-                }
-                Some(CorePredicate::Compare {
-                    op: CompareOp::Eq,
-                    left: value.expr,
-                    right: CoreExpr::Const(CoreValue::Bool(true)),
-                })
-            }
+            | Expr::Match { .. } => self.check_boolean_value_predicate(expr, env),
             _ => {
                 self.errors.push(error(
                     CompilerStage::TypeCheck,
@@ -4277,6 +4312,32 @@ impl<'a> TypeChecker<'a> {
             self.record_source_predicate_cost(expr)?;
         }
         Some(checked)
+    }
+
+    fn check_boolean_value_predicate(
+        &mut self,
+        expr: &Expr,
+        env: &LocalEnvironment,
+    ) -> Option<CorePredicate> {
+        let expected = TypeShape::canonical_structural(TypeKind::Bool)?;
+        // Check the operand on its own terms before applying the
+        // predicate requirement; nested typing failures stay distinct.
+        let value =
+            self.check_expr_with_effect_expectation(expr, env, EffectOutputExpectation::Predicate)?;
+        if !compatible(&expected, &value.ty) {
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::ExpectedPredicate,
+                "predicate value must have type Bool",
+                expr_span(expr),
+            ));
+            return None;
+        }
+        Some(CorePredicate::Compare {
+            op: CompareOp::Eq,
+            left: value.expr,
+            right: CoreExpr::Const(CoreValue::Bool(true)),
+        })
     }
 
     fn check_compare_predicate(
@@ -4328,6 +4389,15 @@ impl<'a> TypeChecker<'a> {
                         }),
                 );
                 (left?, right?)
+            }
+            _ if matches!(lhs, Expr::Fail { .. }) => {
+                let right = self.check_expr(rhs, env)?;
+                let left = self.check_expr_with_effect_expectation(
+                    lhs,
+                    env,
+                    EffectOutputExpectation::Comparison(&right.ty),
+                )?;
+                (left, right)
             }
             _ => {
                 let left = self.check_expr(lhs, env);
@@ -4428,6 +4498,22 @@ impl<'a> TypeChecker<'a> {
         self.check_expr_with_effect_expectation(expr, env, EffectOutputExpectation::Value(expected))
     }
 
+    fn check_match_with_effect_expectation(
+        &mut self,
+        scrutinee: &Expr,
+        arms: &[crate::ast::MatchArm],
+        env: &LocalEnvironment,
+        expectation: EffectOutputExpectation<'_>,
+        span: Span,
+    ) -> Option<TypedValue> {
+        let boolean = TypeShape::canonical_structural(TypeKind::Bool)?;
+        let expected = match expectation.without_conditional_peers() {
+            EffectOutputExpectation::Predicate => Some(&boolean),
+            _ => expectation.value(),
+        };
+        self.check_variant_match(scrutinee, arms, env, expected, span)
+    }
+
     fn check_expr_with_effect_expectation(
         &mut self,
         expr: &Expr,
@@ -4475,7 +4561,7 @@ impl<'a> TypeChecker<'a> {
                 scrutinee,
                 arms,
                 span,
-            } => self.check_variant_match(scrutinee, arms, env, expected, *span),
+            } => self.check_match_with_effect_expectation(scrutinee, arms, env, expectation, *span),
             Expr::VariantLit {
                 ty_path,
                 case,
@@ -4508,6 +4594,11 @@ impl<'a> TypeChecker<'a> {
                 ..
             }
             | Expr::Unary { op: UnOp::Not, .. } => self.check_predicate_value(expr, env),
+            Expr::Fail { failure, span } => self.check_fail_expr(failure, expectation, *span),
+            // The call records its own cost; `expect` adds none.
+            Expr::Expect { call, span } => {
+                return self.check_expect_expr(expr, call, env, expectation, *span);
+            }
             Expr::Binary { .. } | Expr::Digest { .. } | Expr::IfYield { .. } => {
                 self.errors.push(error(
                     CompilerStage::TypeCheck,
@@ -5713,10 +5804,8 @@ impl<'a> TypeChecker<'a> {
             return None;
         }
         let ty = TypeShape::canonical_structural(TypeKind::Record(field_types))?;
-        Some(TypedValue {
-            expr: CoreExpr::Record { fields },
-            ty,
-        })
+        let expr = self.check_record_order(entries, fields, span)?;
+        Some(TypedValue { expr, ty })
     }
     fn report_unavailable_record_mismatches(
         &mut self,
@@ -5791,9 +5880,11 @@ fn needs_yield_peer_type(expr: &Expr) -> bool {
 }
 
 /// Expressions whose type comes from a typed conditional or match peer: a bare
-/// integer literal's width, or an untyped `none()`'s item type.
+/// integer literal's width, an untyped `none()`'s item type, or a `fail` type.
 fn needs_peer_type(expr: &Expr) -> bool {
-    is_bare_integer_literal(expr) || source_options::is_untyped_none(expr)
+    is_bare_integer_literal(expr)
+        || source_options::is_untyped_none(expr)
+        || matches!(expr, Expr::Fail { .. })
 }
 
 fn is_bare_integer_literal(expr: &Expr) -> bool {
@@ -5835,7 +5926,9 @@ fn contains_contextual_bare_integer(expr: &Expr) -> bool {
         | Expr::Binary { .. }
         | Expr::IfYield { .. }
         | Expr::VariantLit { .. }
-        | Expr::Match { .. } => false,
+        | Expr::Match { .. }
+        | Expr::Fail { .. }
+        | Expr::Expect { .. } => false,
     }
 }
 
@@ -6370,7 +6463,9 @@ fn plain_callee_coordinate(expr: &Expr) -> Option<String> {
         | Expr::If { .. }
         | Expr::IfYield { .. }
         | Expr::VariantLit { .. }
-        | Expr::Match { .. } => None,
+        | Expr::Match { .. }
+        | Expr::Fail { .. }
+        | Expr::Expect { .. } => None,
     }
 }
 
@@ -6395,7 +6490,9 @@ fn plain_path_root(expr: &Expr) -> Option<&str> {
         | Expr::If { .. }
         | Expr::IfYield { .. }
         | Expr::VariantLit { .. }
-        | Expr::Match { .. } => None,
+        | Expr::Match { .. }
+        | Expr::Fail { .. }
+        | Expr::Expect { .. } => None,
     }
 }
 
@@ -6426,7 +6523,9 @@ fn expr_span(expr: &Expr) -> Span {
         | Expr::If { span, .. }
         | Expr::IfYield { span, .. }
         | Expr::VariantLit { span, .. }
-        | Expr::Match { span, .. } => *span,
+        | Expr::Match { span, .. }
+        | Expr::Fail { span, .. }
+        | Expr::Expect { span, .. } => *span,
     }
 }
 
