@@ -1278,6 +1278,10 @@ impl<'a> TypeChecker<'a> {
                     Some(integer_shape(width))
                 } else if let Some(shape) = self.named_types.get(name) {
                     Some(shape.clone())
+                } else if self.resolved.types.iter().any(|decl| decl.name == *name) {
+                    // A declared type without a shape was already refused where it
+                    // is declared (for example as a dependency cycle).
+                    None
                 } else {
                     self.errors.push(error(
                         CompilerStage::TypeCheck,
