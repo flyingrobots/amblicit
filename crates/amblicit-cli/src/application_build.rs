@@ -101,6 +101,19 @@ struct ApplicationManifest {
     external_action_resources: Vec<ApplicationExternalActionResource>,
     target: ApplicationTarget,
     output_directory: PathBuf,
+    /// Core work schedule; omitted means `edict.core-cost/v1`.
+    #[serde(default)]
+    core_cost_schedule: ApplicationCostSchedule,
+}
+
+/// The Core work schedule an application selects for every intent.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+enum ApplicationCostSchedule {
+    #[default]
+    #[serde(rename = "edict.core-cost/v1")]
+    Copying,
+    #[serde(rename = "edict.core-cost/v2")]
+    SharedReads,
 }
 
 #[derive(Debug, Deserialize)]
@@ -309,6 +322,10 @@ pub(crate) fn build_application(config_path: &Path) -> Result<(), ApplicationBui
         .transpose()?
         .unwrap_or_default();
     let mut compiler_context = preparation.compiler_context().clone();
+    if config.core_cost_schedule == ApplicationCostSchedule::SharedReads {
+        compiler_context = compiler_context
+            .with_core_cost_schedule(amblicit_syntax::CoreCostSchedule::SharedReads);
+    }
     for intrinsic in &intrinsics {
         compiler_context = compiler_context.with_target_pure_intrinsic(intrinsic.clone());
     }
@@ -4956,6 +4973,7 @@ mod tests {
                 })
                 .collect(),
             external_action_resources: Vec::new(),
+            core_cost_schedule: super::ApplicationCostSchedule::Copying,
             target: ApplicationTarget {
                 profile: "target.test@1".to_owned(),
                 provider_package: PathBuf::from("provider"),

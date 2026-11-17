@@ -184,9 +184,18 @@ pub struct CompilerContext {
     budgets: BTreeMap<String, CoreBudget>,
     target_pure_intrinsics: Vec<TargetPureIntrinsicFact>,
     cost_schedule: crate::CoreCostSchedule,
+    /// Authenticated lawpack helper cost facts, used only by the shared-read meter.
+    helper_cost_facts: Vec<crate::TargetPureFunctionFact>,
 }
 
 impl CompilerContext {
+    /// Record an authenticated lawpack helper's cost fact for the shared-read
+    /// meter. The copying schedule never reads it.
+    pub(crate) fn with_helper_cost_fact(mut self, fact: crate::TargetPureFunctionFact) -> Self {
+        self.helper_cost_facts.push(fact);
+        self
+    }
+
     pub(crate) fn with_linked_source_types(
         mut self,
         origins: BTreeMap<String, SourceTypeOrigin>,
@@ -384,6 +393,8 @@ pub struct ResolvedModule {
     pub failures: Vec<FailureDecl>,
     pub intents: Vec<ResolvedIntent>,
     pub(crate) cost_schedule: crate::CoreCostSchedule,
+    /// Lawpack helper and target intrinsic cost facts for the shared-read meter.
+    pub(crate) foreign_cost_facts: Vec<crate::TargetPureFunctionFact>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -482,18 +493,32 @@ fn shared_read_budgets_fit(
     let errors: Vec<_> = resolved
         .intents
         .iter()
-        .filter(|intent| {
-            core.intents.get(&intent.name).is_none_or(|lowered| {
-                !crate::target_ir::fold_work::intent_cost_fits(core, &[], lowered)
-            })
-        })
-        .map(|intent| {
-            error(
+        .filter_map(|intent| {
+            let budget = &intent.budget;
+            let work = core.intents.get(&intent.name).and_then(|lowered| {
+                crate::target_ir::fold_work::intent_work(
+                    core,
+                    &resolved.foreign_cost_facts,
+                    lowered,
+                )
+            });
+            let message = match work {
+                None => "shared-read Core work is unestablished".to_owned(),
+                Some((steps, bytes))
+                    if steps > budget.max_steps || bytes > budget.max_allocated_bytes =>
+                {
+                    format!(
+                        "shared-read Core work steps={steps}, allocatedBytes={bytes} exceeds operation budget"
+                    )
+                }
+                Some(_) => return None,
+            };
+            Some(error(
                 CompilerStage::TypeCheck,
                 CompilerErrorKind::InvalidBound,
-                "shared-read Core work is unestablished or exceeds the operation budget",
+                message,
                 intent.source.span,
-            )
+            ))
         })
         .collect();
     if errors.is_empty() {
@@ -585,6 +610,17 @@ pub fn resolve_module(
             failures,
             intents,
             cost_schedule: context.cost_schedule,
+            foreign_cost_facts: context
+                .helper_cost_facts
+                .iter()
+                .cloned()
+                .chain(
+                    context
+                        .target_pure_intrinsics
+                        .iter()
+                        .map(crate::TargetPureFunctionFact::from_target_pure_intrinsic),
+                )
+                .collect(),
         },
     )
 }

@@ -499,7 +499,7 @@ fn project_pure_functions(
                     "parameter and return types in the exact exported bounded type closure",
                 ))
             })?;
-        target_facts.push(TargetPureFunctionFact::from_validated_lawpack_export(
+        let fact = TargetPureFunctionFact::from_validated_lawpack_export(
             lawpack.clone(),
             function.coordinate.clone(),
             function.type_parameters.clone(),
@@ -517,7 +517,9 @@ fn project_pure_functions(
                         "validated exported helper budget",
                     ))
                 })?,
-        ));
+        );
+        context = context.with_helper_cost_fact(fact.clone());
+        target_facts.push(fact);
         context = context.with_pure_function(
             local_function,
             PureFunctionFact {

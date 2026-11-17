@@ -90,6 +90,18 @@ pub(crate) fn intent_cost_fits(
     {
         return true;
     }
+    intent_work(core, facts, intent).is_some_and(|(steps, bytes)| {
+        steps <= intent.core_evaluation_budget.max_steps
+            && bytes <= intent.core_evaluation_budget.max_allocated_bytes
+    })
+}
+
+/// The intent's static (steps, allocated bytes), or `None` when unestablished.
+pub(crate) fn intent_work(
+    core: &CoreModule,
+    facts: &[TargetPureFunctionFact],
+    intent: &CoreIntent,
+) -> Option<(u64, u64)> {
     let mut meter = Meter {
         shared: core
             .required_core_capabilities
@@ -100,10 +112,7 @@ pub(crate) fn intent_cost_fits(
         visiting: Vec::new(),
         cached: BTreeMap::new(),
     };
-    meter.intent(intent).is_some_and(|cost| {
-        cost.steps <= intent.core_evaluation_budget.max_steps
-            && cost.bytes <= intent.core_evaluation_budget.max_allocated_bytes
-    })
+    meter.intent(intent).map(|cost| (cost.steps, cost.bytes))
 }
 
 struct Meter<'a> {
@@ -421,32 +430,11 @@ impl<'a> Meter<'a> {
             if matches.len() != 1 {
                 return None;
             }
-            let fact = matches[0];
-            if let Some(rule) = &fact.intrinsic_cost {
-                if args.len() != rule.per_argument_max.len() {
-                    return None;
-                }
-                let steps = args.iter().zip(&rule.per_argument_max).try_fold(
-                    rule.base,
-                    |sum, (arg, coefficient)| {
-                        if *coefficient == 0 {
-                            return Some(sum);
-                        }
-                        let maximum = self.sequence_max(arg, available, 0)?;
-                        sum.checked_add(coefficient.checked_mul(maximum)?)
-                    },
-                )?;
-                return Some(Cost::steps(steps));
+            let template = self.foreign_template(matches[0], args, available)?;
+            if self.shared {
+                return template.add(self.shared_foreign_copies(args, expr, available, depth)?);
             }
-            let CoreBudget {
-                max_steps,
-                max_allocated_bytes,
-                ..
-            } = fact.helper_cost.as_ref()?;
-            return Some(Cost {
-                steps: *max_steps,
-                bytes: *max_allocated_bytes,
-            });
+            return Some(template);
         }
         if self.shared && Self::has_shared_rule(callee) {
             return self.shared_prelude(callee, expr, available, depth);
@@ -466,6 +454,40 @@ impl<'a> Meter<'a> {
             return Some(Cost::steps(steps));
         }
         self.function(callee)
+    }
+
+    /// The declared cost template of one lawpack helper or target intrinsic.
+    fn foreign_template(
+        &self,
+        fact: &TargetPureFunctionFact,
+        args: &[CoreExpr],
+        available: &Scope<'_>,
+    ) -> Option<Cost> {
+        if let Some(rule) = &fact.intrinsic_cost {
+            if args.len() != rule.per_argument_max.len() {
+                return None;
+            }
+            let steps = args.iter().zip(&rule.per_argument_max).try_fold(
+                rule.base,
+                |sum, (arg, coefficient)| {
+                    if *coefficient == 0 {
+                        return Some(sum);
+                    }
+                    let maximum = self.sequence_max(arg, available, 0)?;
+                    sum.checked_add(coefficient.checked_mul(maximum)?)
+                },
+            )?;
+            return Some(Cost::steps(steps));
+        }
+        let CoreBudget {
+            max_steps,
+            max_allocated_bytes,
+            ..
+        } = fact.helper_cost.as_ref()?;
+        Some(Cost {
+            steps: *max_steps,
+            bytes: *max_allocated_bytes,
+        })
     }
 
     fn sequence_max(&self, expr: &CoreExpr, available: &Scope<'_>, depth: usize) -> Option<u64> {

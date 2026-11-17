@@ -64,9 +64,19 @@ fn shell(value: &V) -> (u64, u64) {
     }
 }
 
+/// A target intrinsic or lawpack helper: its result and its declared work on
+/// the actual arguments (the template evaluated at actual operand lengths).
+pub struct Foreign {
+    pub result: fn(&[V]) -> V,
+    pub work: fn(&[V]) -> u64,
+}
+
 pub struct Evaluator<'a> {
     pub core: &'a CoreModule,
     pub meter: Meter,
+    /// Foreign calls by Core callee; each copies its arguments in and its
+    /// result out in full, then performs its declared work.
+    pub foreign: BTreeMap<String, Foreign>,
 }
 
 type Env = BTreeMap<String, V>;
@@ -257,6 +267,21 @@ impl Evaluator<'_> {
             "core.integer.subtract" => {
                 let difference = int(&args[0]) - int(&args[1]);
                 self.build(V::Int(difference))
+            }
+            _ if self.foreign.contains_key(callee) => {
+                let foreign = &self.foreign[callee];
+                let (result_of, work_of) = (foreign.result, foreign.work);
+                for arg in &args {
+                    let (cells, bytes) = full(arg);
+                    self.meter.steps += cells + 1;
+                    self.meter.bytes += bytes;
+                }
+                self.meter.steps += work_of(&args);
+                let result = result_of(&args);
+                let (cells, bytes) = full(&result);
+                self.meter.steps += cells;
+                self.meter.bytes += bytes;
+                result
             }
             _ => self.function(callee, args)?,
         })

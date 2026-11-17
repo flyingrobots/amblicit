@@ -8,6 +8,19 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Select the shared-read Core cost schedule from an application build with the
+  optional `edict.application/v1` field `"coreCostSchedule":
+  "edict.core-cost/v2"`. Omitting the field, or naming `edict.core-cost/v1`,
+  produces byte-identical output; any other value is
+  `InvalidApplicationConfig`. Under the shared-read schedule, calls to
+  imported lawpack helpers and target pure intrinsics are now metered: their
+  arguments and result are charged as full copies plus the declared cost
+  template. A refused shared-read budget reports the steps and bytes it
+  needs. External-action requests remain unmetered and are refused under
+  the shared-read schedule. Jedit's rope modules need 1,570,430 steps and
+  26,468,042 bytes under it, against 6,457,252,919 steps and 16,528,953,978
+  bytes under the copying schedule (issue #330).
+
 - Size the provider-host Wasm fuel ceiling from the input cap. The
   application build now gives each lowerer and verifier call 4,294,967,296
   fuel: its 1 MiB input cap times 4,096 fuel per input byte. The old fixed
