@@ -32,7 +32,8 @@ fn application_build_keeps_every_other_limit() {
         max_input_bytes: 1024 * 1024,
         max_output_bytes: 3 * 1024 * 1024,
         max_diagnostic_bytes: 3 * 1024 * 1024,
-        max_wasm_memory_bytes: 16 * 1024 * 1024,
+        // Issue #333 sized guest memory from the input cap separately.
+        max_wasm_memory_bytes: APPLICATION_BUILD.max_wasm_memory_bytes,
         max_table_elements: 10_000,
         max_instances: 100,
         max_memories: 8,

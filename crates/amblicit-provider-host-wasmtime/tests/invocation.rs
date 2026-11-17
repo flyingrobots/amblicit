@@ -230,6 +230,9 @@ mod fuel_ceiling;
 #[path = "invocation/response_ceiling.rs"]
 mod response_ceiling;
 
+#[path = "invocation/memory_ceiling.rs"]
+mod memory_ceiling;
+
 fn response_limits() -> ProviderResponseLimits {
     ProviderResponseLimits {
         max_output_count: 4,

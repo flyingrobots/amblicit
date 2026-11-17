@@ -8,6 +8,14 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Size the provider guest memory limit from the input cap. The application
+  build now lets each lowerer and verifier grow guest linear memory to
+  64 MiB (was 16 MiB): its 1 MiB input cap times 64 bytes per input byte.
+  Echo's lowerer needs about 34 bytes per input byte, linearly, so the old
+  limit refused requests above about 450 KB, such as jedit#410's
+  ReplaceRange plan. Growth past the limit is still refused with
+  `ResourceLimitExceeded`. Other limits are unchanged (issue #333).
+
 - Select the shared-read Core cost schedule from an application build with the
   optional `edict.application/v1` field `"coreCostSchedule":
   "edict.core-cost/v2"`. Omitting the field, or naming `edict.core-cost/v1`,

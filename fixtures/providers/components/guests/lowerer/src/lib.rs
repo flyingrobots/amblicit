@@ -35,6 +35,19 @@ impl Guest for Fixture {
                 drop(pressure);
                 valid(request)
             }
+            "fixture.memory-32mib" => {
+                let mut pressure = Vec::new();
+                pressure.resize(32 * 1024 * 1024, 0_u8);
+                core::hint::black_box(&pressure);
+                drop(pressure);
+                valid(request)
+            }
+            "fixture.memory-unbounded" => {
+                let mut held: Vec<Vec<u8>> = Vec::new();
+                loop {
+                    held.push(core::hint::black_box(vec![1_u8; 1024 * 1024]));
+                }
+            }
             "fixture.large-package" => large_package(request),
             "fixture.output-flood" => output_flood(request),
             "fixture.diagnostic-flood" => diagnostic_flood(),

@@ -119,11 +119,12 @@ issue #326 as fuel used per WIT logical input byte:
 | Structured fixture, lower / verify | 15,554 / 31,643 | 32,392,681 / 39,078,521 | 2,083 / 1,235 |
 | Mutation fixture, lower / verify | 18,263 / 37,090 | 37,379,698 / 45,240,394 | 2,047 / 1,220 |
 | Identity fixture (echo#972), lower / verify | 29,930 / 59,969 | 69,752,721 / 83,485,303 | 2,330 / 1,392 |
-| Largest lowerer request that fits 16 MiB of guest memory | 546,592 | 1,393,523,207 | 2,549 |
+| Largest lowerer request that fit the pre-#333 16 MiB guest memory | 546,592 | 1,393,523,207 | 2,549 |
 
 The per-byte rate rises slowly with size and is highest for the largest
-request. A larger request exhausts guest memory (`ResourceLimitExceeded`)
-before it exhausts fuel, so no 1 MiB request could be measured. The ceiling
+request. When fuel was sized, a larger request exhausted the then 16 MiB
+guest memory before it exhausted fuel, so no 1 MiB request could be
+measured. The ceiling
 gives 4,096 per byte, at least 1.6 times the highest measured rate at every
 admitted size. The old fixed ceiling, 50,000,000, refused the identity
 fixture.
@@ -133,6 +134,44 @@ Fuel exhaustion is part of the build verdict, so the same request must
 succeed or fail with `FuelExhausted` on every host. A guest that never stops
 still fails with `FuelExhausted`; at this ceiling that takes a few seconds of
 guest execution. No other application-build limit changed.
+
+## Application-Build Guest Memory
+
+The application-build policy caps guest linear memory at its input cap times
+64 bytes per input byte:
+
+```text
+max_wasm_memory_bytes = max_input_bytes × 64 = 1,048,576 × 64 = 67,108,864 (64 MiB)
+```
+
+Issue #333 measured Echo's `echo.dpo@2` components' peak guest memory (the
+largest size any memory grew to) in bytes:
+
+| Request | Lowerer input | Lowerer peak | Verifier input | Verifier peak |
+| --- | ---: | ---: | ---: | ---: |
+| Precondition fixture | 9,607 | 1,376,256 | 15,699 | 1,310,720 |
+| Step fixture | 14,120 | 1,441,792 | 28,799 | 1,441,792 |
+| Structured fixture | 15,554 | 1,507,328 | 31,643 | 1,441,792 |
+| Mutation fixture | 18,263 | 1,572,864 | 37,090 | 1,507,328 |
+| Identity fixture (echo#972) | 29,930 | 1,966,080 | 59,969 | 1,835,008 |
+| Synthetic 16-leaf tree | 33,418 | 2,097,152 | 67,371 | 1,966,080 |
+| Synthetic 64-leaf tree | 97,763 | 4,390,912 | 196,065 | 3,932,160 |
+| Synthetic 128-leaf tree | 184,450 | 7,405,568 | 369,443 | 6,488,064 |
+| Synthetic 256-leaf tree | 359,455 | 13,434,880 | 719,453 | 11,862,016 |
+| jedit#410 ReplaceRange plan | 516,815 | 18,284,544 | not reached | not reached |
+| Synthetic 512-leaf tree | 711,997 | 25,427,968 | not reached | not reached |
+
+Growth is linear, not superlinear. The lowerer uses about 1 MiB plus 34 to
+35 bytes per input byte: the slope is 34.8 between the 16- and 256-leaf
+trees and 34.0 between the 256- and 512-leaf trees. The verifier uses about
+15 bytes per input byte. At the 1 MiB input cap the lowerer would need about
+36 MiB, so 64 MiB leaves about 1.8 times headroom. The old 16 MiB limit
+refused every lowerer request above about 450 KB, including the ReplaceRange
+plan.
+
+The limit is fixed, like fuel, because exhaustion is part of the build
+verdict: growth past it is refused with `ResourceLimitExceeded` on every
+host.
 
 ## Application-Build Response Limit
 
@@ -170,7 +209,7 @@ response cap and still make the verification request too large. The build
 checks the request's WIT logical size before it invokes the verifier, and
 refuses with `ProviderPackageExceedsVerifierInput`, naming both sizes. On
 Echo's current lowerer this case is not reachable: the 512-leaf tree
-exhausts the lowerer's 16 MiB guest memory first. Raising the input cap is
+exhausted the lowerer's former 16 MiB guest memory first. Raising the input cap is
 a separate change, together with fuel, which scales per input byte.
 
 ## Failure Boundary
