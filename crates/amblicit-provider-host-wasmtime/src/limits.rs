@@ -27,6 +27,24 @@ pub struct ProviderHostLimits {
     pub max_host_diagnostic_bytes: usize,
 }
 
+impl ProviderHostLimits {
+    /// The containment policy the application build applies to every
+    /// lowerer and verifier invocation.
+    pub const APPLICATION_BUILD: Self = Self {
+        max_input_bytes: 1024 * 1024,
+        max_output_bytes: 3 * 1024 * 1024,
+        max_diagnostic_bytes: 3 * 1024 * 1024,
+        max_wasm_memory_bytes: 16 * 1024 * 1024,
+        max_table_elements: 10_000,
+        max_instances: 100,
+        max_memories: 8,
+        max_tables: 8,
+        max_wasm_fuel: 50_000_000,
+        max_hostcall_bytes: 4 * 1024 * 1024,
+        max_host_diagnostic_bytes: 512,
+    };
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DeniedResource {
     Memory,
