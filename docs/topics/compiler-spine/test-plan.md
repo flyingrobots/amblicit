@@ -670,6 +670,29 @@ refuse `UnsupportedSourceShape`, as variant-valued results do.
 | CSPINE-TP-246 | implemented | Recursive Option types | CSPINE-REQ-076 | Specified (Core types: recursive value types are rejected in v1 without a declared depth): a variant or record that reaches itself through `Option<T>` refuses `InvalidCoreTypeIntegrity`. | recursive_types_through_option_remain_rejected, recursive_variant_payload_graphs_remain_rejected | crates/amblicit-syntax/tests/source_options.rs, crates/amblicit-syntax/tests/source_variants.rs | Characterization: the existing declaration-cycle check already follows Option edges. Recursive types belong to #262. |
 
 
+## Checked integer arithmetic, `min` and `max` (issue #263)
+
+Compiler contract: `checkedAdd`, `checkedSub`, `checkedMul`, `checkedDiv` and
+`checkedRem` take two operands of one unsigned width (`U8`, `U32` or `U64`) and
+lower to `core.integer.<name><T>(a, b)` returning `Option<T>` under
+`core.option/v1`. They never reject on operand values: overflow, underflow and a
+zero divisor are the `none` case. `min` and `max` lower to `core.integer.min<T>`
+and `core.integer.max<T>`, return `T` and need no capability. A bare literal
+operand takes its width from the typed peer or the expected type. All seven
+names are protected prelude names.
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| CSPINE-REQ-078 | implemented | The checked forms compile to typed `core.integer.checked*` calls returning `Option<T>` with the `core.option/v1` capability, accept operands at width bounds and zero divisors, and force the caller to handle `none` through the Option prelude. Mixed widths refuse `TypeMismatch`; non-unsigned operands, wrong arity, type arguments and untyped literal pairs refuse `UnsupportedSourceShape`. | issue #263 |
+| CSPINE-REQ-079 | implemented | `min` and `max` compile to total `core.integer.min`/`core.integer.max` calls returning `T`; the upper bound of `min` is the smaller operand bound and of `max` the larger, so later bare additions can be proved. | issue #263 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CSPINE-TP-247 | implemented | Checked lowering | CSPINE-REQ-078 | Specified (SPEC Integer Safety): each checked form at each unsigned width lowers to its `core.integer.*` call with the width as its only type argument and an `Option<T>` result; operands at the width maximum, `0 - 1` and zero divisors compile where the bare forms refuse; bare literals take the peer or expected width; native Target lowers every module. | checked_forms_lower_to_typed_core_integer_calls_returning_option, checked_forms_accept_operands_at_width_bounds_where_bare_forms_refuse, bare_literal_operands_take_the_typed_peer_or_expected_width | crates/amblicit-syntax/tests/checked_arithmetic.rs | Runtime results at the bounds are a provider gate; no Core evaluator exists. |
+| CSPINE-TP-248 | implemented | Failure handling and mapping | CSPINE-REQ-078 | Specified: using a checked result as `T`, or `unwrap` without an `isSome` refinement, refuses; a rope-shaped helper maps `none` to a declared variant case and an intent maps it to an obstruction through `require isSome(...)`; both lower at Target. | checked_results_must_be_handled_before_use, checked_failure_maps_to_a_declared_variant_and_an_obstruction | crates/amblicit-syntax/tests/checked_arithmetic.rs | Uses the Option prelude of #261; typed `fails` mapping (#317) is not required. |
+| CSPINE-TP-249 | implemented | Typing refusals | CSPINE-REQ-078, CSPINE-REQ-079 | Specified: mismatched widths and results refuse `TypeMismatch`; `Bool`, `I64` and `String` operands, wrong arity, type arguments and untyped literal pairs refuse `UnsupportedSourceShape`; declaring any of the seven names refuses `SurfaceValidation`. | checked_and_min_max_typing_refuses_mismatches, arithmetic_prelude_names_cannot_be_redeclared | crates/amblicit-syntax/tests/checked_arithmetic.rs | Signed checked forms remain unimplemented, as signed arithmetic is. |
+| CSPINE-TP-250 | implemented | Min/max bounds and work | CSPINE-REQ-079 | Invariant: `max` proves a following `+ 1` only when both operands are bounded, `min` when either is; budgets swept from 1 to 1200 steps that the compiler accepts also lower at Target. | min_and_max_lower_to_total_core_calls_without_option, min_and_max_carry_their_operand_bounds_into_addition_proofs, checked_arithmetic_is_charged_like_target_work | crates/amblicit-syntax/tests/checked_arithmetic.rs | The sweep is a witness over the tested budgets, not universal parity. |
+
 ## Bounded state-carrying fold (issue #268)
 
 Compiler contract: `fold(initial, step, N)` evaluates initial once,

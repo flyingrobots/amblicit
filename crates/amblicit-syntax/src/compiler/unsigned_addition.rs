@@ -247,6 +247,17 @@ fn upper_bound(expr: &CoreExpr, facts: &BoundFacts<'_>, max: u64, depth: usize) 
                         .min(max);
                 }
             }
+            if let ("core.integer.min" | "core.integer.max", [left, right]) =
+                (callee.as_str(), args.as_slice())
+            {
+                let left = upper_bound(left, facts, max, depth + 1);
+                let right = upper_bound(right, facts, max, depth + 1);
+                return if callee == "core.integer.min" {
+                    left.min(right)
+                } else {
+                    left.max(right)
+                };
+            }
             if callee == "core.bytes.count" {
                 // A count never exceeds the operand's byte maximum.
                 let [coordinate] = type_args.as_slice() else {

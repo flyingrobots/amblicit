@@ -707,26 +707,7 @@ impl<'a> Rewrite<'a> {
                 .filter(|definition| definition.kind == DefinitionKind::Function)
             {
                 Some(definition.linked.clone())
-            } else if matches!(
-                head.as_str(),
-                "len"
-                    | "listLen"
-                    | "listAt"
-                    | "listAppend"
-                    | "listConcat"
-                    | "slice"
-                    | "isUtf8"
-                    | "count"
-                    | "at"
-                    | "hash"
-                    | "digest"
-                    | "some"
-                    | "none"
-                    | "isSome"
-                    | "unwrap"
-                    | "default"
-                    | "fold"
-            ) {
+            } else if PRELUDE_CALLS.contains(&head.as_str()) {
                 None
             } else {
                 return Err(self.error(SourceLinkErrorKind::UnresolvedName, span, head));
@@ -788,3 +769,31 @@ fn expr_span(expr: &mut Expr) -> &mut Span {
         | Expr::Expect { span, .. } => span,
     }
 }
+
+/// Prelude call names that resolve to no source definition.
+const PRELUDE_CALLS: &[&str] = &[
+    "len",
+    "listLen",
+    "listAt",
+    "listAppend",
+    "listConcat",
+    "slice",
+    "isUtf8",
+    "count",
+    "at",
+    "hash",
+    "digest",
+    "some",
+    "none",
+    "isSome",
+    "unwrap",
+    "default",
+    "checkedAdd",
+    "checkedSub",
+    "checkedMul",
+    "checkedDiv",
+    "checkedRem",
+    "min",
+    "max",
+    "fold",
+];

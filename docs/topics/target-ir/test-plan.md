@@ -1,5 +1,16 @@
 # Target IR Test Plan
 
+## Independent integer operation validation (#263)
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| TIR-REQ-081 | implemented | Native Target derives the result of every `core.integer.checked*`, `core.integer.min` and `core.integer.max` call from its unsigned width type argument and independently typed operands; checked results are `Option<T>` and need `core.option/v1`. These calls are total. Target recomputes `min`/`max` upper bounds for addition proofs and charges them as scalar arithmetic. | issue #263 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TIR-TP-166 | implemented | Integer authority | TIR-REQ-081 | Specified: valid controls lower; a forged or non-unsigned width, a dropped operand, an unknown `core.integer.*` operation, a checked result declared as `T` and a `min`/`max` result declared as `Option<T>` refuse `InvalidCoreIdentity` without an artifact. | target_rechecks_integer_signatures_and_capability | crates/amblicit-syntax/tests/checked_arithmetic.rs | Mutates compiler-produced Core. |
+| TIR-TP-167 | implemented | Min/max bounds | TIR-REQ-081 | Invariant: replacing a compiler-proved `min` with `max` over an unbounded operand makes Target refuse the following addition. | target_recomputes_min_and_max_bounds_from_untrusted_core | crates/amblicit-syntax/tests/checked_arithmetic.rs | Source bounds are not trusted. |
+
 ## Independent Option validation (#261)
 
 | ID | Status | Requirement | Source |

@@ -168,6 +168,20 @@ joins refuse unless one actual arm type contains the other's; a wider expected
 result guides constructors but preserves the actual joined item. Option-valued intent results refuse
 `UnsupportedSourceShape`, as variant-valued results do. [CSPINE-REQ-076]
 
+The checked forms `checkedAdd`, `checkedSub`, `checkedMul`, `checkedDiv` and
+`checkedRem` take two operands of one unsigned width (`U8`, `U32` or `U64`) and
+lower to `core.integer.<name><T>(a, b)`, which returns `Option<T>` and adds
+`core.option/v1`. They never reject on operand values: overflow, underflow and a
+zero divisor are the `none` case, which the caller handles with the Option
+prelude, for example by mapping it to a variant case or to an obstruction with
+`require isSome(sum) else ...`. `min` and `max` lower to `core.integer.min<T>`
+and `core.integer.max<T>` and return `T`; a later bare addition sees the smaller
+operand bound for `min` and the larger for `max`. A bare literal operand takes
+its width from its peer or the expected type. Mixed widths refuse
+`TypeMismatch`; other operand types, wrong arity and type arguments refuse
+`UnsupportedSourceShape`. All seven names are protected prelude names. Signed
+checked forms are not implemented. [CSPINE-REQ-078] [CSPINE-REQ-079]
+
 `unwrap(x)` compiles only where `isSome(x)`, alone or as a conjunct of an `&&`
 chain, refines the same local `x` (`EDICT-LANG-OPTION-REFINE-001`): the right
 operand of `&&` and the `then` branch of an expression, statement or

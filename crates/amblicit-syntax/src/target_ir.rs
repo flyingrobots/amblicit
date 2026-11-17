@@ -13,6 +13,7 @@ mod byte_utf8;
 pub(crate) mod execution_order;
 mod fold_work;
 mod function_preconditions;
+mod integer_operations;
 mod list_operations;
 mod option_operations;
 mod pure_intrinsics;
@@ -1900,8 +1901,12 @@ fn expression_has_closed_authority(
     }
 }
 
+/// Scalar integer prelude operations: charged per operand cell, with no
+/// byte or storage scan.
 fn is_unsigned_arithmetic(callee: &str) -> bool {
-    callee == unsigned_subtraction::OPERATION || callee == unsigned_addition::OPERATION
+    callee == unsigned_subtraction::OPERATION
+        || callee == unsigned_addition::OPERATION
+        || integer_operations::is_operation(callee)
 }
 
 /// A record fits when it has exactly the declared fields and each fits its type.
@@ -2017,6 +2022,9 @@ fn prelude_type_coordinate(
         }
         byte_utf8::OPERATION => {
             byte_utf8::type_coordinate(core, functions, type_args, args, available)
+        }
+        _ if integer_operations::is_operation(callee) => {
+            integer_operations::type_coordinate(core, functions, callee, type_args, args, available)
         }
         _ if is_unsigned_arithmetic(callee) => {
             unsigned_arithmetic::type_coordinate(core, functions, type_args, args, available)

@@ -877,6 +877,16 @@ provider verification, effect execution costs, output encoding limits and runtim
 admission retain their separate authorities; this meter does not establish the
 full #268 runtime contract or the authored rope cutover.
 
+## Integer operation validation
+
+Native Target derives the result of `core.integer.checked*`, `core.integer.min`
+and `core.integer.max` itself: the single type argument must be `U8`, `U32` or
+`U64` and both operands must independently have that type. Checked calls return
+`Option<T>` and need `core.option/v1`; `min` and `max` return `T`. All are
+total. Target recomputes `min`/`max` upper bounds for addition proofs from the
+Core it receives and charges these calls as scalar arithmetic. Runtime results
+are a provider gate. [TIR-REQ-081]
+
 ## Option validation
 
 Native Target admits `core.option/v1` and derives the result of each

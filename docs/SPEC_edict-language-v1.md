@@ -2655,9 +2655,12 @@ Integer (I32/I64/U32/U64):
   checkedAdd, checkedSub, checkedMul, checkedDiv, checkedRem -> Option<T>
   no bitwise operators in v1
   signed / and % truncate toward zero; remainder takes the dividend's sign
+  min, max -> T          # total; the result bound is the smaller (min) or larger (max) operand bound
 U8:
   == != < <= > >=
-  # Value and comparison support; arithmetic is not implemented for U8.
+  checkedAdd, checkedSub, checkedMul, checkedDiv, checkedRem -> Option<U8>
+  min, max -> U8
+  # Bare arithmetic is not implemented for U8.
 String:
   +                       # bounded concatenation (see Refined Scalar Types)
   == !=                   # over the exact canonical scalar sequence
@@ -2691,6 +2694,13 @@ All integer arithmetic in the lawful-autonomous lane is overflow-safe and total
 - There is no wrapping, saturating, or trapping arithmetic in v1. Overflow is
   never a silent or runtime-panicking outcome; it is a compile-time rejection or
   a typed `Option` the author must handle.
+
+The current source-to-Core compiler implements the `checked*` forms and `min`
+and `max` for `U8`, `U32` and `U64` operands of one width. A checked call lowers
+to `core.integer.<name><T>(a, b)` returning `Option<T>` under `core.option/v1`;
+overflow, underflow and a zero divisor are its `none` case. `min` and `max`
+lower to `core.integer.min<T>` and `core.integer.max<T>`. Signed checked forms
+are not implemented.
 
 The current source-to-Core compiler supports a conservative unsigned subtraction
 slice. Operands must have the same `U32` or `U64` type. It accepts `x - x`,

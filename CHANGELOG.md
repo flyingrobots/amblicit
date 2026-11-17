@@ -8,6 +8,18 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Compile the checked integer forms `checkedAdd`, `checkedSub`, `checkedMul`,
+  `checkedDiv` and `checkedRem` over `U8`, `U32` and `U64`. Each lowers to a
+  typed `core.integer.checked*` call that returns `Option<T>` under
+  `core.option/v1`, so overflow, underflow and division by zero are a `none`
+  case the caller must handle. Compile total `min` and `max`, lowered to
+  `core.integer.min` and `core.integer.max`, whose results carry their operand
+  bounds into later addition proofs. Native Target rechecks every signature
+  and bound. The seven names become protected prelude names, so a module
+  declaring a function, parameter or local with one of them now refuses
+  `SurfaceValidation`. Signed checked forms and provider/runtime support are
+  separate work (issue #263).
+
 - Add typed failures to source functions. `failure ClosureTooSmall;`
   declares a failure. `fn f(...) -> T fails ClosureTooSmall` declares the
   exact set the body produces with `fail` and `expect`. An intent maps every
