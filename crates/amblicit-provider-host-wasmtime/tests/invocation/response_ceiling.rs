@@ -33,10 +33,12 @@ fn application_build_response_cap_is_the_verifier_input_cap() {
         APPLICATION_BUILD_RESPONSE_LIMITS.max_total_response_bytes,
         APPLICATION_BUILD.max_input_bytes
     );
-    assert!(
-        APPLICATION_BUILD_RESPONSE_LIMITS.max_total_response_bytes
-            <= APPLICATION_BUILD.max_output_bytes
-    );
+    const {
+        assert!(
+            APPLICATION_BUILD_RESPONSE_LIMITS.max_total_response_bytes
+                <= APPLICATION_BUILD.max_output_bytes
+        );
+    }
 }
 
 #[test]
