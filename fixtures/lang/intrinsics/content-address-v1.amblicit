@@ -1,0 +1,55 @@
+package app.content_address_v1@1;
+
+use target echo.dpo@1 digest "sha256:1111111111111111111111111111111111111111111111111111111111111111" as echo;
+
+type Input = {
+  warp: Bytes<exact=32>,
+  nodeType: Bytes<exact=32>,
+  atomType: Bytes<exact=32>,
+  atom: Bytes<max=16>,
+  edgeA: Bytes<exact=32>,
+  edgeB: Bytes<exact=32>,
+  low: Bytes<exact=32>,
+  high: Bytes<exact=32>,
+};
+
+type Output = {
+  nodeZeroEdges: Bytes<exact=32>,
+  nodeOneEdge: Bytes<exact=32>,
+  nodeTwoEdges: Bytes<exact=32>,
+  nodeTwoEdgesReordered: Bytes<exact=32>,
+  contentEdge: Bytes<exact=32>,
+  slotEdge: Bytes<exact=32>,
+};
+
+intent ids(input: Input) returns Output
+  profile p.read
+  basis none
+  budget <= p.small
+{
+  let nodeZeroEdges = echo.contentAddress(
+    input.warp, input.nodeType, input.atomType, input.atom, []
+  );
+  let nodeOneEdge = echo.contentAddress(
+    input.warp, input.nodeType, input.atomType, input.atom,
+    [{ edgeType: input.edgeA, to: input.high }]
+  );
+  let nodeTwoEdges = echo.contentAddress(
+    input.warp, input.nodeType, input.atomType, input.atom,
+    [{ edgeType: input.edgeB, to: input.low }, { edgeType: input.edgeA, to: input.high }]
+  );
+  let nodeTwoEdgesReordered = echo.contentAddress(
+    input.warp, input.nodeType, input.atomType, input.atom,
+    [{ edgeType: input.edgeA, to: input.high }, { edgeType: input.edgeB, to: input.low }]
+  );
+  let contentEdge = echo.contentEdgeId(input.warp, input.low, input.edgeA, input.high);
+  let slotEdge = echo.slotEdgeId(input.warp, input.low, input.edgeA);
+  return {
+    nodeZeroEdges,
+    nodeOneEdge,
+    nodeTwoEdges,
+    nodeTwoEdgesReordered,
+    contentEdge,
+    slotEdge,
+  };
+}

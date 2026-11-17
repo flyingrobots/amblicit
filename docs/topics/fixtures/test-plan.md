@@ -60,6 +60,8 @@ Out of scope:
 | fixtures/provider-contracts/function-preconditions-v1/README.md | Frozen prior provider contract-pack publication. | Exact CDDL and manifest bytes are reproduced from the frozen target-profile schema. |
 | fixtures/target-profile/pre-catalog-v2-target-profile.cddl | Target-profile schema bytes as published before catalog v2. | Reassembling the prior provider contract packs from these bytes reproduces their published fixtures exactly. |
 | fixtures/lang/intrinsics/content-address.amblicit | Source fixture calling one target-catalog pure intrinsic. | Compiles to Core against facts admitted from a v2 catalog; the Core module validates under the current provider contract pack. |
+| fixtures/lang/intrinsics/content-address-v1.amblicit | Source fixture computing one output per ContentAddressV1 node or edge vector. | Compiles against Echo's identity catalog so each output is its vector's intrinsic call (PROVIDERS-TP-067) and lowers to Target IR (PROVIDERS-TP-068). |
+| fixtures/content-address-v1/README.md | Echo's six frozen ContentAddressV1 vectors, vendored byte for byte, with their inputs. | A provider running the compiled identity fixture on the listed inputs must return these identities (CLI-TP-058); Amblicit does not evaluate them. |
 | fixtures/lawpack/hello-echo/README.md | First reviewed canonical lawpack fixture and digest-pinned source. | `cargo xtask lawpack-goldens --check` reproduces exact bytes and digests; the public loader corroborates the source import digest. |
 | fixtures/lawpack/causal-cell/README.md | Portable capability closure for external Edict applications. | `cargo xtask lawpack-goldens --check` validates, compiles through, and reproduces the exact closure. |
 
