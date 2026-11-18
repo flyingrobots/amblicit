@@ -7,16 +7,14 @@
 //! references, already charged where they were built. Comparisons, input and
 //! output keep their full-size charges, and every operation without a rule
 //! here keeps its copying (`v1`) charge, which is never lower.
-use super::{
-    expression_type_coordinate, resolved_core_type, CoreExpr, CoreType, CoreValue, Cost, Meter,
-    Scope, Value,
-};
+use super::reachable::Length;
+use super::{CoreExpr, CoreValue, Cost, Meter, Scope, Value};
 
 /// Core capability that selects the shared-read schedule. A consumer that does
 /// not meter this schedule must refuse the module.
 pub(crate) const SHARED_READS_CAPABILITY: &str = "core.cost.shared-reads/v1";
 
-impl Meter<'_> {
+impl<'a> Meter<'a> {
     /// The work of evaluating `expr` itself, excluding its children.
     pub(super) fn shared_own(
         &self,
@@ -71,10 +69,10 @@ impl Meter<'_> {
 
     /// The call work of a list operation with a shared-read rule.
     pub(super) fn shared_prelude(
-        &self,
+        &mut self,
         callee: &str,
-        expr: &CoreExpr,
-        available: &Scope<'_>,
+        expr: &'a CoreExpr,
+        available: &Scope<'a>,
         depth: usize,
     ) -> Option<Cost> {
         match callee {
@@ -103,15 +101,23 @@ impl Meter<'_> {
         )
     }
 
-    fn list_shell(&self, expr: &CoreExpr, available: &Scope<'_>, depth: usize) -> Option<Cost> {
+    /// A new list shell, sized by the proven length of the result when one
+    /// exists and by the declared maximum otherwise.
+    fn list_shell(
+        &mut self,
+        expr: &'a CoreExpr,
+        available: &Scope<'a>,
+        depth: usize,
+    ) -> Option<Cost> {
         if depth > super::MAX_CORE_GRAPH_DEPTH {
             return None;
         }
-        let coordinate = expression_type_coordinate(self.core, self.facts, expr, available)?;
-        let CoreType::List { max, .. } = resolved_core_type(self.core, &coordinate)? else {
-            return None;
+        let max = self.declared_list_max(expr, available)?;
+        let items = match self.reach_length(expr, available, depth)? {
+            Length::Proven(bound) => bound.min(max),
+            Length::Declared => max,
         };
-        shell(max)?.evaluation()
+        shell(items)?.evaluation()
     }
 }
 

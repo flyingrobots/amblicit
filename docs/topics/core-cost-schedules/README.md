@@ -40,6 +40,19 @@ Values are immutable and shared by reference.
   operation (byte, text, integer, Option, effect and target intrinsic) keeps
   its copying charge.
 
+A new list shell (`listAppend`, `listConcat`) is sized by the largest length
+the list can provably have, when one is known, instead of its declared
+maximum. The meter tracks length bounds through locals, record fields,
+branches (the larger arm, and only when both arms prove a bound), calls and
+folds. A list literal of `n` items has bound `n`; an append adds one and a
+concatenation adds the right operand's bound, both capped at the declared
+maximum. A list from intent input, an element read, a foreign call or any
+other source has no proven bound and is charged at its maximum. A fold is
+charged round by round under the bounds the previous round produced, and
+once a round's bounds stop changing every remaining round is charged at that
+round's cost. Every round of the bound and every arm's maximum are still
+charged.
+
 The source checker admits a shared-read budget with native Target's meter in
 `target_ir/fold_work/shared_reads.rs`, so source and Target minimums are equal.
 Native Target applies the schedule only when Core requires the capability.
