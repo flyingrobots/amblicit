@@ -79,7 +79,7 @@ round `i` the arena can hold at most `L0 + i` items. Nested folds multiply the
 error: the rope's `cut` (66 rounds) calls `join` (66 rounds) on the arena it
 is growing.
 
-### Level 1: size-bounded abstract evaluation of folds
+### Level 1: size-bounded abstract evaluation of folds (implemented)
 
 The meter evaluates a pure function against an abstract environment that
 gives every list value an upper bound on its length, and every record its
@@ -116,3 +116,13 @@ a type maximum (byte and text payloads, nested records in lists). Level 3, an
 amortised bound across nested folds, needs a source construct and will be
 proposed separately before any implementation. Neither is started until level
 1 is measured.
+
+### Level 1 result
+
+Measured on jedit#410 at `cacd74c` (whole ReplaceRange application), level 1
+moves the shared-read minimum from 484,963,522 steps and 1,245,181,033 bytes
+to 484,726,795 steps and 1,230,030,505 bytes. The rope's arena comes from the
+closure read, which is intent input with no proven length, so its appends
+stay charged at the 512-node maximum. Level 1 is sound and tightens folds
+over lists built from literals, but it does not fit the rope under
+`text.replaceRangeBudget`.

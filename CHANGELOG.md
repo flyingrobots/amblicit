@@ -8,6 +8,16 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Under the shared-read cost schedule, size a new list shell by the length the
+  list can provably have reached instead of its declared maximum. The meter
+  tracks length bounds from list literals, appends and concatenations through
+  locals, fields, branches, calls and fold rounds, and charges a fold round by
+  round. Lists of unknown length are still charged at their maximum. Source
+  admission and native Target share the meter, so their minimums stay equal.
+  The copying schedule is unchanged. Jedit's ReplaceRange moves only from
+  1,245,181,033 to 1,230,030,505 bytes, because its arena starts from the
+  closure read (issue #335, level 1).
+
 - Size the provider guest memory limit from the input cap. The application
   build now lets each lowerer and verifier grow guest linear memory to
   64 MiB (was 16 MiB): its 1 MiB input cap times 64 bytes per input byte.

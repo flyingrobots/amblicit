@@ -1058,7 +1058,11 @@ parameters, fields, list elements and fold state, argument passing and
 results cost one step and allocate nothing, and building a value charges only
 its shell (one cell per field, item slot or case header). Comparisons, intent
 input and output, and every other operation keep their v1 charges. The static
-charge must never fall below the work a conforming v2 meter records. The
+charge must never fall below the work a conforming v2 meter records. A new
+list shell is sized by the length the list can provably have reached, when
+the meter can prove one from literals, appends and concatenations through
+locals, fields, branches, calls and fold rounds, and by its declared maximum
+otherwise. The
 [cost schedule shelf](topics/core-cost-schedules/README.md) lists the exact
 rules.
 

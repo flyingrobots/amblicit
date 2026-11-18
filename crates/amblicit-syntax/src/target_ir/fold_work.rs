@@ -10,6 +10,7 @@ use super::{
 };
 use std::collections::BTreeMap;
 
+mod reachable;
 mod shared_reads;
 pub(crate) use shared_reads::SHARED_READS_CAPABILITY;
 
@@ -111,6 +112,8 @@ pub(crate) fn intent_work(
         facts,
         visiting: Vec::new(),
         cached: BTreeMap::new(),
+        reach_env: BTreeMap::new(),
+        reach_cache: BTreeMap::new(),
     };
     meter.intent(intent).map(|cost| (cost.steps, cost.bytes))
 }
@@ -122,6 +125,10 @@ struct Meter<'a> {
     facts: &'a [TargetPureFunctionFact],
     visiting: Vec<&'a str>,
     cached: BTreeMap<&'a str, Cost>,
+    /// Shared-read schedule: proven list-length bounds of the current frame.
+    reach_env: BTreeMap<String, reachable::Reach>,
+    /// Shared-read schedule: call cost and result bounds by argument bounds.
+    reach_cache: BTreeMap<(&'a str, Vec<reachable::Reach>), (Cost, reachable::Reach)>,
 }
 
 impl<'a> Meter<'a> {
@@ -348,10 +355,15 @@ impl<'a> Meter<'a> {
                 bound,
                 ..
             } => {
-                let initial = self.expression(initial, available, depth + 1)?;
+                let initial_cost = self.expression(initial, available, depth + 1)?;
                 // A terminal/done flag is ordinary state: all N steps are charged.
-                let repeated = self.function(step)?.add(Cost::steps(1))?.times(*bound)?;
-                initial.add(repeated)?
+                let repeated = if self.shared {
+                    let start = self.reach(initial, available, depth + 1)?;
+                    self.fold_reach(start, step, *bound)?.0
+                } else {
+                    self.function(step)?.add(Cost::steps(1))?.times(*bound)?
+                };
+                initial_cost.add(repeated)?
             }
             CoreExpr::Call { callee, args, .. } => {
                 let arguments = args.iter().try_fold(Cost::default(), |sum, arg| {
@@ -417,7 +429,7 @@ impl<'a> Meter<'a> {
         &mut self,
         callee: &'a str,
         args: &'a [CoreExpr],
-        expr: &CoreExpr,
+        expr: &'a CoreExpr,
         available: &Scope<'a>,
         depth: usize,
     ) -> Option<Cost> {
@@ -452,6 +464,13 @@ impl<'a> Meter<'a> {
                 }
             }
             return Some(Cost::steps(steps));
+        }
+        if self.shared {
+            let mut arguments = Vec::with_capacity(args.len());
+            for arg in args {
+                arguments.push(self.reach(arg, available, depth + 1)?);
+            }
+            return Some(self.function_reach(callee, arguments)?.0);
         }
         self.function(callee)
     }
@@ -574,7 +593,14 @@ impl<'a> Meter<'a> {
             return None;
         }
         let cost = match node {
-            CoreNode::Let { value, .. } => self.expression(value, available, depth + 1)?,
+            CoreNode::Let { binding, value } => {
+                let cost = self.expression(value, available, depth + 1)?;
+                if self.shared {
+                    let reach = self.reach(value, available, depth + 1)?;
+                    self.reach_env.insert(binding.id.clone(), reach);
+                }
+                cost
+            }
             CoreNode::Attempt {
                 value, failure_map, ..
             } => {
