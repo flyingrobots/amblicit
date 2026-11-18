@@ -68,3 +68,51 @@ exceeds the accepted budget.
 | Charge `listAt` by element size only, leaving local reads at full size | Leaves the dominant cost: every helper call and local read still copies the arena, so the fixture improves only by a small factor. |
 | Select v2 from the target profile | The cleaner home in the long run, but the profile manifest schema is frozen in published packs. A Core capability fails closed without a schema change. |
 | A separate compiler-side v2 accounting | Two implementations of one schedule invite drift; sharing the Target meter makes the minimums equal by construction. |
+
+## Reachable-size bounds for fold-grown values (#335, design)
+
+Under the shared-read schedule a fold is charged `N` times its step's cost,
+and the step's cost charges each `listAppend` or `listConcat` result shell at
+the list type's declared maximum. A fold that appends one node per round to a
+512-node arena is therefore charged 513 slots on every round, even though by
+round `i` the arena can hold at most `L0 + i` items. Nested folds multiply the
+error: the rope's `cut` (66 rounds) calls `join` (66 rounds) on the arena it
+is growing.
+
+### Level 1: size-bounded abstract evaluation of folds
+
+The meter evaluates a pure function against an abstract environment that
+gives every list value an upper bound on its length, and every record its
+fields' bounds, instead of assuming each value's type maximum:
+
+- a list literal of `n` items has bound `n`;
+- `listAppend(xs, x)` has bound `min(max, bound(xs) + 1)`, and
+  `listConcat(a, b)` has bound `min(max, bound(a) + bound(b))`;
+- a local, field, `listAt` element or call result carries the bound of the
+  value it names; any other list expression falls back to its declared
+  maximum;
+- `if` and `match` take the larger bound of their arms, field by field.
+
+A fold is charged round by round. Round `i` charges the step's cost under the
+abstract state that round `i - 1` produced, and the next state's bounds are
+the step's abstract result. Bounds never exceed the declared maximum, so the
+abstract state stops growing once it saturates; from then on every remaining
+round is charged at that fixed point. A call is charged under its arguments'
+bounds, and results are cached per function and abstract argument tuple.
+
+Soundness: by induction over rounds, every concrete value's length is at most
+its abstract bound, and every shell, comparison scan and copy is charged by
+an abstract bound that is at least the concrete size. Charging still covers
+every round of every fold, and every arm's maximum, so no early exit or
+branch pruning is assumed.
+
+Native Target runs the same meter on Core alone. The source checker keeps
+admitting with that meter, so the two minimums stay equal.
+
+### Level 2 and level 3
+
+Level 2 refines record sizes through constructors where level 1 still charges
+a type maximum (byte and text payloads, nested records in lists). Level 3, an
+amortised bound across nested folds, needs a source construct and will be
+proposed separately before any implementation. Neither is started until level
+1 is measured.
