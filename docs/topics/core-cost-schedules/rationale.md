@@ -220,4 +220,3 @@ Templates cover what Echo charges beyond that: input validations (`validations(i
   - **scans:** `parameter(maxEdgeScans)` × (1, 128+128) + `validations(output)` steps.
 
 Amblicit is implementing this on the PR for #341 and will charge these rules from a fixture `/v3` catalog until Echo publishes its own.
-

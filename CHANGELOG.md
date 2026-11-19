@@ -8,6 +8,16 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Charge effect steps by provider-published cost templates. An
+  `edict.target-profile.intrinsics/v3` catalog may give each effect intrinsic
+  an `effectCostRule` over its input and output types, provider parameters and
+  the costliest source helper. `admit_target_effect_costs` admits them, the
+  application build loads them from the pinned catalog, and the source checker
+  and native Target add each template to its effect nodes under both cost
+  schedules, so the compiler minimum covers what the provider charges. `/v2`
+  catalogs and frozen publications are unchanged and charge as before
+  (issue #341).
+
 - Merge identical `use target` imports when flattening a source-module closure.
   Every module that imports one target profile with the same digest now
   shares one alias, so the linked Core module carries a single `target`

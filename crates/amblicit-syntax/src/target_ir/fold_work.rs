@@ -2,6 +2,7 @@
 //!
 //! No compiler cost table or artifact-supplied estimate is trusted. Values are
 //! charged in portable 64-byte cells; imported work comes only from sealed facts.
+use super::effect_costs::{Charge, TargetEffectCostFact};
 use super::{
     expression_type_coordinate, is_typed_prelude_operation, resolved_core_type, CoreBlock,
     CoreBound, CoreBudget, CoreExpr, CoreIntent, CoreModule, CoreNode, CorePredicate,
@@ -82,6 +83,7 @@ fn scope<'a>(items: impl Iterator<Item = &'a LocalRef>) -> Scope<'a> {
 pub(crate) fn intent_cost_fits(
     core: &CoreModule,
     facts: &[TargetPureFunctionFact],
+    effect_costs: &[TargetEffectCostFact],
     intent: &CoreIntent,
 ) -> bool {
     if !core
@@ -91,7 +93,7 @@ pub(crate) fn intent_cost_fits(
     {
         return true;
     }
-    intent_work(core, facts, intent).is_some_and(|(steps, bytes)| {
+    intent_work(core, facts, effect_costs, intent).is_some_and(|(steps, bytes)| {
         steps <= intent.core_evaluation_budget.max_steps
             && bytes <= intent.core_evaluation_budget.max_allocated_bytes
     })
@@ -101,9 +103,13 @@ pub(crate) fn intent_cost_fits(
 pub(crate) fn intent_work(
     core: &CoreModule,
     facts: &[TargetPureFunctionFact],
+    effect_costs: &[TargetEffectCostFact],
     intent: &CoreIntent,
 ) -> Option<(u64, u64)> {
     let mut meter = Meter {
+        effect_costs,
+        costliest: None,
+        costliest_known: false,
         shared: core
             .required_core_capabilities
             .iter()
@@ -119,6 +125,11 @@ pub(crate) fn intent_work(
 }
 
 struct Meter<'a> {
+    /// Provider effect cost templates, by semantic effect coordinate.
+    effect_costs: &'a [TargetEffectCostFact],
+    /// The costliest source helper, computed once when a template needs it.
+    costliest: Option<(u64, u64)>,
+    costliest_known: bool,
     /// `edict.core-cost/v2`: reads share values; only construction is sized.
     shared: bool,
     core: &'a CoreModule,
@@ -628,11 +639,12 @@ impl<'a> Meter<'a> {
                 input,
                 binding,
                 obstruction_map,
-                ..
+                effect,
             } => {
                 let mut cost = self
                     .expression(input, available, depth + 1)?
-                    .add(self.value_type(&binding.ty, 0)?.evaluation()?)?;
+                    .add(self.value_type(&binding.ty, 0)?.evaluation()?)?
+                    .add(self.effect_template(effect, input, &binding.ty, available)?)?;
                 for arm in obstruction_map.values() {
                     // Nullary obstruction annotations are not callable helpers.
                     // Match the existing closed-authority rule only here; a
@@ -685,5 +697,138 @@ impl<'a> Meter<'a> {
             CoreNode::For { .. } | CoreNode::ExternalActionRequest { .. } => return None,
         };
         cost.add(Cost::steps(1))
+    }
+}
+
+impl Meter<'_> {
+    /// The provider template charge of one effect node; nothing without one.
+    fn effect_template(
+        &mut self,
+        effect: &str,
+        input: &CoreExpr,
+        output: &str,
+        available: &Scope<'_>,
+    ) -> Option<Cost> {
+        let Some(fact) = self.effect_costs.iter().find(|fact| fact.effect == effect) else {
+            return Some(Cost::default());
+        };
+        let input = expression_type_coordinate(self.core, self.facts, input, available)?;
+        if !self.costliest_known {
+            self.costliest = self.costliest_helper();
+            self.costliest_known = true;
+        }
+        let costliest = self.costliest;
+        let charge = Charge {
+            core: self.core,
+            input: &input,
+            output,
+            parameters: &fact.parameters,
+            costliest_helper: costliest,
+        };
+        let (steps, bytes) = charge.evaluate(&fact.rule)?;
+        Some(Cost { steps, bytes })
+    }
+
+    /// The largest (steps, bytes) of any one call to a source helper, under
+    /// the module's schedule, or `None` when some helper is unestablished.
+    fn costliest_helper(&mut self) -> Option<(u64, u64)> {
+        let names: Vec<String> = self
+            .core
+            .functions
+            .keys()
+            .map(|name| format!("{}.{name}", self.core.coordinate))
+            .collect();
+        let mut worst = Cost::default();
+        for callee in &names {
+            let name = callee
+                .strip_prefix(self.core.coordinate.as_str())?
+                .strip_prefix('.')?;
+            let (key, function) = self.core.functions.get_key_value(name)?;
+            let cost = if self.shared {
+                let arguments = vec![reachable::Reach::new(); function.params.len()];
+                self.function_reach(key, arguments)?.0
+            } else {
+                self.function(key)?
+            };
+            worst = worst.maximum(cost);
+        }
+        Some((worst.steps, worst.bytes))
+    }
+}
+
+/// The provider template work of an intent's effect nodes alone: each node
+/// once, a branch at its larger arm, a literal-bound loop body per iteration.
+pub(crate) fn effect_template_work(
+    core: &CoreModule,
+    facts: &[TargetPureFunctionFact],
+    effect_costs: &[TargetEffectCostFact],
+    intent: &CoreIntent,
+) -> Option<(u64, u64)> {
+    let mut meter = Meter {
+        effect_costs,
+        costliest: None,
+        costliest_known: false,
+        shared: core
+            .required_core_capabilities
+            .iter()
+            .any(|c| c == SHARED_READS_CAPABILITY),
+        core,
+        facts,
+        visiting: Vec::new(),
+        cached: BTreeMap::new(),
+        reach_env: BTreeMap::new(),
+        reach_cache: BTreeMap::new(),
+    };
+    let available = scope(intent.body.locals.iter());
+    meter
+        .template_block(&intent.body, &available, 0)
+        .map(|cost| (cost.steps, cost.bytes))
+}
+
+impl<'a> Meter<'a> {
+    fn template_block(
+        &mut self,
+        block: &'a CoreBlock,
+        outer: &Scope<'a>,
+        depth: usize,
+    ) -> Option<Cost> {
+        if depth > MAX_CORE_GRAPH_DEPTH {
+            return None;
+        }
+        let mut available = outer.clone();
+        available.extend(scope(block.locals.iter()));
+        let mut total = Cost::default();
+        for node in &block.nodes {
+            let cost = match node {
+                CoreNode::Effect {
+                    effect,
+                    input,
+                    binding,
+                    ..
+                } => self.effect_template(effect, input, &binding.ty, &available)?,
+                CoreNode::Branch {
+                    then_block,
+                    else_block,
+                    ..
+                } => self
+                    .template_block(then_block, &available, depth + 1)?
+                    .maximum(self.template_block(else_block, &available, depth + 1)?),
+                CoreNode::For {
+                    binder,
+                    bound: CoreBound::Literal(bound),
+                    body,
+                    ..
+                } => {
+                    let mut inner = available.clone();
+                    inner.insert(&binder.id, binder);
+                    self.template_block(body, &inner, depth + 1)?
+                        .times(*bound)?
+                }
+                CoreNode::For { .. } => return None,
+                _ => Cost::default(),
+            };
+            total = total.add(cost)?;
+        }
+        Some(total)
     }
 }

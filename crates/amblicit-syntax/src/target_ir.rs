@@ -10,6 +10,7 @@ mod byte_count;
 mod byte_length;
 mod byte_slice;
 mod byte_utf8;
+pub(crate) mod effect_costs;
 pub(crate) mod execution_order;
 pub(crate) mod fold_work;
 mod function_preconditions;
@@ -293,6 +294,8 @@ pub struct TargetEffectSignatureFact {
     output_type: String,
     failure_payload_types: BTreeMap<String, String>,
     type_closure: BTreeMap<String, CoreType>,
+    /// The provider's cost template for the intrinsic this effect lowers to.
+    cost: Option<effect_costs::TargetEffectCostFact>,
 }
 
 pub(crate) struct TargetEffectSignatureShape {
@@ -319,6 +322,7 @@ impl TargetEffectSignatureFact {
             output_type: shape.output_type,
             failure_payload_types: shape.failure_payload_types,
             type_closure,
+            cost: None,
         }
     }
 }
@@ -335,6 +339,25 @@ pub struct TargetIrLoweringFacts {
 }
 
 impl TargetIrLoweringFacts {
+    /// Attach admitted effect cost templates to the signatures of the effects
+    /// they charge. Native Target adds each template to every effect node of
+    /// that effect.
+    #[must_use]
+    pub fn with_target_effect_costs(
+        mut self,
+        costs: &[effect_costs::TargetEffectCostFact],
+    ) -> Self {
+        for signature in &mut self.effect_signatures {
+            if let Some(cost) = costs
+                .iter()
+                .find(|cost| cost.effect == signature.source_coordinate)
+            {
+                signature.cost = Some(cost.clone());
+            }
+        }
+        self
+    }
+
     /// Add admitted target-catalog pure intrinsics. Lowering refuses any whose
     /// target is not exactly [`Self::target_profile`].
     #[must_use]
@@ -1034,7 +1057,11 @@ fn validate_pure_binding_graphs(
                     "Core operation is not proven total in its evaluation scope",
                 ));
             }
-            if !fold_work::intent_cost_fits(core, pure_functions, intent) {
+            let effect_costs: Vec<_> = effect_signatures
+                .iter()
+                .filter_map(|signature| signature.cost.clone())
+                .collect();
+            if !fold_work::intent_cost_fits(core, pure_functions, &effect_costs, intent) {
                 return Some(invalid_pure_binding(
                     intent_name,
                     None,

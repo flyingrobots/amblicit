@@ -49,6 +49,48 @@ impl ApplicationPureIntrinsics {
         Ok(())
     }
 
+    /// The effect cost templates (#341) the same pinned catalog publishes for
+    /// the effects this application lowers; none for a `/v2` catalog.
+    pub(super) fn load_effect_costs(
+        &self,
+        provider_root: &Path,
+        profile: &ProviderBoundArtifact,
+        lowerings: &[amblicit_syntax::TargetEffectLowering],
+    ) -> Result<Vec<amblicit_syntax::TargetEffectCostFact>, ApplicationBuildFailure> {
+        let catalog = catalog_reference(&profile.artifact.bytes)?;
+        let path = confined_existing_path(
+            provider_root,
+            &self.catalog,
+            "target.pureIntrinsics.catalog",
+            "TargetIntrinsicCatalogReadFailed",
+            "intrinsic catalog",
+        )?;
+        let bytes = read(
+            &path,
+            "TargetIntrinsicCatalogReadFailed",
+            "intrinsic catalog",
+        )?;
+        let target = ResourceRef {
+            coordinate: profile.reference.coordinate.clone(),
+            digest: Some(rendered_digest(&profile.reference.digest)),
+        };
+        // Provider-published template parameters are not yet delivered to the
+        // build; a template that reads one is refused when charged.
+        amblicit_syntax::admit_target_effect_costs(
+            &target,
+            &catalog,
+            &bytes,
+            lowerings,
+            &std::collections::BTreeMap::new(),
+        )
+        .map_err(|errors| {
+            failure(
+                "TargetIntrinsicAdmissionFailed",
+                format!("target effect cost template admission failed: {errors:?}"),
+            )
+        })
+    }
+
     pub(super) fn load_from_provider(
         &self,
         provider_root: &Path,

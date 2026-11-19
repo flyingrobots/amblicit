@@ -186,6 +186,8 @@ pub struct CompilerContext {
     cost_schedule: crate::CoreCostSchedule,
     /// Authenticated lawpack helper cost facts, used only by the shared-read meter.
     helper_cost_facts: Vec<crate::TargetPureFunctionFact>,
+    /// Provider effect cost templates (#341), charged under every schedule.
+    effect_costs: Vec<crate::TargetEffectCostFact>,
 }
 
 impl CompilerContext {
@@ -351,6 +353,14 @@ impl CompilerContext {
         self
     }
 
+    /// Charge each effect node bound to one of these effects its provider cost
+    /// template, under every schedule.
+    #[must_use]
+    pub fn with_target_effect_costs(mut self, costs: &[crate::TargetEffectCostFact]) -> Self {
+        self.effect_costs.extend(costs.iter().cloned());
+        self
+    }
+
     #[must_use]
     pub fn with_budget(mut self, source_coordinate: impl Into<String>, budget: CoreBudget) -> Self {
         self.budgets.insert(source_coordinate.into(), budget);
@@ -395,6 +405,7 @@ pub struct ResolvedModule {
     pub(crate) cost_schedule: crate::CoreCostSchedule,
     /// Lawpack helper and target intrinsic cost facts for the shared-read meter.
     pub(crate) foreign_cost_facts: Vec<crate::TargetPureFunctionFact>,
+    pub(crate) effect_costs: Vec<crate::TargetEffectCostFact>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -478,7 +489,56 @@ pub fn compile_to_core(
     let typed = type_check(&resolved)?;
     let core = lower_core(&typed)?;
     shared_read_budgets_fit(&resolved, &core)?;
+    copying_effect_templates_fit(&resolved, &core)?;
     Ok(core)
+}
+
+/// Under the copying schedule, effect cost templates are charged on top of the
+/// source checker's own work: the module is checked again with each intent's
+/// budget reduced by its template work.
+fn copying_effect_templates_fit(
+    resolved: &ResolvedModule,
+    core: &CoreModule,
+) -> Result<(), Vec<CompilerError>> {
+    if resolved.cost_schedule != crate::CoreCostSchedule::Copying
+        || resolved.effect_costs.is_empty()
+    {
+        return Ok(());
+    }
+    let mut reduced = resolved.clone();
+    let mut errors = Vec::new();
+    for intent in &mut reduced.intents {
+        let work = core.intents.get(&intent.name).and_then(|lowered| {
+            crate::target_ir::fold_work::effect_template_work(
+                core,
+                &resolved.foreign_cost_facts,
+                &resolved.effect_costs,
+                lowered,
+            )
+        });
+        let budget = &mut intent.budget;
+        match work.and_then(|(steps, bytes)| {
+            Some((
+                budget.max_steps.checked_sub(steps)?,
+                budget.max_allocated_bytes.checked_sub(bytes)?,
+            ))
+        }) {
+            Some((steps, bytes)) => {
+                budget.max_steps = steps;
+                budget.max_allocated_bytes = bytes;
+            }
+            None => errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::InvalidBound,
+                "effect cost templates are unestablished or exceed the operation budget",
+                intent.source.span,
+            )),
+        }
+    }
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+    type_check(&reduced).map(|_| ())
 }
 
 /// Under the shared-read schedule the source checker admits budgets with the
@@ -499,6 +559,7 @@ fn shared_read_budgets_fit(
                 crate::target_ir::fold_work::intent_work(
                     core,
                     &resolved.foreign_cost_facts,
+                    &resolved.effect_costs,
                     lowered,
                 )
             });
@@ -621,6 +682,7 @@ pub fn resolve_module(
                         .map(crate::TargetPureFunctionFact::from_target_pure_intrinsic),
                 )
                 .collect(),
+            effect_costs: context.effect_costs.clone(),
         },
     )
 }
