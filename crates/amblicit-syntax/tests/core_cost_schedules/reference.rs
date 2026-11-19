@@ -101,20 +101,41 @@ impl Evaluator<'_> {
         env.insert("arg.0".into(), input);
         self.meter.steps += 2 * ic;
         self.meter.bytes += ib;
-        for node in &intent.body.nodes {
-            match node {
-                CoreNode::Let { binding, value } | CoreNode::Attempt { binding, value, .. } => {
-                    let value = self.expr(value, &env)?;
-                    env.insert(binding.id.clone(), value);
-                }
-                other => panic!("reference evaluator does not model {other:?}"),
-            }
-        }
+        self.nodes(&intent.body.nodes, &mut env)?;
         let result = self.expr(&intent.body.result, &env)?;
         let (oc, ob) = full(&output(&result));
         self.meter.steps += 2 * oc;
         self.meter.bytes += ob;
         Ok(result)
+    }
+
+    /// Bindings and bounded loops; each loop item is one step plus a shared
+    /// binder reference, then the body's nodes and result.
+    fn nodes(&mut self, nodes: &[CoreNode], env: &mut Env) -> Result<(), Stop> {
+        for node in nodes {
+            match node {
+                CoreNode::Let { binding, value } | CoreNode::Attempt { binding, value, .. } => {
+                    let value = self.expr(value, env)?;
+                    env.insert(binding.id.clone(), value);
+                }
+                CoreNode::For {
+                    binder, iter, body, ..
+                } => {
+                    let V::List(items) = self.expr(iter, env)? else {
+                        panic!("loop over a non-list")
+                    };
+                    for item in items {
+                        self.step(2);
+                        let mut inner = env.clone();
+                        inner.insert(binder.id.clone(), item);
+                        self.nodes(&body.nodes, &mut inner)?;
+                        self.expr(&body.result, &inner)?;
+                    }
+                }
+                other => panic!("reference evaluator does not model {other:?}"),
+            }
+        }
+        Ok(())
     }
 
     fn function(&mut self, callee: &str, args: Vec<V>) -> Result<V, Stop> {

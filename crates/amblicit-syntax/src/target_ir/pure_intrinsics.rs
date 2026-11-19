@@ -10,7 +10,7 @@ use super::{
     TargetIrLoweringFacts, TargetLoweringFailure, TargetLoweringFailureKind,
     TargetPureFunctionFact,
 };
-use crate::core_ir::{CoreBlock, MAX_CORE_GRAPH_DEPTH};
+use crate::core_ir::{CoreBlock, CoreBound, MAX_CORE_GRAPH_DEPTH};
 
 /// An admitted intrinsic must belong to exactly the lowering target profile.
 pub(super) fn foreign_target(facts: &TargetIrLoweringFacts) -> Option<TargetLoweringFailure> {
@@ -43,6 +43,10 @@ pub(super) fn intent_cost_fits(
         return true;
     }
     let mut meter = Meter {
+        shared: core
+            .required_core_capabilities
+            .iter()
+            .any(|c| c == super::fold_work::SHARED_READS_CAPABILITY),
         core,
         pure_functions,
         functions: BTreeMap::new(),
@@ -72,6 +76,8 @@ fn locals<'a>(locals: impl Iterator<Item = &'a LocalRef>) -> BTreeMap<&'a str, &
 }
 
 struct Meter<'a> {
+    /// The module selects the shared-read schedule (`edict.core-cost/v2`).
+    shared: bool,
     core: &'a CoreModule,
     pure_functions: &'a [TargetPureFunctionFact],
     /// Per helper: its metered steps and whether it reaches any intrinsic call.
@@ -159,6 +165,18 @@ impl<'a> Meter<'a> {
                 // Loop bodies are charged once per iteration bound elsewhere;
                 // an intrinsic inside one is refused rather than undercharged,
                 // judged by presence (including through helpers), not cost.
+                // Under the shared-read schedule a literal-bound loop body is
+                // charged once per iteration, as the shared-read meter does.
+                CoreNode::For {
+                    iter,
+                    body,
+                    bound: CoreBound::Literal(bound),
+                    ..
+                } if self.shared => {
+                    let iter = self.expression(iter, available, depth + 1)?;
+                    let body = self.block(body, available, depth + 1)?;
+                    iter.checked_add(body.checked_mul(*bound)?)?
+                }
                 CoreNode::For { iter, body, .. } => {
                     let iter = self.expression(iter, available, depth + 1)?;
                     let before = self.intrinsic_calls;

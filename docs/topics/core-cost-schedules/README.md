@@ -66,6 +66,11 @@ cost template: the lawpack adapter's helper budget, or the intrinsic's
 `base + perArgumentMax × operand maximum` rule. The source checker reads the
 same authenticated helper and intrinsic facts that native Target receives.
 
+Native Target's separate intrinsic-cost check follows the same loop rule:
+under the shared-read schedule it charges a literal-bound `for` body once per
+iteration instead of refusing an intrinsic reached from a loop. Under the
+copying schedule an intrinsic inside a loop body is still refused.
+
 The meter has no rule for an external-action request or a `for` loop over a
 non-literal bound, so a shared-read module containing one is refused with
 `InvalidBound`. A refused shared-read budget reports the static steps and

@@ -100,6 +100,13 @@ intent run(input: In) returns Out profile p.read basis none budget <= p.b {
 }";
 
 fn compile(budget: CoreBudget) -> Result<CoreModule, Vec<amblicit_syntax::CompilerError>> {
+    compile_source(SOURCE, budget)
+}
+
+fn compile_source(
+    source: &str,
+    budget: CoreBudget,
+) -> Result<CoreModule, Vec<amblicit_syntax::CompilerError>> {
     let mut context = CompilerContext::new()
         .with_core_cost_schedule(CoreCostSchedule::SharedReads)
         .with_operation_profile("p.read", "continuum.profile.read-only/v1")
@@ -107,7 +114,7 @@ fn compile(budget: CoreBudget) -> Result<CoreModule, Vec<amblicit_syntax::Compil
     for fact in admitted() {
         context = context.with_target_pure_intrinsic(fact);
     }
-    compile_to_core(&parse_module(SOURCE).expect("parses"), &context)
+    compile_to_core(&parse_module(source).expect("parses"), &context)
 }
 
 fn budget(steps: u64, bytes: u64) -> CoreBudget {
@@ -190,6 +197,102 @@ fn intrinsic_calls_in_fold_state_stay_within_budget() {
     let outcome = evaluator.intent("run", input, Clone::clone);
     let metered = evaluator.meter;
     println!("total: static steps={steps} bytes={bytes}; metered {metered:?}; {outcome:?}");
+    assert!(outcome.is_ok());
+    assert!(
+        metered.steps <= steps,
+        "metered {} > budget {steps}",
+        metered.steps
+    );
+    assert!(
+        metered.bytes <= bytes,
+        "metered {} > budget {bytes}",
+        metered.bytes
+    );
+}
+
+/// An intrinsic reached from a bounded loop body, directly and through a
+/// helper, alongside one in a fold step (#337).
+const LOOP: &str = "package app.totals@1;
+use target echo.dpo@1 digest \"sha256:1111111111111111111111111111111111111111111111111111111111111111\" as echo;
+type State = { xs: List<U64, max=16>, sum: U64 };
+fn step(s: State) -> State { return { xs: s.xs, sum: echo.total(s.xs) }; }
+fn summed(xs: List<U64, max=16>) -> U64 { return echo.total(xs); }
+type In = { xs: List<U64, max=16> };
+type Out = { sum: U64 };
+intent run(input: In) returns Out profile p.read basis none budget <= p.b {
+  for x in input.xs bounded 16 {
+    let direct = echo.total(input.xs);
+    let helped = summed(input.xs);
+  }
+  let final = fold({ xs: input.xs, sum: 0u64 }, step, 4u64);
+  return { sum: final.sum };
+}";
+
+fn loop_facts() -> TargetIrLoweringFacts {
+    TargetIrLoweringFacts {
+        target_profile: target(),
+        target_ir_domain: "echo.span-ir/v3".into(),
+        operation_profiles: vec!["continuum.profile.read-only/v1".into()],
+        obstruction_coordinates: Vec::new(),
+        effect_lowerings: Vec::new(),
+        effect_signatures: Vec::new(),
+        pure_functions: Vec::new(),
+    }
+    .with_target_pure_intrinsics(&admitted())
+}
+
+#[test]
+fn native_target_lowers_loop_intrinsics_at_the_shared_read_source_minimum() {
+    let steps = minimum(|v| compile_source(LOOP, budget(v, CEILING)).is_ok());
+    let bytes = minimum(|v| compile_source(LOOP, budget(CEILING, v)).is_ok());
+    let core = compile_source(LOOP, budget(steps, bytes)).expect("source minimum compiles");
+    let report = lower_to_target_ir(&core, &loop_facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:#?}");
+}
+
+#[test]
+fn native_target_still_refuses_one_step_below_the_loop_minimum() {
+    let steps = minimum(|v| compile_source(LOOP, budget(v, CEILING)).is_ok());
+    let mut core = compile_source(LOOP, budget(steps, CEILING)).expect("source minimum compiles");
+    core.intents.get_mut("run").unwrap().core_evaluation_budget = budget(steps - 1, CEILING);
+    assert_ne!(
+        lower_to_target_ir(&core, &loop_facts()).status,
+        TargetLoweringStatus::Lowered
+    );
+}
+
+#[test]
+fn loop_and_helper_intrinsic_calls_stay_within_budget() {
+    let steps = minimum(|v| compile_source(LOOP, budget(v, CEILING)).is_ok());
+    let bytes = minimum(|v| compile_source(LOOP, budget(CEILING, v)).is_ok());
+    let core = compile_source(LOOP, budget(steps, bytes)).expect("accepted at its minimums");
+    let mut foreign = BTreeMap::new();
+    foreign.insert(
+        TOTAL.to_owned(),
+        Foreign {
+            result: |args| match &args[0] {
+                V::List(items) => V::Int(items.len() as u128),
+                other => panic!("list argument, got {other:?}"),
+            },
+            work: |args| match &args[0] {
+                V::List(items) => BASE + PER_ITEM * items.len() as u64,
+                other => panic!("list argument, got {other:?}"),
+            },
+        },
+    );
+    let mut evaluator = Evaluator {
+        core: &core,
+        meter: reference::Meter::default(),
+        foreign,
+    };
+    // A full input list runs every loop iteration at its largest operand.
+    let input = V::Rec(BTreeMap::from([(
+        "xs".to_owned(),
+        V::List((0..16).map(V::Int).collect()),
+    )]));
+    let outcome = evaluator.intent("run", input, Clone::clone);
+    let metered = evaluator.meter;
+    println!("loop: static steps={steps} bytes={bytes}; metered {metered:?}; {outcome:?}");
     assert!(outcome.is_ok());
     assert!(
         metered.steps <= steps,

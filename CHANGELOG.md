@@ -8,6 +8,16 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Fix native Target refusing shared-read modules that call a target pure
+  intrinsic from a bounded `for` body, directly or through a helper, with
+  "target pure-intrinsic cost is unestablished or exceeds the step budget".
+  Target's intrinsic-cost check now charges a literal-bound loop body once per
+  iteration under the shared-read schedule, as the shared-read meter does, so
+  a module lowers at its source minimum. The copying schedule still refuses
+  intrinsics in loop bodies. Jedit's flat ReplaceRange now passes Target
+  lowering at its source minimum of 261,523,656 steps and 175,260,814 bytes
+  (issue #337).
+
 - Under the shared-read cost schedule, size a new list shell by the length the
   list can provably have reached instead of its declared maximum. The meter
   tracks length bounds from list literals, appends and concatenations through
