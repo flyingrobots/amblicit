@@ -8,6 +8,14 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Merge identical `use target` imports when flattening a source-module closure.
+  Every module that imports one target profile with the same digest now
+  shares one alias, so the linked Core module carries a single `target`
+  import, as Echo's identity check requires. Two modules that pin one target
+  with different digests are refused at link time with the new
+  `ConflictingTargetImport` kind. Core bytes do not depend on dependency
+  order (issue #342).
+
 - Fix the shared-read cost schedule charging no allocation for values built by
   prelude calls. `core.bytes.concat`, `core.bytes.slice`, text concatenation,
   integer operations and the `Option` operations now charge their result's

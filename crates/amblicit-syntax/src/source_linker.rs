@@ -25,6 +25,8 @@ pub enum SourceLinkErrorKind {
     SpanOverflow,
     DepthExceeded,
     ReservedTypeIdentity,
+    /// Two modules import one target profile with different digests.
+    ConflictingTargetImport,
 }
 /// A source-local linking failure.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -232,6 +234,14 @@ pub fn link_source_closure(
             if let Some(ImportBinding::External(alias, _)) = names.imports.get(&import.alias) {
                 import.alias.clone_from(alias);
             }
+            // A merged target import is emitted once, under its shared alias.
+            if linked
+                .imports
+                .iter()
+                .any(|emitted| emitted.kind == import.kind && emitted.alias == import.alias)
+            {
+                continue;
+            }
             rewrite.shift(&mut import.span)?;
             if let Some(package) = &mut import.package {
                 rewrite.shift(&mut package.span)?;
@@ -372,6 +382,9 @@ fn collect_names(
 ) -> Result<BTreeMap<String, UnitNames>, SourceLinkError> {
     let mut units = BTreeMap::new();
     let mut generated = BTreeSet::new();
+    // One alias per target profile across the closure: identical `use target`
+    // imports share it, so the linked module carries a single import.
+    let mut targets: BTreeMap<String, (Option<String>, String)> = BTreeMap::new();
     for (coordinate, module) in closure.modules() {
         let prefix = format!("{fresh}{:x}_", Sha256::digest(coordinate.as_bytes()));
         let mut names = UnitNames {
@@ -443,12 +456,11 @@ fn collect_names(
                     )
                 })?;
                 ImportBinding::Source(format!("{}@{}", package.path.join("."), package.version))
+            } else if import.kind == ImportKind::Target {
+                let own = external_alias(closure, coordinate, &names.prefix, &import.alias);
+                target_binding(import, own, coordinate, &mut targets, &mut generated)?
             } else {
-                let alias = if coordinate == closure.root_coordinate() {
-                    import.alias.clone()
-                } else {
-                    format!("{}I_{}", names.prefix, import.alias)
-                };
+                let alias = external_alias(closure, coordinate, &names.prefix, &import.alias);
                 if !generated.insert(alias.clone()) {
                     return Err(failure(
                         SourceLinkErrorKind::NameCollision,
@@ -464,6 +476,45 @@ fn collect_names(
         units.insert(coordinate.clone(), names);
     }
     Ok(units)
+}
+/// The linked alias of an external import: unchanged in the root module,
+/// prefixed with the module's fresh namespace elsewhere.
+fn external_alias(closure: &SourceClosure, coordinate: &str, prefix: &str, alias: &str) -> String {
+    if coordinate == closure.root_coordinate() {
+        alias.to_owned()
+    } else {
+        format!("{prefix}I_{alias}")
+    }
+}
+
+/// The binding of a `use target` import: the alias already chosen for an
+/// identical import of the same target, or `own` for the first one. A second
+/// import of the target with another digest is refused.
+fn target_binding(
+    import: &crate::ast::Import,
+    own: String,
+    coordinate: &str,
+    targets: &mut BTreeMap<String, (Option<String>, String)>,
+    generated: &mut BTreeSet<String>,
+) -> Result<ImportBinding, SourceLinkError> {
+    let refuse = |kind| failure(kind, coordinate, import.span, &import.alias);
+    let package = import
+        .package
+        .as_ref()
+        .ok_or_else(|| refuse(SourceLinkErrorKind::UnresolvedName))?;
+    let target = format!("{}@{}", package.path.join("."), package.version);
+    if let Some((digest, alias)) = targets.get(&target) {
+        return if *digest == import.digest {
+            Ok(ImportBinding::External(alias.clone(), import.kind))
+        } else {
+            Err(refuse(SourceLinkErrorKind::ConflictingTargetImport))
+        };
+    }
+    if !generated.insert(own.clone()) {
+        return Err(refuse(SourceLinkErrorKind::NameCollision));
+    }
+    targets.insert(target, (import.digest.clone(), own.clone()));
+    Ok(ImportBinding::External(own, import.kind))
 }
 fn failure(kind: SourceLinkErrorKind, coordinate: &str, span: Span, name: &str) -> SourceLinkError {
     SourceLinkError {
