@@ -2458,6 +2458,7 @@ fn write_application_source_failure(
                         SourceLinkErrorKind::ImportedIntent => "ImportedIntent",
                         SourceLinkErrorKind::NameCollision => "NameCollision",
                         SourceLinkErrorKind::SpanOverflow => "SpanOverflow",
+                        SourceLinkErrorKind::ConflictingTargetImport => "ConflictingTargetImport",
                         SourceLinkErrorKind::DepthExceeded => "DepthExceeded",
                         SourceLinkErrorKind::ReservedTypeIdentity => "ReservedTypeIdentity",
                     };
