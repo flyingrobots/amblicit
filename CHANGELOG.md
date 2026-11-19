@@ -8,6 +8,15 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Fix the shared-read cost schedule charging no allocation for values built by
+  prelude calls. `core.bytes.concat`, `core.bytes.slice`, text concatenation,
+  integer operations and the `Option` operations now charge their result's
+  full size in steps and allocated bytes, as the documentation stated and as
+  `maxAllocatedBytes` (cumulative logical allocation) requires. Source
+  admission and native Target share the meter. Jedit's flat ReplaceRange
+  minimum moves from 261,523,656 steps and 175,260,814 bytes to 261,826,990
+  steps and 213,473,665 bytes (203.6 MiB) (issue #339).
+
 - Fix native Target refusing shared-read modules that call a target pure
   intrinsic from a bounded `for` body, directly or through a helper, with
   "target pure-intrinsic cost is unestablished or exceeds the step budget".

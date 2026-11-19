@@ -36,9 +36,11 @@ Values are immutable and shared by reference.
 - A match payload binder costs one step; dispatch costs one step per arm plus
   one.
 - Unchanged from the copying schedule: comparisons scan both operands in full,
-  intent input and output are charged at full size, and every other
-  operation (byte, text, integer, Option, effect and target intrinsic) keeps
-  its copying charge.
+  intent input and output are charged at full size, and every prelude call
+  that builds a new value (byte and text operations, integer operations,
+  `Option` constructors and readers) is charged that value's full size as
+  steps and allocated bytes, plus its copying-schedule call work. Effects and
+  target intrinsics keep their own rules below.
 
 A new list shell (`listAppend`, `listConcat`) is sized by the largest length
 the list can provably have, when one is known, instead of its declared

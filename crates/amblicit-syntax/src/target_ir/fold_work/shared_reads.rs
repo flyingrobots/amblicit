@@ -49,6 +49,15 @@ impl<'a> Meter<'a> {
                         .checked_add(u64::try_from(case.len()).ok()?)?,
                 })?
                 .evaluation(),
+            // A prelude call without a shared-read rule builds a new value
+            // (bytes, text, integers, Options): charge it as under v1.
+            CoreExpr::Call { callee, .. }
+                if (super::is_typed_prelude_operation(callee)
+                    && !Self::has_shared_rule(callee))
+                    || callee == "core.string.concat" =>
+            {
+                self.value(expr, available, depth)?.evaluation()
+            }
             CoreExpr::Local { .. }
             | CoreExpr::Field { .. }
             | CoreExpr::If { .. }
