@@ -19,6 +19,8 @@ pub enum V {
     Rec(BTreeMap<String, V>),
     List(Vec<V>),
     Var(String, String, Option<Box<V>>),
+    Bytes(Vec<u8>),
+    Opt(Option<Box<V>>),
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -49,6 +51,11 @@ pub fn full(value: &V) -> (u64, u64) {
             let (pc, pb) = payload.as_deref().map_or((1, 64), full);
             (6 + pc, 399 + ty.len() as u64 + case.len() as u64 + pb)
         }
+        V::Bytes(bytes) => (1, 64 + bytes.len() as u64),
+        V::Opt(item) => {
+            let (ic, ib) = item.as_deref().map_or((0, 0), full);
+            (1 + ic, 64 + ib)
+        }
     }
 }
 
@@ -61,6 +68,8 @@ fn shell(value: &V) -> (u64, u64) {
             .fold((1, 64), |(c, b), key| (c + 1, b + 64 + key.len() as u64)),
         V::List(items) => (1 + items.len() as u64, 64 * (1 + items.len() as u64)),
         V::Var(ty, case, _) => (7, 64 + 399 + ty.len() as u64 + case.len() as u64),
+        // Built by a prelude call: charged at their full actual size.
+        V::Bytes(_) | V::Opt(_) => full(value),
     }
 }
 
@@ -281,6 +290,34 @@ impl Evaluator<'_> {
                 left.extend(right);
                 self.build(V::List(left))
             }
+            "core.bytes.concat" => {
+                let (V::Bytes(mut left), V::Bytes(right)) = (args[0].clone(), args[1].clone())
+                else {
+                    panic!("byte operands")
+                };
+                left.extend(right);
+                self.build(V::Bytes(left))
+            }
+            "core.bytes.slice" => {
+                let V::Bytes(bytes) = &args[0] else {
+                    panic!("byte operand")
+                };
+                let (from, to) = (int(&args[1]) as usize, int(&args[2]) as usize);
+                self.build(V::Bytes(bytes[from..to].to_vec()))
+            }
+            "core.bytes.length" => match &args[0] {
+                V::Bytes(bytes) => self.build(V::Int(bytes.len() as u128)),
+                other => panic!("byte operand, got {other:?}"),
+            },
+            "core.option.some" => {
+                let item = args.pop().unwrap();
+                self.build(V::Opt(Some(Box::new(item))))
+            }
+            "core.option.none" => self.build(V::Opt(None)),
+            "core.option.isSome" => match &args[0] {
+                V::Opt(item) => self.build(V::Bool(item.is_some())),
+                other => panic!("option operand, got {other:?}"),
+            },
             "core.integer.add" => {
                 let sum = int(&args[0]) + int(&args[1]);
                 self.build(V::Int(sum))
