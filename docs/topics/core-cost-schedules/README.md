@@ -78,6 +78,31 @@ non-literal bound, so a shared-read module containing one is refused with
 `InvalidBound`. A refused shared-read budget reports the static steps and
 allocated bytes it needs.
 
+## Effect cost templates
+
+Under both schedules, an effect node is also charged its provider's cost
+template when the target's intrinsic catalog publishes one
+(`edict.target-profile.intrinsics/v3`, `effectCostRule` on each effect
+intrinsic). The charge is added on top of the effect's input expression,
+result binding and obstruction annotations. Templates are closed `u64`
+expressions over the effect's declared input and output types (`bytesMax`,
+`listMax`, the provider value shape `copy` and `validations`), named
+parameters the provider publishes, and the module's costliest source helper.
+A `/v2` catalog publishes no templates and charges effects as before.
+
+`admit_target_effect_costs` admits the templates of the effects a lowering
+selects from the same pinned catalog as the pure intrinsics; the application
+build does this whenever `target.pureIntrinsics` names a catalog. The
+templates reach the compiler with `CompilerContext::with_target_effect_costs`
+and native Target with `TargetIrLoweringFacts::with_target_effect_costs`.
+Under the copying schedule the source checker re-checks each intent with its
+budget reduced by its template work; under the shared-read schedule the shared
+meter charges each template where the effect node is charged. A branch is
+charged its larger arm and a literal-bound loop body per iteration. A template
+whose path does not resolve, or which reads a parameter the build was not
+given, is refused with `InvalidBound`. The application build does not yet
+receive provider parameters.
+
 ## Effect on the bounded-descent fixture
 
 For `fixtures/lang/bounded-descent/avl-rope.amblicit`, measured by

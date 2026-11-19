@@ -236,10 +236,12 @@ pub use result_projection::{
 };
 pub use semantic::{validate_module, validate_surface, SemanticError, SemanticErrorKind};
 pub use target_intrinsics::{
-    admit_target_pure_intrinsics, digest_target_intrinsics_catalog, RequiredPureIntrinsic,
-    TargetPureIntrinsicFact, TargetPureIntrinsicFailure, TargetPureIntrinsicFailureKind,
-    TARGET_INTRINSICS_API_VERSION,
+    admit_target_effect_costs, admit_target_pure_intrinsics, digest_target_intrinsics_catalog,
+    RequiredPureIntrinsic, TargetPureIntrinsicFact, TargetPureIntrinsicFailure,
+    TargetPureIntrinsicFailureKind, TARGET_INTRINSICS_API_VERSION,
+    TARGET_INTRINSICS_EFFECT_COST_API_VERSION,
 };
+pub use target_ir::effect_costs::{TargetEffectCostFact, TargetEffectCostRule};
 pub use target_ir::{
     lower_to_target_ir, TargetEffectLowering, TargetEffectSignatureFact, TargetIrArtifact,
     TargetIrBranchEntry, TargetIrExternalActionRequest, TargetIrForEntry, TargetIrIntent,

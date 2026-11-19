@@ -16,6 +16,8 @@ use crate::core_ir::{classify_core_type_reference, CoreType, CoreTypeReference, 
 
 /// Intrinsic catalog document version this crate admits.
 pub const TARGET_INTRINSICS_API_VERSION: &str = "edict.target-profile.intrinsics/v2";
+/// Catalog version whose effect entries carry `effectCostRule` templates (#341).
+pub const TARGET_INTRINSICS_EFFECT_COST_API_VERSION: &str = "edict.target-profile.intrinsics/v3";
 
 const PURE_FIELDS: [&str; 10] = [
     "argumentTypes",
@@ -236,8 +238,10 @@ pub fn admit_target_pure_intrinsics(
     let fields = text_map(&document).ok_or_else(malformed)?;
     let allowed = ["apiVersion", "intrinsics", "types"];
     if fields.keys().any(|key| !allowed.contains(key))
-        || fields.get("apiVersion").and_then(|value| text(value))
-            != Some(TARGET_INTRINSICS_API_VERSION)
+        || !matches!(
+            fields.get("apiVersion").and_then(|value| text(value)),
+            Some(TARGET_INTRINSICS_API_VERSION | TARGET_INTRINSICS_EFFECT_COST_API_VERSION)
+        )
     {
         return Err(malformed());
     }
@@ -259,6 +263,89 @@ pub fn admit_target_pure_intrinsics(
         match admit_one(target, catalog, &intrinsics, &provider, requirement) {
             Ok(fact) => admitted.push(fact),
             Err(kind) => failures.push(failure(kind, &requirement.coordinate)),
+        }
+    }
+    if failures.is_empty() {
+        Ok(admitted)
+    } else {
+        failures.sort_by(|left, right| {
+            (left.kind, &left.coordinate).cmp(&(right.kind, &right.coordinate))
+        });
+        failures.dedup();
+        Err(failures)
+    }
+}
+
+/// Admit the effect cost template of every effect a target lowering selects.
+///
+/// `lowerings` pairs each semantic effect with the target intrinsic it lowers
+/// to. A `/v2` catalog carries no templates and admits none, which keeps the
+/// compiler's existing effect charge. In a `/v3` catalog every selected
+/// effect intrinsic must carry a well-formed `effectCostRule`. `parameters`
+/// are the named numbers the provider publishes for the operation
+/// configuration; a template that reads an absent one cannot be charged.
+///
+/// # Errors
+///
+/// Returns every refused obligation when a pin is missing or mismatched, the
+/// catalog is malformed, or a selected effect intrinsic is absent, not an
+/// effect, or carries a malformed template.
+pub fn admit_target_effect_costs(
+    target: &ResourceRef,
+    catalog: &ResourceRef,
+    catalog_bytes: &[u8],
+    lowerings: &[crate::TargetEffectLowering],
+    parameters: &BTreeMap<String, u64>,
+) -> Result<Vec<crate::TargetEffectCostFact>, Vec<TargetPureIntrinsicFailure>> {
+    use TargetPureIntrinsicFailureKind as K;
+    for reference in [target, catalog] {
+        if !reference.is_digest_locked() {
+            return Err(vec![failure(K::UnpinnedResource, &reference.coordinate)]);
+        }
+    }
+    let actual = digest_target_intrinsics_catalog(&catalog.coordinate, catalog_bytes)
+        .map_err(|refused| vec![refused])?;
+    if catalog.digest.as_deref() != Some(actual.as_str()) {
+        return Err(vec![failure(K::DigestMismatch, &catalog.coordinate)]);
+    }
+    let document = decode_canonical_cbor(catalog_bytes)
+        .map_err(|_| vec![failure(K::NonCanonicalCatalog, &catalog.coordinate)])?;
+    let malformed = || vec![failure(K::MalformedCatalog, &catalog.coordinate)];
+    let fields = text_map(&document).ok_or_else(malformed)?;
+    match fields.get("apiVersion").and_then(|value| text(value)) {
+        Some(TARGET_INTRINSICS_API_VERSION) => return Ok(Vec::new()),
+        Some(TARGET_INTRINSICS_EFFECT_COST_API_VERSION) => {}
+        _ => return Err(malformed()),
+    }
+    let intrinsics = fields
+        .get("intrinsics")
+        .and_then(|value| text_map(value))
+        .ok_or_else(malformed)?;
+    let mut admitted = Vec::new();
+    let mut failures = Vec::new();
+    for lowering in lowerings {
+        let coordinate = lowering.target_intrinsic.as_str();
+        let rule = intrinsics
+            .get(coordinate)
+            .ok_or(K::MissingIntrinsic)
+            .and_then(|entry| {
+                let entry = text_map(entry).ok_or(K::MalformedContract)?;
+                if entry.get("intrinsicClass").and_then(|value| text(value)) != Some("effect") {
+                    return Err(K::MalformedContract);
+                }
+                entry
+                    .get("effectCostRule")
+                    .and_then(|rule| crate::target_ir::effect_costs::parse_rule(rule))
+                    .ok_or(K::InvalidCostRule)
+            });
+        match rule {
+            Ok(rule) => admitted.push(crate::TargetEffectCostFact {
+                effect: lowering.effect.clone(),
+                intrinsic: lowering.target_intrinsic.clone(),
+                rule,
+                parameters: parameters.clone(),
+            }),
+            Err(kind) => failures.push(failure(kind, coordinate)),
         }
     }
     if failures.is_empty() {

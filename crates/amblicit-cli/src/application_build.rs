@@ -331,10 +331,25 @@ pub(crate) fn build_application(config_path: &Path) -> Result<(), ApplicationBui
     for intrinsic in &intrinsics {
         compiler_context = compiler_context.with_target_pure_intrinsic(intrinsic.clone());
     }
+    let effect_costs = config
+        .target
+        .pure_intrinsics
+        .as_ref()
+        .map(|declaration| {
+            declaration.load_effect_costs(
+                &provider_root,
+                &target_profile,
+                &preparation.target_ir_facts().effect_lowerings,
+            )
+        })
+        .transpose()?
+        .unwrap_or_default();
+    compiler_context = compiler_context.with_target_effect_costs(&effect_costs);
     let target_facts = preparation
         .target_ir_facts()
         .clone()
-        .with_target_pure_intrinsics(&intrinsics);
+        .with_target_pure_intrinsics(&intrinsics)
+        .with_target_effect_costs(&effect_costs);
     let core = if let Some(linked) = &linked {
         linked
             .compile(&compiler_context)

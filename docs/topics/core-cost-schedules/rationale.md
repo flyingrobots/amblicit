@@ -126,3 +126,97 @@ closure read, which is intent input with no proven length, so its appends
 stay charged at the 512-node maximum. Level 1 is sound and tightens folds
 over lists built from literals, but it does not fit the rope under
 `text.replaceRangeBudget`.
+
+## Effect cost templates (#341, design)
+
+Echo's lowerer charges effect frames (atom reads, mutation emissions, graph
+read records, scans and closure costs) that Amblicit's meters do not, so a
+compiler-minimum effect program is refused. Option (a), decided on
+2026-11-19: the provider's intrinsic catalog carries a cost template per
+effect intrinsic, and the compiler charges it under every schedule. Echo's
+metering and its v1 goldens do not change. The format below was agreed with
+echo#1016.
+
+### Catalog
+
+`edict.target-profile.intrinsics/v3`: every `effect`-class entry carries a required `effectCostRule`. Pure `costRule` is unchanged. `/v2` catalogs and frozen packs stay admissible byte for byte. Without a template, Amblicit charges effects exactly as today, so v1 goldens are unchanged.
+
+### Shape
+
+```cddl
+effect-cost-rule = { steps: cost-expr, bytes: cost-expr }
+
+cost-expr = { const: uint }
+          / { sum: [2*16 cost-expr] }
+          / { product: [cost-expr, cost-expr] }
+          / { measure: measure }
+
+measure = { bytesMax: type-expr }                          ; Bytes<max=N> -> N
+        / { listMax: type-expr }                           ; List<_, max=N> -> N
+        / { copy: type-expr, of: "steps" / "bytes" }       ; Echo shape().0 (below)
+        / { validations: type-expr }                       ; Echo shape().1 (below)
+        / { parameter: tstr }                              ; named u64 the provider publishes
+                                                           ; per operation configuration,
+                                                           ; e.g. "maxEdgeScans"
+        / { costliestHelper: "steps" / "bytes" }           ; most expensive source helper
+                                                           ; in the module
+
+type-expr = { path: { side: "input" / "output", fields: [* tstr], item: uint } }
+                                                           ; record fields, then `item` list-item steps
+          / { word: null }                                 ; Word(u64::MAX)
+          / { record: { * tstr => type-expr } }            ; a synthesized record, e.g. the
+                                                           ; closure selector's candidate
+```
+
+**`copy` and `validations` follow Echo's `shape()` exactly:**
+
+| Type | copy (steps, bytes) | validations |
+| --- | --- | --- |
+| Bool, Word | (1, 64) | 1 |
+| `Bytes<max=N>` | (1, 64+N) | 1 |
+| `Option<T>` | (T.steps+1, T.bytes+64) | T+1 |
+| `List<T,max=N>` | (T.steps·N+1, T.bytes·N+64) | T·N+1 |
+| Record | (1 + Σ(field.steps+1), 64 + Σ(field.bytes+64+len(name))) | 1 + Σ field |
+| Variant | max(payload, (1, 64)) + (6, 6·64+15+len(identity)+max label) | max(payload)+3 |
+| Nominal | its representation | its representation |
+
+**Evaluation:**
+- Arithmetic is checked `u64`; overflow refuses.
+- Expression depth is at most 16.
+- Every path is validated against the effect's declared input and output types when the catalog is admitted.
+- `costliestHelper` is Amblicit's own static cost of the module's costliest source helper under the selected schedule. Echo's conformance test must show that Echo's helper cost is at most that, so Amblicit stays at or above Echo.
+
+### What Amblicit charges
+
+For each effect node, the source checker and native Target charge:
+- the input expression, as today;
+- the result binding and obstruction annotations, as today;
+- plus `effectCostRule`.
+
+Templates cover what Echo charges beyond that: input validations (`validations(input)`), the obstruction-arm scratch, frame records, scans and closure costs. Double charging is conservative. The compiler minimum is therefore at or above Echo's, and Echo admits every package at the compiler minimum.
+
+### Echo's rules in this format (for its conformance test)
+
+- **node-atom-read:** steps `bytesMax(output)+1`, bytes `2·bytesMax(output)+448`, plus `validations(input)` steps and the arm scratch.
+- **Mutations:** 1 step and 64+280 bytes, plus `validations(input)` and the scratch.
+- **outgoing-edge-read:**
+  - range record: 1 step and 384 bytes;
+  - scans: `parameter(maxEdgeScans)` × 1 step and `parameter(maxEdgeScans)` × (128+128) bytes;
+  - result: `copy(output)` plus `validations(output)` steps.
+- **closure-read:** `read_cost` (`read_cost.rs` 66–121) and the frame records (`effect_intent.rs` 373–386), term by term:
+  - **start:** `validations(guide)` + `copy(guide)`;
+  - **per node** × `listMax(output.nodes)`:
+    - atom charge: (atom steps, atom+64 bytes), with atom = `bytesMax(output.nodes[].atomBytes)`;
+    - node copy: `copy(node)`;
+    - node record: (2, 384+atom);
+  - **per occurrence** × `listMax(output.occurrences)`: (1, 0) + `copy(guide)` + `copy(occurrence)`;
+  - **per edge** × `listMax(output.edges)`:
+    - copies: `copy(edge)` + `copy(guide)` + 2·`copy(node)`;
+    - candidate: `copy(candidate)` + (`validations(candidate)`+2, 0), where candidate = `record{guide, depth: word, slot: word, parent: node, child: node}`;
+    - selector: `costliestHelper`;
+    - returned guide: `copy(guide)`;
+  - **ranges:** (1, 384) × `listMax(output.occurrences)` × `listMax(input.edgeTypes)`;
+  - **result cells:** 256 bytes;
+  - **scans:** `parameter(maxEdgeScans)` × (1, 128+128) + `validations(output)` steps.
+
+Amblicit is implementing this on the PR for #341 and will charge these rules from a fixture `/v3` catalog until Echo publishes its own.
