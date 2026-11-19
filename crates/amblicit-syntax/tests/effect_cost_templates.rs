@@ -233,7 +233,7 @@ fn native_target_admits_the_minimum_and_refuses_one_below() {
 fn a_v2_catalog_publishes_no_templates_and_changes_nothing() {
     let (plain, _, _) = prepared(None, &published());
     let (v2, _, costs) = prepared(Some(TARGET_INTRINSICS_API_VERSION), &published());
-    assert!(costs.is_empty());
+    assert_eq!(costs, Vec::<TargetEffectCostFact>::new());
     for schedule in [CoreCostSchedule::Copying, CoreCostSchedule::SharedReads] {
         assert_eq!(minimums(&plain, schedule), minimums(&v2, schedule));
     }
