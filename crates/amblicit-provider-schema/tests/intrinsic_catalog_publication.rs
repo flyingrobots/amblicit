@@ -253,7 +253,7 @@ fn pure_intrinsic_catalog_publication_is_reproduced_from_frozen_failure_inputs()
         core_cddl: PRE_TYPED_FAILURE_CORE_CDDL,
         lawpack_cddl: include_bytes!("../../../docs/abi/edict-lawpack.cddl"),
         lawpack_adapter_cddl: include_bytes!("../../../docs/abi/edict-lawpack-adapter.cddl"),
-        target_profile_cddl: include_bytes!("../../../docs/abi/edict-target-profile.cddl"),
+        target_profile_cddl: PRE_EFFECT_COST_TARGET_PROFILE_CDDL,
         authority_facts_cddl: include_bytes!("../../../docs/abi/edict-authority-facts.cddl"),
         result_projection_cddl: include_bytes!("../../../docs/abi/edict-result-projection.cddl"),
         target_ir_cddl: PRE_TYPED_FAILURE_TARGET_IR_CDDL,
@@ -624,4 +624,199 @@ fn source_calling_a_catalog_v2_pure_intrinsic_compiles_to_core() {
         &decode_canonical_cbor(&encoded).expect("Core decodes"),
     )
     .expect("the current pack admits the compiled Core module");
+}
+
+// --- The catalog v3 (effect cost template) publication (#341) ---------------
+
+/// Target-profile schema as published before catalog v3.
+const PRE_EFFECT_COST_TARGET_PROFILE_CDDL: &[u8] =
+    include_bytes!("../../../fixtures/target-profile/pre-effect-cost-target-profile.cddl");
+
+/// Echo's `/v3` catalog, vendored byte for byte from Echo #1029.
+const ECHO_V3_CATALOG: &[u8] =
+    include_bytes!("../../../fixtures/echo-target-intrinsics-v3/resource.target-intrinsics-3.cbor");
+
+fn echo_v3_catalog() -> V {
+    decode_canonical_cbor(ECHO_V3_CATALOG).expect("vendored Echo catalog is canonical CBOR")
+}
+
+/// The typed-failures publication, reproduced from its frozen inputs.
+fn typed_failures_pack() -> ProviderContractPack {
+    let pack = pack_with(
+        CORE_CDDL,
+        PRE_EFFECT_COST_TARGET_PROFILE_CDDL,
+        include_bytes!("../../../docs/abi/edict-target-ir.cddl"),
+    );
+    assert_eq!(
+        pack.cddl_bytes(),
+        include_bytes!(
+            "../../../fixtures/provider-contracts/typed-failures-v1/edict-provider-contracts.cddl"
+        ),
+        "frozen inputs no longer reproduce the published typed-failures-v1 schema"
+    );
+    assert_eq!(
+        pack.manifest_bytes(),
+        include_bytes!("../../../fixtures/provider-contracts/typed-failures-v1/manifest.json"),
+        "frozen inputs no longer reproduce the published typed-failures-v1 manifest"
+    );
+    pack
+}
+
+/// A small v3 catalog: the v2 catalog with a cost template on its effect.
+fn catalog_v3() -> V {
+    let mut catalog = catalog_v2();
+    *field_mut(&mut catalog, "apiVersion") = text("edict.target-profile.intrinsics/v3");
+    let V::Map(effect) = field_mut(field_mut(&mut catalog, "intrinsics"), "echo.dpo@1.replace")
+    else {
+        panic!("effect entry is a map")
+    };
+    effect.push((
+        text("effectCostRule"),
+        map(vec![
+            ("steps", map(vec![("const", V::Integer(1))])),
+            ("bytes", map(vec![("const", V::Integer(344))])),
+        ]),
+    ));
+    catalog
+}
+
+fn effect_rule_mut(catalog: &mut V) -> &mut V {
+    field_mut(
+        field_mut(field_mut(catalog, "intrinsics"), "echo.dpo@1.replace"),
+        "effectCostRule",
+    )
+}
+
+/// Oracle: amblicit#341 "Final effect cost-template format"; Echo's catalog
+/// passes the compiler's admission (`effect_cost_templates.rs`).
+#[test]
+fn current_pack_admits_echo_v3_catalog() {
+    assert_eq!(
+        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &echo_v3_catalog()),
+        Ok(())
+    );
+}
+
+/// The frozen typed-failures publication keeps refusing a v3 catalog.
+#[test]
+fn typed_failures_publication_refuses_a_v3_catalog() {
+    assert_eq!(
+        typed_failures_pack().validate_contract(CATALOG_CONTRACT, &echo_v3_catalog()),
+        Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch)
+    );
+}
+
+/// A v2 catalog is admitted unchanged by the current pack.
+#[test]
+fn current_pack_still_admits_a_v2_catalog() {
+    assert_eq!(
+        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &catalog_v2()),
+        Ok(())
+    );
+}
+
+#[test]
+fn current_pack_admits_a_minimal_v3_catalog() {
+    assert_eq!(
+        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &catalog_v3()),
+        Ok(())
+    );
+}
+
+/// Catalog v3 requires a template on every effect intrinsic.
+#[test]
+fn current_pack_refuses_a_v3_effect_without_a_template() {
+    let mut catalog = catalog_v3();
+    remove_field(
+        field_mut(field_mut(&mut catalog, "intrinsics"), "echo.dpo@1.replace"),
+        "effectCostRule",
+    );
+    assert_eq!(
+        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &catalog),
+        Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch)
+    );
+}
+
+/// Malformed templates: a one-term sum, an unknown measure, a missing half,
+/// and a negative constant.
+#[test]
+fn current_pack_refuses_malformed_v3_templates() {
+    let malformed = [
+        map(vec![
+            (
+                "steps",
+                map(vec![(
+                    "sum",
+                    V::Array(vec![map(vec![("const", V::Integer(1))])]),
+                )]),
+            ),
+            ("bytes", map(vec![("const", V::Integer(0))])),
+        ]),
+        map(vec![
+            (
+                "steps",
+                map(vec![("measure", map(vec![("unknown", text("steps"))]))]),
+            ),
+            ("bytes", map(vec![("const", V::Integer(0))])),
+        ]),
+        map(vec![("steps", map(vec![("const", V::Integer(1))]))]),
+        map(vec![
+            ("steps", map(vec![("const", V::Integer(-1))])),
+            ("bytes", map(vec![("const", V::Integer(0))])),
+        ]),
+    ];
+    let pack = catalog_v2_pack();
+    for (index, rule) in malformed.into_iter().enumerate() {
+        let mut catalog = catalog_v3();
+        *effect_rule_mut(&mut catalog) = rule;
+        assert_eq!(
+            pack.validate_contract(CATALOG_CONTRACT, &catalog),
+            Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch),
+            "malformed template {index}"
+        );
+    }
+}
+
+/// A malformed `parameters` declaration is refused.
+#[test]
+fn current_pack_refuses_a_malformed_v3_parameter() {
+    let mut catalog = catalog_v3();
+    let V::Map(fields) = &mut catalog else {
+        panic!("catalog is a map")
+    };
+    fields.push((
+        text("parameters"),
+        map(vec![(
+            "maxEdgeScans",
+            map(vec![("path", texts(&[])), ("kind", text("uint"))]),
+        )]),
+    ));
+    assert_eq!(
+        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &catalog),
+        Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch)
+    );
+}
+
+/// `/v3`-only keys do not make a `/v2` catalog valid.
+#[test]
+fn current_pack_refuses_a_v2_catalog_with_a_template() {
+    let mut catalog = catalog_v3();
+    *field_mut(&mut catalog, "apiVersion") = text("edict.target-profile.intrinsics/v2");
+    assert_eq!(
+        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &catalog),
+        Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch)
+    );
+}
+
+#[test]
+fn current_pack_refuses_a_v2_catalog_with_parameters() {
+    let mut catalog = catalog_v2();
+    let V::Map(fields) = &mut catalog else {
+        panic!("catalog is a map")
+    };
+    fields.push((text("parameters"), V::Map(Vec::new())));
+    assert_eq!(
+        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &catalog),
+        Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch)
+    );
 }
