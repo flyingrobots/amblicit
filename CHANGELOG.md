@@ -8,6 +8,15 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Publish the `effect-cost-catalog-v1` provider contract pack. Its
+  `intrinsics-document` root admits `edict.target-profile.intrinsics/v3`
+  catalogs: every effect intrinsic carries a required `effectCostRule`, and an
+  optional `parameters` map declares template parameters. `/v2` catalogs are
+  admitted unchanged. The typed-failures pair is now frozen and stays byte
+  for byte; tests reproduce it from
+  `fixtures/target-profile/pre-effect-cost-target-profile.cddl`. Echo's
+  vendored `/v3` catalog passes the new pack (issue #341).
+
 - Fixed: under the shared-read schedule, each iteration of a literal-bound
   loop in an intent whose body holds an effect node was charged a copy of
   its binder's value and the loop body's `Null` result, which warp-core's

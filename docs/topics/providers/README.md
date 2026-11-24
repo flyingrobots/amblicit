@@ -114,12 +114,17 @@ Controls whose nested rule graph is opaque through the schema dependency, such
 as `.cbor`, reject with a stable unsupported-control failure rather than being
 accepted without a complete closure proof.
 The checked Rust-neutral artifacts live under
-[`fixtures/provider-contracts/typed-failures-v1/`](../../../fixtures/provider-contracts/typed-failures-v1/):
+[`fixtures/provider-contracts/effect-cost-catalog-v1/`](../../../fixtures/provider-contracts/effect-cost-catalog-v1/):
 one self-contained Apache-2.0 CDDL file and one deterministic manifest mapping
 logical contracts and provider artifact domains to exact roots. The current
-typed-failure publication is cumulative: it includes the catalog-v2
-`intrinsics-document` root and function-precondition Core schema, then adds
-typed-failure Core and Target IR shapes. The prior
+effect-cost-catalog publication is cumulative: it is the
+[typed-failure publication](../../../fixtures/provider-contracts/typed-failures-v1/)
+(catalog-v2 `intrinsics-document` root, function-precondition Core schema,
+typed-failure Core and Target IR shapes) with the `intrinsics-document` root
+also admitting `edict.target-profile.intrinsics/v3` catalogs, whose effect
+intrinsics each carry an `effectCostRule` (issue #341). The typed-failure pair
+is now frozen and reproduced from
+`fixtures/target-profile/pre-effect-cost-target-profile.cddl`. The prior
 [function-free v1 publication](../../../fixtures/provider-contracts/v1/),
 [source-function publication](../../../fixtures/provider-contracts/source-functions-v1/),
 [source-module publication](../../../fixtures/provider-contracts/source-modules-v1/),

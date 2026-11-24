@@ -22,8 +22,11 @@ API version remains `edict.provider-contract-pack/v1`. Consumers select the exac
 CDDL/manifest pair and verify its schema digest; the same coordinate does not make
 different publication bytes interchangeable.
 
-Run `cargo xtask provider-contract-pack --write` to regenerate this current pair.
-`cargo xtask provider-contract-pack --check` and `cargo xtask verify` check it.
+This CDDL/manifest pair is frozen. Tests reproduce it from the current Core
+and Target IR schemas and the pre-catalog-v3 target-profile schema
+(`fixtures/target-profile/pre-effect-cost-target-profile.cddl`). It refuses an
+`edict.target-profile.intrinsics/v3` catalog. The current owner generator
+writes and checks [`effect-cost-catalog-v1`](../effect-cost-catalog-v1/README.md).
 The v1, source-function, source-module, structured-control, bounded-state-fold,
 function-preconditions and pure-intrinsic-catalog CDDL/manifest pairs remain
 byte-identical. Tests reproduce the function-preconditions and pure-catalog

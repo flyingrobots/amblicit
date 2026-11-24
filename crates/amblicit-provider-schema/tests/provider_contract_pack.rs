@@ -663,10 +663,10 @@ fn structured_iterable_schema_refuses_empty_aggregates() {
 #[test]
 fn published_target_ir_binding_constructs_the_production_registry_and_validates_v3() {
     const PUBLISHED_CDDL: &[u8] = include_bytes!(
-        "../../../fixtures/provider-contracts/typed-failures-v1/edict-provider-contracts.cddl"
+        "../../../fixtures/provider-contracts/effect-cost-catalog-v1/edict-provider-contracts.cddl"
     );
     const PUBLISHED_MANIFEST: &[u8] =
-        include_bytes!("../../../fixtures/provider-contracts/typed-failures-v1/manifest.json");
+        include_bytes!("../../../fixtures/provider-contracts/effect-cost-catalog-v1/manifest.json");
 
     // The in-memory pack is exactly the published publication, so its typed
     // manifest carries the published domain bindings.

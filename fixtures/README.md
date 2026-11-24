@@ -48,8 +48,9 @@ The first canonical lawpack manifest/export fixture and its digest-pinned Edict
 source live in [`lawpack/hello-echo/`](./lawpack/hello-echo/).
 The current cumulative Rust-neutral provider contract pack and its exact
 manifest live in
-[`provider-contracts/typed-failures-v1/`](./provider-contracts/typed-failures-v1/).
-The prior [`provider-contracts/v1/`](./provider-contracts/v1/),
+[`provider-contracts/effect-cost-catalog-v1/`](./provider-contracts/effect-cost-catalog-v1/).
+The prior [`provider-contracts/typed-failures-v1/`](./provider-contracts/typed-failures-v1/),
+[`provider-contracts/v1/`](./provider-contracts/v1/),
 [`source-functions-v1/`](./provider-contracts/source-functions-v1/),
 [`source-modules-v1/`](./provider-contracts/source-modules-v1/),
 [`structured-control-v1/`](./provider-contracts/structured-control-v1/),
