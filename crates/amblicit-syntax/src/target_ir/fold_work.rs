@@ -604,11 +604,27 @@ impl<'a> Meter<'a> {
         }
         let mut available = outer.clone();
         available.extend(scope(block.locals.iter()));
+        let cost = self.block_nodes(block, outer, depth)?;
+        cost.add(self.expression(&block.result, &available, depth + 1)?)
+    }
+
+    /// A block's nodes in order, without its result expression.
+    fn block_nodes(
+        &mut self,
+        block: &'a CoreBlock,
+        outer: &Scope<'a>,
+        depth: usize,
+    ) -> Option<Cost> {
+        if depth > MAX_CORE_GRAPH_DEPTH {
+            return None;
+        }
+        let mut available = outer.clone();
+        available.extend(scope(block.locals.iter()));
         let mut cost = Cost::default();
         for node in &block.nodes {
             cost = cost.add(self.node(node, &available, depth + 1)?)?;
         }
-        cost.add(self.expression(&block.result, &available, depth + 1)?)
+        Some(cost)
     }
 
     fn node(&mut self, node: &'a CoreNode, available: &Scope<'a>, depth: usize) -> Option<Cost> {
@@ -708,15 +724,7 @@ impl<'a> Meter<'a> {
                 iter,
                 bound: CoreBound::Literal(bound),
                 body,
-            } => {
-                let initial = self.expression(iter, available, depth + 1)?;
-                let mut inner = available.clone();
-                inner.insert(&binder.id, binder);
-                let body = self
-                    .block(body, &inner, depth + 1)?
-                    .add(self.value_type(&binder.ty, 0)?.evaluation()?)?;
-                initial.add(body.times(*bound)?)?
-            }
+            } => self.literal_loop(binder, iter, *bound, body, available, depth)?,
             CoreNode::For { .. } | CoreNode::ExternalActionRequest { .. } => return None,
         };
         cost.add(Cost::steps(1))
@@ -724,6 +732,34 @@ impl<'a> Meter<'a> {
 }
 
 impl<'a> Meter<'a> {
+    /// A literal-bound `for` node's charge beyond its node step.
+    fn literal_loop(
+        &mut self,
+        binder: &'a LocalRef,
+        iter: &'a CoreExpr,
+        bound: u64,
+        body: &'a CoreBlock,
+        available: &Scope<'a>,
+        depth: usize,
+    ) -> Option<Cost> {
+        let initial = self.expression(iter, available, depth + 1)?;
+        let mut inner = available.clone();
+        inner.insert(&binder.id, binder);
+        let iteration = if self.shared && self.effect_body {
+            // warp-core's shared executor charges each item one step and runs
+            // the body's nodes: the binder is the shared item (no copy) and a
+            // loop body has no result to evaluate. Echo's effect-body judge
+            // charges the item step plus the binder type's validations.
+            self.block_nodes(body, &inner, depth + 1)?.add(Cost::steps(
+                validations(self.core, &binder.ty)?.checked_add(1)?,
+            ))?
+        } else {
+            self.block(body, &inner, depth + 1)?
+                .add(self.value_type(&binder.ty, 0)?.evaluation()?)?
+        };
+        initial.add(iteration.times(bound)?)
+    }
+
     /// A `let` node's charge beyond its node step.
     fn let_node(
         &mut self,

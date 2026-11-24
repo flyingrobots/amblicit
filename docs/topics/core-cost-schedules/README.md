@@ -146,9 +146,25 @@ require = node step (1, 0)
 ```
 
 A pure shared-read intent's `attempt` or `require` charges only its payload
-fields' expressions, as before. In a literal-bound loop the effect node step,
-the `let` validations, the `attempt` arm and the `require` payload are
-charged per iteration. Under the copying schedule the template is
+fields' expressions, as before. A literal-bound loop in such an intent is
+charged as warp-core's shared executor runs it, which binds each item by
+sharing it and evaluates no result for the loop body:
+
+```text
+for = node step (1, 0)
+    + iterable expression                      once
+    + bound × ( (1 + validations(binder type), 0)
+              + each body node's charge )      per iteration
+```
+
+So the effect node step, the `let` validations, the `attempt` arm and the
+`require` payload inside the body are all multiplied by the bound; the
+iterable and the loop's own node step are charged once. The binder is not
+charged a copy of its value and the body's `Null` result is not charged:
+(2 steps, 128 bytes) per iteration less than before for a `U64` binder,
+matching Echo's effect-body judge. A pure shared-read intent's loop, and
+every loop under the copying schedule, still charge the binder's value and
+the body result per iteration. Under the copying schedule the template is
 added on top of the generic charge, so copying-schedule results are unchanged
 from the first template release. A type path may step into list items with `item` and then name fields inside
 the item with `then`. The path names one item's type, so its measure is a
