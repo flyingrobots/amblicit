@@ -1095,8 +1095,11 @@ fn assert_exact_minimum(context: &CompilerContext, source: &str, expected: (u64,
     assert_eq!(minimum, expected);
     let (steps, bytes) = minimum;
     assert!(compile(context, source, SHARED, budget(steps, bytes)).is_ok());
-    assert!(compile(context, source, SHARED, budget(steps - 1, bytes)).is_err());
-    assert!(compile(context, source, SHARED, budget(steps, bytes - 1)).is_err());
+    for below in [budget(steps - 1, bytes), budget(steps, bytes - 1)] {
+        let errors = compile(context, source, SHARED, below).expect_err("refused one below");
+        let kinds: Vec<_> = errors.iter().map(|e| e.kind).collect();
+        assert_eq!(kinds, [CompilerErrorKind::InvalidBound]);
+    }
 }
 
 #[test]
