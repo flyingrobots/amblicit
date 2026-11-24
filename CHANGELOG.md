@@ -8,6 +8,13 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Under the shared-read schedule, align two effect-program terms with Echo's
+  runtime charge, which the static minimum must not fall below: an effect step
+  whose template replaces the generic charge now keeps its own node step
+  (+1 step per such effect node), and each `let` in an intent whose body holds
+  an effect node is charged its binding type's `validations`. A pure intent's
+  `let` and every copying-schedule result are unchanged. The README states
+  the full shared-read effect step formula (issue #341).
 - Read effect cost parameters from the application's operation
   configuration. An `edict.target-profile.intrinsics/v3` catalog's
   `parameters` map declares each parameter's field path and kind (`uint` or

@@ -477,13 +477,77 @@ fn a_v2_catalog_with_a_parameters_map_is_still_malformed() {
 /// step's arms, so the replaced charge adds it.
 #[test]
 fn a_replaced_charge_keeps_the_empty_obstruction_payload() {
-    // 37 steps and 4195 bytes are the rest of the program with a zero template.
+    // 37 steps and 4195 bytes are the rest of the program with a zero
+    // template; (1, 64) is the obstruction payload and 1 the node step.
     let zero = minimums(
         &prepared(Some((V3, zero_rule())), None).context,
         SOURCE,
         SHARED,
     );
-    assert_eq!(zero, (37 + 1, 4195 + 64));
+    assert_eq!(zero, (37 + 1 + 1, 4195 + 64));
+}
+
+#[test]
+fn a_replaced_charge_keeps_the_effect_node_step_outside_the_template() {
+    // Echo charges every effect-body node one step, the effect node included;
+    // its templates do not contain that step. With the scan template the
+    // shared minimum is the rest of the program, the payload, the template
+    // and that one step, admitted exactly and refused one step below.
+    let charged = prepared(Some((V3, scan_rule())), None);
+    let minimum = minimums(&charged.context, SOURCE, SHARED);
+    assert_eq!(minimum, (37 + 1 + STEPS + 1, 4195 + 64 + BYTES));
+    let (steps, bytes) = minimum;
+    assert!(compile(&charged.context, SOURCE, SHARED, budget(steps, bytes)).is_ok());
+    assert!(compile(&charged.context, SOURCE, SHARED, budget(steps - 1, bytes)).is_err());
+}
+
+/// Hello Echo with one `let` before its effect, bound to a record whose
+/// provider shape has 3 validations (the record and its two scalar fields).
+fn with_let() -> String {
+    SOURCE
+        .replace(
+            "intent createGreeting",
+            "type Pair = { a: U64, b: Bool };\n\nintent createGreeting",
+        )
+        .replace(
+            "  let receipt",
+            "  let pair: Pair = { a: 1, b: true };\n  let receipt",
+        )
+}
+
+/// What the `let` adds to the program's (steps, bytes) minimums.
+fn let_delta(context: &CompilerContext, schedule: CoreCostSchedule) -> (u64, u64) {
+    let plain = minimums(context, SOURCE, schedule);
+    let bound = minimums(context, &with_let(), schedule);
+    (bound.0 - plain.0, bound.1 - plain.1)
+}
+
+#[test]
+fn a_let_in_an_effect_body_is_charged_its_type_validations_under_shared_reads() {
+    // 11 steps and 450 bytes are the let's node step and its record
+    // construction, as on main 9f10fb91; Echo's effect-body judge adds
+    // validations(Pair) = 3.
+    for template in [None, Some((V3, zero_rule())), Some((V3, scan_rule()))] {
+        let context = prepared(template, None).context;
+        assert_eq!(let_delta(&context, SHARED), (11 + 3, 450));
+        let (steps, bytes) = minimums(&context, &with_let(), SHARED);
+        assert!(compile(&context, &with_let(), SHARED, budget(steps, bytes)).is_ok());
+        assert!(compile(&context, &with_let(), SHARED, budget(steps - 1, bytes)).is_err());
+    }
+}
+
+#[test]
+fn copying_minimums_are_unchanged_by_the_shared_read_effect_terms() {
+    // Pinned on main 9f10fb91: the copying source check meters this
+    // program's template alone, with or without the let; neither shared-read
+    // term reaches it.
+    let charged = prepared(Some((V3, scan_rule())), None).context;
+    for source in [SOURCE.to_owned(), with_let()] {
+        assert_eq!(
+            minimums(&charged, &source, CoreCostSchedule::Copying),
+            (STEPS, BYTES)
+        );
+    }
 }
 
 /// Echo's `/v3` catalog, copied byte for byte from echo `44098b15`

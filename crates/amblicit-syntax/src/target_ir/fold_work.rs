@@ -2,7 +2,7 @@
 //!
 //! No compiler cost table or artifact-supplied estimate is trusted. Values are
 //! charged in portable 64-byte cells; imported work comes only from sealed facts.
-use super::effect_costs::{Charge, TargetEffectCostFact};
+use super::effect_costs::{validations, Charge, TargetEffectCostFact};
 use super::{
     expression_type_coordinate, is_typed_prelude_operation, resolved_core_type, CoreBlock,
     CoreBound, CoreBudget, CoreExpr, CoreIntent, CoreModule, CoreNode, CoreObstructionArm,
@@ -114,6 +114,7 @@ pub(crate) fn intent_work(
             .required_core_capabilities
             .iter()
             .any(|c| c == SHARED_READS_CAPABILITY),
+        effect_body: false,
         core,
         facts,
         visiting: Vec::new(),
@@ -132,6 +133,11 @@ struct Meter<'a> {
     costliest_known: bool,
     /// `edict.core-cost/v2`: reads share values; only construction is sized.
     shared: bool,
+    /// The intent being metered is an effect program: its body holds an
+    /// effect node. Under the shared-read schedule Echo's effect-body judge
+    /// charges each `let` its binding type's validations; its pure-intent
+    /// judge does not.
+    effect_body: bool,
     core: &'a CoreModule,
     facts: &'a [TargetPureFunctionFact],
     visiting: Vec<&'a str>,
@@ -281,6 +287,7 @@ impl<'a> Meter<'a> {
             steps: input.cells.checked_add(output.cells)?.checked_mul(2)?,
             bytes: input.bytes.checked_add(output.bytes)?,
         };
+        self.effect_body = has_effect(&intent.body, 0);
         let available = scope(intent.body.locals.iter());
         for constraint in &intent.input_constraints {
             cost = cost.add(self.predicate(&constraint.predicate, &available, 0)?)?;
@@ -609,14 +616,7 @@ impl<'a> Meter<'a> {
             return None;
         }
         let cost = match node {
-            CoreNode::Let { binding, value } => {
-                let cost = self.expression(value, available, depth + 1)?;
-                if self.shared {
-                    let reach = self.reach(value, available, depth + 1)?;
-                    self.reach_env.insert(binding.id.clone(), reach);
-                }
-                cost
-            }
+            CoreNode::Let { binding, value } => self.let_node(binding, value, available, depth)?,
             CoreNode::Attempt {
                 value, failure_map, ..
             } => {
@@ -649,12 +649,16 @@ impl<'a> Meter<'a> {
                 let input_cost = self.expression(input, available, depth + 1)?;
                 let template = self.effect_template(effect, input, &binding.ty, available)?;
                 if self.shared && self.has_effect_template(effect) {
-                    return self.replaced_effect(
-                        input_cost.add(template)?,
-                        obstruction_map,
-                        available,
-                        depth,
-                    );
+                    // The node's own step stays outside the template, as in
+                    // Echo's effect-body judge: every node is one step.
+                    return self
+                        .replaced_effect(
+                            input_cost.add(template)?,
+                            obstruction_map,
+                            available,
+                            depth,
+                        )?
+                        .add(Cost::steps(1));
                 }
                 let mut cost = input_cost
                     .add(self.value_type(&binding.ty, 0)?.evaluation()?)?
@@ -711,9 +715,32 @@ impl<'a> Meter<'a> {
 }
 
 impl<'a> Meter<'a> {
-    /// Under the shared-read schedule the provider's template is the whole
-    /// charge of an effect step beyond its input expression: it replaces the
-    /// node step, the result binding and each obstruction arm's scratch.
+    /// A `let` node's charge beyond its node step.
+    fn let_node(
+        &mut self,
+        binding: &LocalRef,
+        value: &'a CoreExpr,
+        available: &Scope<'a>,
+        depth: usize,
+    ) -> Option<Cost> {
+        let cost = self.expression(value, available, depth + 1)?;
+        if !self.shared {
+            return Some(cost);
+        }
+        let reach = self.reach(value, available, depth + 1)?;
+        self.reach_env.insert(binding.id.clone(), reach);
+        if !self.effect_body {
+            return Some(cost);
+        }
+        // Echo's effect-body judge validates the bound value against its
+        // declared type: `validations(type)` of the provider shape.
+        cost.add(Cost::steps(validations(self.core, &binding.ty)?))
+    }
+
+    /// Under the shared-read schedule the provider's template replaces the
+    /// generic charge of an effect step beyond its input expression: the
+    /// result binding and each obstruction arm's scratch. The node's own step
+    /// is added by the caller.
     /// `charged` is the input expression plus the template.
     fn replaced_effect(
         &mut self,
@@ -738,6 +765,21 @@ impl<'a> Meter<'a> {
         }
         Some(cost)
     }
+}
+
+/// Whether `block`, or a block nested in it, holds an effect node.
+fn has_effect(block: &CoreBlock, depth: usize) -> bool {
+    depth <= MAX_CORE_GRAPH_DEPTH
+        && block.nodes.iter().any(|node| match node {
+            CoreNode::Effect { .. } => true,
+            CoreNode::Branch {
+                then_block,
+                else_block,
+                ..
+            } => has_effect(then_block, depth + 1) || has_effect(else_block, depth + 1),
+            CoreNode::For { body, .. } => has_effect(body, depth + 1),
+            _ => false,
+        })
 }
 
 /// A nullary obstruction annotation: a bare failure name, not a callable helper.
@@ -847,6 +889,7 @@ pub(crate) fn effect_template_work(
             .required_core_capabilities
             .iter()
             .any(|c| c == SHARED_READS_CAPABILITY),
+        effect_body: false,
         core,
         facts,
         visiting: Vec::new(),
