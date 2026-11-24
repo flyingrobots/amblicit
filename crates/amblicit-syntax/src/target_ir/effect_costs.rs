@@ -347,6 +347,22 @@ struct Shape {
     validations: u64,
 }
 
+/// The provider shape's validation steps for a value of the Core type
+/// `coordinate`, or `None` when the shape has no such value.
+pub(crate) fn validations(core: &CoreModule, coordinate: &str) -> Option<u64> {
+    let none = BTreeMap::new();
+    let charge = Charge {
+        core,
+        input: coordinate,
+        output: coordinate,
+        parameters: &none,
+        costliest_helper: None,
+        helpers: &BTreeMap::new(),
+    };
+    let (name, ty) = charge.structural(coordinate)?;
+    Some(charge.shape(&name, &ty, 0)?.validations)
+}
+
 impl Charge<'_> {
     /// The rule's (steps, bytes) for this effect node, or `None` when any
     /// measure cannot be established.

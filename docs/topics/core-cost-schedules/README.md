@@ -83,10 +83,32 @@ allocated bytes it needs.
 An effect node is charged its provider's cost template when the target's
 intrinsic catalog publishes one (`edict.target-profile.intrinsics/v3`,
 `effectCostRule` on each effect intrinsic). Under the shared-read schedule the
-template replaces the generic charge of that step: the step costs its input
-expression, any callable obstruction arms, and the template, and no result
-binding or annotation scratch, except one empty obstruction payload of
-(1 step, 64 bytes) when the step maps any obstruction arm, as Echo charges. Under the copying schedule the template is
+template replaces the generic charge of that step, and no result binding or
+annotation scratch is charged. The full shared-read charge of an effect step
+with a template is:
+
+```text
+effect step = input expression
+            + template
+            + (1 step, 0 bytes)    the effect node's own step
+            + (1 step, 64 bytes)   if the step maps any obstruction arm
+            + each callable obstruction arm's expression
+```
+
+The node step and the empty obstruction payload stay outside the template, as
+in Echo's effect-body judge, which charges every node of an effect body one
+step. In an intent whose body holds an effect node, each `let` is also charged
+its binding type's validations (`validations` of the provider value shape, the
+same measure templates use) on top of its expression and node step, because
+Echo validates the bound value against its declared type there. A pure
+shared-read intent's `let` is not, matching Echo's pure-intent judge. A `let` whose type the provider value shape
+cannot express (text, unit, a map or a reference) therefore leaves a
+shared-read effect program's work unestablished, and the program is refused
+with `InvalidBound` ("shared-read Core work is unestablished") on any target,
+with or without a `/v3` template; Echo has no such values and refuses it too.
+The same `let` in a pure shared-read intent still compiles. In a
+literal-bound loop the effect node step and the `let` validations are charged
+per iteration. Under the copying schedule the template is
 added on top of the generic charge, so copying-schedule results are unchanged
 from the first template release. A type path may step into list items with `item` and then name fields inside
 the item with `then`. The path names one item's type, so its measure is a
