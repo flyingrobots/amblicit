@@ -181,8 +181,9 @@ Out of scope:
 
 ## Runtime advisory gate
 
-Wasmtime 48.0.8 must clear `cargo deny check advisories`, including the
-Wasmtime advisories RUSTSEC-2026-0422, RUSTSEC-2026-0423 and RUSTSEC-2026-0424,
+Wasmtime 48.0.10 must clear `cargo deny check advisories`, including the
+Wasmtime advisories RUSTSEC-2026-0422, RUSTSEC-2026-0423, RUSTSEC-2026-0424,
+RUSTSEC-2026-0566 through RUSTSEC-2026-0573 and RUSTSEC-2026-0587,
 and preserve the existing provider invocation, isolation, budget, fixture,
 and dependency-closure tests. This is a dependency patch; no version-only unit test
 substitutes for the advisory scan and runtime witnesses.
