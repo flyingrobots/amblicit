@@ -27,7 +27,8 @@ measure, type or record field is one level deeper. The provider artifact-schema
 registry refuses recursive choices it cannot dispatch to one arm per value,
 as these cost rules were, so the schema writes them
 out level by level to level 10 (`TARGET_EFFECT_COST_SCHEMA_MAX_DEPTH`). The
-decoder reads to level 16, so the schema is the tighter side: a catalog nested
+decoder reads expressions and types to level 16 (and a type-free measure
+under a level-16 expression at 17), so the schema is the tighter side: a catalog nested
 deeper than level 10 is refused when its provider package loads, although the
 decoder would accept it. Echo's `/v3` catalog nests to level 6.
 

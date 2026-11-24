@@ -97,7 +97,8 @@ effect step = input expression
 
 A template nests at most to level 10 in the published catalog schema
 (`steps` and `bytes` are level 0; each nested expression, measure, type or
-record field is one level deeper). The decoder reads to level 16, but a
+record field is one level deeper). The decoder reads expressions and types to level 16
+(a type-free measure under a level-16 expression to 17), but a
 provider package whose catalog nests deeper than 10 is refused when it loads;
 see the
 [pack README](../../../fixtures/provider-contracts/effect-cost-catalog-v1/README.md).

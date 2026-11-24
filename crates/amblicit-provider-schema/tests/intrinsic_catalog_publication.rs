@@ -23,9 +23,10 @@ use amblicit_syntax::{
 };
 use amblicit_syntax::{
     bind_target_provider_manifest, ProviderArtifactKind, ProviderArtifactRef,
-    ProviderArtifactSchemaValidator, ProviderArtifactSource, ProviderSchemaBinding,
-    ProviderSchemaFormat, TargetProviderManifest, TARGET_EFFECT_COST_MAX_DEPTH,
-    TARGET_EFFECT_COST_SCHEMA_MAX_DEPTH, TARGET_PROVIDER_ABI, TARGET_PROVIDER_MANIFEST_API_VERSION,
+    ProviderArtifactSchemaValidationErrorKind, ProviderArtifactSchemaValidator,
+    ProviderArtifactSource, ProviderSchemaBinding, ProviderSchemaFormat, TargetProviderManifest,
+    TARGET_EFFECT_COST_MAX_DEPTH, TARGET_EFFECT_COST_SCHEMA_MAX_DEPTH, TARGET_PROVIDER_ABI,
+    TARGET_PROVIDER_MANIFEST_API_VERSION,
 };
 
 const CATALOG_CONTRACT: &str = "target-profile-intrinsics";
@@ -960,17 +961,22 @@ const CURRENT_PACK_CDDL: &[u8] = include_bytes!(
     "../../../fixtures/provider-contracts/effect-cost-catalog-v1/edict-provider-contracts.cddl"
 );
 
-/// What the current pack decides for `catalog`, asserting that direct CDDL
-/// validation and the registry agree.
+/// What the current pack decides for `catalog`. Direct CDDL validation and
+/// the registry must agree, and a refusal from either must be a schema
+/// mismatch, not an unknown contract or an unsupported domain.
 fn current_pack_admits(catalog: &V) -> bool {
     let direct = catalog_v2_pack().validate_contract(CATALOG_CONTRACT, catalog);
     let registry = current_catalog_registry().validate_canonical_value(V3_CATALOG_DOMAIN, catalog);
-    assert_eq!(
-        direct.is_ok(),
-        registry.is_ok(),
-        "direct CDDL ({direct:?}) and the registry ({registry:?}) disagree"
-    );
-    direct.is_ok()
+    match (direct, registry) {
+        (Ok(()), Ok(())) => true,
+        (
+            Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch),
+            Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch),
+        ) => false,
+        (direct, registry) => {
+            panic!("direct CDDL ({direct:?}) and the registry ({registry:?}) disagree or refuse for the wrong reason")
+        }
+    }
 }
 
 /// Every root the current pack publishes, contract or domain, loads in the

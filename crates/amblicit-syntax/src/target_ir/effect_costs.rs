@@ -18,7 +18,11 @@ use std::collections::BTreeMap;
 /// Deepest level the decoder reads in an `effectCostRule`. Expressions,
 /// measures and types share one level counter: the rule's `steps` and `bytes`
 /// expressions are level 0, and each nested expression, measure, type or
-/// record field is one level deeper.
+/// record field is one level deeper. The limit guards expressions and types;
+/// a measure is not checked itself, so a measure without a type (`parameter`,
+/// `helper`, `costliestHelper`) under a level-16 expression is read at level
+/// 17. The published schema has no such exception (see
+/// `TARGET_EFFECT_COST_SCHEMA_MAX_DEPTH`).
 pub const TARGET_EFFECT_COST_MAX_DEPTH: usize = 16;
 /// Deepest level the published catalog schema admits, on the same level
 /// counter. `cargo xtask provider-contract-pack` writes the schema's cost
