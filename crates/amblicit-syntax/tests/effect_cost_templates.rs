@@ -478,3 +478,50 @@ fn a_replaced_charge_keeps_the_empty_obstruction_payload() {
     );
     assert_eq!(zero, (37 + 1, 4195 + 64));
 }
+
+/// Echo's published `/v3` catalog, copied byte for byte from echo `44098b15`
+/// (`crates/echo-edict-provider-lowerer/resources/resource.target-intrinsics-3.cbor`).
+const ECHO_V3: &[u8] =
+    include_bytes!("../../../fixtures/echo-target-intrinsics-v3/resource.target-intrinsics-3.cbor");
+
+#[test]
+fn echo_v3_catalog_passes_both_admissions_in_build_order() {
+    // Echo's catalog names `echo.dpo@2` types, so the target pin is that
+    // profile; its digest form is taken from the Hello Echo fixture.
+    let target = ResourceRef {
+        coordinate: "echo.dpo@2".into(),
+        ..prepared(None, None).facts.target_profile
+    };
+    let coordinate = "echo.dpo@2.intrinsics";
+    let pin = ResourceRef {
+        coordinate: coordinate.into(),
+        digest: Some(digest_target_intrinsics_catalog(coordinate, ECHO_V3).expect("digest")),
+    };
+    admit_target_pure_intrinsics(&target, &pin, ECHO_V3, &[]).expect("pure admission");
+    let lowerings: Vec<amblicit_syntax::TargetEffectLowering> = [
+        "closure-read",
+        "create-node",
+        "ensure-edge",
+        "ensure-node",
+        "node-atom-read",
+        "outgoing-edge-read",
+        "replace-atom",
+        "replace-edge",
+    ]
+    .iter()
+    .map(|name| amblicit_syntax::TargetEffectLowering {
+        effect: format!("echo.{name}"),
+        target_intrinsic: format!("echo.dpo@2.{name}"),
+        failure_mappings: std::collections::BTreeMap::new(),
+    })
+    .collect();
+    let costs = admit_target_effect_costs(
+        &target,
+        &pin,
+        ECHO_V3,
+        &lowerings,
+        &configuration(Some("select")),
+    )
+    .unwrap_or_else(|failures| panic!("effect admission refused: {failures:?}"));
+    assert_eq!(costs.len(), lowerings.len());
+}
