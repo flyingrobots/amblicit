@@ -5,8 +5,8 @@
 use super::effect_costs::{Charge, TargetEffectCostFact};
 use super::{
     expression_type_coordinate, is_typed_prelude_operation, resolved_core_type, CoreBlock,
-    CoreBound, CoreBudget, CoreExpr, CoreIntent, CoreModule, CoreNode, CorePredicate,
-    CoreRequireFailureArm, CoreType, CoreValue, LocalRef, TargetPureFunctionFact,
+    CoreBound, CoreBudget, CoreExpr, CoreIntent, CoreModule, CoreNode, CoreObstructionArm,
+    CorePredicate, CoreRequireFailureArm, CoreType, CoreValue, LocalRef, TargetPureFunctionFact,
     MAX_CORE_GRAPH_DEPTH, MAX_CORE_TYPE_DEPTH,
 };
 use std::collections::BTreeMap;
@@ -291,10 +291,15 @@ impl<'a> Meter<'a> {
         cost.add(self.block(&intent.body, &available, 0)?)
     }
 
-    fn function(&mut self, callee: &'a str) -> Option<Cost> {
+    fn function(&mut self, callee: &str) -> Option<Cost> {
         let name = callee
             .strip_prefix(self.core.coordinate.as_str())?
             .strip_prefix('.')?;
+        self.helper(name)
+    }
+
+    /// The copying cost of one call to the source helper `name`.
+    fn helper(&mut self, name: &str) -> Option<Cost> {
         let (name, function) = self.core.functions.get_key_value(name)?;
         if let Some(cost) = self.cached.get(name.as_str()) {
             return Some(*cost);
@@ -641,20 +646,25 @@ impl<'a> Meter<'a> {
                 obstruction_map,
                 effect,
             } => {
-                let mut cost = self
-                    .expression(input, available, depth + 1)?
+                let input_cost = self.expression(input, available, depth + 1)?;
+                let template = self.effect_template(effect, input, &binding.ty, available)?;
+                if self.shared && self.has_effect_template(effect) {
+                    return self.replaced_effect(
+                        input_cost.add(template)?,
+                        obstruction_map,
+                        available,
+                        depth,
+                    );
+                }
+                let mut cost = input_cost
                     .add(self.value_type(&binding.ty, 0)?.evaluation()?)?
-                    .add(self.effect_template(effect, input, &binding.ty, available)?)?;
+                    .add(template)?;
                 for arm in obstruction_map.values() {
                     // Nullary obstruction annotations are not callable helpers.
                     // Match the existing closed-authority rule only here; a
                     // normal expression must still establish callable authority.
                     let annotation = match &arm.value {
-                        CoreExpr::Call {
-                            callee,
-                            type_args,
-                            args,
-                        } if !callee.is_empty() && type_args.is_empty() && args.is_empty() => {
+                        CoreExpr::Call { callee, .. } if is_nullary_annotation(&arm.value) => {
                             Value {
                                 cells: 1,
                                 bytes: 64_u64.checked_add(u64::try_from(callee.len()).ok()?)?,
@@ -700,8 +710,53 @@ impl<'a> Meter<'a> {
     }
 }
 
+impl<'a> Meter<'a> {
+    /// Under the shared-read schedule the provider's template is the whole
+    /// charge of an effect step beyond its input expression: it replaces the
+    /// node step, the result binding and each obstruction arm's scratch.
+    /// `charged` is the input expression plus the template.
+    fn replaced_effect(
+        &mut self,
+        charged: Cost,
+        obstruction_map: &'a BTreeMap<String, CoreObstructionArm>,
+        available: &Scope<'a>,
+        depth: usize,
+    ) -> Option<Cost> {
+        let mut cost = charged;
+        if !obstruction_map.is_empty() {
+            // Echo builds one empty obstruction payload, `shape(record {})`,
+            // when a step maps any arm; a template cannot see the arms.
+            cost = cost.add(Cost {
+                steps: 1,
+                bytes: 64,
+            })?;
+        }
+        for arm in obstruction_map.values() {
+            if !is_nullary_annotation(&arm.value) {
+                cost = cost.add(self.expression(&arm.value, available, depth + 1)?)?;
+            }
+        }
+        Some(cost)
+    }
+}
+
+/// A nullary obstruction annotation: a bare failure name, not a callable helper.
+fn is_nullary_annotation(value: &CoreExpr) -> bool {
+    matches!(
+        value,
+        CoreExpr::Call { callee, type_args, args }
+            if !callee.is_empty() && type_args.is_empty() && args.is_empty()
+    )
+}
+
 impl Meter<'_> {
+    /// Whether the provider publishes a template for `effect`.
+    fn has_effect_template(&self, effect: &str) -> bool {
+        self.effect_costs.iter().any(|fact| fact.effect == effect)
+    }
+
     /// The provider template charge of one effect node; nothing without one.
+    /// `None` when the template is unestablished.
     fn effect_template(
         &mut self,
         effect: &str,
@@ -709,7 +764,8 @@ impl Meter<'_> {
         output: &str,
         available: &Scope<'_>,
     ) -> Option<Cost> {
-        let Some(fact) = self.effect_costs.iter().find(|fact| fact.effect == effect) else {
+        let facts = self.effect_costs;
+        let Some(fact) = facts.iter().find(|fact| fact.effect == effect) else {
             return Some(Cost::default());
         };
         let input = expression_type_coordinate(self.core, self.facts, input, available)?;
@@ -718,39 +774,58 @@ impl Meter<'_> {
             self.costliest_known = true;
         }
         let costliest = self.costliest;
+        let mut helpers = BTreeMap::new();
+        for name in fact.helpers() {
+            if let Some(cost) = self.named_helper(name) {
+                helpers.insert(name.to_owned(), cost);
+            }
+        }
         let charge = Charge {
             core: self.core,
             input: &input,
             output,
             parameters: &fact.parameters,
             costliest_helper: costliest,
+            helpers: &helpers,
         };
         let (steps, bytes) = charge.evaluate(&fact.rule)?;
         Some(Cost { steps, bytes })
     }
 
+    /// One call to the source helper `name` under the module's schedule.
+    fn helper_call(&mut self, name: &str) -> Option<Cost> {
+        if self.shared {
+            let parameters = self.core.functions.get(name)?.params.len();
+            let arguments = vec![reachable::Reach::new(); parameters];
+            Some(self.helper_reach(name, arguments)?.0)
+        } else {
+            self.helper(name)
+        }
+    }
+
+    /// The charge for the helper a `helper` parameter names. The shared-read
+    /// schedule prices exactly that helper. The copying schedule keeps the
+    /// provider's v1 rule: any helper may be selected, so it charges the
+    /// costliest, once the named helper is known to exist.
+    fn named_helper(&mut self, name: &str) -> Option<(u64, u64)> {
+        if !self.core.functions.contains_key(name) {
+            return None;
+        }
+        if self.shared {
+            let cost = self.helper_call(name)?;
+            Some((cost.steps, cost.bytes))
+        } else {
+            self.costliest
+        }
+    }
+
     /// The largest (steps, bytes) of any one call to a source helper, under
     /// the module's schedule, or `None` when some helper is unestablished.
     fn costliest_helper(&mut self) -> Option<(u64, u64)> {
-        let names: Vec<String> = self
-            .core
-            .functions
-            .keys()
-            .map(|name| format!("{}.{name}", self.core.coordinate))
-            .collect();
+        let core = self.core;
         let mut worst = Cost::default();
-        for callee in &names {
-            let name = callee
-                .strip_prefix(self.core.coordinate.as_str())?
-                .strip_prefix('.')?;
-            let (key, function) = self.core.functions.get_key_value(name)?;
-            let cost = if self.shared {
-                let arguments = vec![reachable::Reach::new(); function.params.len()];
-                self.function_reach(key, arguments)?.0
-            } else {
-                self.function(key)?
-            };
-            worst = worst.maximum(cost);
+        for name in core.functions.keys() {
+            worst = worst.maximum(self.helper_call(name)?);
         }
         Some((worst.steps, worst.bytes))
     }

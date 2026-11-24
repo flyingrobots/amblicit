@@ -56,6 +56,7 @@ impl ApplicationPureIntrinsics {
         provider_root: &Path,
         profile: &ProviderBoundArtifact,
         lowerings: &[amblicit_syntax::TargetEffectLowering],
+        configuration: &[u8],
     ) -> Result<Vec<amblicit_syntax::TargetEffectCostFact>, ApplicationBuildFailure> {
         let catalog = catalog_reference(&profile.artifact.bytes)?;
         let path = confined_existing_path(
@@ -74,21 +75,14 @@ impl ApplicationPureIntrinsics {
             coordinate: profile.reference.coordinate.clone(),
             digest: Some(rendered_digest(&profile.reference.digest)),
         };
-        // Provider-published template parameters are not yet delivered to the
-        // build; a template that reads one is refused when charged.
         amblicit_syntax::admit_target_effect_costs(
             &target,
             &catalog,
             &bytes,
             lowerings,
-            &std::collections::BTreeMap::new(),
+            configuration,
         )
-        .map_err(|errors| {
-            failure(
-                "TargetIntrinsicAdmissionFailed",
-                format!("target effect cost template admission failed: {errors:?}"),
-            )
-        })
+        .map_err(|errors| effect_cost_failure(&errors))
     }
 
     pub(super) fn load_from_provider(
@@ -190,6 +184,22 @@ fn catalog_reference(bytes: &[u8]) -> Result<ResourceRef, ApplicationBuildFailur
     })
 }
 
+/// Effect cost refusals use the same specific categories as pure-intrinsic
+/// admission: the first failure by (kind, coordinate) names the category.
+pub(super) fn effect_cost_failure(
+    errors: &[amblicit_syntax::TargetPureIntrinsicFailure],
+) -> ApplicationBuildFailure {
+    let kind = errors
+        .first()
+        .map_or("TargetIntrinsicAdmissionFailed", |e| {
+            diagnostic_kind(e.kind)
+        });
+    failure(
+        kind,
+        format!("target effect cost template admission failed: {errors:?}"),
+    )
+}
+
 fn diagnostic_kind(kind: TargetPureIntrinsicFailureKind) -> &'static str {
     use TargetPureIntrinsicFailureKind as K;
     match kind {
@@ -206,5 +216,6 @@ fn diagnostic_kind(kind: TargetPureIntrinsicFailureKind) -> &'static str {
         K::UnresolvedType => "TargetIntrinsicUnresolvedType",
         K::InvalidProviderType => "TargetIntrinsicInvalidProviderType",
         K::InvalidCostRule => "TargetIntrinsicInvalidCostRule",
+        K::InvalidParameter => "TargetIntrinsicInvalidParameter",
     }
 }

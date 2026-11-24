@@ -340,10 +340,19 @@ pub(crate) fn build_application(config_path: &Path) -> Result<(), ApplicationBui
                 &provider_root,
                 &target_profile,
                 &preparation.target_ir_facts().effect_lowerings,
+                &loaded.configuration_bytes,
             )
         })
         .transpose()?
         .unwrap_or_default();
+    // A linked closure renames root-module functions; a configured helper is
+    // a bare name of the root (application) module and follows that rename.
+    let effect_costs = match &linked {
+        Some(linked) => linked
+            .link_effect_costs(&effect_costs)
+            .map_err(|errors| target_intrinsics::effect_cost_failure(&errors))?,
+        None => effect_costs,
+    };
     compiler_context = compiler_context.with_target_effect_costs(&effect_costs);
     let target_facts = preparation
         .target_ir_facts()

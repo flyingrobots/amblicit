@@ -72,8 +72,45 @@ pub struct LinkedSourceClosure<'a> {
     ranges: Vec<SourceRange>,
     type_origins: BTreeMap<String, SourceTypeOrigin>,
     failure_origins: BTreeMap<String, SourceFailureOrigin>,
+    /// The root module's functions: authored name to linked name.
+    root_functions: BTreeMap<String, String>,
 }
 impl LinkedSourceClosure<'_> {
+    /// The linked name of the root (application) module's function `name`.
+    ///
+    /// A bare authored name always refers to the root module: functions of
+    /// imported modules, and qualified names, resolve to nothing.
+    #[must_use]
+    pub fn root_function(&self, name: &str) -> Option<&str> {
+        self.root_functions.get(name).map(String::as_str)
+    }
+    /// Rebind the source helpers that admitted effect cost templates name
+    /// (#341) to the linked names of the root module's functions.
+    ///
+    /// # Errors
+    /// Refuses, with `InvalidParameter` at the effect's intrinsic, every
+    /// template whose helper is not a function of the root module.
+    pub fn link_effect_costs(
+        &self,
+        costs: &[crate::TargetEffectCostFact],
+    ) -> Result<Vec<crate::TargetEffectCostFact>, Vec<crate::TargetPureIntrinsicFailure>> {
+        let mut linked = Vec::with_capacity(costs.len());
+        let mut failures = Vec::new();
+        for cost in costs {
+            match cost.rename_helpers(|name| self.root_function(name)) {
+                Some(cost) => linked.push(cost),
+                None => failures.push(crate::TargetPureIntrinsicFailure {
+                    kind: crate::TargetPureIntrinsicFailureKind::InvalidParameter,
+                    coordinate: cost.intrinsic().to_owned(),
+                }),
+            }
+        }
+        if failures.is_empty() {
+            Ok(linked)
+        } else {
+            Err(failures)
+        }
+    }
     /// Borrow the immutable compiler-owned surface for authority preparation.
     #[must_use]
     pub const fn module(&self) -> &Module {
@@ -206,6 +243,12 @@ pub fn link_source_closure(
     let units = collect_names(closure, &fresh)?;
     let type_origins = collect_type_origins(closure, &units);
     let failure_origins = collect_failure_origins(closure, &units);
+    let root_functions = units[closure.root_coordinate()]
+        .definitions
+        .iter()
+        .filter(|(_, definition)| definition.kind == DefinitionKind::Function)
+        .map(|(name, definition)| (name.clone(), definition.linked.clone()))
+        .collect();
     let root_name = closure.root_coordinate();
     let root = &closure.modules()[root_name];
     let mut linked = Module {
@@ -281,6 +324,7 @@ pub fn link_source_closure(
         ranges,
         type_origins,
         failure_origins,
+        root_functions,
     })
 }
 fn collect_type_origins(

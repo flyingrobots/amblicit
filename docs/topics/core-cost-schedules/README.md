@@ -80,14 +80,40 @@ allocated bytes it needs.
 
 ## Effect cost templates
 
-Under both schedules, an effect node is also charged its provider's cost
-template when the target's intrinsic catalog publishes one
-(`edict.target-profile.intrinsics/v3`, `effectCostRule` on each effect
-intrinsic). The charge is added on top of the effect's input expression,
-result binding and obstruction annotations. Templates are closed `u64`
+An effect node is charged its provider's cost template when the target's
+intrinsic catalog publishes one (`edict.target-profile.intrinsics/v3`,
+`effectCostRule` on each effect intrinsic). Under the shared-read schedule the
+template replaces the generic charge of that step: the step costs its input
+expression, any callable obstruction arms, and the template, and no result
+binding or annotation scratch, except one empty obstruction payload of
+(1 step, 64 bytes) when the step maps any obstruction arm, as Echo charges. Under the copying schedule the template is
+added on top of the generic charge, so copying-schedule results are unchanged
+from the first template release. A type path may step into list items with `item` and then name fields inside
+the item with `then`. The path names one item's type, so its measure is a
+per-item bound; see the grammar in `rationale.md`. Templates are closed `u64`
 expressions over the effect's declared input and output types (`bytesMax`,
 `listMax`, the provider value shape `copy` and `validations`), named
-parameters the provider publishes, and the module's costliest source helper.
+parameters, the module's costliest source helper, and
+`{ helper: { parameter: name }, of: "steps" / "bytes" }`, one call to the
+source helper a `helper` parameter names. Under the shared-read schedule
+`helper` prices exactly the named helper; under the copying schedule it charges
+the costliest helper, as `costliestHelper` does, once the named helper is known
+to exist.
+
+The catalog's top-level `parameters` map declares each parameter's field path
+into the application's operation configuration (the `targetConfiguration` the
+lawpack pins by digest) and its kind, `uint` or `helper`. Echo's catalog at
+echo `44098b15` declares `maxEdgeScans` at `graphReads.maxEdgeScans` (`uint`)
+and `selector` at `graphReads.closureSelector` (`helper`). That commit is on
+Echo's unmerged draft PR #1029, not on Echo's main; Amblicit vendors the
+catalog from it in `fixtures/echo-target-intrinsics-v3/` and must re-vendor it
+when #1029 merges. Amblicit reads the configuration only
+at the declared paths, and only for parameters a selected template uses. An
+undeclared parameter, a missing value, or a value of the wrong kind refuses
+the catalog with `InvalidParameter` (`TargetIntrinsicInvalidParameter` in the
+application build). Pure-intrinsic admission, which the build runs first on the
+same file, accepts the `parameters` key in a `/v3` catalog only; a `/v2`
+catalog with it is still `MalformedCatalog`.
 A `/v2` catalog publishes no templates and charges effects as before.
 
 `admit_target_effect_costs` admits the templates of the effects a lowering
@@ -99,9 +125,20 @@ Under the copying schedule the source checker re-checks each intent with its
 budget reduced by its template work; under the shared-read schedule the shared
 meter charges each template where the effect node is charged. A branch is
 charged its larger arm and a literal-bound loop body per iteration. A template
-whose path does not resolve, or which reads a parameter the build was not
-given, is refused with `InvalidBound`. The application build does not yet
-receive provider parameters.
+whose path does not resolve, or whose `helper` parameter names no source
+helper in the module, is refused with `InvalidBound`.
+
+A `helper` parameter is a bare function name of the root (application)
+module, the module Echo qualifies a `closureSelector` with. In a multi-module
+source-closure build the linker gives every root-module function a fresh
+linked name; `LinkedSourceClosure::link_effect_costs` rebinds each configured
+helper through the linker's own record of root-module names, and the
+application build calls it before compiling. A name that is not a root-module
+function (a function of an imported module, a qualified name, or no function)
+refuses admission with `InvalidParameter`
+(`TargetIntrinsicInvalidParameter`). The application build reports every effect
+cost refusal under the same specific `TargetIntrinsic*` category as
+pure-intrinsic admission.
 
 ## Effect on the bounded-descent fixture
 

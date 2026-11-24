@@ -8,6 +8,27 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Read effect cost parameters from the application's operation
+  configuration. An `edict.target-profile.intrinsics/v3` catalog's
+  `parameters` map declares each parameter's field path and kind (`uint` or
+  `helper`); Amblicit reads only those paths, and refuses a missing or
+  wrong-kind value with `InvalidParameter`. A new
+  `{ helper: { parameter: name }, of }` measure prices the declared closure
+  selector exactly under the shared-read schedule. Under that schedule a
+  template now replaces the generic effect charge of its step instead of
+  adding to it, plus one (1, 64) empty obstruction payload when the step maps
+  any arm, as Echo charges. A type path may name fields inside a list item
+  (`then`). Pure-intrinsic admission accepts the `/v3` `parameters` key.
+  In a multi-module (linked) build a `helper` value names a function of the
+  root module and follows the linker's rename; any other name refuses with
+  `InvalidParameter`. The application build now reports effect cost
+  refusals with the specific category (for example
+  `TargetIntrinsicInvalidParameter`) instead of
+  `TargetIntrinsicAdmissionFailed`. Echo's `/v3` catalog is vendored as a
+  fixture from echo `44098b15`, on Echo's unmerged draft PR #1029, and must be
+  re-vendored when that PR merges.
+  Copying-schedule results and `/v2` catalogs are unchanged (issue #341).
+
 - **Breaking (Rust API):** `ParseErrorKind` gains `NestingTooDeep`; an
   exhaustive `match` on it outside `amblicit-syntax` must add the arm.
 

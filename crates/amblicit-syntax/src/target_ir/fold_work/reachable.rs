@@ -202,12 +202,22 @@ impl<'a> Meter<'a> {
     /// The shared-read cost and result bounds of one call under argument bounds.
     pub(super) fn function_reach(
         &mut self,
-        callee: &'a str,
+        callee: &str,
         arguments: Vec<Reach>,
     ) -> Option<(Cost, Reach)> {
         let name = callee
             .strip_prefix(self.core.coordinate.as_str())?
             .strip_prefix('.')?;
+        self.helper_reach(name, arguments)
+    }
+
+    /// The shared-read cost and result bounds of one call to the source
+    /// helper `name` under argument bounds.
+    pub(super) fn helper_reach(
+        &mut self,
+        name: &str,
+        arguments: Vec<Reach>,
+    ) -> Option<(Cost, Reach)> {
         let (name, function) = self.core.functions.get_key_value(name)?;
         let key = (name.as_str(), arguments);
         if let Some(cached) = self.reach_cache.get(&key) {

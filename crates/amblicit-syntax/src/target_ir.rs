@@ -11,6 +11,7 @@ mod byte_length;
 mod byte_slice;
 mod byte_utf8;
 pub(crate) mod effect_costs;
+pub(crate) mod effect_parameters;
 pub(crate) mod execution_order;
 pub(crate) mod fold_work;
 mod function_preconditions;

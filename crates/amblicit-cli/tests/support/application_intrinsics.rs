@@ -283,12 +283,18 @@ fn public_application_refuses_invalid_catalogs_without_publication() {
         ("effect", "TargetIntrinsicNotPure"),
         ("cost", "TargetIntrinsicInvalidCostRule"),
         ("shape", "TargetIntrinsicMalformedContract"),
+        // Effect admission (#341): a `/v3` parameters map that is malformed.
+        ("parameters", "TargetIntrinsicInvalidParameter"),
     ] {
         let root = temp_tree(case);
         let config = fixture_with_catalog(&root, |v| match case {
             "v1" => v["apiVersion"] = json!("edict.target-profile.intrinsics/v1"),
             "effect" => v["intrinsics"]["echo.dpo@1.identity"]["intrinsicClass"] = json!("effect"),
             "cost" => v["intrinsics"]["echo.dpo@1.identity"]["costRule"]["base"] = json!(-1),
+            "parameters" => {
+                v["apiVersion"] = json!("edict.target-profile.intrinsics/v3");
+                v["parameters"] = json!({"selector": {"path": 3, "kind": "helper"}});
+            }
             "shape" => {
                 v["intrinsics"]["echo.dpo@1.identity"]
                     .as_object_mut()
