@@ -86,8 +86,9 @@ intrinsics-document-v2 = {
 ; keep their v2 shape; every effect intrinsic carries a required
 ; `effectCostRule`. The optional `parameters` map says where each named
 ; template parameter lives in the operation configuration. The schema fixes
-; the shape; admission (`admit_target_effect_costs`) resolves type paths
-; against the effect's signature and parameters against the configuration.
+; the shape; admission (`admit_target_effect_costs`) checks depth and path
+; syntax and resolves parameters against the configuration; evaluating a
+; charge resolves type paths against the effect's signature.
 intrinsics-document-v3 = {
   apiVersion: "edict.target-profile.intrinsics/v3",
   intrinsics: { * tstr => intrinsic-v3 },
@@ -102,7 +103,8 @@ effect-cost-parameter = {
   kind: "uint" / "helper",
 }
 
-; Closed u64 expressions; admission refuses overflow and depth above 16.
+; Closed u64 expressions; admission refuses depth above 16, evaluation
+; refuses overflow.
 effect-cost-rule = {
   steps: effect-cost-expr,
   bytes: effect-cost-expr,

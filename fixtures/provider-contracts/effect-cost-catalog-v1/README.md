@@ -18,10 +18,11 @@ Pure intrinsics and `types` keep their v2 rules. A v2 catalog is admitted
 unchanged; a `/v2` catalog that carries `effectCostRule` or `parameters` is
 refused.
 
-CDDL fixes shape only. `admit_target_effect_costs` owns the rest: the pinned
-catalog digest, expression depth (at most 16), checked `u64` arithmetic, type
-paths resolved against the effect's signature, `then` only after an item step,
-and parameter values read from the operation configuration.
+CDDL fixes shape only. Admission (`admit_target_effect_costs`) checks the
+pinned catalog digest, expression depth (at most 16), path syntax (`then` only
+after an item step) and reads parameter values from the operation
+configuration. Evaluation of a charge, not admission, resolves type paths
+against the effect's signature and refuses `u64` overflow.
 
 The pack coordinate remains `edict.provider-contract-pack.cddl@1` and the manifest
 API version remains `edict.provider-contract-pack/v1`. Consumers select the exact
