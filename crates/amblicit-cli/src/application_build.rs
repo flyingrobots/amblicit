@@ -340,6 +340,7 @@ pub(crate) fn build_application(config_path: &Path) -> Result<(), ApplicationBui
                 &provider_root,
                 &target_profile,
                 &preparation.target_ir_facts().effect_lowerings,
+                &loaded.configuration_bytes,
             )
         })
         .transpose()?

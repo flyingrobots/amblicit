@@ -80,14 +80,32 @@ allocated bytes it needs.
 
 ## Effect cost templates
 
-Under both schedules, an effect node is also charged its provider's cost
-template when the target's intrinsic catalog publishes one
-(`edict.target-profile.intrinsics/v3`, `effectCostRule` on each effect
-intrinsic). The charge is added on top of the effect's input expression,
-result binding and obstruction annotations. Templates are closed `u64`
+An effect node is charged its provider's cost template when the target's
+intrinsic catalog publishes one (`edict.target-profile.intrinsics/v3`,
+`effectCostRule` on each effect intrinsic). Under the shared-read schedule the
+template replaces the generic charge of that step: the step costs its input
+expression, any callable obstruction arms, and the template, and no result
+binding or annotation scratch. Under the copying schedule the template is
+added on top of the generic charge, so copying-schedule results are unchanged
+from the first template release. Templates are closed `u64`
 expressions over the effect's declared input and output types (`bytesMax`,
 `listMax`, the provider value shape `copy` and `validations`), named
-parameters the provider publishes, and the module's costliest source helper.
+parameters, the module's costliest source helper, and
+`{ helper: { parameter: name }, of: "steps" / "bytes" }`, one call to the
+source helper a `helper` parameter names. Under the shared-read schedule
+`helper` prices exactly the named helper; under the copying schedule it charges
+the costliest helper, as `costliestHelper` does, once the named helper is known
+to exist.
+
+The catalog's top-level `parameters` map declares each parameter's field path
+into the application's operation configuration (the `targetConfiguration` the
+lawpack pins by digest) and its kind, `uint` or `helper`. Echo declares
+`maxEdgeScans` at `graphReads.maxEdgeScans` (`uint`) and `selector` at
+`graphReads.closureSelector` (`helper`). Amblicit reads the configuration only
+at the declared paths, and only for parameters a selected template uses. An
+undeclared parameter, a missing value, or a value of the wrong kind refuses
+the catalog with `InvalidParameter` (`TargetIntrinsicInvalidParameter` in the
+application build).
 A `/v2` catalog publishes no templates and charges effects as before.
 
 `admit_target_effect_costs` admits the templates of the effects a lowering
@@ -99,9 +117,8 @@ Under the copying schedule the source checker re-checks each intent with its
 budget reduced by its template work; under the shared-read schedule the shared
 meter charges each template where the effect node is charged. A branch is
 charged its larger arm and a literal-bound loop body per iteration. A template
-whose path does not resolve, or which reads a parameter the build was not
-given, is refused with `InvalidBound`. The application build does not yet
-receive provider parameters.
+whose path does not resolve, or whose `helper` parameter names no source
+helper in the module, is refused with `InvalidBound`.
 
 ## Effect on the bounded-descent fixture
 

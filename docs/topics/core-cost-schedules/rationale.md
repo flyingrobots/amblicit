@@ -160,6 +160,15 @@ measure = { bytesMax: type-expr }                          ; Bytes<max=N> -> N
                                                            ; e.g. "maxEdgeScans"
         / { costliestHelper: "steps" / "bytes" }           ; most expensive source helper
                                                            ; in the module
+        / { helper: { parameter: tstr }, of: "steps" / "bytes" }
+                                                           ; one call to the helper a `helper`
+                                                           ; parameter names (shared-read only;
+                                                           ; copying charges the costliest)
+
+parameters = { * tstr => { path: [+ tstr], kind: "uint" / "helper" } }
+                                                           ; top-level catalog map: where each
+                                                           ; parameter lives in the operation
+                                                           ; configuration
 
 type-expr = { path: { side: "input" / "output", fields: [* tstr], item: uint } }
                                                            ; record fields, then `item` list-item steps
@@ -192,6 +201,8 @@ For each effect node, the source checker and native Target charge:
 - the input expression, as today;
 - the result binding and obstruction annotations, as today;
 - plus `effectCostRule`.
+
+Amended for the shared-read schedule (#341, second half): there the template replaces the result binding and annotation scratch, so a shared-read template must cover them itself. The copying schedule keeps the additive rule above.
 
 Templates cover what Echo charges beyond that: input validations (`validations(input)`), the obstruction-arm scratch, frame records, scans and closure costs. Double charging is conservative. The compiler minimum is therefore at or above Echo's, and Echo admits every package at the compiler minimum.
 

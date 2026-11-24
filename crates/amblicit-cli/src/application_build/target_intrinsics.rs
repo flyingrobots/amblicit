@@ -56,6 +56,7 @@ impl ApplicationPureIntrinsics {
         provider_root: &Path,
         profile: &ProviderBoundArtifact,
         lowerings: &[amblicit_syntax::TargetEffectLowering],
+        configuration: &[u8],
     ) -> Result<Vec<amblicit_syntax::TargetEffectCostFact>, ApplicationBuildFailure> {
         let catalog = catalog_reference(&profile.artifact.bytes)?;
         let path = confined_existing_path(
@@ -74,14 +75,12 @@ impl ApplicationPureIntrinsics {
             coordinate: profile.reference.coordinate.clone(),
             digest: Some(rendered_digest(&profile.reference.digest)),
         };
-        // Provider-published template parameters are not yet delivered to the
-        // build; a template that reads one is refused when charged.
         amblicit_syntax::admit_target_effect_costs(
             &target,
             &catalog,
             &bytes,
             lowerings,
-            &std::collections::BTreeMap::new(),
+            configuration,
         )
         .map_err(|errors| {
             failure(
@@ -206,5 +205,6 @@ fn diagnostic_kind(kind: TargetPureIntrinsicFailureKind) -> &'static str {
         K::UnresolvedType => "TargetIntrinsicUnresolvedType",
         K::InvalidProviderType => "TargetIntrinsicInvalidProviderType",
         K::InvalidCostRule => "TargetIntrinsicInvalidCostRule",
+        K::InvalidParameter => "TargetIntrinsicInvalidParameter",
     }
 }

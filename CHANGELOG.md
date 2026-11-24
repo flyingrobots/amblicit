@@ -8,6 +8,17 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Read effect cost parameters from the application's operation
+  configuration. An `edict.target-profile.intrinsics/v3` catalog's
+  `parameters` map declares each parameter's field path and kind (`uint` or
+  `helper`); Amblicit reads only those paths, and refuses a missing or
+  wrong-kind value with `InvalidParameter`. A new
+  `{ helper: { parameter: name }, of }` measure prices the declared closure
+  selector exactly under the shared-read schedule. Under that schedule a
+  template now replaces the generic effect charge of its step instead of
+  adding to it. Copying-schedule results and `/v2` catalogs are unchanged
+  (issue #341).
+
 - Charge effect steps by provider-published cost templates. An
   `edict.target-profile.intrinsics/v3` catalog may give each effect intrinsic
   an `effectCostRule` over its input and output types, provider parameters and

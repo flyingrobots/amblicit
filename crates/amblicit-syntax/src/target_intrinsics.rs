@@ -13,6 +13,7 @@ use crate::canonical::{
     decode_canonical_cbor, digest_canonical_value, sha256_review_string, CanonicalValue,
 };
 use crate::core_ir::{classify_core_type_reference, CoreType, CoreTypeReference, ResourceRef};
+use crate::target_ir::effect_parameters::ParameterDeclarations;
 
 /// Intrinsic catalog document version this crate admits.
 pub const TARGET_INTRINSICS_API_VERSION: &str = "edict.target-profile.intrinsics/v2";
@@ -69,6 +70,9 @@ pub enum TargetPureIntrinsicFailureKind {
     /// The cost rule has the wrong arity, a negative or oversized coefficient,
     /// or charges an argument with no size bound.
     InvalidCostRule,
+    /// A declared effect-cost parameter is malformed, or the operation
+    /// configuration lacks it or holds a value of the wrong kind.
+    InvalidParameter,
 }
 
 /// One refused obligation, naming the coordinate it concerns.
@@ -281,21 +285,26 @@ pub fn admit_target_pure_intrinsics(
 /// `lowerings` pairs each semantic effect with the target intrinsic it lowers
 /// to. A `/v2` catalog carries no templates and admits none, which keeps the
 /// compiler's existing effect charge. In a `/v3` catalog every selected
-/// effect intrinsic must carry a well-formed `effectCostRule`. `parameters`
-/// are the named numbers the provider publishes for the operation
-/// configuration; a template that reads an absent one cannot be charged.
+/// effect intrinsic must carry a well-formed `effectCostRule`.
+///
+/// `configuration` is the canonical CBOR operation configuration the effects
+/// use. The catalog's `parameters` map declares each template parameter's
+/// field path and kind; every parameter a selected template uses is read from
+/// the configuration at its declared path, and nothing else is read. The
+/// caller is responsible for checking the configuration against its own pin.
 ///
 /// # Errors
 ///
 /// Returns every refused obligation when a pin is missing or mismatched, the
-/// catalog is malformed, or a selected effect intrinsic is absent, not an
-/// effect, or carries a malformed template.
+/// catalog is malformed, a selected effect intrinsic is absent, not an
+/// effect, or carries a malformed template, or a template uses a parameter
+/// that is undeclared, of another kind, or absent from the configuration.
 pub fn admit_target_effect_costs(
     target: &ResourceRef,
     catalog: &ResourceRef,
     catalog_bytes: &[u8],
     lowerings: &[crate::TargetEffectLowering],
-    parameters: &BTreeMap<String, u64>,
+    configuration: &[u8],
 ) -> Result<Vec<crate::TargetEffectCostFact>, Vec<TargetPureIntrinsicFailure>> {
     use TargetPureIntrinsicFailureKind as K;
     for reference in [target, catalog] {
@@ -321,6 +330,9 @@ pub fn admit_target_effect_costs(
         .get("intrinsics")
         .and_then(|value| text_map(value))
         .ok_or_else(malformed)?;
+    let declarations = ParameterDeclarations::parse(fields.get("parameters").copied())
+        .ok_or_else(|| vec![failure(K::InvalidParameter, &catalog.coordinate)])?;
+    let configuration = decode_canonical_cbor(configuration).ok();
     let mut admitted = Vec::new();
     let mut failures = Vec::new();
     for lowering in lowerings {
@@ -337,13 +349,19 @@ pub fn admit_target_effect_costs(
                     .get("effectCostRule")
                     .and_then(|rule| crate::target_ir::effect_costs::parse_rule(rule))
                     .ok_or(K::InvalidCostRule)
+            })
+            .and_then(|rule| {
+                let parameters = declarations
+                    .resolve(&rule.parameter_uses(), configuration.as_ref())
+                    .ok_or(K::InvalidParameter)?;
+                Ok((rule, parameters))
             });
         match rule {
-            Ok(rule) => admitted.push(crate::TargetEffectCostFact {
+            Ok((rule, parameters)) => admitted.push(crate::TargetEffectCostFact {
                 effect: lowering.effect.clone(),
                 intrinsic: lowering.target_intrinsic.clone(),
                 rule,
-                parameters: parameters.clone(),
+                parameters,
             }),
             Err(kind) => failures.push(failure(kind, coordinate)),
         }
