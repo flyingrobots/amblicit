@@ -747,11 +747,12 @@ impl<'a> Meter<'a> {
     }
 
     /// Under the shared-read schedule, what an effect body's failure arm or
-    /// failing `require` adds beyond its payload fields' own work, as warp-core's shared executor
-    /// charges it: the payload record's expression step and shell (one cell,
-    /// plus a keyed cell per field), then encoding the record at its type's
-    /// copying size, Echo's `shape(record)` scratch. An empty payload costs
-    /// (2, 64) + (1, 64).
+    /// failing `require` adds beyond its payload fields' own work, as
+    /// warp-core's shared executor charges it: the payload record's
+    /// expression step and shell (one cell, plus a keyed cell per field), then
+    /// encoding the record at its type's copying size, Echo's `shape(record)`
+    /// scratch, each field sized by the shape of its value (a record literal
+    /// structurally). An empty payload costs (2, 64) + (1, 64).
     fn obstruction_payload(
         &self,
         payload: &'a BTreeMap<String, CoreExpr>,
@@ -761,8 +762,10 @@ impl<'a> Meter<'a> {
         let mut encoded = Value::CELL;
         for (name, field) in payload {
             shell = shell.add(Self::field(name, Value { cells: 0, bytes: 0 })?)?;
-            let ty = expression_type_coordinate(self.core, self.facts, field, available)?;
-            encoded = encoded.add(Self::field(name, self.value_type(&ty, 0)?)?)?;
+            // Echo encodes each field at the type it infers for the value,
+            // a record literal included; no failure declares payload types.
+            let shape = super::comparison_operand_shape(self.core, self.facts, field, available)?;
+            encoded = encoded.add(Self::field(name, self.shape_value(&shape, 0)?)?)?;
         }
         shell.evaluation()?.add(Cost {
             steps: encoded.cells,

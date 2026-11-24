@@ -8,6 +8,15 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Fixed: under the shared-read schedule, an effect-body `attempt` arm or
+  failing `require` whose payload field value is a record literal (for
+  example `{ at: { value: n } }`) was refused with "shared-read Core work is
+  unestablished", although it compiled before the arm term was added. Each
+  payload field is now encoded at the shape of its value, as Echo's lowerer
+  sizes it; such a field adds its literal's work and (2, 133) of encoding for
+  `{ value: U64 }` over a `U64`. Scalar payloads, pure intents and the copying
+  schedule are unchanged.
+
 - Under the shared-read schedule, an `attempt` in an intent whose body holds
   an effect node is charged its failure arm as Echo's shared executor charges
   it: the payload record's expression step and shell, then its encoding at the

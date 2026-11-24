@@ -1066,3 +1066,98 @@ fn a_linked_selector_outside_the_root_module_is_refused() {
         );
     }
 }
+
+/// A payload field whose value is a record literal, `{ value: n }`: the
+/// source checker accepts any expression as a payload field value.
+const NESTED: &str = "({ at: { value: n } })";
+
+/// What a record-literal field value costs to evaluate beyond a local, as
+/// main 65dc5362 (before the effect-body arm term) already charged it: the
+/// literal's step, its shell cell and its keyed cell.
+const NESTED_WORK: (u64, u64) = (4, 197);
+
+/// Encoding the field `at` as `{ value: U64 }` rather than `U64`: Echo's
+/// lowerer sizes each payload field by the type it infers for the value
+/// (`shape(Ty::Record(fields))`), so the nested record adds its keyed cell
+/// `value` and the integer cell, (2, 64 + len("value") + 64).
+const NESTED_ENCODING: (u64, u64) = (2, 133);
+
+/// Hello Echo with that `require` and `payload` inside a three-iteration loop.
+fn with_payload_require_loop(payload: &str) -> String {
+    SOURCE.replace(
+        "  let receipt",
+        &format!("  let n: U64 = 7u64;\n  let items: List<U64, max=3> = [1u64, 2u64, 3u64];\n  for i in items bounded 3 {{\n    require i <= n else hello.AlreadyExists{payload};\n  }}\n  let receipt"),
+    )
+}
+
+fn assert_exact_minimum(context: &CompilerContext, source: &str, expected: (u64, u64)) {
+    let minimum = minimums(context, source, SHARED);
+    assert_eq!(minimum, expected);
+    let (steps, bytes) = minimum;
+    assert!(compile(context, source, SHARED, budget(steps, bytes)).is_ok());
+    for below in [budget(steps - 1, bytes), budget(steps, bytes - 1)] {
+        let errors = compile(context, source, SHARED, below).expect_err("refused one below");
+        let kinds: Vec<_> = errors.iter().map(|e| e.kind).collect();
+        assert_eq!(kinds, [CompilerErrorKind::InvalidBound]);
+    }
+}
+
+#[test]
+fn a_record_payload_field_value_is_charged_its_inferred_shape_in_an_attempt_arm() {
+    let context = prepared(Some((V3, scan_rule())), None).context;
+    let scalar = minimums(&context, &with_payload_attempt("({ at: n })"), SHARED);
+    assert_exact_minimum(
+        &context,
+        &with_payload_attempt(NESTED),
+        (
+            scalar.0 + NESTED_WORK.0 + NESTED_ENCODING.0,
+            scalar.1 + NESTED_WORK.1 + NESTED_ENCODING.1,
+        ),
+    );
+}
+
+#[test]
+fn a_record_payload_field_value_is_charged_its_inferred_shape_in_a_failing_require() {
+    let context = prepared(Some((V3, scan_rule())), None).context;
+    let scalar = minimums(&context, &with_require("({ at: n })"), SHARED);
+    assert_exact_minimum(
+        &context,
+        &with_require(NESTED),
+        (
+            scalar.0 + NESTED_WORK.0 + NESTED_ENCODING.0,
+            scalar.1 + NESTED_WORK.1 + NESTED_ENCODING.1,
+        ),
+    );
+}
+
+#[test]
+fn a_loop_multiplies_a_record_payload_field_by_its_bound() {
+    let context = prepared(Some((V3, scan_rule())), None).context;
+    let scalar = minimums(&context, &with_payload_require_loop("({ at: n })"), SHARED);
+    assert_exact_minimum(
+        &context,
+        &with_payload_require_loop(NESTED),
+        (
+            scalar.0 + 3 * (NESTED_WORK.0 + NESTED_ENCODING.0),
+            scalar.1 + 3 * (NESTED_WORK.1 + NESTED_ENCODING.1),
+        ),
+    );
+}
+
+/// The record-payload programs' copying minimums on main 65dc5362, before
+/// the effect-body arm term: attempt, require, looped require.
+const NESTED_COPYING_BEFORE: [(u64, u64); 3] = [(1170, 19_693), (1007, 4117), (1010, 4117)];
+
+#[test]
+fn copying_minimums_of_record_payload_programs_are_unchanged() {
+    let context = prepared(Some((V3, scan_rule())), None).context;
+    let measured: Vec<_> = [
+        with_payload_attempt(NESTED),
+        with_require(NESTED),
+        with_payload_require_loop(NESTED),
+    ]
+    .iter()
+    .map(|source| minimums(&context, source, CoreCostSchedule::Copying))
+    .collect();
+    assert_eq!(measured, NESTED_COPYING_BEFORE);
+}
