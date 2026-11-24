@@ -122,7 +122,12 @@ effect-cost-catalog publication is cumulative: it is the
 (catalog-v2 `intrinsics-document` root, function-precondition Core schema,
 typed-failure Core and Target IR shapes) with the `intrinsics-document` root
 also admitting `edict.target-profile.intrinsics/v3` catalogs, whose effect
-intrinsics each carry an `effectCostRule` (issue #341). The typed-failure pair
+intrinsics each carry an `effectCostRule` (issue #341). Its cost rules are
+written out level by level to a published depth limit of 10, tighter than the
+decoder's 16, so that the provider artifact-schema registry can load the root
+(see the [pack README](../../../fixtures/provider-contracts/effect-cost-catalog-v1/README.md)).
+Tests bind every root of the current pack through the registry, not only
+through direct CDDL validation. The typed-failure pair
 is now frozen and reproduced from
 `fixtures/target-profile/pre-effect-cost-target-profile.cddl`. The prior
 [function-free v1 publication](../../../fixtures/provider-contracts/v1/),

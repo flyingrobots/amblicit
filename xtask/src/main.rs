@@ -2,6 +2,7 @@
 #![allow(clippy::print_stdout)]
 
 mod contract_check;
+mod effect_cost_cddl;
 mod goldens;
 mod lawpack_goldens;
 mod provider_components;

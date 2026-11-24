@@ -15,8 +15,24 @@ use super::{resolved_core_type, CoreModule, CoreType};
 use crate::canonical::CanonicalValue;
 use std::collections::BTreeMap;
 
-const MAX_EXPRESSION_DEPTH: usize = 16;
-const MAX_SUM_TERMS: usize = 16;
+/// Deepest level the decoder reads in an `effectCostRule`. Expressions,
+/// measures and types share one level counter: the rule's `steps` and `bytes`
+/// expressions are level 0, and each nested expression, measure, type or
+/// record field is one level deeper.
+pub const TARGET_EFFECT_COST_MAX_DEPTH: usize = 16;
+/// Deepest level the published catalog schema admits, on the same level
+/// counter. `cargo xtask provider-contract-pack` writes the schema's cost
+/// rules out level by level to this depth, because the provider
+/// artifact-schema registry refuses recursive cost rules. It is tighter than
+/// the decoder: the registry's construction work doubles with each level
+/// (12 to 21 ms in a release build at 10, about 750 ms at 16), so a catalog nested
+/// deeper than this is refused when its provider package loads.
+pub const TARGET_EFFECT_COST_SCHEMA_MAX_DEPTH: usize = 10;
+const _: () = assert!(TARGET_EFFECT_COST_SCHEMA_MAX_DEPTH <= TARGET_EFFECT_COST_MAX_DEPTH);
+/// Most terms a `sum` may carry; the published schema states the same bound.
+pub const TARGET_EFFECT_COST_MAX_SUM_TERMS: usize = 16;
+const MAX_EXPRESSION_DEPTH: usize = TARGET_EFFECT_COST_MAX_DEPTH;
+const MAX_SUM_TERMS: usize = TARGET_EFFECT_COST_MAX_SUM_TERMS;
 
 /// Which half of a copy cost a measure reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -737,5 +753,48 @@ fn keep(value: Rows) -> Rows { return value; }";
         let steps = map(vec![("copy", record.clone()), ("of", text("steps"))]);
         let bytes = map(vec![("copy", record), ("of", text("bytes"))]);
         assert_eq!(charge(steps, bytes), (15, 975));
+    }
+
+    /// `n` nested products whose first factor nests; the innermost
+    /// expression, `leaf`, sits at level `n`.
+    fn nested_expression(n: usize, leaf: C) -> C {
+        (0..n).fold(leaf, |inner, _| {
+            map(vec![(
+                "product",
+                C::Array(vec![inner, map(vec![("const", C::Integer(1))])]),
+            )])
+        })
+    }
+
+    /// A `bytesMax` measure whose type, at level 2, nests records until a
+    /// `word` at level `n`.
+    fn nested_type_measure(n: usize) -> C {
+        let ty = (2..n).fold(map(vec![("word", C::Null)]), |inner, _| {
+            map(vec![("record", map(vec![("f", inner)]))])
+        });
+        map(vec![("measure", map(vec![("bytesMax", ty)]))])
+    }
+
+    fn rule_with_steps(steps: C) -> C {
+        map(vec![
+            ("steps", steps),
+            ("bytes", map(vec![("const", C::Integer(0))])),
+        ])
+    }
+
+    /// Oracle: the level rule in `docs/abi/edict-target-profile.cddl`: steps
+    /// is level 0, each nested expression, measure, type or record field one
+    /// deeper, and the decoder reads at most `TARGET_EFFECT_COST_MAX_DEPTH`.
+    #[test]
+    fn decoder_reads_nesting_to_level_16_and_no_deeper() {
+        let depth = super::TARGET_EFFECT_COST_MAX_DEPTH;
+        let constant = map(vec![("const", C::Integer(1))]);
+        let parameter = map(vec![("measure", map(vec![("parameter", text("p"))]))]);
+        assert!(parse_rule(&rule_with_steps(nested_expression(depth, constant.clone()))).is_some());
+        assert!(parse_rule(&rule_with_steps(nested_expression(depth + 1, constant))).is_none());
+        // A measure one level below the deepest expression needs no type.
+        assert!(parse_rule(&rule_with_steps(nested_expression(depth, parameter))).is_some());
+        assert!(parse_rule(&rule_with_steps(nested_type_measure(depth))).is_some());
+        assert!(parse_rule(&rule_with_steps(nested_type_measure(depth + 1))).is_none());
     }
 }
