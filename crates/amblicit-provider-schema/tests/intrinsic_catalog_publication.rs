@@ -820,3 +820,73 @@ fn current_pack_refuses_a_v2_catalog_with_parameters() {
         Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch)
     );
 }
+
+/// A v3 catalog declaring `count` well-formed parameters.
+fn catalog_v3_with_parameters(count: usize) -> V {
+    let mut catalog = catalog_v3();
+    let V::Map(fields) = &mut catalog else {
+        panic!("catalog is a map")
+    };
+    let declarations = (0..count)
+        .map(|index| {
+            (
+                text(&format!("p{index}")),
+                map(vec![
+                    ("path", texts(&["graphReads"])),
+                    ("kind", text("uint")),
+                ]),
+            )
+        })
+        .collect();
+    fields.push((text("parameters"), V::Map(declarations)));
+    catalog
+}
+
+/// Oracle: the decoder's limit, `MAX_DECLARATIONS` = 64 in
+/// `crates/amblicit-syntax/src/target_ir/effect_parameters.rs`.
+#[test]
+fn current_pack_admits_v3_parameters_at_the_decoder_limit() {
+    assert_eq!(
+        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &catalog_v3_with_parameters(64)),
+        Ok(())
+    );
+}
+
+#[test]
+fn current_pack_refuses_v3_parameters_above_the_decoder_limit() {
+    assert_eq!(
+        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &catalog_v3_with_parameters(65)),
+        Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch)
+    );
+}
+
+/// Oracle: the decoder refuses `then` after no item step (`effect_costs.rs`).
+#[test]
+fn current_pack_refuses_then_after_no_item_step() {
+    let mut catalog = catalog_v3();
+    *effect_rule_mut(&mut catalog) = map(vec![
+        (
+            "steps",
+            map(vec![(
+                "measure",
+                map(vec![(
+                    "bytesMax",
+                    map(vec![(
+                        "path",
+                        map(vec![
+                            ("side", text("input")),
+                            ("fields", texts(&["rows"])),
+                            ("item", V::Integer(0)),
+                            ("then", texts(&["a"])),
+                        ]),
+                    )]),
+                )]),
+            )]),
+        ),
+        ("bytes", map(vec![("const", V::Integer(0))])),
+    ]);
+    assert_eq!(
+        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &catalog),
+        Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch)
+    );
+}

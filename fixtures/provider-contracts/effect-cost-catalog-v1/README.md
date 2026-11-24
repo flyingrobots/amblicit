@@ -12,16 +12,21 @@ A v3 catalog differs from v2 in three ways:
 | --- | --- |
 | `apiVersion` | Exactly `edict.target-profile.intrinsics/v3`. |
 | effect intrinsic | The v2 shape plus a required `effectCostRule`: `{ steps, bytes }`, each a cost expression (`const`, `sum` of 2 to 16 terms, binary `product`, or `measure`). |
-| `parameters` | Optional map from a non-empty name to `{ path: [1*16 non-empty text], kind: "uint" / "helper" }`, where the template parameter lives in the operation configuration. |
+| `parameters` | Optional map of at most 64 entries (the decoder's limit) from a non-empty name to `{ path: [1*16 non-empty text], kind: "uint" / "helper" }`, where the template parameter lives in the operation configuration. |
 
 Pure intrinsics and `types` keep their v2 rules. A v2 catalog is admitted
 unchanged; a `/v2` catalog that carries `effectCostRule` or `parameters` is
 refused.
 
+The schema requires `effectCostRule` on every effect intrinsic of a v3
+catalog; the compiler reads it only for the effects a program uses. The schema
+does not bound expression nesting depth; the decoder (at most 16) is stricter
+there and is authoritative.
+
 CDDL fixes shape only. Admission (`admit_target_effect_costs`) checks the
 pinned catalog digest, expression depth (at most 16), path syntax (`then` only
 after an item step) and reads parameter values from the operation
-configuration. Evaluation of a charge, not admission, resolves type paths
+configuration. A `then` without an item step is refused by both. Evaluation of a charge, not admission, resolves type paths
 against the effect's signature and refuses `u64` overflow.
 
 The pack coordinate remains `edict.provider-contract-pack.cddl@1` and the manifest

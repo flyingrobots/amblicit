@@ -93,7 +93,8 @@ intrinsics-document-v3 = {
   apiVersion: "edict.target-profile.intrinsics/v3",
   intrinsics: { * tstr => intrinsic-v3 },
   ? types: { * tstr => tstr },
-  ? parameters: { * nonempty-text => effect-cost-parameter },
+  ; At most 64 declarations, the decoder's limit.
+  ? parameters: { 0*64 nonempty-text => effect-cost-parameter },
 }
 
 intrinsic-v3 = pure-intrinsic / effect-intrinsic-v3
@@ -104,7 +105,10 @@ effect-cost-parameter = {
 }
 
 ; Closed u64 expressions; admission refuses depth above 16, evaluation
-; refuses overflow.
+; refuses overflow. This schema does not bound nesting depth; the decoder is
+; stricter there and is authoritative. The schema requires `effectCostRule` on
+; every effect intrinsic of a v3 catalog, while the compiler reads it only for
+; the effects a program uses.
 effect-cost-rule = {
   steps: effect-cost-expr,
   bytes: effect-cost-expr,
@@ -127,7 +131,7 @@ effect-cost-measure = { bytesMax: effect-cost-type }
 
 ; A type in the effect's signature (record fields, then `item` list-item
 ; steps, then optional fields inside the item), the u64 word, or a
-; synthesized record. Admission refuses `then` when `item` is 0.
+; synthesized record. `then` needs at least one item step.
 effect-cost-type = { path: effect-cost-path }
                  / { word: null }
                  / { record: { * tstr => effect-cost-type } }
@@ -136,7 +140,11 @@ effect-cost-path = {
   side: "input" / "output",
   fields: [* tstr],
   item: uint,
-  ? then: [1* tstr],
+} / {
+  side: "input" / "output",
+  fields: [* tstr],
+  item: uint .ge 1,
+  then: [1* tstr],
 }
 
 ; The artifact referenced by the manifest's `operationProfiles` resource-ref.
