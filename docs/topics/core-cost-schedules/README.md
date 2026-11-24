@@ -146,9 +146,10 @@ require = node step (1, 0)
 ```
 
 A pure shared-read intent's `attempt` or `require` charges only its payload
-fields' expressions, as before. A literal-bound loop in such an intent is
-charged as warp-core's shared executor runs it, which binds each item by
-sharing it and evaluates no result for the loop body:
+fields' expressions, as before. A literal-bound loop in a shared-read intent
+whose body holds an effect node is charged as warp-core's shared executor
+runs it, which binds each item by sharing it and evaluates no result for the
+loop body:
 
 ```text
 for = node step (1, 0)
