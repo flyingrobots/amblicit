@@ -536,6 +536,85 @@ fn a_let_in_an_effect_body_is_charged_its_type_validations_under_shared_reads() 
     }
 }
 
+/// Hello Echo with a three-iteration loop before its effect whose body holds
+/// the `Pair` let and a second effect step.
+fn with_loop() -> String {
+    SOURCE
+        .replace(
+            "intent createGreeting",
+            "type Pair = { a: U64, b: Bool };\n\nintent createGreeting",
+        )
+        .replace(
+            "  let receipt",
+            "  let items: List<U64, max=3> = [1u64, 2u64, 3u64];\n  for i in items bounded 3 {\n    let pair: Pair = { a: 1, b: true };\n    let again: hello.GreetingReceipt = hello.createGreeting(input)\n      else { alreadyExists(existing) => hello.AlreadyExists };\n  }\n  let receipt",
+        )
+}
+
+/// The loop program's shared-read minimum with the scan template on main
+/// 9f10fb91, before either term.
+const LOOP_ON_MAIN: (u64, u64) = (4131, 23101);
+
+#[test]
+fn a_loop_multiplies_the_effect_node_step_and_let_validations_by_its_bound() {
+    // Per iteration the body's effect gains its node step (1) and the let its
+    // validations(Pair) (3); the effect after the loop gains its node step,
+    // and the `items` let its validations(List<U64, max=3>) = 3·1 + 1.
+    let context = prepared(Some((V3, scan_rule())), None).context;
+    let minimum = minimums(&context, &with_loop(), SHARED);
+    assert_eq!(
+        minimum,
+        (LOOP_ON_MAIN.0 + 3 * (1 + 3) + 1 + 4, LOOP_ON_MAIN.1)
+    );
+    let (steps, bytes) = minimum;
+    assert!(compile(&context, &with_loop(), SHARED, budget(steps, bytes)).is_ok());
+    assert!(compile(&context, &with_loop(), SHARED, budget(steps - 1, bytes)).is_err());
+}
+
+/// A pure shared-read intent binding text, which the provider value shape
+/// cannot express.
+const PURE_TEXT: &str = "package cost.text@1;
+type In = { name: String<max=8> };
+type Out = { name: String<max=8> };
+intent run(input: In) returns Out profile p.read basis none budget <= p.b {
+  let name: String<max=8> = input.name;
+  return { name: name };
+}";
+
+#[test]
+fn a_text_let_refuses_in_a_v2_effect_program_but_not_in_a_pure_v2_intent() {
+    // Echo has no text values and refuses such an effect program too.
+    let effect = SOURCE.replace(
+        "  let receipt",
+        "  let note: String<max=256> = input.message;\n  let receipt",
+    );
+    for template in [None, Some((V3, scan_rule()))] {
+        let context = prepared(template, None).context;
+        let errors = compile(&context, &effect, SHARED, budget(CEILING, CEILING))
+            .expect_err("text let in a v2 effect program is unestablished");
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.kind == CompilerErrorKind::InvalidBound
+                    && e.message.contains("shared-read Core work is unestablished")),
+            "{errors:#?}"
+        );
+        assert!(compile(
+            &context,
+            &effect,
+            CoreCostSchedule::Copying,
+            budget(CEILING, CEILING)
+        )
+        .is_ok());
+    }
+    let pure = CompilerContext::new()
+        .with_core_cost_schedule(SHARED)
+        .with_operation_profile("p.read", "continuum.profile.read-only/v1")
+        .with_budget("p.b", budget(CEILING, CEILING));
+    if let Err(errors) = compile_to_core(&parse_module(PURE_TEXT).expect("source"), &pure) {
+        panic!("a pure v2 intent's text let compiles: {errors:#?}");
+    }
+}
+
 #[test]
 fn copying_minimums_are_unchanged_by_the_shared_read_effect_terms() {
     // Pinned on main 9f10fb91: the copying source check meters this

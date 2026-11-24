@@ -13,8 +13,13 @@ versions still track specification maturity rather than a released product.
   whose template replaces the generic charge now keeps its own node step
   (+1 step per such effect node), and each `let` in an intent whose body holds
   an effect node is charged its binding type's `validations`. A pure intent's
-  `let` and every copying-schedule result are unchanged. The README states
-  the full shared-read effect step formula (issue #341).
+  `let` and every copying-schedule result are unchanged. Behaviour change for
+  shared-read effect programs on any target, with or without a `/v3`
+  template: a `let` of a type the provider value shape cannot express (for
+  example text) now refuses with `InvalidBound` ("shared-read Core work is
+  unestablished"), as Echo refuses it; a pure shared-read intent's such `let`
+  still compiles. The README states the full shared-read effect step formula
+  (issue #341).
 - Read effect cost parameters from the application's operation
   configuration. An `edict.target-profile.intrinsics/v3` catalog's
   `parameters` map declares each parameter's field path and kind (`uint` or
