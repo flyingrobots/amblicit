@@ -743,6 +743,167 @@ fn a_loop_multiplies_the_attempt_arm_by_its_bound() {
     .is_err());
 }
 
+/// Hello Echo with a `U64` local `n` and one `attempt` before its effect,
+/// its failure mapped to `hello.AlreadyExists` with `payload` (`""` for an
+/// empty payload, or `"({ at: n })"`).
+fn with_payload_attempt(payload: &str) -> String {
+    with_attempt().replace(
+        "  let span: U64 = distance(1, 3) else hello.AlreadyExists;\n",
+        &format!("  let n: U64 = 7u64;\n  let span: U64 = distance(1, 3) else hello.AlreadyExists{payload};\n"),
+    )
+}
+
+/// Hello Echo with a `U64` local `n` and one `require` before its effect,
+/// its failure `hello.AlreadyExists` with `payload`.
+fn with_require(payload: &str) -> String {
+    SOURCE.replace(
+        "  let receipt",
+        &format!("  let n: U64 = 7u64;\n  require n <= 9u64 else hello.AlreadyExists{payload};\n  let receipt"),
+    )
+}
+
+/// Hello Echo with that `require` inside a three-iteration loop.
+fn with_require_loop() -> String {
+    SOURCE.replace(
+        "  let receipt",
+        "  let n: U64 = 7u64;\n  let items: List<U64, max=3> = [1u64, 2u64, 3u64];\n  for i in items bounded 3 {\n    require i <= n else hello.AlreadyExists;\n  }\n  let receipt",
+    )
+}
+
+/// What warp-core's shared executor adds for one `U64` field `at` of a
+/// failure payload (echo#1016, measured on Echo's typed-failure program with
+/// `{ at: input.start }`): one keyed cell in the record's shell,
+/// (1, 64 + len("at")), and, encoding it, the key and the integer,
+/// (2, 64 + len("at") + 64). The field's own expression, a local here, is one
+/// more step.
+const AT_FIELD: (u64, u64) = (1 + 1 + 2, 66 + 130);
+
+/// The payload-attempt program with an empty payload, with the scan template:
+/// [`EMPTY_ARM`] already charged, as `an_attempt_in_an_effect_body_is_charged_its_failure_arm_under_shared_reads` pins it.
+const PAYLOAD_ATTEMPT_EMPTY: (u64, u64) = (1137, 8760);
+
+#[test]
+fn an_attempt_arm_payload_field_is_charged_its_shell_cell_and_encoding() {
+    let context = prepared(Some((V3, scan_rule())), None).context;
+    assert_eq!(
+        minimums(&context, &with_payload_attempt(""), SHARED),
+        PAYLOAD_ATTEMPT_EMPTY
+    );
+    let source = with_payload_attempt("({ at: n })");
+    let minimum = minimums(&context, &source, SHARED);
+    assert_eq!(
+        minimum,
+        (
+            PAYLOAD_ATTEMPT_EMPTY.0 + AT_FIELD.0,
+            PAYLOAD_ATTEMPT_EMPTY.1 + AT_FIELD.1
+        )
+    );
+    let (steps, bytes) = minimum;
+    assert!(compile(&context, &source, SHARED, budget(steps, bytes)).is_ok());
+    assert!(compile(&context, &source, SHARED, budget(steps - 1, bytes)).is_err());
+    assert!(compile(&context, &source, SHARED, budget(steps, bytes - 1)).is_err());
+}
+
+/// The require programs' shared-read minimums with the scan template on
+/// 66f6ca4d, which charged a `require` its predicate and payload fields
+/// only: empty payload, `{ at: n }`, and the empty-payload loop.
+const REQUIRE_BEFORE: [(u64, u64); 3] = [(1119, 8504), (1120, 8504), (1284, 9272)];
+/// Their copying minimums, the same before and after.
+const REQUIRE_COPYING: [(u64, u64); 3] = [(1007, 4117), (1007, 4117), (1010, 4117)];
+
+#[test]
+fn a_failing_require_in_an_effect_body_is_charged_its_payload_under_shared_reads() {
+    // The runtime's failing path builds and encodes the payload as an
+    // `attempt` arm does; its passing path adds nothing after the predicate,
+    // so the failing path is the larger.
+    let context = prepared(Some((V3, scan_rule())), None).context;
+    for (source, before, added) in [
+        (with_require(""), REQUIRE_BEFORE[0], EMPTY_ARM),
+        (
+            with_require("({ at: n })"),
+            REQUIRE_BEFORE[1],
+            // The field's own step was already charged.
+            (EMPTY_ARM.0 + AT_FIELD.0 - 1, EMPTY_ARM.1 + AT_FIELD.1),
+        ),
+    ] {
+        let minimum = minimums(&context, &source, SHARED);
+        assert_eq!(minimum, (before.0 + added.0, before.1 + added.1));
+        let (steps, bytes) = minimum;
+        assert!(compile(&context, &source, SHARED, budget(steps, bytes)).is_ok());
+        assert!(compile(&context, &source, SHARED, budget(steps - 1, bytes)).is_err());
+        assert!(compile(&context, &source, SHARED, budget(steps, bytes - 1)).is_err());
+    }
+}
+
+#[test]
+fn a_loop_multiplies_the_require_payload_by_its_bound() {
+    let context = prepared(Some((V3, scan_rule())), None).context;
+    let looped = minimums(&context, &with_require_loop(), SHARED);
+    assert_eq!(
+        looped,
+        (
+            REQUIRE_BEFORE[2].0 + 3 * EMPTY_ARM.0,
+            REQUIRE_BEFORE[2].1 + 3 * EMPTY_ARM.1
+        )
+    );
+    let (steps, bytes) = looped;
+    assert!(compile(
+        &context,
+        &with_require_loop(),
+        SHARED,
+        budget(steps - 1, bytes)
+    )
+    .is_err());
+}
+
+#[test]
+fn copying_require_minimums_are_unchanged() {
+    let context = prepared(Some((V3, scan_rule())), None).context;
+    let measured: Vec<_> = [
+        with_require(""),
+        with_require("({ at: n })"),
+        with_require_loop(),
+    ]
+    .iter()
+    .map(|source| minimums(&context, source, CoreCostSchedule::Copying))
+    .collect();
+    assert_eq!(measured, REQUIRE_COPYING);
+}
+
+/// A pure intent with a failing `require` and a one-field payload: no
+/// effect, so the effect-body payload term never applies.
+const PURE_REQUIRE: &str = r"package rope.require@1;
+type Input = { value: U64, };
+type Output = { value: U64, };
+intent evaluate(input: Input) returns Output profile p.read basis none budget <= p.b {
+  require input.value < 10u64 else text.ClosureInsufficient({ observed: input.value });
+  return { value: input.value };
+}
+";
+/// Its shared-read minimum on 66f6ca4d.
+const PURE_REQUIRE_BEFORE: (u64, u64) = (90, 655);
+
+#[test]
+fn a_pure_v2_intent_require_is_charged_as_before() {
+    let pure = CompilerContext::new()
+        .with_core_cost_schedule(SHARED)
+        .with_operation_profile("p.read", "continuum.profile.read-only/v1");
+    let admits = |steps: u64, bytes: u64| {
+        compile_to_core(
+            &parse_module(PURE_REQUIRE).expect("source"),
+            &pure.clone().with_budget("p.b", budget(steps, bytes)),
+        )
+        .is_ok()
+    };
+    assert_eq!(
+        (
+            minimum(|v| admits(v, CEILING)),
+            minimum(|v| admits(CEILING, v))
+        ),
+        PURE_REQUIRE_BEFORE
+    );
+}
+
 #[test]
 fn copying_minimums_are_unchanged_by_the_shared_read_effect_terms() {
     // Pinned on main 9f10fb91: the copying source check meters this

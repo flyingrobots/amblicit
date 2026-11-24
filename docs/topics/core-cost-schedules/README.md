@@ -124,10 +124,26 @@ attempt = node step (1, 0)
                                    its encoding, Echo's shape(record) scratch
 ```
 
-An empty payload therefore costs (3 steps, 128 bytes). A pure shared-read
-intent's `attempt` charges only its payload fields' expressions, as before. In
-a literal-bound loop the effect node step, the `let` validations and the
-`attempt` arm are charged per iteration. Under the copying schedule the template is
+An empty payload therefore costs (3 steps, 128 bytes). Each field adds one
+keyed cell to the shell, (1 step, 64 + name length bytes), and its encoding,
+the field's type at copying size plus its key: a `U64` field `at` adds
+(1, 66) to the shell and (2, 130) to the encoding, besides its own
+expression. A `require` in such an intent is charged the same way: its
+failing path builds and encodes the payload, and its passing path adds
+nothing after the predicate, so the failing path is the larger:
+
+```text
+require = node step (1, 0)
+        + predicate
+        + each payload field's expression
+        + the payload record's expression step and shell
+        + copying size of the payload record's type
+```
+
+A pure shared-read intent's `attempt` or `require` charges only its payload
+fields' expressions, as before. In a literal-bound loop the effect node step,
+the `let` validations, the `attempt` arm and the `require` payload are
+charged per iteration. Under the copying schedule the template is
 added on top of the generic charge, so copying-schedule results are unchanged
 from the first template release. A type path may step into list items with `item` and then name fields inside
 the item with `then`. The path names one item's type, so its measure is a
