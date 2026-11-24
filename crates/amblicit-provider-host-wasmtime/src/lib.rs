@@ -20,7 +20,7 @@ pub use invocation::{
     provider_lowering_input_bytes, provider_verification_input_bytes,
     ValidatedProviderLoweringOutcome, ValidatedProviderVerificationOutcome,
 };
-pub use limits::ProviderHostLimits;
+pub use limits::{ProviderHostLimits, APPLICATION_BUILD_RESPONSE_LIMITS, WASM_FUEL_PER_INPUT_BYTE};
 pub use replay::{
     ProviderHostFailureIdentity, ProviderReplayFailure, ProviderReplayFailureKind,
     ProviderReplayObservation, ValidatedProviderReplay,

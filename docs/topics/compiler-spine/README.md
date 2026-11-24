@@ -49,8 +49,11 @@ with zero or multiple arguments report the same unsupported shape before map gui
 while checking an intent body and is restored afterward. Every bare exact
 effect call also checks the current profile permission before map guidance,
 including direct or nested returns.
-For a zero-failure effect, it reports that bindings without a failure map are
-unsupported instead of suggesting an empty `else` map.
+A zero-failure effect, whose authenticated signature declares no failures,
+binds without a map when it is the whole value of an annotated `let`; Core and
+Target IR carry its node with an empty obstruction map. Inside a larger
+expression it still reports `EffectWithoutFailureMapping`, naming that binding
+form. Echo's five mutation intrinsics are such effects.
 An unknown effect in an explicit effect binding retains `MissingContextFact`
 and lists available effects from its exact imported owner and source alias.
 A bare unknown call retains `UnresolvedFunction`; the compiler does not infer
@@ -135,9 +138,60 @@ Constructors such as `Choice::Empty` and `Choice::Data(value)` preserve exact
 variant identity, case and optional payload through Core. Payload types, widths,
 bounds and nominal identities are checked. Variant helper storage uses checked,
 conservative bounds; genuine size overflow remains `InvalidBound`.
-Enums, recursive variants and variant-valued intent result sizing remain
+Recursive variants and variant-valued intent result sizing remain
 unsupported. Provider acceptance and runtime execution are separate gates.
 [CSPINE-REQ-062]
+
+`enum Spine { Boundary, Range }` declares payload-free cases. Core has no enum
+kind, so the compiler's enum encoding is a named Core `Variant` whose cases carry
+no payload; it requires `core.variant/v1` like any variant. Source keeps the two
+case syntaxes apart (`EDICT-LANG-ENUMVARIANT-001`): `Spine.Range` selects an enum
+case, also through a transparent alias or a linked module (`spine.Spine.Range`),
+while `Spine::Range` refuses `TypeMismatch`, as does `Choice.Empty` on a
+variant. An unknown case refuses `UnknownField`. Enum matches follow the variant
+coverage rule and cannot bind a payload. [CSPINE-REQ-075]
+
+`Option<T>` is the structural Core `Option` type. The prelude calls `some(v)`,
+`none()`, `isSome(o)`, `default(o, f)` and `unwrap(o)` lower to typed Core calls
+`core.option.<name><T>(...)`, whose single type argument is the item
+coordinate, and add the hash-significant `core.option/v1` capability. `some` and
+`none` accept an explicit `<T>`. Otherwise `some` takes its item type from an
+expected Option type or its value, and `none()` from an expected Option type or
+a typed peer: the other arm of an expression `if`, another `match` arm, or
+the other block of a branch-yield `if`; with neither it refuses
+`UnsupportedSourceShape`. Mismatched payloads, fallbacks, type arguments and
+non-Option operands refuse `TypeMismatch`. `isSome`, `unwrap` and `default` are
+protected prelude names: no function, parameter or local may use them. Ordered
+comparisons (`<`, `<=`, `>`, `>=`) on Option, enum or variant values, or on records
+and lists that contain one, refuse `TypeMismatch`. Option conditional and match
+joins refuse unless one actual arm type contains the other's; a wider expected
+result guides constructors but preserves the actual joined item. Option-valued intent results refuse
+`UnsupportedSourceShape`, as variant-valued results do. [CSPINE-REQ-076]
+
+The checked forms `checkedAdd`, `checkedSub`, `checkedMul`, `checkedDiv` and
+`checkedRem` take two operands of one unsigned width (`U8`, `U32` or `U64`) and
+lower to `core.integer.<name><T>(a, b)`, which returns `Option<T>` and adds
+`core.option/v1`. They never reject on operand values: overflow, underflow and a
+zero divisor are the `none` case, which the caller handles with the Option
+prelude, for example by mapping it to a variant case or to an obstruction with
+`require isSome(sum) else ...`. `min` and `max` lower to `core.integer.min<T>`
+and `core.integer.max<T>` and return `T`; a later bare addition sees the smaller
+operand bound for `min` and the larger for `max`. A bare literal operand takes
+its width from its peer or the expected type. Mixed widths refuse
+`TypeMismatch`; other operand types, wrong arity and type arguments refuse
+`UnsupportedSourceShape`. All seven names are protected prelude names. Signed
+checked forms are not implemented. [CSPINE-REQ-078] [CSPINE-REQ-079]
+
+`unwrap(x)` compiles only where `isSome(x)`, alone or as a conjunct of an `&&`
+chain, refines the same local `x` (`EDICT-LANG-OPTION-REFINE-001`): the right
+operand of `&&` and the `then` branch of an expression, statement or
+branch-yield `if`. It refuses `UnsupportedSourceShape` everywhere else,
+including `else` branches, later statements, alias locals, field paths, helper
+calls and an intent body guarded only by a `where` clause. Inside a `where`
+constraint, `isSome(x) && ...` refines its own right operand, as every `&&`
+does. Native Target rechecks the same presence fact on the
+exact local. Provider acceptance and runtime execution are separate gates.
+[CSPINE-REQ-077]
 
 Exhaustive `match value { Empty => fallback, Data(payload) => payload }`
 expressions lower to the match form already reserved by the Core CDDL. Every declared case must
@@ -209,6 +263,15 @@ by the callee. Every definition is checked, including unused definitions.
 The [source-function reference](source-functions.md) explains authority,
 canonical identity, conservative budgeting and target restrictions.
 [CSPINE-REQ-044] [CSPINE-REQ-045]
+
+A source function may state `where` preconditions after its return type. They
+are checked once as Boolean predicates over the parameters, before any body,
+and become facts in the function's own body, so subtraction and `slice` there
+can be proven. Every call instantiates them with its argument expressions and
+must prove each one from the facts that dominate the call, or it refuses with
+`UnprovenPrecondition` at the call span. Preconditions add nothing to Core
+intents or costs, and a precondition-bearing function cannot be a fold step.
+[CSPINE-REQ-068] [CSPINE-REQ-069] [CSPINE-REQ-070]
 
 Boolean `&&` and `||` predicates lower to ordered Core `All` and `Any` forms
 where predicate checking is used: input constraints, statement conditionals,
@@ -346,7 +409,7 @@ without its consumer evaluator implementing that call. Successful packaging or
 an accepted verifier report therefore does not establish slice execution,
 input-constraint enforcement, or runtime byte-copy charging.
 
-- The subset lowerable to Core is deliberately narrow: local record and acyclic variant type declarations and transparent aliases,
+- The subset lowerable to Core is deliberately narrow: local record, acyclic variant and enum type declarations, `Option<T>` values with the Option prelude, and transparent aliases,
   first-order nongeneric source functions, one-parameter intents, `profile`, `basis none` or one input-derived explicit
   basis, `budget <=`, `where` predicates, pure `let` bindings, one annotated
   effectful `let ... else` shape, lowerable `require ... else` obstruction

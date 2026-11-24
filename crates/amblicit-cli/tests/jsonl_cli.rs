@@ -459,6 +459,36 @@ fn project_exposes_ordered_effect_binding_and_guard_without_hoisting() {
 }
 
 #[test]
+fn project_lowers_echo_dpo_2_to_ordered_target_ir() {
+    let source = ECHO_SOURCE.replace(
+        "  return { id: input.id };",
+        "  require receipt.id != \"\" else domain.WriteRejected;\n  return { id: receipt.id };",
+    );
+    let mut settings = projection_settings(["targetIr"]);
+    settings["target"]["coordinate"] = json!("echo.dpo@2");
+    settings["target"]["irDomain"] = json!("echo.span-ir/v2");
+    settings["target"]["effectLowerings"][0]["targetIntrinsic"] = json!("echo.dpo@2.replace");
+    let output = run_edict(&jsonl([
+        settings,
+        json!({
+            "schema": "edict.compiler.input/v1", "type": "compilerInput",
+            "kind": "source", "name": "echo-dpo-2.amblicit", "source": source,
+        }),
+    ]));
+    let stdout = assert_successful_projection_output(&output);
+    let target = record_of_type(&stdout, "targetIr");
+    assert_eq!(target["state"], "available", "{target}");
+    assert_eq!(target["domain"], "echo.span-ir/v2");
+    assert_eq!(target["target"]["coordinate"], "echo.dpo@2");
+    let intent = &target["review"]["intents"]["replaceThing"];
+    assert_eq!(intent["steps"][0]["targetIntrinsic"], "echo.dpo@2.replace");
+    assert_eq!(
+        intent["executionOrder"],
+        json!(["replaceThing.step.0", "replaceThing.require.0"])
+    );
+}
+
+#[test]
 fn project_exposes_structured_loop_order() {
     let source = ECHO_SOURCE
         .replace(

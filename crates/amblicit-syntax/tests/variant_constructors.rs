@@ -123,9 +123,9 @@ fn variant_constructor_storage_bounds_fail_closed_on_overflow() {
 
 #[test]
 fn constructor_contextual_literals_alpha_names_and_case_identity_are_exact() {
-    let source="package choices.example@1; type Choice = variant { Data(U8), Peer(U8) }; fn make(value: U8) -> Choice { return Choice::Data(value); } fn max() -> Choice { return Choice::Data(255); }";
+    let source="package choices.example@1; type Choice = variant { Data(U8), Peer(U8) }; fn make(value: U8) -> Choice { return Choice::Data(value); } fn largest() -> Choice { return Choice::Data(255); }";
     let core = compile_to_core(&parse_module(source).unwrap(), &CompilerContext::new()).unwrap();
-    let body = result(&core, "max");
+    let body = result(&core, "largest");
     let value = field(field(field(&body, "result"), "payload"), "value");
     assert_eq!(field(value, "width"), &V::Text("U8".into()));
     assert_eq!(field(value, "value"), &V::Integer(255));

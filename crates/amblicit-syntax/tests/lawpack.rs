@@ -162,7 +162,7 @@ fn direct_bounded_effect_signature_types_enter_source_compilation() {
 }
 
 #[test]
-fn bare_effect_without_declared_failures_reports_binding_limitation() {
+fn effect_without_declared_failures_binds_without_a_failure_map() {
     let mut exports = hello_echo_exports();
     let effect = first_array_item_mut(field_mut(&mut exports, "effects"));
     map_mut(field_mut(effect, "effectFailures")).clear();
@@ -178,20 +178,47 @@ fn bare_effect_without_declared_failures_reports_binding_limitation() {
             &bundle.manifest_digest_review_string(),
         )
         .replace(mapping, "");
-    let module = parse_module(&source).expect("bare zero-failure effect parses");
+    let module = parse_module(&source).expect("unmapped zero-failure effect parses");
     let preparation = prepare_lawpack_compilation(&module, &bundle, &adapter)
         .expect("authenticate a zero-failure signature");
+    let core = compile_to_core(&module, preparation.compiler_context())
+        .expect("an effect that declares no failures binds without a map");
+    let maps = core.intents["createGreeting"]
+        .body
+        .nodes
+        .iter()
+        .filter_map(|node| match node {
+            CoreNode::Effect {
+                effect,
+                obstruction_map,
+                ..
+            } => Some((effect.as_str(), obstruction_map.len())),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(maps, vec![("hello.createGreeting", 0)]);
+    let report = lower_to_target_ir(&core, preparation.target_ir_facts());
+    assert_eq!(report.status, TargetLoweringStatus::Lowered);
+    let artifact = report.artifact.expect("lowered Target IR");
+    let step = &artifact.intents["createGreeting"].steps[0];
+    assert_eq!(step.obstruction_arms.len(), 0);
+    assert_eq!(step.obstruction_failures, Vec::<String>::new());
+
+    // The same binding still refuses while its effect declares a failure.
+    let unmapped = CREATE_GREETING_SOURCE.replace(mapping, "");
+    let module = parse_module(&unmapped).expect("unmapped failing effect parses");
+    let bundle = decode_lawpack_bundle(MANIFEST_BYTES, EXPORTS_BYTES).expect("original lawpack");
+    let adapter =
+        decode_lawpack_adapter(&bundle, "echo.dpo@1", ADAPTER_BYTES).expect("original adapter");
+    let preparation = prepare_lawpack_compilation(&module, &bundle, &adapter)
+        .expect("authenticate the failing signature");
     let errors = compile_to_core(&module, preparation.compiler_context())
-        .expect_err("bare semantic effects remain unsupported");
-    let cause = &errors[0];
-    assert_eq!(cause.kind, CompilerErrorKind::EffectWithoutFailureMapping);
-    assert_eq!(cause.stage, CompilerStage::TypeCheck);
-    assert!(source[cause.span.start..cause.span.end].contains("hello.createGreeting"));
-    assert!(cause.message.contains("no declared failures"));
-    assert!(cause
-        .message
-        .contains("effect bindings without a failure map are not supported"));
-    assert!(!cause.message.contains("with `else`"));
+        .expect_err("a failing effect needs its map");
+    assert_eq!(
+        errors[0].kind,
+        CompilerErrorKind::EffectWithoutFailureMapping
+    );
+    assert_eq!(errors[0].stage, CompilerStage::TypeCheck);
 }
 
 #[test]

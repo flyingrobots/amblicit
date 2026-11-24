@@ -18,6 +18,11 @@ pub(super) fn is_total(
         _ => return false,
     };
     let [left, right] = args else { return false };
+    // Core integrity validates terminal failures before Target's proof runs;
+    // either one ends evaluation before addition can overflow.
+    if matches!(left, CoreExpr::Fail { .. }) || matches!(right, CoreExpr::Fail { .. }) {
+        return true;
+    }
     let mut limits = Vec::new();
     for constraint in constraints {
         collect_limits(constraint, &mut limits);
@@ -107,6 +112,19 @@ fn bound(
                 limits,
                 depth + 1,
             )?)?
+        } else if callee == super::integer_operations::MIN
+            || callee == super::integer_operations::MAX
+        {
+            let [left, right] = args.as_slice() else {
+                return None;
+            };
+            let left = bound(core, left, max, limits, depth + 1)?;
+            let right = bound(core, right, max, limits, depth + 1)?;
+            if callee == super::integer_operations::MIN {
+                left.min(right)
+            } else {
+                left.max(right)
+            }
         } else if callee == super::byte_count::OPERATION {
             let CoreExpr::Call { type_args, .. } = expr else {
                 return None;

@@ -12,7 +12,8 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use amblicit_provider_host_wasmtime::{
-    ProviderComponentHost, ProviderHostLimits, ResolvedProviderComponent,
+    provider_verification_input_bytes, ProviderComponentHost, ProviderHostLimits,
+    ResolvedProviderComponent, APPLICATION_BUILD_RESPONSE_LIMITS,
 };
 use amblicit_provider_schema::{ProviderArtifactSchemaRegistry, ResolvedProviderSchemaArtifact};
 use amblicit_syntax::{
@@ -30,10 +31,11 @@ use amblicit_syntax::{
     ProviderVerificationInvocationContract, ProviderVerificationOutputKind,
     ProviderVerificationOutputRequest, ProviderVerificationRequest, ResultProjectionArtifact,
     TargetIrArtifact, TargetLoweringStatus, TargetProviderManifest, ValidatedLawpackBundle,
-    ValidatedTargetProviderManifest, CORE_MODULE_DIGEST_DOMAIN,
-    EXTERNAL_ACTION_RESOURCE_API_VERSION, EXTERNAL_ACTION_RESOURCE_DIGEST_DOMAIN,
-    PROVIDER_LAWPACK_ARTIFACT_DOMAIN, RESULT_PROJECTION_DIGEST_DOMAIN,
-    TARGET_IR_ARTIFACT_DIGEST_DOMAIN, TARGET_PROFILE_API_VERSION, TARGET_PROVIDER_PROTOCOL_VERSION,
+    ValidatedProviderVerificationRequest, ValidatedTargetProviderManifest,
+    CORE_MODULE_DIGEST_DOMAIN, EXTERNAL_ACTION_RESOURCE_API_VERSION,
+    EXTERNAL_ACTION_RESOURCE_DIGEST_DOMAIN, PROVIDER_LAWPACK_ARTIFACT_DOMAIN,
+    RESULT_PROJECTION_DIGEST_DOMAIN, TARGET_IR_ARTIFACT_DIGEST_DOMAIN, TARGET_PROFILE_API_VERSION,
+    TARGET_PROVIDER_PROTOCOL_VERSION,
 };
 use serde::Deserialize;
 
@@ -101,6 +103,19 @@ struct ApplicationManifest {
     external_action_resources: Vec<ApplicationExternalActionResource>,
     target: ApplicationTarget,
     output_directory: PathBuf,
+    /// Core work schedule; omitted means `edict.core-cost/v1`.
+    #[serde(default)]
+    core_cost_schedule: ApplicationCostSchedule,
+}
+
+/// The Core work schedule an application selects for every intent.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+enum ApplicationCostSchedule {
+    #[default]
+    #[serde(rename = "edict.core-cost/v1")]
+    Copying,
+    #[serde(rename = "edict.core-cost/v2")]
+    SharedReads,
 }
 
 #[derive(Debug, Deserialize)]
@@ -309,13 +324,32 @@ pub(crate) fn build_application(config_path: &Path) -> Result<(), ApplicationBui
         .transpose()?
         .unwrap_or_default();
     let mut compiler_context = preparation.compiler_context().clone();
+    if config.core_cost_schedule == ApplicationCostSchedule::SharedReads {
+        compiler_context = compiler_context
+            .with_core_cost_schedule(amblicit_syntax::CoreCostSchedule::SharedReads);
+    }
     for intrinsic in &intrinsics {
         compiler_context = compiler_context.with_target_pure_intrinsic(intrinsic.clone());
     }
+    let effect_costs = config
+        .target
+        .pure_intrinsics
+        .as_ref()
+        .map(|declaration| {
+            declaration.load_effect_costs(
+                &provider_root,
+                &target_profile,
+                &preparation.target_ir_facts().effect_lowerings,
+            )
+        })
+        .transpose()?
+        .unwrap_or_default();
+    compiler_context = compiler_context.with_target_effect_costs(&effect_costs);
     let target_facts = preparation
         .target_ir_facts()
         .clone()
-        .with_target_pure_intrinsics(&intrinsics);
+        .with_target_pure_intrinsics(&intrinsics)
+        .with_target_effect_costs(&effect_costs);
     let core = if let Some(linked) = &linked {
         linked
             .compile(&compiler_context)
@@ -1483,14 +1517,7 @@ fn invoke_verifier(
         }],
         limits: response_limits(),
     };
-    let request = validate_provider_verification_request(registry, &contract, &request).map_err(
-        |report| {
-            failure(
-                "InvalidProviderInvocation",
-                format!("provider verification request validation failed: {report:?}"),
-            )
-        },
-    )?;
+    let request = admitted_verification_request(registry, &contract, &request)?;
     let outcome = host
         .invoke_verifier(&prepared, &request, registry, host_limits())
         .map_err(|error| {
@@ -1744,6 +1771,7 @@ fn semantic_effects_required_by_block(
                     blocks.push(then_block);
                 }
                 amblicit_syntax::CoreNode::Let { .. }
+                | amblicit_syntax::CoreNode::Attempt { .. }
                 | amblicit_syntax::CoreNode::Require { .. }
                 | amblicit_syntax::CoreNode::ExternalActionRequest { .. } => {}
             }
@@ -2385,27 +2413,11 @@ fn output_publication_failure(
 }
 
 const fn response_limits() -> ProviderResponseLimits {
-    ProviderResponseLimits {
-        max_output_count: 1,
-        max_diagnostic_count: 8,
-        max_total_response_bytes: 64 * 1024,
-    }
+    APPLICATION_BUILD_RESPONSE_LIMITS
 }
 
 const fn host_limits() -> ProviderHostLimits {
-    ProviderHostLimits {
-        max_input_bytes: 1024 * 1024,
-        max_output_bytes: 3 * 1024 * 1024,
-        max_diagnostic_bytes: 3 * 1024 * 1024,
-        max_wasm_memory_bytes: 16 * 1024 * 1024,
-        max_table_elements: 10_000,
-        max_instances: 100,
-        max_memories: 8,
-        max_tables: 8,
-        max_wasm_fuel: 50_000_000,
-        max_hostcall_bytes: 4 * 1024 * 1024,
-        max_host_diagnostic_bytes: 512,
-    }
+    ProviderHostLimits::APPLICATION_BUILD
 }
 
 fn read(
@@ -2559,6 +2571,50 @@ fn require_path_beneath_root(
                 root.display()
             ),
         ))
+    }
+}
+
+/// Validates the verification request and admits its size to the verifier.
+fn admitted_verification_request<'a>(
+    registry: &'a ProviderArtifactSchemaRegistry,
+    contract: &'a ProviderVerificationInvocationContract,
+    request: &'a ProviderVerificationRequest,
+) -> Result<ValidatedProviderVerificationRequest<'a>, ApplicationBuildFailure> {
+    let request =
+        validate_provider_verification_request(registry, contract, request).map_err(|report| {
+            failure(
+                "InvalidProviderInvocation",
+                format!("provider verification request validation failed: {report:?}"),
+            )
+        })?;
+    admit_verifier_input(
+        provider_verification_input_bytes(&request).ok(),
+        host_limits(),
+    )?;
+    Ok(request)
+}
+
+/// Refuses a verification request whose WIT logical size exceeds the
+/// verifier's input cap. The request carries the lowerer's package, so this
+/// names the package as the cause instead of a generic host input failure.
+fn admit_verifier_input(
+    input_bytes: Option<u64>,
+    limits: ProviderHostLimits,
+) -> Result<(), ApplicationBuildFailure> {
+    match input_bytes {
+        Some(bytes) if bytes <= limits.max_input_bytes => Ok(()),
+        Some(bytes) => Err(failure(
+            "ProviderPackageExceedsVerifierInput",
+            format!(
+                "the lowered package makes the verification request {bytes} bytes, above the \
+                 verifier input cap of {} bytes",
+                limits.max_input_bytes
+            ),
+        )),
+        None => Err(failure(
+            "ProviderPackageExceedsVerifierInput",
+            "the verification request's byte count overflowed",
+        )),
     }
 }
 
@@ -4111,6 +4167,50 @@ mod tests {
     }
 
     #[test]
+    fn structured_application_binds_the_independently_verified_root_projection() {
+        let source = include_str!("../../../fixtures/lawpack/hello-echo/create-greetings.amblicit");
+        let (core, report) = hello_echo_source_target_ir_report(
+            source,
+            Some(amblicit_syntax::ECHO_STRUCTURED_SPAN_IR_DOMAIN),
+        );
+        let Some(target) = report.artifact.as_ref() else {
+            panic!("structured Target IR");
+        };
+        let (intent, projection) = test_ok(
+            single_result_projection(
+                &report.result_projections,
+                &report.result_projection_failures,
+            ),
+            "structured application has exactly one supported result",
+        );
+        let verified = test_ok(
+            amblicit_syntax::verify_result_projection(
+                &core,
+                target,
+                intent,
+                projection.canonical_bytes(),
+                projection.digest(),
+            ),
+            "independent result check",
+        );
+        let inputs = test_ok(
+            with_result_projection_input(Vec::new(), projection),
+            "bind result",
+        );
+        assert_eq!(verified.digest(), projection.digest());
+        assert_eq!(inputs.len(), 1);
+        assert_eq!(inputs[0].role, RESULT_PROJECTION_ROLE);
+        assert_eq!(
+            inputs[0].artifact.artifact.bytes,
+            projection.canonical_bytes()
+        );
+        assert_eq!(
+            inputs[0].artifact.artifact.domain,
+            RESULT_PROJECTION_DIGEST_DOMAIN
+        );
+    }
+
+    #[test]
     fn provider_schema_selection_loads_every_bound_role_under_bounded_stress() {
         let mut manifest = provider_manifest_with_schema_count(32);
         let mut state = STRESS_SEED;
@@ -4155,13 +4255,23 @@ mod tests {
     }
 
     fn hello_echo_target_ir_report() -> TargetLoweringReport {
+        hello_echo_source_target_ir_report(
+            include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.amblicit"),
+            None,
+        )
+        .1
+    }
+
+    fn hello_echo_source_target_ir_report(
+        source: &str,
+        domain: Option<&str>,
+    ) -> (amblicit_syntax::CoreModule, TargetLoweringReport) {
         let manifest =
             include_bytes!("../../../fixtures/lawpack/hello-echo/manifest.cbor").as_slice();
         let exports =
             include_bytes!("../../../fixtures/lawpack/hello-echo/exports.cbor").as_slice();
         let adapter =
             include_bytes!("../../../fixtures/lawpack/hello-echo/adapter.cbor").as_slice();
-        let source = include_str!("../../../fixtures/lawpack/hello-echo/create-greeting.amblicit");
         let bundle = test_ok(
             decode_lawpack_bundle(manifest, exports),
             "decode Hello Echo lawpack",
@@ -4179,7 +4289,12 @@ mod tests {
             compile_to_core(&module, preparation.compiler_context()),
             "compile Hello Echo Core",
         );
-        lower_to_target_ir(&core, preparation.target_ir_facts())
+        let mut facts = preparation.target_ir_facts().clone();
+        if let Some(domain) = domain {
+            domain.clone_into(&mut facts.target_ir_domain);
+        }
+        let report = lower_to_target_ir(&core, &facts);
+        (core, report)
     }
 
     fn external_action_target_ir() -> TargetIrArtifact {
@@ -4908,6 +5023,7 @@ mod tests {
                 })
                 .collect(),
             external_action_resources: Vec::new(),
+            core_cost_schedule: super::ApplicationCostSchedule::Copying,
             target: ApplicationTarget {
                 profile: "target.test@1".to_owned(),
                 provider_package: PathBuf::from("provider"),
@@ -4994,6 +5110,26 @@ mod tests {
         match result {
             Ok(value) => value,
             Err(error) => panic!("{context}: {error:?}"),
+        }
+    }
+
+    use super::{admit_verifier_input, host_limits};
+
+    #[test]
+    fn verifier_input_at_the_cap_is_admitted() {
+        let limits = host_limits();
+        assert!(admit_verifier_input(Some(limits.max_input_bytes), limits).is_ok());
+    }
+
+    #[test]
+    fn package_that_overflows_verifier_input_is_refused_before_verification() {
+        let limits = host_limits();
+        for input_bytes in [Some(limits.max_input_bytes + 1), None] {
+            let refused = test_err(
+                admit_verifier_input(input_bytes, limits),
+                "verifier request above the input cap",
+            );
+            assert_eq!(refused.kind, "ProviderPackageExceedsVerifierInput");
         }
     }
 

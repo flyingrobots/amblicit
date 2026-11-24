@@ -45,6 +45,7 @@ pub(super) fn validate_functions(
                 return Err(invalid(&path));
             }
         }
+        super::function_preconditions::validate_preconditions(module, state, &path, function)?;
         let mut declarations = BTreeMap::new();
         for local in &function.body.locals {
             validate_core_local_type(
@@ -139,7 +140,7 @@ fn walk_scope(
             }
             Ok(())
         }
-        CoreExpr::Const(_) | CoreExpr::Local { .. } => Ok(()),
+        CoreExpr::Const(_) | CoreExpr::Local { .. } | CoreExpr::Fail { .. } => Ok(()),
         CoreExpr::Variant { payload, .. } => {
             if let Some(payload) = payload {
                 walk_scope(payload, depth + 1, scope, path)?;
@@ -149,6 +150,12 @@ fn walk_scope(
         CoreExpr::Field { base, .. } => walk_scope(base, depth + 1, scope, path),
         CoreExpr::Record { fields } => {
             for value in fields.values() {
+                walk_scope(value, depth + 1, scope, path)?;
+            }
+            Ok(())
+        }
+        CoreExpr::OrderedRecord { fields } => {
+            for (_, value) in fields {
                 walk_scope(value, depth + 1, scope, path)?;
             }
             Ok(())
@@ -177,7 +184,7 @@ fn walk_scope(
     }
 }
 
-fn scope_predicate(
+pub(super) fn scope_predicate(
     predicate: &CorePredicate,
     depth: usize,
     scope: &BTreeMap<&str, &LocalRef>,
@@ -200,7 +207,7 @@ fn scope_predicate(
     }
 }
 
-fn walk(
+pub(super) fn walk(
     expression: &CoreExpr,
     depth: usize,
     check: &mut impl FnMut(&CoreExpr) -> Result<(), CoreTypeIntegrityFailure>,
@@ -216,7 +223,7 @@ fn walk(
             }
             Ok(())
         }
-        CoreExpr::Const(_) | CoreExpr::Local { .. } => Ok(()),
+        CoreExpr::Const(_) | CoreExpr::Local { .. } | CoreExpr::Fail { .. } => Ok(()),
         CoreExpr::Variant { payload, .. } => {
             if let Some(payload) = payload {
                 walk(payload, depth + 1, check)?;
@@ -226,6 +233,12 @@ fn walk(
         CoreExpr::Field { base, .. } => walk(base, depth + 1, check),
         CoreExpr::Record { fields } => {
             for value in fields.values() {
+                walk(value, depth + 1, check)?;
+            }
+            Ok(())
+        }
+        CoreExpr::OrderedRecord { fields } => {
+            for (_, value) in fields {
                 walk(value, depth + 1, check)?;
             }
             Ok(())
@@ -254,7 +267,7 @@ fn walk(
     }
 }
 
-fn walk_predicate(
+pub(super) fn walk_predicate(
     predicate: &CorePredicate,
     depth: usize,
     check: &mut impl FnMut(&CoreExpr) -> Result<(), CoreTypeIntegrityFailure>,

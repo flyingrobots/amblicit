@@ -39,6 +39,230 @@ versions still track specification maturity rather than a released product.
   binary's 64 MiB. From #277's measurement, a 2 MiB spawned thread is
   expected to overflow before the limit in a debug build (#301).
 
+- Charge effect steps by provider-published cost templates. An
+  `edict.target-profile.intrinsics/v3` catalog may give each effect intrinsic
+  an `effectCostRule` over its input and output types, provider parameters and
+  the costliest source helper. `admit_target_effect_costs` admits them, the
+  application build loads them from the pinned catalog, and the source checker
+  and native Target add each template to its effect nodes under both cost
+  schedules, so the compiler minimum covers what the provider charges. `/v2`
+  catalogs and frozen publications are unchanged and charge as before
+  (issue #341).
+
+- Merge identical `use target` imports when flattening a source-module closure.
+  Every module that imports one target profile with the same digest now
+  shares one alias, so the linked Core module carries a single `target`
+  import, as Echo's identity check requires. Two modules that pin one target
+  with different digests are refused at link time with the new
+  `ConflictingTargetImport` kind. Core bytes do not depend on dependency
+  order (issue #342).
+
+- Fix the shared-read cost schedule charging no allocation for values built by
+  prelude calls. `core.bytes.concat`, `core.bytes.slice`, text concatenation,
+  integer operations and the `Option` operations now charge their result's
+  full size in steps and allocated bytes, as the documentation stated and as
+  `maxAllocatedBytes` (cumulative logical allocation) requires. Source
+  admission and native Target share the meter. Jedit's flat ReplaceRange
+  minimum moves from 261,523,656 steps and 175,260,814 bytes to 261,826,990
+  steps and 213,473,665 bytes (203.6 MiB) (issue #339).
+
+- Fix native Target refusing shared-read modules that call a target pure
+  intrinsic from a bounded `for` body, directly or through a helper, with
+  "target pure-intrinsic cost is unestablished or exceeds the step budget".
+  Target's intrinsic-cost check now charges a literal-bound loop body once per
+  iteration under the shared-read schedule, as the shared-read meter does, so
+  a module lowers at its source minimum. The copying schedule still refuses
+  intrinsics in loop bodies. Jedit's flat ReplaceRange now passes Target
+  lowering at its source minimum of 261,523,656 steps and 175,260,814 bytes
+  (issue #337).
+
+- Under the shared-read cost schedule, size a new list shell by the length the
+  list can provably have reached instead of its declared maximum. The meter
+  tracks length bounds from list literals, appends and concatenations through
+  locals, fields, branches, calls and fold rounds, and charges a fold round by
+  round. Lists of unknown length are still charged at their maximum. Source
+  admission and native Target share the meter, so their minimums stay equal.
+  The copying schedule is unchanged. Jedit's ReplaceRange moves only from
+  1,245,181,033 to 1,230,030,505 bytes, because its arena starts from the
+  closure read (issue #335, level 1).
+
+- Size the provider guest memory limit from the input cap. The application
+  build now lets each lowerer and verifier grow guest linear memory to
+  64 MiB (was 16 MiB): its 1 MiB input cap times 64 bytes per input byte.
+  Echo's lowerer needs about 34 bytes per input byte, linearly, so the old
+  limit refused requests above about 450 KB, such as jedit#410's
+  ReplaceRange plan. Growth past the limit is still refused with
+  `ResourceLimitExceeded`. Other limits are unchanged (issue #333).
+
+- Select the shared-read Core cost schedule from an application build with the
+  optional `edict.application/v1` field `"coreCostSchedule":
+  "edict.core-cost/v2"`. Omitting the field, or naming `edict.core-cost/v1`,
+  produces byte-identical output; any other value is
+  `InvalidApplicationConfig`. Under the shared-read schedule, calls to
+  imported lawpack helpers and target pure intrinsics are now metered: their
+  arguments and result are charged as full copies plus the declared cost
+  template. A refused shared-read budget reports the steps and bytes it
+  needs. External-action requests remain unmetered and are refused under
+  the shared-read schedule. Jedit's rope modules need 1,570,430 steps and
+  26,468,042 bytes under it, against 6,457,252,919 steps and 16,528,953,978
+  bytes under the copying schedule (issue #330).
+
+- Size the provider response limit from the verifier input cap. Each
+  lowerer and verifier response may now carry 1,048,576 provider-authored
+  bytes (was 65,536), equal to the 1 MiB input cap, because the package is
+  sent back to the verifier. Packages above 64 KiB now build. A response
+  above 1 MiB is still refused with `ResponseLimitExceeded`. A package that
+  passes lowering but would make the verification request exceed the input
+  cap is refused before verification with the new build failure kind
+  `ProviderPackageExceedsVerifierInput`. The policy is public as
+  `APPLICATION_BUILD_RESPONSE_LIMITS` (issue #329).
+
+- Size the provider-host Wasm fuel ceiling from the input cap. The
+  application build now gives each lowerer and verifier call 4,294,967,296
+  fuel: its 1 MiB input cap times 4,096 fuel per input byte. The old fixed
+  ceiling, 50,000,000, refused real Echo programs such as the echo#972
+  `ContentAddressV1` identity fixture, which needs about 70M fuel to lower and
+  83M to verify. The ceiling is still one fixed, deterministic constant, a
+  guest that never stops still fails with `FuelExhausted`, and every other
+  host limit is unchanged. The policy is public as
+  `ProviderHostLimits::APPLICATION_BUILD` (issue #326).
+
+- Compile the checked integer forms `checkedAdd`, `checkedSub`, `checkedMul`,
+  `checkedDiv` and `checkedRem` over `U8`, `U32` and `U64`. Each lowers to a
+  typed `core.integer.checked*` call that returns `Option<T>` under
+  `core.option/v1`, so overflow, underflow and division by zero are a `none`
+  case the caller must handle. Compile total `min` and `max`, lowered to
+  `core.integer.min` and `core.integer.max`, whose results carry their operand
+  bounds into later addition proofs. Native Target rechecks every signature
+  and bound. The seven names become protected prelude names, so a module
+  declaring a function, parameter or local with one of them now refuses
+  `SurfaceValidation`. Signed checked forms and provider/runtime support are
+  separate work (issue #263).
+
+- Add typed failures to source functions. `failure ClosureTooSmall;`
+  declares a failure. `fn f(...) -> T fails ClosureTooSmall` declares the
+  exact set the body produces with `fail` and `expect`. An intent maps every
+  failure with `let x = f(...) else { ClosureTooSmall => Obstruction };`. No
+  other way to fail compiles, and each violation has its own diagnostic kind
+  (`UnknownFailure`, `UndeclaredFailure`, `UnraisedFailure`, `UnhandledFailure`,
+  `IncompleteFailureMapping`). Core gains function `failures`, the `fail`
+  expression and the `attempt` node under `core.failure/v1`. Fallible record
+  fields use an `orderedRecord` entry array so their first failure follows
+  authored evaluation order; total record maps remain byte-identical. Core
+  independently checks the representation choice and unique field names.
+  Ordered and
+  structured Target IR carry `failureArms` on pure bindings. All of these are
+  omitted when unused, so existing artifacts are byte-identical. The provider
+  contract pack `typed-failures-v1` publishes the schema;
+  `function-preconditions-v1` and earlier packs are unchanged. Echo must implement
+  `core.failure/v1` before a failing program can run.
+
+- Preserve typed-failure expression context in Boolean predicates (including
+  nested conditional and match arms), both
+  comparison operands, and bounded list results propagated with `expect`.
+  Native integer signatures admit validated terminal operands in source-accepted
+  arithmetic. Failure-map work reserves the largest complete arm separately
+  for steps and allocated bytes, retaining each selected payload field's charge.
+  The independent intrinsic meter also reserves only its largest complete arm.
+  Result-projection verification for ordered Target v2 now binds the full
+  Core instruction order and corresponding requirement/effect rows, refusing
+  substitutions that could change the first obstruction.
+
+- Compile source `enum Name { A, B }` declarations as named Core variants
+  whose cases carry no payload, under `core.variant/v1`. `Name.A` selects a
+  case, also through an alias or a linked source module; `Name::A` on an enum
+  and `Name.A` on a variant refuse with `TypeMismatch`. Compile `Option<T>`
+  with the prelude calls `some`, `none`, `isSome`, `default` and `unwrap`,
+  lowered to typed `core.option.*` calls under the new capability
+  `core.option/v1`. `unwrap(x)` compiles only where `isSome(x)` refines the
+  same local; native Target rechecks every Option signature and `unwrap`
+  presence, and fold work now charges Option values. `isSome`, `unwrap` and
+  `default` become protected prelude names, so a module declaring a function,
+  parameter, intent input or local with one of those names now refuses
+  `SurfaceValidation`. Ordered comparisons on Option, enum or variant values, and on
+  records and lists that contain one, now refuse `TypeMismatch`; variants and
+  records holding them were previously accepted. Option `match` and
+  Option-valued intent results remain unsupported; Echo provider and runtime
+  support for `core.option/v1` is separate work (issue #261).
+
+- Publish the `pure-intrinsic-catalog-v1` provider contract pack, whose
+  `intrinsics-document` root admits `edict.target-profile.intrinsics/v2`
+  catalogs: every pure intrinsic, called or not, is monomorphic and carries a
+  non-empty `contractVersion` and a `costRule`, and the catalog may publish
+  provider-owned `types`. It also carries the function-preconditions Core
+  schema. The new pack refuses a v1 catalog; the `function-preconditions-v1`
+  pack and every earlier publication keep their bytes and refuse a v2
+  catalog. `docs/abi/edict-target-profile.cddl` now defines the v2 catalog,
+  and `docs/abi/edict-target-pure-intrinsics.cddl` is removed because its
+  rules moved there. Schema acceptance is not provider or runtime support for
+  any intrinsic.
+
+- Let target profile `echo.dpo@2` select the structured `echo.span-ir/v3`
+  Target IR when the adapter names it (#319), so effect programs with bounded
+  `for` loops and statement branches calling `echo.dpo@2.*` intrinsics lower
+  to v3. `echo.span-ir/v2` stays the profile's default, and the same program
+  under a v2 adapter still refuses with `UnsupportedCoreNode`. The selection,
+  lowering and canonical encoder share one profile-to-domain table. Under v3,
+  the encoder now also refuses a step whose intrinsic is outside the selected
+  profile's namespace, and result projections refuse it with subject
+  `<intent>.targetIntrinsic`; v1 and v2 encoding is unchanged. A new golden,
+  `echo-dpo-2-structured`, is added; every existing golden is byte-identical.
+  Echo's provider support for v3 under `echo.dpo@2` is flyingrobots/echo#947.
+- Add function preconditions (#264). A source function may write `where`
+  clauses after its return type, as in `fn cut(bytes: Bytes<max=8>, start:
+  U64, end: U64) -> Bytes<max=8> where start <= end, end <= len(bytes)`. The
+  body may assume them, so subtraction and `slice` are proven in range. Every
+  call must prove them from the facts that dominate it, or it refuses with the
+  new compiler error `UnprovenPrecondition` at the call. They are never
+  evaluated and cost nothing. Core carries them as the optional, hash-significant
+  `functions.<name>.preconditions` list, omitted when empty, so every existing
+  Core and Target IR golden is byte-identical. Target re-judges them without
+  the compiler's proof and refuses forged Core with `InvalidCoreIdentity`.
+  Provider contract pack `function-preconditions-v1` publishes the schema;
+  `bounded-state-fold-v1` and earlier packs are unchanged and refuse the field.
+  The language specification defines the syntax, proof rule and Core shape,
+  and carves function `where` out of `EDICT-LANG-WHERE-001`.
+
+- Let source bind an effect whose authenticated signature declares no failures
+  without a failure map: `let done: fx.Done = fx.ensureNode(input);` compiles
+  to a Core effect node and a Target IR step with empty obstruction maps. This
+  makes Echo's five mutation intrinsics (`ensure-node`, `create-node`,
+  `replace-atom`, `ensure-edge`, `replace-edge`), which only emit mutation
+  intents and have no runtime obstruction path, callable from source. An
+  effect that declares any failure still reports
+  `EffectWithoutFailureMapping` without its map, and a failure-free effect
+  used inside a larger expression is still refused. Echo still has to publish
+  a provider profile whose catalog carries these intrinsics (Echo #985).
+
+- Select target profile `echo.dpo@2`, Echo's effect profile. It lowers only
+  to the ordered `echo.span-ir/v2` Target IR, and its effect intrinsics are
+  named `echo.dpo@2.*`; each Echo profile refuses the other's intrinsics with
+  `UnsupportedTargetIntrinsic`, and `echo.dpo@2` refuses other domains with
+  `UnsupportedTargetIrDomain`. The canonical encoder now admits an ordered or
+  structured artifact under any profile that selects its domain, rather than
+  under `echo.dpo@1` only. `echo.dpo@1` and `gitwarp.ref_crdt@1` are
+  unchanged. `amblicit_syntax` exports `ECHO_DPO_2_TARGET_PROFILE`; the
+  in-process `BuiltinTargetLowerer` seam still serves only `echo.dpo@1` and
+  `gitwarp.ref_crdt@1`. Amblicit ships no `echo.dpo@2` provider; a complete
+  build needs Echo's provider package (Echo #985).
+
+- Lock rustix 1.1.6, fixing RUSTSEC-2026-0486 without adding an advisory
+  exception. Regenerate the source-bound provider fixture inventory and its
+  Rust guest components with the pinned fixture toolchain.
+
+- Admit compiler-owned result projections for structured Target v3
+  operations, selected explicitly as for v2. Projection
+  emission and independent verification require the Core body's nested
+  instructions to match the Target `executionOrder` tree node for node, and
+  retain only root-scope result sources; loop and branch locals cannot escape
+  into application output. The application builder's existing projection
+  binding now accepts these operations, but a public build still fails at
+  Echo's provider, which refuses v3; structured provider support is tracked
+  by Echo #947. Every intent in a v3 artifact, including one without loops or
+  branches, now takes this stricter check (for example, obstruction arm values
+  are compared), and a v3 header without a valid structured execution order
+  refuses with subject `<intent>.structuredHeader`.
+
 - Add `listLen`, proof-checked `listAt`, capacity-preserving `listAppend` and
   bounded `listConcat` for immutable authored worklists under `core.list/v1`.
   Source and native Target independently validate types, guards and checked work

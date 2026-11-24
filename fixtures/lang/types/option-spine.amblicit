@@ -1,0 +1,37 @@
+package examples.spines@1;
+
+// Payload-free cases, selected with `Spine.CASE`.
+enum Spine { Boundary, RightSpine, LeftSpine, Range }
+
+type Visit = { lo: U64, hi: U64 };
+type Expansion = { left: Option<Visit>, right: Option<Visit> };
+
+fn expand(spine: Spine, left: Visit, right: Visit) -> Expansion {
+  return match spine {
+    Boundary => { left: some(left), right: some(right) },
+    RightSpine => { left: none(), right: some(right) },
+    LeftSpine => { left: some(left), right: none() },
+    Range => { left: some(left), right: some(right) },
+  };
+}
+
+// `unwrap` is legal only where `isSome` refines the same local.
+fn upper(visit: Option<Visit>) -> U64 {
+  return if isSome(visit) then unwrap(visit).hi else 0u64;
+}
+
+type Input = { lo: U64, hi: U64, start: Option<U64> };
+type Output = { right: U64, start: U64 };
+
+intent describe(input: Input)
+  returns Output
+  profile spines.read
+  basis none
+  budget <= spines.budget
+{
+  let visit = { lo: input.lo, hi: input.hi };
+  let expansion = expand(Spine.RightSpine, visit, visit);
+  let right = upper(expansion.right);
+  let start = default(input.start, 0u64);
+  return { right, start };
+}

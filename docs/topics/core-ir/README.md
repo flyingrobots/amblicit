@@ -147,6 +147,12 @@ outside the schema under `fixtures/core/canonical/`. [COREIR-REQ-007]
   call paths above 128 frames. Empty maps are omitted from canonical encoding;
   local alpha-renaming preserves identity while signature/body/callee changes
   and unused definitions remain hash-significant. [COREIR-REQ-030]
+- A source function may carry `preconditions`, its `where` predicates in source
+  order. The list is hash-significant and omitted when empty, so a
+  precondition-free function keeps its earlier canonical bytes. Integrity
+  refuses a precondition that reads a non-parameter local, calls a function in
+  the same table, folds or matches, with `InvalidDefinition` at
+  `functions.<name>.preconditions[<index>]`. [COREIR-REQ-035]
 - Edict-authored lawpack pure helper bodies use `core-fn-body`, a pure function
   body shape. They do not reuse the effect-capable `core-block` node algebra.
   [COREIR-REQ-011]
@@ -231,3 +237,24 @@ required capability set. No Core expression variant or ABI field is added.
 Missing capability fails Core integrity before encoding; signatures, totality
 and result compatibility remain separate Target judgments. Unsupported capability
 versions refuse explicitly. [COREIR-REQ-034]
+
+## Checked integer calls
+
+`core.integer.checkedAdd`, `checkedSub`, `checkedMul`, `checkedDiv` and
+`checkedRem` use the generic call encoding with one unsigned width type
+argument and two operands. They return `Option<T>`, so a module that uses one
+must require `core.option/v1`; otherwise Core integrity fails with
+`InvalidDefinition` before encoding. `core.integer.min` and `core.integer.max`
+need no capability. [COREIR-REQ-041]
+
+## Option calls
+
+`core.option.some`, `core.option.none`, `core.option.isSome`,
+`core.option.default` and `core.option.unwrap` use the existing generic call
+encoding under `core.option/v1`. Each retains one type argument, the Option item
+coordinate. Operation, item coordinate, operands and the required capability
+set are hash-significant. No Core expression variant or ABI field is added; a
+source enum is a named `Variant` whose cases carry no payload. A missing
+capability fails Core integrity with `InvalidDefinition` before encoding;
+signatures and `unwrap` presence remain separate Target judgments.
+[COREIR-REQ-040]

@@ -3,9 +3,9 @@ use std::collections::BTreeMap;
 
 use super::{
     compare_op, compatible, error, expr_span, expression_identity, next_local, BinOp,
-    CompilerErrorKind, CompilerStage, CoreExpr, CoreFunction, CorePureBinding, CorePureBlock, Expr,
-    FunctionDecl, HelperCost, LetStatement, LocalEnvironment, LocalRef, Span, Stmt, TypeChecker,
-    TypeKind, TypeRef, TypeShape, TypedValue, UnOp,
+    CompilerErrorKind, CompilerStage, CoreExpr, CoreFunction, CorePredicate, CorePureBinding,
+    CorePureBlock, Expr, FunctionDecl, HelperCost, LetStatement, LocalEnvironment, Span, Stmt,
+    TypeChecker, TypeKind, TypeRef, TypeShape, TypedValue, UnOp,
 };
 
 const VALUE_CELL_BYTES: u64 = 64;
@@ -18,11 +18,15 @@ const VARIANT_METADATA_KEY_BYTES: u64 = 15;
 pub(super) struct Signature {
     pub(super) params: Vec<TypeShape>,
     pub(super) result: TypeShape,
+    /// Checked `where` preconditions over `arg.N` parameter locals.
+    pub(super) preconditions: Vec<CorePredicate>,
 }
 
 impl TypeChecker<'_> {
     pub(super) fn check_source_functions(&mut self) -> BTreeMap<String, CoreFunction> {
+        self.declare_source_failures();
         for definition in &self.resolved.source_functions {
+            self.declare_function_failures(definition);
             let params = definition
                 .params
                 .iter()
@@ -53,11 +57,18 @@ impl TypeChecker<'_> {
                         definition.span,
                     ));
                 } else {
-                    self.function_signatures
-                        .insert(definition.name.clone(), Signature { params, result });
+                    self.function_signatures.insert(
+                        definition.name.clone(),
+                        Signature {
+                            params,
+                            result,
+                            preconditions: Vec::new(),
+                        },
+                    );
                 }
             }
         }
+        self.check_source_preconditions();
         let mut functions = BTreeMap::new();
         for definition in &self.resolved.source_functions {
             if let Some(function) = self.check_source_function(definition) {
@@ -112,24 +123,24 @@ impl TypeChecker<'_> {
 
     fn check_source_function(&mut self, definition: &FunctionDecl) -> Option<CoreFunction> {
         let signature = self.function_signatures.get(&definition.name)?.clone();
-        self.input_proof_constraints.clear();
+        self.begin_function_failures(&definition.name);
+        let function = self.check_source_function_body(definition, signature);
+        let clean = function.is_some();
+        self.end_function_failures(definition, clean);
+        function
+    }
+
+    fn check_source_function_body(
+        &mut self,
+        definition: &FunctionDecl,
+        signature: Signature,
+    ) -> Option<CoreFunction> {
+        // The body may assume its own preconditions; callers prove them.
+        self.input_proof_constraints
+            .clone_from(&signature.preconditions);
         self.local_bounds.clear();
-        let mut env = LocalEnvironment::default();
-        let params: Vec<_> = definition
-            .params
-            .iter()
-            .zip(&signature.params)
-            .enumerate()
-            .map(|(index, (param, shape))| {
-                let local = LocalRef {
-                    id: format!("arg.{index}"),
-                    alpha_name: format!("$arg{index}"),
-                    ty: shape.coord.clone(),
-                };
-                env.insert(param.name.clone(), (local.clone(), shape.clone()));
-                local
-            })
-            .collect();
+        let (mut env, params) =
+            super::function_preconditions::parameter_frame(definition, &signature.params);
         let mut locals = Vec::new();
         let mut bindings = Vec::new();
         let mut result = None;
@@ -203,6 +214,8 @@ impl TypeChecker<'_> {
         Some(CoreFunction {
             params,
             return_type: signature.result.coord,
+            failures: self.function_failures(&definition.name).to_vec(),
+            preconditions: signature.preconditions,
             body: CorePureBlock {
                 locals,
                 bindings,
@@ -262,6 +275,20 @@ impl TypeChecker<'_> {
         expected: Option<&TypeShape>,
         span: Span,
     ) -> Option<TypedValue> {
+        if let Some(owner) = &self.checking_precondition_of {
+            let message =
+                format!("`where` precondition of `{owner}` cannot call source function `{name}`");
+            self.errors.push(error(
+                CompilerStage::TypeCheck,
+                CompilerErrorKind::UnsupportedSourceShape,
+                message,
+                span,
+            ));
+            return None;
+        }
+        if !self.failing_call_is_handled(name, span) {
+            return None;
+        }
         if !type_args.is_empty() {
             self.errors.push(error(
                 CompilerStage::TypeCheck,
@@ -312,6 +339,18 @@ impl TypeChecker<'_> {
         }
         if !accepted {
             return None;
+        }
+        if !signature.preconditions.is_empty() {
+            let params = super::function_preconditions::parameter_locals(&signature.params);
+            if !self.discharge_preconditions(
+                name,
+                &signature.preconditions,
+                &params,
+                &arguments,
+                span,
+            ) {
+                return None;
+            }
         }
         Some(TypedValue {
             expr: CoreExpr::Call {
@@ -446,7 +485,9 @@ impl TypeChecker<'_> {
             } => vec![lhs, rhs],
             Expr::Call { callee, args, .. }
                 if is_prelude_call(callee, &["len", "slice", "isUtf8", "count", "at"])
-                    || is_prelude_call(callee, super::list_operations::NAMES) =>
+                    || is_prelude_call(callee, super::list_operations::NAMES)
+                    || is_prelude_call(callee, super::source_options::NAMES)
+                    || is_prelude_call(callee, super::integer_operations::NAMES) =>
             {
                 args.iter().collect()
             }
@@ -563,7 +604,10 @@ impl TypeChecker<'_> {
             Expr::Call { callee, args, .. }
                 if is_prelude_call(callee, super::list_operations::NAMES)
                     || (self.meters_list_work()
-                        && is_prelude_call(callee, &["len", "slice", "isUtf8", "count", "at"])) =>
+                        && (is_prelude_call(
+                            callee,
+                            &["len", "slice", "isUtf8", "count", "at"],
+                        ) || is_prelude_call(callee, super::source_options::NAMES))) =>
             {
                 args.iter().collect()
             }
@@ -579,7 +623,11 @@ impl TypeChecker<'_> {
             }
             _ => Vec::new(),
         };
-        if !arguments.is_empty() {
+        // Target also charges the result storage of an operand-free `none()`.
+        let operand_free_none = self.meters_list_work()
+            && matches!(expr, Expr::Call { callee, args, .. }
+                if args.is_empty() && is_prelude_call(callee, &["none"]));
+        if !arguments.is_empty() || operand_free_none {
             // Match native Target's complete non-arithmetic prelude charge,
             // including byte/text operations mixed with list operations.
             cost.steps = arguments
@@ -649,6 +697,8 @@ impl TypeChecker<'_> {
             Expr::Ident { .. }
                 | Expr::Field { .. }
                 | Expr::Call { .. }
+                | Expr::Expect { .. }
+                | Expr::Fail { .. }
                 | Expr::If { .. }
                 | Expr::Match { .. }
         ) {
@@ -719,7 +769,9 @@ fn contains_external_action_request(shape: &TypeShape) -> bool {
         TypeKind::Nominal { representation, .. } => {
             contains_external_action_request(representation)
         }
-        TypeKind::List { item, .. } => contains_external_action_request(item),
+        TypeKind::List { item, .. } | TypeKind::Option(item) => {
+            contains_external_action_request(item)
+        }
         TypeKind::Record(fields) => fields.values().any(contains_external_action_request),
         TypeKind::Variant(cases) => cases
             .values()
@@ -741,6 +793,11 @@ fn value_bound(shape: &TypeShape) -> Option<(u64, u64)> {
             Some((1, VALUE_CELL_BYTES.checked_add(max.checked_mul(4)?)?))
         }
         TypeKind::Nominal { representation, .. } => value_bound(representation),
+        // A presence cell plus the largest present payload; absence is one cell.
+        TypeKind::Option(item) => {
+            let (cells, bytes) = value_bound(item)?;
+            Some((cells.checked_add(1)?, bytes.checked_add(VALUE_CELL_BYTES)?))
+        }
         TypeKind::List { item, max } => {
             let (cells, bytes) = value_bound(item)?;
             Some((
@@ -797,6 +854,8 @@ fn encoded_bound(shape: &TypeShape) -> Option<u64> {
         TypeKind::Bytes { max, .. } => 9_u64.checked_add(*max),
         TypeKind::String { max, .. } => 9_u64.checked_add(max.checked_mul(4)?),
         TypeKind::Nominal { representation, .. } => encoded_bound(representation),
+        // SPEC CanonicalEncodedMax: max(CanonicalEncodedMax<T>, none-encoding).
+        TypeKind::Option(item) => Some(encoded_bound(item)?.max(1)),
         TypeKind::List { item, max } => 9_u64.checked_add(encoded_bound(item)?.checked_mul(*max)?),
         TypeKind::Record(fields) => fields.iter().try_fold(9_u64, |sum, (name, shape)| {
             sum.checked_add(9)?

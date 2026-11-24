@@ -129,7 +129,7 @@ flowchart LR
 
 1. The application owns its source and its pinned lawpack closure.
 2. The compiler makes runtime-neutral Core IR. Then it lowers Core IR to the Target IR of one target through a pinned target profile.
-3. A provider component makes and verifies a package for the target. The provider runs in a WASM host that has no capabilities.
+3. A provider component makes and verifies a package for the target. The provider runs in a WASM host that has no capabilities and fixed limits. Its Wasm fuel ceiling is sized from its 1 MiB input cap; the [provider host limits](./docs/topics/providers/architecture.md#application-build-fuel) give the derivation. Each response is capped at the same 1 MiB, because the package is fed back to the verifier ([response limit](./docs/topics/providers/architecture.md#application-build-response-limit)). Guest memory is capped at 64 MiB, also sized from the input cap ([guest memory](./docs/topics/providers/architecture.md#application-build-guest-memory)).
 4. The runtime decides whether to admit and execute the package.
 
 </details>

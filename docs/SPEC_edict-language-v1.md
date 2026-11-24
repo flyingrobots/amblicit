@@ -753,6 +753,212 @@ When the predicate protects mutable target state, lowering must attach it to the
 relevant target effect as an atomic runtime guard rather than treating it as only
 a local read-time assertion.
 
+## Typed Function Failures
+
+A source function may end its evaluation in a small set of named failures
+that it declares. It cannot fail in any other way. The caller sees the
+failures in the function's signature and has to handle each one. A function
+can propagate a failure to its own caller with `expect`. An intent maps each
+failure to a domain obstruction with `else`, as it does for an effect. This is
+how a law such as the authored rope reports `ClosureTooSmall` (a closure read
+did not expand enough) or `ConflictingContent` (one content id was built from
+two different definitions).
+
+```amblicit
+failure ClosureTooSmall;
+
+fn expanded(t: Tree) -> BranchView fails ClosureTooSmall {
+  return match t {
+    Branch(b) => b,
+    Leaf(l) => fail ClosureTooSmall,
+  };
+}
+
+fn leftHeight(t: Tree) -> U8 fails ClosureTooSmall {
+  let b = expect expanded(t);
+  return height(b.left);
+}
+
+intent measure(input: Input) returns Output ... {
+  let h = rope.leftHeight(input.tree)
+    else { ClosureTooSmall => text.ClosureInsufficient };
+  return { height: h };
+}
+```
+
+### Declaring failures
+
+`failure Name;` declares a failure owned by the enclosing module
+(`EDICT-LANG-FAIL-DECL-001`). Its failure coordinate is the module
+coordinate followed by the name, for example `jedit.rope@1.ClosureTooSmall`.
+That coordinate stays the same when an authenticated source closure links the
+module under a hygienic name. A failure name starts with an uppercase letter
+and must not repeat another declaration name in its module. A v1 failure
+carries no payload.
+
+A function declares the failures it can produce after its return type:
+`fn f(...) -> T fails A, B { ... }`. A bare name refers to a failure declared
+in the same module. `alias.Name` refers to a failure declared in an imported
+source module. A name that resolves to no declared failure reports
+`UnknownFailure`. A set may not list a failure twice, and it may not list two
+failures with the same bare name from different modules: callers map failures
+by bare name, so the name must identify one failure.
+
+### The declared set is exact
+
+A function's declared set is exactly the set of failures its body can produce
+(`EDICT-LANG-FAIL-SET-001`). A body produces a failure with `fail Name` or by
+propagating one with `expect`. If the body can produce a failure the
+function does not declare, the compiler reports `UndeclaredFailure`. If the
+function declares a failure its body never produces, the compiler reports
+`UnraisedFailure`. The judgment is syntactic: a `fail` in a branch that the
+compiler can prove is never taken still counts. Exactness means a caller never
+has to map a failure that cannot happen, and every declared failure has
+somewhere in the body that produces it.
+
+`fail Name` is an expression. It has whatever type its context expects, so it
+can stand in a `return`, a conditional arm, a `match` arm or an operand. A
+`fail` with no expected type reports `TypeMismatch`. A `fail` is legal only in
+the body of a function whose declared set contains it; anywhere else it
+reports `UndeclaredFailure`.
+
+### Propagating with `expect`
+
+`expect f(args)` calls a source function that declares failures. It produces
+the function's result value, or ends the enclosing function with the same
+failure (`EDICT-LANG-FAIL-EXPECT-001`). Its operand must be a direct call;
+`(expect f(x)).field` reads a field of the result. It is legal only inside a
+function body, and the callee's whole failure set must be part of the enclosing
+function's declared set. A callee failure that the enclosing function does
+not declare reports `UndeclaredFailure`. An intent has no failure set, so
+`expect` in an intent, intent clause or basis reports `UnhandledFailure`. An
+`expect` on a call that declares no failures reports `UnsupportedSourceShape`.
+
+A call to a function that declares failures must be either the operand of
+`expect` in a function body, or the whole value of a mapped intent `let`
+(below). A call anywhere else reports `UnhandledFailure` and names the
+failures the call can produce. A `fold` step must be a function with no
+failures.
+
+### Mapping failures in an intent
+
+An intent maps a failing call with the same `else` clause it uses for
+effects (`EDICT-LANG-FAIL-MAP-001`):
+
+```amblicit
+let fresh = rope.normalized(rope.created(next))
+  else {
+    ConflictingContent => text.ContentIdentityMismatch,
+    ClosureTooSmall => text.ClosureInsufficient,
+  };
+```
+
+- The whole value of the `let` must be a direct call to a source function
+  that declares failures. The `let` may sit in an intent body, a `for` body
+  or an `if` statement block. The type annotation is optional; the binding has
+  the function's return type.
+- The map must have exactly one arm for each failure in the callee's set,
+  keyed by its bare name. A missing failure reports
+  `IncompleteFailureMapping`. An arm naming a failure the callee does not
+  declare reports `UnknownFailure`. A repeated arm reports
+  `DuplicateObstructionFailure`.
+- `else Obstruction` is shorthand for a one-arm map. It is legal only when the
+  callee declares exactly one failure; otherwise it reports
+  `IncompleteFailureMapping`.
+- An arm cannot bind the failure (`Name(x) => ...` reports
+  `UnsupportedSourceShape`), because a v1 failure has no payload.
+- An arm's target is a terminal obstruction written like a `require`
+  target: a coordinate with an optional record payload. The payload may read
+  any binding that is in scope before the `let`.
+- `else` on a call to a function that declares no failures reports
+  `UnknownFailure` for each arm (or `IncompleteFailureMapping` for the
+  shorthand). There is nothing to map.
+
+### Evaluation
+
+Evaluation stays strict and left to right. When a `fail` runs, the current
+function call ends. Every enclosing `expect` then ends its own function with
+the same failure, up to the mapped `let` in the intent. That `let` ends the
+intent with the arm's terminal obstruction. No later statement runs.
+Atomic application means that no write becomes visible. A failure that is
+never produced costs nothing. A function that fails within its declared set
+is still total for the purposes of I-004.
+
+### Core and Target representation
+
+Core represents a failure without changing anything for a program that
+declares none (`EDICT-CORE-FAIL-001`). A Core module without failures is
+byte-identical to the same module before this feature existed.
+
+- A source function carries `failures`, the sorted failure coordinates of its
+  declared set. The field is omitted when the set is empty.
+- `{ kind: "fail", failure }` is the Core expression for `fail Name`.
+- `expect` leaves no Core node. A call keeps its ordinary `call` form, and
+  propagation follows from the callee's declared set.
+- A record whose field expressions can fail uses
+  `{ kind: "orderedRecord", fields: [{ name, value }, ...] }`
+  (`EDICT-CORE-FAIL-RECORD-001`). The entry array is the single authority for
+  strict source evaluation order: the first failure ends construction and the
+  enclosing function. Field names are unique and the field set and types match
+  the ordinary record type. Core independently rejects a fallible unordered
+  `record` or an `orderedRecord` whose fields cannot fail. Nested failures and
+  calls to functions with declared failures count, including calls written
+  with `expect`. Total record construction keeps its existing canonical field
+  map and bytes, even inside a function that declares failures. Result record
+  keys still use canonical value ordering; evaluation order is separate.
+- A mapped `let` becomes `{ kind: "attempt", binding, value, failureMap }`.
+  `value` is the call, and `failureMap` maps every failure coordinate of the
+  callee to a terminal obstruction reason (`reasonKind` plus payload), the
+  same envelope as a terminal `require`.
+- A module that declares any failure requires the `core.failure/v1` Core
+  capability, so a provider that does not implement it refuses the module
+  instead of misreading it.
+
+The Core integrity judgment checks these rules independently of the source
+compiler. Each function's `failures` is sorted and unique. The set of failures
+its body can produce (its `fail` expressions plus the sets of the functions it
+calls) equals its declared set. A `fail` appears only in function bodies. Outside
+function bodies, a call to a failing function appears only as the value of an
+`attempt` node, with failure-free arguments. An `attempt` names a failing
+callee, and its map has exactly that callee's coordinates as keys. A `fold`
+step declares no failures. A failure-free call in `attempt` position is
+refused, so every Core program has one encoding.
+
+Target IR lowers an `attempt` node to a pure binding with
+`failureArms`, a map from failure coordinate to obstruction reason
+(`EDICT-TARGET-FAIL-001`). Only the ordered (`echo.span-ir/v2`) and
+structured (`echo.span-ir/v3`) execution models carry it, because their
+explicit order decides which instruction runs first. The pre-step-guard model
+(`echo.span-ir/v1`) refuses an `attempt` with `UnsupportedCoreNode` and the
+detail `failure_mapped_binding`. A pure binding without failure arms is
+encoded exactly as before. A provider judges a `failureArms` binding from the
+same Core facts. The binding is legal only when its value is a call to a
+failing source function whose set equals the arm keys. If evaluation ends in
+failure `F`, the provider obstructs with the reason in `failureArms[F]`.
+
+### Rationale
+
+- **An explicit, closed set.** A failure is a declared name, not an
+  arbitrary value. Callers can then check that they handle every failure,
+  and Core stays free of exception objects. Payloads are left for a later
+  version: the authored rope needs none, and adding them later does not
+  change any program that compiles today.
+- **Exact sets.** Allowing a function to over-declare would force callers to
+  map failures that cannot happen. An exact set can be relaxed later without
+  breaking programs; a loose set cannot be tightened later without breaking
+  them.
+- **Propagation without wrappers.** A failure could have been encoded as a
+  result variant that every caller matches. Bodies would then need
+  continuation helpers after every `expect`, and an intent would need a dead
+  match arm to unwrap the value. Ending the call, which is how `require`
+  already ends an intent, keeps both Core and authored source direct.
+- **Mapping only at the intent boundary.** An obstruction is an
+  intent-level result. A function cannot turn a failure into a value or into a
+  different failure in v1, so a failure always reaches the intent unchanged.
+- **Contextual words.** `failure`, `fails`, `fail` and `expect` are keywords
+  only where this grammar uses them, so existing programs that use these
+  words as names still compile.
+
 ## Atomic Application
 
 Lawful-autonomous v1 operations apply as one target-owned atomic application
@@ -843,6 +1049,22 @@ Core budget units are pinned (`EDICT-LANG-BUDGET-UNITS-001`):
   allocator bookkeeping.
 - `maxOutputBytes`: maximum `edict.canonical-cbor/v1` encoded output size in
   octets.
+
+A module may instead select the shared-read schedule `edict.core-cost/v2`
+(`EDICT-LANG-COST-SCHEDULE-001`). Core then requires the capability
+`core.cost.shared-reads/v1`, and a consumer that does not meter that schedule
+must refuse the module. Under v2 values are shared: reads of locals,
+parameters, fields, list elements and fold state, argument passing and
+results cost one step and allocate nothing, and building a value charges only
+its shell (one cell per field, item slot or case header). Comparisons, intent
+input and output, and every other operation keep their v1 charges. The static
+charge must never fall below the work a conforming v2 meter records. A new
+list shell is sized by the length the list can provably have reached, when
+the meter can prove one from literals, appends and concatenations through
+locals, fields, branches, calls and fold rounds, and by its declared maximum
+otherwise. The
+[cost schedule shelf](topics/core-cost-schedules/README.md) lists the exact
+rules.
 
 `targetBudget` in semantic Core has exactly two **hash-significant** members
 (`EDICT-LANG-TARGETBUDGET-HASH-001`): the digest-locked `costAlgebra` resource
@@ -985,7 +1207,9 @@ admitted basis, or capability presentation.
 
 ### I-004 Total Bounded Evaluation
 
-Pure Edict functions are total and cost-bounded over valid inputs. Loops must
+Pure Edict functions are total and cost-bounded over valid inputs, except that
+a function may end with one of the failures it declares (see Typed Function
+Failures). It cannot fail in any other way. Loops must
 be over finite collections with statically known or type-bounded maximum
 cardinality. Recursive function calls are rejected in v1.
 
@@ -1459,8 +1683,11 @@ digest-clause   = "digest" , digest-lit ;
 declaration     = type-decl
                 | enum-decl
                 | const-decl
+                | failure-decl
                 | fn-decl
                 | intent-decl ;
+
+failure-decl    = "failure" , upper-ident , ";" ;
 
 bound-ref       = int-lit | qual-ident ;
 
@@ -1498,7 +1725,8 @@ bytes-refine    = "<" , ( "max" | "exact" ) , "=" , bound-ref , ">" ;
 type-args       = "<" , type-ref , { "," , type-ref } , ">" ;
 
 fn-decl         = "fn" , ident , "(" , param-list? , ")" ,
-                  "->" , type-ref , pure-block ;
+                  "->" , type-ref , fails-clause? , where-clause* , pure-block ;
+fails-clause    = "fails" , qual-ident , { "," , qual-ident } ;
 pure-block      = "{" , pure-statement* , "}" ;
 pure-statement  = let-stmt
                 | assert-stmt
@@ -1588,7 +1816,9 @@ equality        = relation , { ( "==" | "!=" ) , relation } ;
 relation        = additive , { ( "<" | "<=" | ">" | ">=" ) , additive } ;
 additive        = multiplicative , { ( "+" | "-" ) , multiplicative } ;
 multiplicative  = unary , { ( "*" | "/" | "%" ) , unary } ;
-unary           = ( "!" | "-" ) , unary | postfix ;
+unary           = ( "!" | "-" ) , unary | fail-expr | expect-expr | postfix ;
+fail-expr       = "fail" , qual-ident ;
+expect-expr     = "expect" , postfix ;
 postfix         = primary , { field-access | call-suffix | type-call-suffix } ;
 field-access    = "." , ident ;
 call-suffix     = "(" , arg-list? , ")" ;
@@ -1656,9 +1886,17 @@ Semantic grammar rules:
   supplies a digest-locked basis template; `basis none` is the explicit no-basis
   declaration. The `basis` expression is a typed Core expression, never a
   free-form string.
-- Multiple `where` clauses are permitted and merge conjunctively.
+- Multiple `where` clauses are permitted and merge conjunctively, on an intent
+  and on a function. On a function they are static preconditions, not input
+  refinement (see [Function Preconditions](#function-preconditions)).
 - `effect-else-clause` is legal only when the right-hand side expression or
-  statement is an imported effect.
+  statement is an imported effect, or when the whole value of an intent `let`
+  is a call to a source function that declares failures (see Typed Function
+  Failures).
+- `failure`, `fails`, `fail` and `expect` are contextual keywords. They are
+  keywords only in the `failure-decl`, `fails-clause`, `fail-expr` and
+  `expect-expr` positions, and only when an identifier follows them.
+  Elsewhere they remain ordinary identifiers.
 - A `require` always carries an `obstruction-clause` (`else`), whether its
   predicate is input-only or runtime-state-dependent. A precommit `guarantee`
   carries `else`; a verifier-discharged `guarantee` is a proof obligation with
@@ -1686,7 +1924,8 @@ Semantic grammar rules:
   inlining must not duplicate, discard or eagerly evaluate an argument.
 - Function declarations are pure. `pure-block` cannot contain imported effects,
   `require`, `guarantee`, branch-yield effect expressions, semantic record
-  statements, or effect statements.
+  statements, or effect statements. A function ends with a failure only
+  through `fail` or `expect` and only within its `fails-clause`.
 - `variant-lit` constructor cases must belong to the named variant type.
 - `match-expr` must cover every variant case exactly once unless a future
   version adds explicit wildcard syntax.
@@ -1718,6 +1957,9 @@ not change the resulting canonical Core. Alias targets must already belong to
 the currently lowerable type subset. Variant declarations preserve named cases
 and payload references in Core. Checked constructors preserve the named case and
 optional payload. Exhaustive matching lowers to Core with arm-local optional payload binders.
+Core has no enum kind: the compiler's enum coordinate encoding is a named Core
+`Variant` whose cases carry no payload, so `Qual.EnumType.CASE` lowers to a
+payload-free variant expression and enum matches use the variant coverage rule.
 Generic and recursive types remain outside this source subset.
 
 Source type dependency paths have a ceiling of 128 declarations. Fully expanded
@@ -2049,10 +2291,15 @@ needs no obstruction is an `assert`.
 
 ## Where Clauses And Input Refinement
 
-A `where` clause is an **input refinement**, not a runtime precondition and not a
-compiler assumption (`EDICT-LANG-WHERE-001`). It constrains the operation's typed
-input and is checked by a generated input validator **before** the atomic
-application unit begins.
+On an **intent**, a `where` clause is an **input refinement**, not a runtime
+precondition and not a compiler assumption (`EDICT-LANG-WHERE-001`). It
+constrains the operation's typed input and is checked by a generated input
+validator **before** the atomic application unit begins. On a **function**, the
+same clause is a static precondition with different semantics; see
+[Function Preconditions](#function-preconditions). In both positions `where`
+states a predicate over the declaration's parameters that holds whenever the
+body runs. What differs is who establishes it: the input validator for an
+intent, a proof at every call site for a function.
 
 - A `where` predicate may reference only operation inputs and pure functions of
   them. It must not reference runtime/target state.
@@ -2068,6 +2315,150 @@ validator coordinate), because the predicates are hash-significant: changing
 Core hash (`EDICT-CORE-WHERE-HASH-001`). The generated input validator is a
 derived artifact lowered from these trees; any validator coordinate lives in a
 non-hash sidecar.
+
+## Function Preconditions
+
+A source function may state preconditions with `where` clauses between its
+return type and its body. They let a pure function rely on facts its callers
+have already established, such as the order of two offsets, so that
+subtraction and slicing inside the body are proven in range.
+
+```edict
+fn cut(bytes: Bytes<max=8>, start: U64, end: U64) -> Bytes<max=8>
+  where start <= end, end <= len(bytes)
+{
+  return slice(bytes, start, end);
+}
+```
+
+**Declaration** (`EDICT-LANG-FN-PRECONDITION-001`). Each `where` clause holds
+one or more comma-separated predicates. Clauses and predicates merge
+conjunctively into one ordered list, numbered `where.0`, `where.1`, … in source
+order. Each predicate must have type `Bool` and may read only the function's
+parameters, through field access, constructors, conditional expressions and
+calls to imported or intrinsic pure functions such as `len`. A precondition
+must not call a source function, `fold` or `match`; such a predicate refuses
+with `UnsupportedSourceShape`, and a non-Boolean one with `ExpectedPredicate`.
+Each predicate is checked assuming the predicates before it, so a later
+precondition may subtract operands an earlier one orders. A function holds at
+most 16 precondition conjuncts in total, counting each `&&` operand separately
+(`MAX_FUNCTION_PRECONDITION_CONJUNCTS`), and at most 256 Core nodes in total,
+counting one per predicate and one per expression anywhere in the trees
+(`MAX_FUNCTION_PRECONDITION_NODES`); more refuse with `InvalidBound`. Together
+the caps bound re-proving one call to at most 16 scans of the facts that
+dominate it, after building an obligation of at most 256 nodes plus one copy
+of an argument per parameter reference. Checking every call is then at worst
+quadratic in Core size, the same class as checking unsigned subtraction.
+Preconditions, facts and obligations use only the predicate forms `true`,
+`false`, `!`, `&&`, `||` and comparisons, including inside a conditional
+expression within an operand.
+
+**Call-site obligation** (`EDICT-LANG-FN-PRECONDITION-002`). Every call
+instantiates each precondition by replacing each parameter with the argument
+expression in the same position, and the compiler must prove the result from
+the facts that dominate the call. Substitution is simultaneous: every
+parameter is replaced in one pass, and an inserted argument expression is
+never substituted again, so `f(b, a)` inside a function whose own parameters
+are `a` and `b` obliges `b <= a` for a precondition `x <= y` of `f`, never
+`a <= a`. A call that does not establish a
+precondition refuses with the stable compiler error `UnprovenPrecondition` at
+the call's span; the message names the callee and the first unproven
+`where.N`. Preconditions are never evaluated at runtime, never become an input
+validator or obstruction, and add no steps, allocation or output to any cost
+or budget.
+
+The facts that dominate a call are:
+
+1. for a call in an intent **body**, the intent's `where` predicates;
+2. for a call in a function body, that function's own preconditions;
+3. the condition of each enclosing `if … then … else` expression: the
+   condition itself in the `then` arm, and its negation in the `else` arm;
+4. within an `&&`, its left operand while checking the right; within an `||`,
+   the negation of its left operand while checking the right.
+
+Nothing else is a fact. In particular, a call in an intent's `basis` sees no
+intent `where` predicate, and a call inside an intent `where` predicate sees
+only the facts from items 3 and 4 within that same predicate: no other
+predicate of the same or another `where` clause. Statement-level `if` blocks
+contribute no facts, exactly as for unsigned subtraction.
+
+An instantiated precondition is proven when each of its `&&` conjuncts is
+proven:
+
+- `a <= b` or `b >= a` is proven by the order proof used for unsigned
+  subtraction and `slice`: `a` and `b` are the same expression, `a` is the
+  unsigned literal `0u32` or `0u64`, both are `U32` or `U64` literals with
+  `a <= b`, or a dominating fact, or a conjunct of one at any depth of
+  nested `&&` (Core `all`), is `a <= b`, `a < b`, `b >= a`, `b > a`, `a == b` or
+  `b == a`.
+- `true` is always proven.
+- Any other conjunct (`<`, `>`, `==`, `!=`, `!`, `||`, `false`) is proven only
+  when a dominating fact, or a conjunct of one at any depth of nested `&&`,
+  is the same predicate, or the
+  same comparison with its operands mirrored (`a < b` and `b > a`; `a == b`
+  and `b == a`).
+
+Expressions are compared as Core expression trees by structural equality: a
+local matches only a local with the same id, alpha name and type; a constant
+only a constant with the same width and integer value; a call only a call with
+the same callee, type arguments and arguments. A negated fact proves only the
+identical negation; it is never turned into an order. An obligation that is
+itself a Core `all` is proven when every item is proven, at any depth. An
+instantiated obligation is not a Core artifact: its depth may reach the
+precondition's depth plus an argument's depth, each within the Core limit, and
+a consumer must not refuse it for exceeding the Core depth limit.
+
+**Body assumption** (`EDICT-LANG-FN-PRECONDITION-003`). The function body is
+checked with its preconditions as dominating facts, so subtraction, `slice`
+and calls to other functions inside the body may rely on them. Because every
+call proves the preconditions first, the assumption holds on every execution.
+
+**Fold steps** (`EDICT-LANG-FN-PRECONDITION-004`). `fold` calls its step with
+no call site at which to prove anything, so a function with preconditions
+cannot be a fold step. Naming one as a step refuses with
+`UnsupportedSourceShape`.
+
+**Independent judgment** (`EDICT-TARGET-FN-PRECONDITION-001`). Core carries
+the preconditions on the function (see
+[Core Source Function Shape](#core-source-function-shape)). Target lowering,
+and every provider lowerer or verifier that accepts such Core, must judge them
+without trusting the compiler:
+
+- each precondition must be a total, typed predicate whose only locals are the
+  function's parameters, with no source-function call, fold or match, and it
+  obeys every rule the selected Target IR domain applies to Core predicates
+  (under `echo.span-ir/v3`, an ordered comparison must compare integers);
+- the function body is judged total with its preconditions as facts, and
+  without them a body that needs them refuses;
+- every call to the function, in an intent or in another function, must prove
+  each instantiated precondition from the facts that dominate it, by the rule
+  above;
+- a function with preconditions named as a fold step refuses.
+
+Target refuses a module that fails any of these with `InvalidCoreIdentity`. A
+forged Core that drops a precondition its body needs, adds one its callers do
+not establish, or reads a non-parameter local in one, is therefore refused.
+
+A consumer judges call sites over Core, not source. The facts at each Core
+position are:
+
+| Core position | Facts there |
+| --- | --- |
+| intent `basis` | none |
+| intent `inputConstraints[i].predicate` | only facts arising inside that predicate (rows below) |
+| every expression in the intent `body` block: `let` values, `require` predicate and payload, effect input and obstruction-arm values, external-action fields, `for` iterable and body, `branch` predicate and both blocks, the block result | every `inputConstraints` predicate (whatever its `source`) |
+| a source function's `body` bindings and result | that function's `preconditions` |
+| a function's `preconditions[i]` | `preconditions[0..i]` |
+| an `if` expression's `then` / `else` value | the facts at the `if`, plus its predicate / the `not` of its predicate |
+| item `k` of a Core `all` | the facts at the `all`, plus the items before `k` |
+| item `k` of a Core `any` | the facts at the `any`, plus the `not` of each item before `k` |
+| a `fold` initial value, `match` scrutinee and arms, record, list, variant payload, field base, call argument, the inner predicate of a `not`, the operands of a comparison, the predicate of an `if` expression | the facts at the enclosing expression |
+
+Statement-level `branch` blocks add no facts of their own, and nothing else
+adds a fact. Separately from this table, `core.option.unwrap` alone also
+accepts the `isSome` conjuncts of an enclosing statement branch's predicate
+inside that branch's `then` block (see Option Refinement); those presence facts
+never discharge a precondition.
 
 ## Basis Expressions
 
@@ -2105,6 +2496,18 @@ v1 defines exactly one refinement, not general dependent typing
 exhaustive `Option` `match`. Refinement is **lexical and variable-specific**: it
 does not flow through arbitrary helper calls, aliases, merge points, or target
 effects. There is no other narrowing in v1.
+
+The current compiler's Option encoding lowers `some`, `none`, `isSome`,
+`default` and `unwrap` to typed Core calls `core.option.<name><T>(...)` under the
+required capability `core.option/v1`; the single type argument is the item
+coordinate `T`. `none<T>()` may omit `<T>` where an expected `Option` type or a
+typed peer (another `if` arm or block, or another `match` arm) supplies it. A refining `isSome(x)` may stand
+alone or be one conjunct of an `&&` chain; the `then` branch of an expression
+`if`, a statement `if` and a branch-yield `if` are all refined regions. `x` must
+be a local, not a field path. The compiler does not yet accept `match` on an
+`Option`: this spec names no `Option` case labels for its arms. Option-valued
+intent results are not yet lowerable. Native Target independently rechecks each
+call's signature and the presence fact for every `unwrap`.
 
 ## Loops
 
@@ -2160,6 +2563,31 @@ Pure source helper rules already prohibit reads and effects, and `fold` does
 not relax them. This is distinct from effect-emitting `for` over a list that
 already exists. Generic provider/runtime execution of `core.fold/v1` remains a
 separate implementation gate; this source/Core contract is not execution proof.
+
+### Bounded descent and rebuild
+
+v1 has no recursive types and no recursive functions. A depth-bounded tree is
+walked and rebuilt iteratively (`EDICT-LANG-DESCENT-001`):
+
+- The tree is an arena, a `List<Node, max=A>` whose nodes name their children
+  by index. An index not below the arena length denotes the empty tree.
+- Descent is a `fold` whose state carries the arena, a current index and a
+  path stack `List<Frame, max=H>` for maximum height H. Each push carries the
+  ordinary `listAppend` capacity proof.
+- Rebuild pops with a cursor: the state keeps the path and a remaining count,
+  and reads `listAt(path, remaining - 1u64)` under a guard that proves both the
+  subtraction and the index. Fresh nodes are appended to the arena; unchanged
+  subtrees keep their indexes.
+- Completion is represented in the state. A walk that exhausts its bound
+  without completing must end in a declared typed failure, never a result.
+- The nodes an edit created are collected into a bounded list.
+
+This adds no syntax, Core node or Target node: Core contains only `fold`
+expressions and typed `core.list.*` calls, and the work rules for `fold` and
+list operations apply unchanged. Recursive variants with a `depth <= N`
+clause and `decreases` termination measures are not v1 syntax. The
+[bounded descent shelf](topics/bounded-descent/README.md) records the
+reference fixture, refusals and measured work.
 
 ## Standard Functions
 
@@ -2268,9 +2696,12 @@ Integer (I32/I64/U32/U64):
   checkedAdd, checkedSub, checkedMul, checkedDiv, checkedRem -> Option<T>
   no bitwise operators in v1
   signed / and % truncate toward zero; remainder takes the dividend's sign
+  min, max -> T          # total; the result bound is the smaller (min) or larger (max) operand bound
 U8:
   == != < <= > >=
-  # Value and comparison support; arithmetic is not implemented for U8.
+  checkedAdd, checkedSub, checkedMul, checkedDiv, checkedRem -> Option<U8>
+  min, max -> U8
+  # Bare arithmetic is not implemented for U8.
 String:
   +                       # bounded concatenation (see Refined Scalar Types)
   == !=                   # over the exact canonical scalar sequence
@@ -2304,6 +2735,13 @@ All integer arithmetic in the lawful-autonomous lane is overflow-safe and total
 - There is no wrapping, saturating, or trapping arithmetic in v1. Overflow is
   never a silent or runtime-panicking outcome; it is a compile-time rejection or
   a typed `Option` the author must handle.
+
+The current source-to-Core compiler implements the `checked*` forms and `min`
+and `max` for `U8`, `U32` and `U64` operands of one width. A checked call lowers
+to `core.integer.<name><T>(a, b)` returning `Option<T>` under `core.option/v1`;
+overflow, underflow and a zero divisor are its `none` case. `min` and `max`
+lower to `core.integer.min<T>` and `core.integer.max<T>`. Signed checked forms
+are not implemented.
 
 The current source-to-Core compiler supports a conservative unsigned subtraction
 slice. Operands must have the same `U32` or `U64` type. It accepts `x - x`,
@@ -2647,6 +3085,52 @@ mints an opaque `ValidatedCoreModule` witness borrowing those exact immutable
 contents. Canonical encoding and digesting, Target lowering, and
 result-projection emission or verification MUST obtain that witness before
 they can mint or verify an artifact.
+
+### Core Source Function Shape
+
+A module with source functions carries them in an optional `functions` table,
+keyed by module-local name and omitted when empty:
+
+```cddl
+core-source-function = {
+  params: [* local-ref],
+  returnType: core-type-ref,
+  ? preconditions: [+ precondition-predicate],
+  body: core-pure-block,
+}
+```
+
+Parameters are the positional locals `arg.0`, `arg.1`, … with alpha names
+`$arg0`, `$arg1`, …. For a function that carries `preconditions` this is
+required: Core integrity refuses any other parameter id or alpha name with
+`InvalidDefinition` at `functions.<name>.params`. A consumer instantiates a call
+by replacing the local `params[N]`, matched by id, alpha name and type, with
+`args[N]`, simultaneously for every `N`. `preconditions` holds the function's `where` predicates
+as typed Core predicate trees in source order (`EDICT-CORE-FN-PRECONDITION-001`).
+It is hash-significant: adding, removing, reordering or changing a
+precondition changes the Core digest. A function without preconditions omits
+the field, so its canonical bytes and digest are exactly those it had before
+preconditions existed; an empty array is not canonical and refuses schema
+validation. Every local a precondition reads must be one of `params`, compared
+by id, alpha name and type, and no precondition may contain a call to a
+function in the same module's table, a `fold` or a `match`. A function
+holds at most 16 conjuncts in total, counted through nested `all`, and at
+most 256 Core nodes (one per predicate and per expression), and
+`precondition-predicate` admits only `true`, `false`, `not`, `all`, `any` and
+`compare`; `call` and `obstruction` predicates are never preconditions. Core type
+integrity refuses a violation with `InvalidDefinition` at or under
+`functions.<name>.preconditions`: a cap violation at that path, a violation
+within one precondition at or under `functions.<name>.preconditions[<index>]`.
+
+The meaning of `preconditions` is the static contract in
+[Function Preconditions](#function-preconditions): every call site proves them
+and the body assumes them. They are never evaluated. A Core consumer that does
+not implement this contract must refuse a function that carries the field; it
+must not ignore it, because the body's totality may depend on it.
+
+Provider contract pack `function-preconditions-v1` publishes this schema.
+Earlier packs, including `bounded-state-fold-v1`, keep their bytes and refuse
+the field.
 
 ### Core Type Reference Identity
 
@@ -3045,8 +3529,21 @@ Explicit effect type arguments also report `UnsupportedSourceShape` in mapped
 and bare forms before failure-map guidance.
 Effects in source-owned pure functions and intent clauses report
 `UnsupportedSourceShape` without recommending a binding that is illegal there.
-An effect with no declared failures reports that bindings without a failure map
-are unsupported; the diagnostic does not suggest an empty `else` map.
+An effect whose authenticated signature declares no failures needs no map: an
+annotated `let` whose whole value is a call to it, such as
+`let done: fx.Done = fx.ensureNode(input);`, binds it as an effect node with an
+empty obstruction map. There is nothing for such an effect to map, and the
+source syntax still has no empty `else` map. The same effect inside a larger
+expression reports `EffectWithoutFailureMapping`, directing the author to that
+binding. An effect known only by a write class, with no authenticated
+signature, does not qualify. "Declares no failures" is the lawpack's
+authenticated claim; the compiler does not check it against the target
+intrinsic. The provider decides whether the bound intrinsic really cannot
+fail: Echo's lowerer, verifier and runtime refuse an effect whose declared
+failure set differs in size from its intrinsic's. For a malformed unmapped
+binding, the annotation, type-argument, arity and profile diagnostics span the
+whole `let` statement, and input or receipt type mismatches span the effect
+call, as for a mapped binding.
 An unknown effect in an explicit effect binding reports `MissingContextFact`
 with available exact-owner exports under the selected source alias. A bare
 unknown call retains `UnresolvedFunction`; an unknown coordinate does not
@@ -3274,6 +3771,12 @@ After that check, unknown capabilities refuse as `UnsupportedCoreCapability`
 without an artifact. Provider and runtime variant
 support and variant-valued external results remain separate implementation gates.
 
+The current compiler emits `core.option/v1` whenever Core contains a
+`core.option.*` call (see Option Refinement). Core integrity refuses such a call
+without the capability, and current Target lowering admits the capability only
+with its own Option call checks. Provider and runtime Option support remain
+separate implementation gates.
+
 ## Implementation Plan
 
 ### Phase 0: Spec And Fixtures
@@ -3397,6 +3900,10 @@ These are important but are not parser or language freeze prerequisites:
 - Nondeterminism rejects compilation.
 - Unbounded loops reject compilation.
 - Recursive pure functions reject compilation.
+- A function `where` precondition is proven at every call site and assumed in
+  the body; a call that does not establish it rejects with
+  `UnprovenPrecondition`, and Target refuses forged Core that drops, adds or
+  widens one.
 - Recursive value types reject unless every recursive path has a digest-locked
   maximum depth.
 - Declared footprint underclaim rejects compilation.
@@ -3474,6 +3981,8 @@ These are important but are not parser or language freeze prerequisites:
 
 - MVP user-defined pure functions are first-order, non-recursive,
   non-higher-order, monomorphized or non-generic, effect-free, and cost-bounded.
+  They may end only with failures they declare, which callers propagate with
+  `expect` or map with `else`.
 - Authoritative hash input is `edict.canonical-cbor/v1`; canonical JSON is
   review/debug rendering.
 - First non-Echo target is `kv.transactional@1`; event-log follows later.

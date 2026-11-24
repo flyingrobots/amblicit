@@ -10,7 +10,7 @@ use super::{
     TargetIrLoweringFacts, TargetLoweringFailure, TargetLoweringFailureKind,
     TargetPureFunctionFact,
 };
-use crate::core_ir::{CoreBlock, MAX_CORE_GRAPH_DEPTH};
+use crate::core_ir::{CoreBlock, CoreBound, MAX_CORE_GRAPH_DEPTH};
 
 /// An admitted intrinsic must belong to exactly the lowering target profile.
 pub(super) fn foreign_target(facts: &TargetIrLoweringFacts) -> Option<TargetLoweringFailure> {
@@ -43,6 +43,10 @@ pub(super) fn intent_cost_fits(
         return true;
     }
     let mut meter = Meter {
+        shared: core
+            .required_core_capabilities
+            .iter()
+            .any(|c| c == super::fold_work::SHARED_READS_CAPABILITY),
         core,
         pure_functions,
         functions: BTreeMap::new(),
@@ -72,6 +76,8 @@ fn locals<'a>(locals: impl Iterator<Item = &'a LocalRef>) -> BTreeMap<&'a str, &
 }
 
 struct Meter<'a> {
+    /// The module selects the shared-read schedule (`edict.core-cost/v2`).
+    shared: bool,
     core: &'a CoreModule,
     pure_functions: &'a [TargetPureFunctionFact],
     /// Per helper: its metered steps and whether it reaches any intrinsic call.
@@ -101,6 +107,19 @@ impl<'a> Meter<'a> {
         for node in &block.nodes {
             let node_steps = match node {
                 CoreNode::Let { value, .. } => self.expression(value, available, depth + 1)?,
+                CoreNode::Attempt {
+                    value, failure_map, ..
+                } => {
+                    let steps = self.expression(value, available, depth + 1)?;
+                    let largest_arm = failure_map.values().try_fold(0_u64, |largest, reason| {
+                        let arm_steps =
+                            reason.payload.values().try_fold(0_u64, |steps, payload| {
+                                steps.checked_add(self.expression(payload, available, depth + 1)?)
+                            })?;
+                        Some(largest.max(arm_steps))
+                    })?;
+                    steps.checked_add(largest_arm)?
+                }
                 CoreNode::Require { predicate, arm } => {
                     let (CoreRequireFailureArm::Terminal { reason }
                     | CoreRequireFailureArm::ContinueObstructed { reason }) = arm;
@@ -146,6 +165,18 @@ impl<'a> Meter<'a> {
                 // Loop bodies are charged once per iteration bound elsewhere;
                 // an intrinsic inside one is refused rather than undercharged,
                 // judged by presence (including through helpers), not cost.
+                // Under the shared-read schedule a literal-bound loop body is
+                // charged once per iteration, as the shared-read meter does.
+                CoreNode::For {
+                    iter,
+                    body,
+                    bound: CoreBound::Literal(bound),
+                    ..
+                } if self.shared => {
+                    let iter = self.expression(iter, available, depth + 1)?;
+                    let body = self.block(body, available, depth + 1)?;
+                    iter.checked_add(body.checked_mul(*bound)?)?
+                }
                 CoreNode::For { iter, body, .. } => {
                     let iter = self.expression(iter, available, depth + 1)?;
                     let before = self.intrinsic_calls;
@@ -206,7 +237,7 @@ impl<'a> Meter<'a> {
             return None;
         }
         let children = match expression {
-            CoreExpr::Local { .. } | CoreExpr::Const(_) => Some(0),
+            CoreExpr::Local { .. } | CoreExpr::Const(_) | CoreExpr::Fail { .. } => Some(0),
             CoreExpr::Fold {
                 initial,
                 step,
@@ -240,6 +271,11 @@ impl<'a> Meter<'a> {
             CoreExpr::Record { fields } => fields.values().try_fold(0_u64, |steps, value| {
                 steps.checked_add(self.expression(value, available, depth + 1)?)
             }),
+            CoreExpr::OrderedRecord { fields } => {
+                fields.iter().try_fold(0_u64, |steps, (_, value)| {
+                    steps.checked_add(self.expression(value, available, depth + 1)?)
+                })
+            }
             CoreExpr::List { values } | CoreExpr::Call { args: values, .. } => {
                 values.iter().try_fold(0_u64, |steps, value| {
                     steps.checked_add(self.expression(value, available, depth + 1)?)
@@ -336,7 +372,8 @@ impl<'a> Meter<'a> {
     }
 
     /// The size bound Target itself establishes for a charged argument.
-    /// A conditional is bounded by its larger branch, each established the same way.
+    /// A conditional is bounded by its larger returning branch; a terminal
+    /// failure contributes no returned bytes or elements.
     fn established_max(
         &self,
         argument: &CoreExpr,
@@ -355,6 +392,7 @@ impl<'a> Meter<'a> {
             return None;
         }
         match argument {
+            CoreExpr::Fail { .. } => Some(0),
             CoreExpr::Match { scrutinee, arms } => {
                 let mut largest = 0;
                 let valid = super::variant_matches::every(
@@ -375,6 +413,9 @@ impl<'a> Meter<'a> {
             }
             CoreExpr::List { values } => u64::try_from(values.len()).ok(),
             CoreExpr::Const(CoreValue::Bytes(bytes)) => u64::try_from(bytes.len()).ok(),
+            // Records have no intrinsic size coefficient of their own. Their
+            // fields are traversed for call cost by `expression` above.
+            CoreExpr::Record { .. } | CoreExpr::OrderedRecord { .. } => None,
             CoreExpr::If {
                 then_value,
                 else_value,

@@ -114,6 +114,12 @@ impl<'a> Rewrite<'a> {
                 }
                 self.shift(&mut definition.span)?;
             }
+            Decl::Failure(definition) => {
+                definition
+                    .name
+                    .clone_from(&self.names.definitions[&definition.name].linked);
+                self.shift(&mut definition.span)?;
+            }
             Decl::Enum(definition) => {
                 definition
                     .name
@@ -127,6 +133,13 @@ impl<'a> Rewrite<'a> {
                 let mut env = Env::new();
                 self.params(&mut definition.params, &mut env)?;
                 self.ty(&mut definition.returns, definition.span)?;
+                for failure in &mut definition.fails {
+                    self.failure_path(&mut failure.path);
+                    self.shift(&mut failure.span)?;
+                }
+                for precondition in &mut definition.preconditions {
+                    self.expr(precondition, &env)?;
+                }
                 self.block(&mut definition.body, &mut env)?;
                 self.shift(&mut definition.span)?;
             }
@@ -231,6 +244,25 @@ impl<'a> Rewrite<'a> {
                 Ok(())
             }
             None => Err(self.error(SourceLinkErrorKind::UnresolvedName, span, first)),
+        }
+    }
+    /// Resolve a declared failure to its linked name. An unresolved name is left
+    /// for the compiler, which reports `UnknownFailure` at its span.
+    fn failure_path(&self, path: &mut Vec<String>) {
+        let definition = match path.as_slice() {
+            [name] => self.names.definitions.get(name),
+            [alias, name] => match self.names.imports.get(alias) {
+                Some(ImportBinding::Source(coordinate)) => {
+                    self.units[coordinate].definitions.get(name)
+                }
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(definition) =
+            definition.filter(|definition| definition.kind == DefinitionKind::Failure)
+        {
+            *path = vec![definition.linked.clone()];
         }
     }
     fn bound(&self, bound: &mut BoundRef, span: Span) -> Result {
@@ -486,6 +518,8 @@ impl<'a> Rewrite<'a> {
             | Expr::Bytes { .. }
             | Expr::Bool { .. }
             | Expr::Digest { .. } => {}
+            Expr::Fail { failure, .. } => self.failure_path(failure),
+            Expr::Expect { call, .. } => self.expr(call, env)?,
             Expr::Call {
                 callee,
                 type_args,
@@ -579,6 +613,37 @@ impl<'a> Rewrite<'a> {
             }
         }
     }
+    /// `Type.CASE` or `module.Type.CASE`: an enum case selection whose type
+    /// head becomes the linked type name. Whether the type is an enum is the
+    /// compiler's judgment; the linker only resolves the type name.
+    fn type_case_selection(&self, path: &[String], span: Span) -> Option<Expr> {
+        let linked = match path {
+            [name, _] => self
+                .names
+                .definitions
+                .get(name)
+                .filter(|definition| definition.kind == DefinitionKind::Type),
+            [alias, name, _] => match self.names.imports.get(alias) {
+                Some(ImportBinding::Source(coordinate)) => self.units[coordinate]
+                    .definitions
+                    .get(name)
+                    .filter(|definition| definition.kind == DefinitionKind::Type),
+                _ => None,
+            },
+            _ => None,
+        };
+        let (Some(definition), Some(case)) = (linked, path.last()) else {
+            return None;
+        };
+        Some(Expr::Field {
+            base: Box::new(Expr::Ident {
+                name: definition.linked.clone(),
+                span,
+            }),
+            field: case.clone(),
+            span,
+        })
+    }
     fn value_path(
         &self,
         expr: &mut Expr,
@@ -588,6 +653,18 @@ impl<'a> Rewrite<'a> {
         span: Span,
     ) -> Result {
         let head = &path[0];
+        if !function && env.get(head).is_none() {
+            if let Some(selection) = self.type_case_selection(path, span) {
+                *expr = selection;
+                if let Expr::Field { base, span, .. } = expr {
+                    if let Expr::Ident { span, .. } = base.as_mut() {
+                        self.shift(span)?;
+                    }
+                    self.shift(span)?;
+                }
+                return Ok(());
+            }
+        }
         let rename = if let Some(local) = env.get(head) {
             Some(local.clone())
         } else if let Some(binding) = self.names.imports.get(head) {
@@ -630,23 +707,7 @@ impl<'a> Rewrite<'a> {
                 .filter(|definition| definition.kind == DefinitionKind::Function)
             {
                 Some(definition.linked.clone())
-            } else if matches!(
-                head.as_str(),
-                "len"
-                    | "listLen"
-                    | "listAt"
-                    | "listAppend"
-                    | "listConcat"
-                    | "slice"
-                    | "isUtf8"
-                    | "count"
-                    | "at"
-                    | "hash"
-                    | "digest"
-                    | "some"
-                    | "none"
-                    | "fold"
-            ) {
+            } else if PRELUDE_CALLS.contains(&head.as_str()) {
                 None
             } else {
                 return Err(self.error(SourceLinkErrorKind::UnresolvedName, span, head));
@@ -703,6 +764,36 @@ fn expr_span(expr: &mut Expr) -> &mut Span {
         | Expr::If { span, .. }
         | Expr::IfYield { span, .. }
         | Expr::VariantLit { span, .. }
-        | Expr::Match { span, .. } => span,
+        | Expr::Match { span, .. }
+        | Expr::Fail { span, .. }
+        | Expr::Expect { span, .. } => span,
     }
 }
+
+/// Prelude call names that resolve to no source definition.
+const PRELUDE_CALLS: &[&str] = &[
+    "len",
+    "listLen",
+    "listAt",
+    "listAppend",
+    "listConcat",
+    "slice",
+    "isUtf8",
+    "count",
+    "at",
+    "hash",
+    "digest",
+    "some",
+    "none",
+    "isSome",
+    "unwrap",
+    "default",
+    "checkedAdd",
+    "checkedSub",
+    "checkedMul",
+    "checkedDiv",
+    "checkedRem",
+    "min",
+    "max",
+    "fold",
+];

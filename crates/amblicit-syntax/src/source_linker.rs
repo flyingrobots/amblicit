@@ -2,7 +2,7 @@
 //! Original sources stay immutable; a separate surface carries hygienic names
 //! and mapped spans. Linking grants no runtime authority.
 use crate::ast::{Decl, ImportKind, Module};
-use crate::compiler::SourceTypeOrigin;
+use crate::compiler::{SourceFailureOrigin, SourceTypeOrigin};
 use crate::core_ir::{classify_core_type_reference, CoreTypeReference};
 use crate::source_closure::SourceClosure;
 use crate::token::{lex, Span, TokenKind};
@@ -25,6 +25,8 @@ pub enum SourceLinkErrorKind {
     SpanOverflow,
     DepthExceeded,
     ReservedTypeIdentity,
+    /// Two modules import one target profile with different digests.
+    ConflictingTargetImport,
 }
 /// A source-local linking failure.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -69,6 +71,7 @@ pub struct LinkedSourceClosure<'a> {
     module: Module,
     ranges: Vec<SourceRange>,
     type_origins: BTreeMap<String, SourceTypeOrigin>,
+    failure_origins: BTreeMap<String, SourceFailureOrigin>,
 }
 impl LinkedSourceClosure<'_> {
     /// Borrow the immutable compiler-owned surface for authority preparation.
@@ -140,7 +143,8 @@ impl LinkedSourceClosure<'_> {
         }
         let context = context
             .clone()
-            .with_linked_source_types(self.type_origins.clone());
+            .with_linked_source_types(self.type_origins.clone())
+            .with_linked_source_failures(self.failure_origins.clone());
         compile_to_core(&self.module, &context).map_err(|failures| {
             failures
                 .into_iter()
@@ -167,6 +171,7 @@ enum DefinitionKind {
     Type,
     Function,
     Intent,
+    Failure,
 }
 #[derive(Debug)]
 struct Definition {
@@ -200,6 +205,7 @@ pub fn link_source_closure(
     let fresh = fresh_namespace(closure)?;
     let units = collect_names(closure, &fresh)?;
     let type_origins = collect_type_origins(closure, &units);
+    let failure_origins = collect_failure_origins(closure, &units);
     let root_name = closure.root_coordinate();
     let root = &closure.modules()[root_name];
     let mut linked = Module {
@@ -227,6 +233,14 @@ pub fn link_source_closure(
             let mut import = import.clone();
             if let Some(ImportBinding::External(alias, _)) = names.imports.get(&import.alias) {
                 import.alias.clone_from(alias);
+            }
+            // A merged target import is emitted once, under its shared alias.
+            if linked
+                .imports
+                .iter()
+                .any(|emitted| emitted.kind == import.kind && emitted.alias == import.alias)
+            {
+                continue;
             }
             rewrite.shift(&mut import.span)?;
             if let Some(package) = &mut import.package {
@@ -266,6 +280,7 @@ pub fn link_source_closure(
         module: linked,
         ranges,
         type_origins,
+        failure_origins,
     })
 }
 fn collect_type_origins(
@@ -296,6 +311,30 @@ fn collect_type_origins(
                     },
                 },
             );
+        }
+    }
+    origins
+}
+
+/// Linked failure names keep the coordinate of the module that declares them.
+fn collect_failure_origins(
+    closure: &SourceClosure,
+    units: &BTreeMap<String, UnitNames>,
+) -> BTreeMap<String, SourceFailureOrigin> {
+    let mut origins = BTreeMap::new();
+    for (coordinate, unit) in closure.modules() {
+        for declaration in &unit.parsed().decls {
+            if let Decl::Failure(definition) = declaration {
+                origins.insert(
+                    units[coordinate].definitions[&definition.name]
+                        .linked
+                        .clone(),
+                    SourceFailureOrigin {
+                        coordinate: format!("{coordinate}.{}", definition.name),
+                        name: definition.name.clone(),
+                    },
+                );
+            }
         }
     }
     origins
@@ -343,6 +382,9 @@ fn collect_names(
 ) -> Result<BTreeMap<String, UnitNames>, SourceLinkError> {
     let mut units = BTreeMap::new();
     let mut generated = BTreeSet::new();
+    // One alias per target profile across the closure: identical `use target`
+    // imports share it, so the linked module carries a single import.
+    let mut targets: BTreeMap<String, (Option<String>, String)> = BTreeMap::new();
     for (coordinate, module) in closure.modules() {
         let prefix = format!("{fresh}{:x}_", Sha256::digest(coordinate.as_bytes()));
         let mut names = UnitNames {
@@ -357,6 +399,9 @@ fn collect_names(
                 Decl::Enum(definition) => (&definition.name, DefinitionKind::Type, definition.span),
                 Decl::Function(definition) => {
                     (&definition.name, DefinitionKind::Function, definition.span)
+                }
+                Decl::Failure(definition) => {
+                    (&definition.name, DefinitionKind::Failure, definition.span)
                 }
                 Decl::Intent(definition) => {
                     if coordinate != closure.root_coordinate() {
@@ -411,12 +456,11 @@ fn collect_names(
                     )
                 })?;
                 ImportBinding::Source(format!("{}@{}", package.path.join("."), package.version))
+            } else if import.kind == ImportKind::Target {
+                let own = external_alias(closure, coordinate, &names.prefix, &import.alias);
+                target_binding(import, own, coordinate, &mut targets, &mut generated)?
             } else {
-                let alias = if coordinate == closure.root_coordinate() {
-                    import.alias.clone()
-                } else {
-                    format!("{}I_{}", names.prefix, import.alias)
-                };
+                let alias = external_alias(closure, coordinate, &names.prefix, &import.alias);
                 if !generated.insert(alias.clone()) {
                     return Err(failure(
                         SourceLinkErrorKind::NameCollision,
@@ -432,6 +476,45 @@ fn collect_names(
         units.insert(coordinate.clone(), names);
     }
     Ok(units)
+}
+/// The linked alias of an external import: unchanged in the root module,
+/// prefixed with the module's fresh namespace elsewhere.
+fn external_alias(closure: &SourceClosure, coordinate: &str, prefix: &str, alias: &str) -> String {
+    if coordinate == closure.root_coordinate() {
+        alias.to_owned()
+    } else {
+        format!("{prefix}I_{alias}")
+    }
+}
+
+/// The binding of a `use target` import: the alias already chosen for an
+/// identical import of the same target, or `own` for the first one. A second
+/// import of the target with another digest is refused.
+fn target_binding(
+    import: &crate::ast::Import,
+    own: String,
+    coordinate: &str,
+    targets: &mut BTreeMap<String, (Option<String>, String)>,
+    generated: &mut BTreeSet<String>,
+) -> Result<ImportBinding, SourceLinkError> {
+    let refuse = |kind| failure(kind, coordinate, import.span, &import.alias);
+    let package = import
+        .package
+        .as_ref()
+        .ok_or_else(|| refuse(SourceLinkErrorKind::UnresolvedName))?;
+    let target = format!("{}@{}", package.path.join("."), package.version);
+    if let Some((digest, alias)) = targets.get(&target) {
+        return if *digest == import.digest {
+            Ok(ImportBinding::External(alias.clone(), import.kind))
+        } else {
+            Err(refuse(SourceLinkErrorKind::ConflictingTargetImport))
+        };
+    }
+    if !generated.insert(own.clone()) {
+        return Err(refuse(SourceLinkErrorKind::NameCollision));
+    }
+    targets.insert(target, (import.digest.clone(), own.clone()));
+    Ok(ImportBinding::External(own, import.kind))
 }
 fn failure(kind: SourceLinkErrorKind, coordinate: &str, span: Span, name: &str) -> SourceLinkError {
     SourceLinkError {

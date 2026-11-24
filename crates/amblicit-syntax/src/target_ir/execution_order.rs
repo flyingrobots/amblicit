@@ -5,8 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
     TargetIrArtifact, TargetIrIntent, TargetIrOrderEntry, TargetIrPureBinding,
-    TargetIrRequireFailure, TargetIrRequirement, TargetIrStep, ECHO_DPO_TARGET_PROFILE,
-    ECHO_ORDERED_SPAN_IR_DOMAIN, ECHO_STRUCTURED_SPAN_IR_DOMAIN,
+    TargetIrRequireFailure, TargetIrRequirement, TargetIrStep, ECHO_ORDERED_SPAN_IR_DOMAIN,
+    ECHO_STRUCTURED_SPAN_IR_DOMAIN,
 };
 use crate::core_ir::{
     CompareOp, CoreBound, CoreExpr, CorePredicate, CoreValue, LocalRef, ResourceRef,
@@ -24,10 +24,29 @@ fn order_mode(domain: &str) -> Option<bool> {
     }
 }
 
-/// The artifact-level half of the execution-order check: ordered and
-/// structured domains require the Echo DPO target profile.
+/// The artifact-level half of the execution-order check: an ordered or
+/// structured domain requires a target profile that selects it.
 pub(crate) fn header_has_valid_execution_order(domain: &str, target_profile: &ResourceRef) -> bool {
-    order_mode(domain).is_none() || target_profile.coordinate == ECHO_DPO_TARGET_PROFILE
+    order_mode(domain).is_none()
+        || super::profile_selects_target_ir_domain(&target_profile.coordinate, domain)
+}
+
+/// Under `echo.span-ir/v3`, every step, at any nesting depth, names an
+/// intrinsic in the namespace of the profile that selects the domain. Other
+/// domains are unchanged.
+pub(crate) fn intent_steps_name_selected_intrinsics(
+    domain: &str,
+    target_profile: &ResourceRef,
+    intent: &TargetIrIntent,
+) -> bool {
+    domain != ECHO_STRUCTURED_SPAN_IR_DOMAIN
+        || intent.steps.iter().all(|step| {
+            super::profile_selects_target_intrinsic(
+                &target_profile.coordinate,
+                domain,
+                &step.target_intrinsic,
+            )
+        })
 }
 
 /// The per-intent half of the execution-order check, on a borrowed intent.
@@ -247,7 +266,16 @@ impl<'a> LocalAvailability<'a> {
     fn instruction(&mut self, instruction: Instruction<'a>) -> bool {
         match instruction {
             Instruction::Binding(node) => {
-                self.expression(&node.value, 0) && self.introduce(&node.binding)
+                // A failed call has not produced its binding. Failure payloads
+                // can read only locals available before this instruction.
+                self.expression(&node.value, 0)
+                    && node.failure_arms.values().all(|reason| {
+                        reason
+                            .payload
+                            .values()
+                            .all(|value| self.expression(value, 0))
+                    })
+                    && self.introduce(&node.binding)
             }
             Instruction::Step(node) => {
                 if !self.expression(&node.input, 0) {
@@ -283,7 +311,7 @@ impl<'a> LocalAvailability<'a> {
         }
         match expression {
             CoreExpr::Local { reference } => self.reference(reference),
-            CoreExpr::Const(_) => true,
+            CoreExpr::Const(_) | CoreExpr::Fail { .. } => true,
             CoreExpr::Fold { initial, .. } => self.expression(initial, depth + 1),
             CoreExpr::Match { scrutinee, arms } => {
                 if !self.expression(scrutinee, depth + 1) {
@@ -306,6 +334,9 @@ impl<'a> LocalAvailability<'a> {
             CoreExpr::Record { fields } => fields
                 .values()
                 .all(|value| self.expression(value, depth + 1)),
+            CoreExpr::OrderedRecord { fields } => fields
+                .iter()
+                .all(|(_, value)| self.expression(value, depth + 1)),
             CoreExpr::List { values } => {
                 values.iter().all(|value| self.expression(value, depth + 1))
             }
@@ -369,7 +400,12 @@ fn provably_non_integer(expression: &CoreExpr, depth: usize) -> bool {
         CoreExpr::Match { arms, .. } => arms
             .iter()
             .any(|arm| provably_non_integer(&arm.body, depth + 1)),
-        CoreExpr::Record { .. } | CoreExpr::List { .. } | CoreExpr::Variant { .. } => true,
+        // A failure is never an integer value; treating it as non-integer fails closed.
+        CoreExpr::Record { .. }
+        | CoreExpr::OrderedRecord { .. }
+        | CoreExpr::List { .. }
+        | CoreExpr::Variant { .. }
+        | CoreExpr::Fail { .. } => true,
         CoreExpr::Local { reference } => {
             let ty = reference.ty.as_str();
             ty == "Bool"

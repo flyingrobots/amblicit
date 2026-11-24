@@ -11,8 +11,8 @@ use amblicit_syntax::{
     load_authority_facts_file, lower_to_target_ir, parse_module, CompilerContext,
     ContractBundleAssemblyInput, ContractBundleSourceArtifact, CoreBudget, DigestLockedResource,
     ResourceRef, SuppliedTargetIrResource, TargetEffectLowering, TargetIrArtifact,
-    TargetIrLoweringFacts, WriteClass, ECHO_DPO_TARGET_PROFILE, ECHO_SPAN_IR_DOMAIN,
-    ECHO_STRUCTURED_SPAN_IR_DOMAIN, GITWARP_COMMIT_REDUCER_IR_DOMAIN,
+    TargetIrLoweringFacts, WriteClass, ECHO_DPO_2_TARGET_PROFILE, ECHO_DPO_TARGET_PROFILE,
+    ECHO_SPAN_IR_DOMAIN, ECHO_STRUCTURED_SPAN_IR_DOMAIN, GITWARP_COMMIT_REDUCER_IR_DOMAIN,
     GITWARP_REF_CRDT_TARGET_PROFILE,
 };
 
@@ -141,6 +141,16 @@ const CORE_GOLDEN_CASES: &[CoreGoldenCase] = &[
         bytes: "fixtures/core/canonical/workspace-snapshot.core.cbor",
         digest: "fixtures/core/canonical/workspace-snapshot.core.sha256",
     },
+    CoreGoldenCase {
+        source: "fixtures/lang/types/option-spine.amblicit",
+        bytes: "fixtures/core/canonical/option-spine.core.cbor",
+        digest: "fixtures/core/canonical/option-spine.core.sha256",
+    },
+    CoreGoldenCase {
+        source: "fixtures/lang/functions/function-precondition.amblicit",
+        bytes: "fixtures/core/canonical/function-precondition.core.cbor",
+        digest: "fixtures/core/canonical/function-precondition.core.sha256",
+    },
 ];
 
 pub(crate) fn core_goldens(root: &Path, mode: CoreGoldenMode) -> Result<(), String> {
@@ -190,6 +200,15 @@ fn core_golden_context() -> CompilerContext {
     CompilerContext::new()
         .with_operation_profile("hello.readOnly", "continuum.profile.read-only/v1")
         .with_operation_profile("workspace.read", "continuum.profile.read-only/v1")
+        .with_operation_profile("text.replaceRange", "continuum.profile.read-only/v1")
+        .with_budget(
+            "text.replaceRangeBudget",
+            CoreBudget {
+                max_steps: 512,
+                max_allocated_bytes: 8192,
+                max_output_bytes: 4096,
+            },
+        )
         .with_budget(
             "hello.tinyBudget",
             CoreBudget {
@@ -198,6 +217,8 @@ fn core_golden_context() -> CompilerContext {
                 max_output_bytes: 4096,
             },
         )
+        .with_operation_profile("spines.read", "continuum.profile.read-only/v1")
+        .with_budget("spines.budget", option_spine_budget())
         .with_budget(
             "workspace.tiny",
             CoreBudget {
@@ -220,6 +241,9 @@ enum TargetIrGoldenKind {
     Gitwarp,
     ExternalRequest,
     EchoStructuredLoop,
+    OptionSpine,
+    EchoFunctionPrecondition,
+    EchoDpo2Structured,
 }
 
 #[derive(Debug)]
@@ -250,7 +274,51 @@ const TARGET_IR_GOLDEN_CASES: &[TargetIrGoldenCase] = &[
         bytes: "fixtures/target-ir/canonical/echo-structured-loop.target-ir.cbor",
         digest: "fixtures/target-ir/canonical/echo-structured-loop.target-ir.sha256",
     },
+    TargetIrGoldenCase {
+        kind: TargetIrGoldenKind::OptionSpine,
+        bytes: "fixtures/target-ir/canonical/option-spine.target-ir.cbor",
+        digest: "fixtures/target-ir/canonical/option-spine.target-ir.sha256",
+    },
+    TargetIrGoldenCase {
+        kind: TargetIrGoldenKind::EchoFunctionPrecondition,
+        bytes: "fixtures/target-ir/canonical/echo-function-precondition.target-ir.cbor",
+        digest: "fixtures/target-ir/canonical/echo-function-precondition.target-ir.sha256",
+    },
+    TargetIrGoldenCase {
+        kind: TargetIrGoldenKind::EchoDpo2Structured,
+        bytes: "fixtures/target-ir/canonical/echo-dpo-2-structured.target-ir.cbor",
+        digest: "fixtures/target-ir/canonical/echo-dpo-2-structured.target-ir.sha256",
+    },
 ];
+
+/// A bounded loop and statement branches calling `echo.dpo@2` intrinsics,
+/// lowered to `echo.span-ir/v3` (#319). The same source is in
+/// `crates/amblicit-syntax/tests/target_ir/echo_dpo_2_structured.rs`.
+const TARGET_IR_ECHO_DPO_2_STRUCTURED_SOURCE: &str = "package a.b@1;\n\
+    type Leaf = { id: String<max=16>, };\n\
+    type Input = { id: String<max=16>, leaves: List<Leaf, max=4>, };\n\
+    type Receipt = { id: String<max=16>, };\n\
+    type Output = { id: String<max=16>, };\n\
+    intent t(input: Input) returns Output\n\
+      profile p.effectful\n\
+      basis none\n\
+      budget <= p.loop {\n\
+      for leaf in input.leaves bounded 4 {\n\
+        if leaf.id != \"\" {\n\
+          let written: Receipt = target.replace(leaf.id)\n\
+            else { rejected(reason) => domain.WriteRejected };\n\
+        }\n\
+      }\n\
+      if input.id != \"\" {\n\
+        let stamped: Receipt = target.replace(input.id)\n\
+          else { rejected(reason) => domain.WriteRejected };\n\
+      }\n\
+      return { id: input.id };\n\
+    }";
+
+/// Jedit's precondition reproducer: a call proven from the intent `where`.
+const TARGET_IR_FUNCTION_PRECONDITION_SOURCE: &str =
+    include_str!("../../fixtures/lang/functions/function-precondition.amblicit");
 
 const TARGET_IR_ECHO_SOURCE: &str = "package a.b@1;\n\
     type Input = { id: String<max=16>, };\n\
@@ -298,6 +366,18 @@ const TARGET_IR_ECHO_STRUCTURED_LOOP_SOURCE: &str = "package a.b@1;\n\
 
 const TARGET_IR_EXTERNAL_REQUEST_SOURCE: &str =
     include_str!("../../fixtures/lang/external-actions/workspace-snapshot.amblicit");
+
+/// An enum, Option prelude calls and the `isSome` refinement (issue #261).
+const TARGET_IR_OPTION_SPINE_SOURCE: &str =
+    include_str!("../../fixtures/lang/types/option-spine.amblicit");
+
+fn option_spine_budget() -> CoreBudget {
+    CoreBudget {
+        max_steps: 4096,
+        max_allocated_bytes: 64 * 1024,
+        max_output_bytes: 4096,
+    }
+}
 
 pub(crate) fn target_ir_goldens(root: &Path, mode: TargetIrGoldenMode) -> Result<(), String> {
     for case in TARGET_IR_GOLDEN_CASES {
@@ -371,6 +451,31 @@ fn target_ir_golden_artifact(case: &TargetIrGoldenCase) -> Result<TargetIrArtifa
                 ..target_ir_echo_facts()
             },
         ),
+        TargetIrGoldenKind::OptionSpine => (
+            TARGET_IR_OPTION_SPINE_SOURCE,
+            core_golden_context(),
+            TargetIrLoweringFacts {
+                operation_profiles: vec!["continuum.profile.read-only/v1".to_owned()],
+                obstruction_coordinates: Vec::new(),
+                effect_lowerings: Vec::new(),
+                ..target_ir_echo_facts()
+            },
+        ),
+        TargetIrGoldenKind::EchoDpo2Structured => (
+            TARGET_IR_ECHO_DPO_2_STRUCTURED_SOURCE,
+            target_ir_loop_context(),
+            target_ir_echo_dpo_2_structured_facts(),
+        ),
+        TargetIrGoldenKind::EchoFunctionPrecondition => (
+            TARGET_IR_FUNCTION_PRECONDITION_SOURCE,
+            core_golden_context(),
+            TargetIrLoweringFacts {
+                operation_profiles: vec!["continuum.profile.read-only/v1".to_owned()],
+                obstruction_coordinates: Vec::new(),
+                effect_lowerings: Vec::new(),
+                ..target_ir_echo_facts()
+            },
+        ),
     };
     let module = parse_module(source)
         .map_err(|err| format!("parse {:?} Target IR golden source: {err}", case.kind))?;
@@ -398,6 +503,32 @@ fn target_ir_echo_context() -> CompilerContext {
                 max_output_bytes: 256,
             },
         )
+}
+
+fn target_ir_loop_context() -> CompilerContext {
+    target_ir_echo_context().with_budget(
+        "p.loop",
+        CoreBudget {
+            max_steps: 64,
+            max_allocated_bytes: 4096,
+            max_output_bytes: 256,
+        },
+    )
+}
+
+/// `echo.dpo@2` with an adapter that names `echo.span-ir/v3`. The digest
+/// differs from the `echo.dpo@1` fixtures so the profiles stay distinct.
+fn target_ir_echo_dpo_2_structured_facts() -> TargetIrLoweringFacts {
+    let mut facts = target_ir_echo_facts();
+    facts.target_profile = ResourceRef {
+        coordinate: ECHO_DPO_2_TARGET_PROFILE.to_owned(),
+        digest: Some(digest_text('4')),
+    };
+    ECHO_STRUCTURED_SPAN_IR_DOMAIN.clone_into(&mut facts.target_ir_domain);
+    for lowering in &mut facts.effect_lowerings {
+        "echo.dpo@2.replace".clone_into(&mut lowering.target_intrinsic);
+    }
+    facts
 }
 
 fn target_ir_gitwarp_context() -> CompilerContext {

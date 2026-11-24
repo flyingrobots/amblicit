@@ -1,0 +1,63 @@
+# Pure-intrinsic-catalog provider contract publication
+
+This publication changes one root of the
+[function-precondition publication](../function-preconditions-v1/README.md):
+`intrinsics-document`, bound to the `target-profile-intrinsics` contract, now
+admits `edict.target-profile.intrinsics/v2` catalogs. Every other root is
+unchanged.
+
+A v2 catalog differs from v1 in three ways:
+
+| Field | v2 rule |
+| --- | --- |
+| `apiVersion` | Exactly `edict.target-profile.intrinsics/v2`. |
+| `types` | Optional map from a provider-owned type coordinate to a text definition. Admission, not the schema, requires each definition to be a structural `Record<...>` and resolves every type that a required pure intrinsic's signature names. |
+| pure intrinsic | Every pure intrinsic, required by a consumer or not: `typeParameters` is empty; `contractVersion`, `footprintTemplate` and `costTemplate` are non-empty text; `costRule` is required, with an unsigned `base` and an array of unsigned `perArgumentMax` coefficients. |
+
+Effect intrinsics keep their v1 shape, so an effect-only v1 catalog becomes a
+valid v2 catalog when its `apiVersion` changes. That edit changes the catalog's
+bytes, so its pinned digest, and every target profile, package and piece of
+evidence that pins it, must be regenerated. A generic pure constructor cannot be
+listed in a v2 catalog at all; only the frozen v1 publications can carry one.
+
+The publications are disjoint for catalogs. This frozen pack refuses a v1
+catalog, and the bounded-state-fold and function-precondition packs refuse a v2
+catalog. The later cumulative typed-failure pack also carries the v2 catalog
+schema. The compiler admits pure intrinsics only from a v2 catalog, so a
+provider whose source programs call pure intrinsics must select this pack or the
+current typed-failure pack.
+
+CDDL establishes structural shape only. For the pure intrinsics a consumer
+requires, admission (`admit_target_pure_intrinsics`) owns the checks this schema
+does not state: the trusted catalog digest, exact contract versions, namespace
+ownership, type resolution, exactly one cost coefficient per argument, and a
+zero coefficient for every argument that is not `Bytes` or `List`. Selecting
+this schema is not provider or runtime support for any intrinsic.
+
+Admission verifies the catalog digest, its top-level fields and every `types`
+definition, but it runs its per-contract checks only on the pure intrinsics a
+consumer requires. Every other intrinsic is checked by this schema alone, and
+the schema checks shape only. Two consequences follow:
+
+- Admission can admit facts from a catalog this pack refuses, for example one
+  that also lists an uncalled generic constructor or a malformed effect
+  intrinsic. Such a catalog cannot be published under any pack.
+- A catalog can pass both checks while an uncalled pure intrinsic breaks a rule
+  that only admission states, for example by naming an unpublished type,
+  carrying the wrong number of cost coefficients, or sitting outside the
+  profile's namespace. No check covers those rules for uncalled entries.
+
+Validate a catalog against this pack before pinning it.
+
+The pack coordinate remains `edict.provider-contract-pack.cddl@1` and the manifest
+API version remains `edict.provider-contract-pack/v1`. Consumers select the exact
+CDDL/manifest pair and verify its schema digest; the same coordinate does not make
+different publication bytes interchangeable.
+
+This CDDL/manifest pair is frozen. Tests reproduce it from the pre-typed-failure
+Core and Target IR schemas plus the v2 target-profile schema. The current owner
+generator writes and checks
+[`typed-failures-v1`](../typed-failures-v1/README.md), which retains these
+catalog rules and adds typed-failure support. The v1, source-function,
+source-module, structured-control, bounded-state-fold and function-precondition
+CDDL/manifest pairs also remain byte-identical for pinned consumers.

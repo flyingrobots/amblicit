@@ -35,6 +35,10 @@ cargo xtask verify
   for Edict-owned artifact and invocation evidence semantics.
 - [Assurance](./assurance/README.md): optional, hash-bound HOLMES, Watson, and
   Moriarty evidence references at the contract-bundle boundary.
+- [Core Cost Schedules](./core-cost-schedules/README.md): how Core evaluation
+  is charged against `coreEvaluationBudget`.
+- [Bounded Descent](./bounded-descent/README.md): iterative descent and
+  rebuild over depth-bounded arena trees with bounded folds and lists.
 - [Authority Facts](./authority-facts/README.md): JSON and canonical-CBOR
   compiler context facts with digest-bound source identity, normative CDDL, and
   stable load/decode failures.
@@ -92,6 +96,9 @@ cargo xtask verify
   boundary for Echo Span IR and later target profiles.
 - [Target Profiles](./target-profiles/README.md): typed v1 target-profile
   manifest conformance and runtime-neutral profile validation.
+- [Typed Function Failures](./typed-failures/README.md): declared failure sets
+  on source functions, `expect` propagation, intent `else` mapping, and their
+  Core and Target IR forms.
 - [Testing Workflow](./tests/README.md): RED/GREEN development discipline,
   fixture reuse, and local verification workflow.
 - [v2 Design](./v2-design/README.md): current HEAD boundary and planned test

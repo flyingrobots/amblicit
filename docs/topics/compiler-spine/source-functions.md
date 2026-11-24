@@ -48,6 +48,36 @@ callee frame. `if` and ordered `All`/`Any` predicates retain lazy evaluation.
 Boolean-valued expressions use existing Core `If` and predicate forms; Boolean
 values in predicate position compare with `true`.
 
+## Preconditions
+
+A function may state `where` preconditions between its return type and body,
+as in [Jedit's reproducer](../../../fixtures/lang/functions/function-precondition.amblicit):
+
+```amblicit
+fn cut(bytes: Bytes<max=8>, start: U64, end: U64) -> Bytes<max=8>
+  where start <= end, end <= len(bytes), start <= len(bytes)
+{
+  return slice(bytes, start, end);
+}
+```
+
+The compiler checks the preconditions once, after collecting signatures and
+before any body, each assuming the ones before it. They are Boolean predicates
+over the parameters and may use imported or intrinsic pure functions such as
+`len`, but not source functions, `fold` or `match`. The body is checked with
+them as facts, which is what proves `slice` above.
+
+A call such as `cut(input.bytes, input.start, input.end)` replaces each
+parameter with its argument and must prove the result from the facts that
+dominate the call: the intent's `where`, the enclosing function's own
+preconditions, an enclosing `if … then … else` arm, or the left operand of an
+`&&`. An order such as `start <= end` is proven like a subtraction's operand
+order; any other predicate must appear among those facts. A call that is not
+proven refuses with `UnprovenPrecondition` at the call and names the first
+unproven `where.N`. Nothing is evaluated at runtime and no cost is charged. A
+function with preconditions cannot be a `fold` step. The language
+specification's Function Preconditions section is the normative rule.
+
 ## Bounded state fold
 
 `fold(initial, step, N)` is a special first-order prelude expression. `step`

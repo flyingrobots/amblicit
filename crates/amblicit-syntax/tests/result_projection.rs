@@ -1,5 +1,15 @@
 //! Compiler-owned result-projection contract and independent verification.
 
+#[path = "result_projection/structured.rs"]
+mod structured;
+#[path = "result_projection/structured_hostile.rs"]
+mod structured_hostile;
+#[path = "result_projection/structured_mutations.rs"]
+mod structured_mutations;
+
+#[path = "result_projection/ordered_effect_rows.rs"]
+mod ordered_effect_rows;
+
 use std::collections::BTreeMap;
 
 use amblicit_syntax::{

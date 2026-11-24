@@ -1,6 +1,6 @@
 //! Exhaustive alternatives with one scrutinee and lexical arm payloads.
 use super::{
-    compatible, compatible_shape, error, is_bare_integer_literal, CompilerErrorKind, CompilerStage,
+    compatible, compatible_shape, error, needs_peer_type, CompilerErrorKind, CompilerStage,
     CoreExpr, Expr, LocalEnvironment, Span, TypeChecker, TypeKind, TypeShape, TypedValue,
 };
 use crate::{
@@ -47,13 +47,17 @@ impl TypeChecker<'_> {
         {
             return self.invalid_match("match must cover every case exactly once", span);
         }
-        let mut result_type = expected.cloned();
+        // Context guides Option constructors but does not replace the actual
+        // arm join that Target must infer from the emitted match expression.
+        let contextual_option =
+            expected.is_some_and(|shape| matches!(&shape.kind, TypeKind::Option(_)));
+        let mut result_type = expected.filter(|_| !contextual_option).cloned();
         let mut lowered = vec![None; arms.len()];
         // Infer typed peers before bare literals, while retaining source arm order
         // in Core. Like conditionals, no width is invented for all-bare arms.
         let mut order = (0..arms.len()).collect::<Vec<_>>();
         if expected.is_none() {
-            order.sort_by_key(|index| is_bare_integer_literal(&arms[*index].body));
+            order.sort_by_key(|index| needs_peer_type(&arms[*index].body));
         }
         for index in order {
             let arm = &arms[index];
@@ -84,14 +88,18 @@ impl TypeChecker<'_> {
                 (None, _) => None,
             };
             let arm_expected = expected.or_else(|| {
-                is_bare_integer_literal(&arm.body)
+                needs_peer_type(&arm.body)
                     .then_some(result_type.as_ref())
                     .flatten()
             });
             let body = self.check_expr_with_expected(&arm.body, &scope, arm_expected)?;
+            if contextual_option && expected.is_some_and(|expected| !compatible(expected, &body.ty))
+            {
+                return self.invalid_match("match result type mismatch", arm.span);
+            }
             result_type = match result_type {
                 None => Some(body.ty.clone()),
-                Some(prior) if expected.is_some() => {
+                Some(prior) if expected.is_some() && !contextual_option => {
                     if !compatible(&prior, &body.ty) {
                         return self.invalid_match("match result type mismatch", arm.span);
                     }

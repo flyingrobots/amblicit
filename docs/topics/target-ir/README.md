@@ -19,10 +19,12 @@ at this boundary. Provider and runtime support remain separate. [TIR-REQ-056]
 
 The current target IR implementation is deliberately narrow:
 
-- selected target profile: `echo.dpo@1` or `gitwarp.ref_crdt@1`;
+- selected target profile: `echo.dpo@1`, `echo.dpo@2`, or
+  `gitwarp.ref_crdt@1`;
 - selected Target IR artifact domain: `echo.span-ir/v1`, explicitly ordered
   `echo.span-ir/v2`, explicitly structured `echo.span-ir/v3`, or
-  `gitwarp.commit-reducer-ir/v1`;
+  `gitwarp.commit-reducer-ir/v1`; `echo.dpo@2` selects only
+  `echo.span-ir/v2` and `echo.span-ir/v3`;
 - selected source/Core shape: source-ordered pure `let` bindings, the first
   supported effectful Core effect node, Echo `require` guard requirements, and
   typed external-action request data; under the explicitly selected
@@ -184,14 +186,59 @@ old Echo provider's schema gate and refuses before provider execution or
 package publication. It does not repin Jim or claim a released Echo v2 target
 contract. [TIR-REQ-050]
 
+### Target profile `echo.dpo@2`
+
+`echo.dpo@2` is Echo's effect profile. It selects the same ordered
+`echo.span-ir/v2` contract described above by default, and the structured
+`echo.span-ir/v3` contract (see [Structured control flow](#structured-control-flow))
+when the projection `target.irDomain` or adapter `acceptedTargetIr` names it.
+No other domain is selected under it: `echo.span-ir/v1` and the git-warp
+domain refuse with `UnsupportedTargetIrDomain`. Its effect intrinsics are named
+`echo.dpo@2.*` under both domains. An `echo.dpo@1.*` intrinsic under
+`echo.dpo@2`, or an `echo.dpo@2.*` intrinsic under `echo.dpo@1`, refuses with
+`UnsupportedTargetIntrinsic` and no artifact, inside loops and branches too.
+[TIR-REQ-067]
+
+Lowering and the canonical encoder use one selection table for the ordered
+and structured domains. The encoder admits an ordered or structured artifact
+only when its `targetProfile` selects that domain: `echo.span-ir/v2` and
+`echo.span-ir/v3` under `echo.dpo@1` or `echo.dpo@2`. `echo.dpo@1` and
+`gitwarp.ref_crdt@1` selection and bytes are unchanged. The only new refusal
+under `echo.dpo@1` is the v3 step-intrinsic check described under
+[Structured control flow](#structured-control-flow), which lowering never
+triggers. [TIR-REQ-067] [TIR-REQ-080]
+
+A public application build whose lawpack adapter accepts `echo.dpo@2` lowers
+through Target and hands `echo.span-ir/v2`, or `echo.span-ir/v3` when the
+adapter accepts it, to the selected provider. Whether that provider accepts it
+is the provider's contract; Amblicit ships no `echo.dpo@2` provider components.
+Provider support for v3 under `echo.dpo@2` is tracked by
+flyingrobots/echo#947. [TIR-REQ-067]
+
+The in-process `BuiltinTargetLowerer` seam is unchanged and serves only
+`echo.dpo@1` and `gitwarp.ref_crdt@1`; a request for `echo.dpo@2` through it
+refuses with `TargetProfileMismatch`. The application build does not use that
+seam. [TIR-REQ-013]
+
 ## Structured control flow
 
-`echo.span-ir/v3` under `echo.dpo@1` extends the v2 execution order with
-bounded `for` loops over a Core `List` and statement-only branches. It uses
-`kind: "structuredTargetIrArtifact"` and requires `executionOrder` on every
-intent. The order is a tree: an instruction entry is the text id of a pure
+`echo.span-ir/v3` under `echo.dpo@1` or `echo.dpo@2` extends the v2 execution
+order with bounded `for` loops over a Core `List` and statement-only branches.
+It uses `kind: "structuredTargetIrArtifact"` and requires `executionOrder` on
+every intent. The order is a tree: an instruction entry is the text id of a pure
 binding, step or requirement in the existing tables; a control entry is a map.
-[TIR-REQ-060]
+[TIR-REQ-060] [TIR-REQ-067]
+
+Every v3 step, at any depth, names an intrinsic in the namespace of the
+artifact's `targetProfile` (`echo.dpo@1.*` or `echo.dpo@2.*`). Lowering refuses
+any other with `UnsupportedTargetIntrinsic`. The canonical encoder refuses a
+supplied v3 artifact that breaks this with `UnsupportedValue`, and result
+projection emission and verification refuse it with `CoreTargetMismatch` and
+subject `<intent>.targetIntrinsic`. v1 and v2 encoding does not check this.
+Obstruction key names are checked only at lowering, against the adapter's
+failure mappings and declared obstruction coordinates (`MissingObstruction`,
+`AmbiguousObstructionMapping`); a supplied artifact carries no mapping, so the
+provider stays responsible for them. [TIR-REQ-080]
 
 This section owns the implemented v3 canonical-format decisions. They refine
 the v2 execution order and the language's bounded-loop and structured-control
@@ -268,7 +315,7 @@ an ordered comparison (`<`, `<=`, `>`, `>=`) anywhere in an intent must compare
 integers, per the closed operator set: lowering resolves both operand types and
 refuses any other pairing with `InvalidCoreIdentity` detail
 `inadmissible_comparison_operator`. Under v3 the same rule applies to every
-source function in the module, each judged in its own scope, so a helper
+source function in the module, including its preconditions, each judged in its own scope, so a helper
 reached directly or through another helper cannot carry one. The v3 encoder has
 no type table, so it refuses an ordered comparison only when an operand is
 provably non-integer from the artifact itself (a non-integer constant, a record
@@ -295,10 +342,16 @@ contract publication adds the v3 schema root, and its phased
 domains, so an ordered or structured document cannot drop its required
 `executionOrder` by claiming the phased kind. Prior publications are
 unchanged, including their unrestricted phased domain.
-Result projections still refuse intents with structured control
-(`CoreTargetMismatch`), so the public application-build route cannot yet admit
-a v3 intent. Echo's provider checks the Target IR domain exactly and refuses
-v3; this is compiler evidence only, with no runtime loop or branch execution.
+Result projections admit a v3 intent whose result uses the application input
+or root-scope pure/effect bindings, after checking Core/order correspondence
+(the Core body's nested instructions must match the Target `executionOrder`
+tree node for node); loop and branch locals cannot become result sources (see
+[result projections](../result-projections/README.md#structured-target-v3-bodies)).
+The public application-build route therefore binds a verified v3 projection
+into provider inputs. As of Echo `089c849f`, Echo's provider checks the Target
+IR domain exactly and admits only v1 and v2, so a public build of a structured
+operation still fails at the provider; structured support is tracked by Echo
+#947. This is compiler evidence only, with no runtime loop or branch execution.
 Issue #267 asks that the loop bound be charged against an effect budget; Edict
 declares no effect budget today (`targetBudget` is unimplemented), so the bound
 is preserved as Core data and the Core step budget is unchanged. [TIR-REQ-060]
@@ -493,7 +546,7 @@ The following are not implemented by this slice:
 - Echo request admission, adapter execution, and settlement resumption;
 - additional target profiles beyond Echo and git-warp;
 - v2 chained or composite adapter resolution;
-- result projections and application builds for structured v3 intents;
+- provider and runtime execution of structured v3 intents (Echo #947);
 - value-yielding branches, `Map` iteration, and an effect budget charged by
   loop bounds.
 
@@ -812,8 +865,9 @@ executing consumer separately.
 
 Portable accounting uses 64-byte value cells, bounded byte/text/list storage,
 record keys, variant metadata and maximum branch work. Payload-bound matches
-include surrounding-frame storage. Fold-capable modules currently refuse types
-outside this accounting subset (option/map/capability/request values), symbolic
+include surrounding-frame storage. An Option value is one presence cell plus its
+item. Fold-capable modules currently refuse types outside this accounting
+subset (map/capability/request values), symbolic
 collection-loop bounds and external-action request nodes. Modules without the
 fold capability retain their existing cost checks. Native bounds are conservative
 and can reject a compiler-accepted operation near its budget ceiling.
@@ -822,3 +876,47 @@ and can reject a compiler-accepted operation near its budget ceiling.
 provider verification, effect execution costs, output encoding limits and runtime
 admission retain their separate authorities; this meter does not establish the
 full #268 runtime contract or the authored rope cutover.
+
+## Integer operation validation
+
+Native Target derives the result of `core.integer.checked*`, `core.integer.min`
+and `core.integer.max` itself: the single type argument must be `U8`, `U32` or
+`U64` and both operands must independently have that type. Checked calls return
+`Option<T>` and need `core.option/v1`; `min` and `max` return `T`. All are
+total. Target recomputes `min`/`max` upper bounds for addition proofs from the
+Core it receives and charges these calls as scalar arithmetic. Runtime results
+are a provider gate. [TIR-REQ-081]
+
+## Option validation
+
+Native Target admits `core.option/v1` and derives the result of each
+`core.option.*` call itself from its item type argument: `some` checks its value
+against the item, `isSome` and `unwrap` require an operand whose independently
+derived type is `Option` of exactly that item, and `default` also checks its
+fallback. A missing capability, forged item coordinate, wrong operand, wrong
+fallback or wrong arity refuses `InvalidCoreIdentity` without an artifact.
+[TIR-REQ-075]
+
+`core.option.unwrap` is total only on a local that a dominating `isSome` fact
+names: an expression-if `then` arm, the right operand of a conjunction, or the
+`then` block of a statement branch. Statement-branch presence is held apart
+from the general facts and read only by `unwrap`, so byte, list, arithmetic and
+function-precondition proofs keep their existing rule.
+Branch-yield bindings still refuse `branch_binding` in every domain. Source
+refinement is not trusted. These are native judgments; provider acceptance and
+runtime Option values are separate gates. [TIR-REQ-075]
+
+## Function preconditions
+
+Target judges source-function preconditions itself rather than trusting the
+compiler. Each precondition must be a total, typed predicate whose only locals
+are the function's parameters, with no source-function call, fold or match.
+Each function body is judged total with its preconditions as facts. Every call
+to a precondition-bearing function, in an intent or another function,
+instantiates each precondition with the call's arguments and must prove it
+from the facts that dominate the call, by the specification's order proof or
+an identical fact. A fold whose step carries preconditions refuses. Any failure
+refuses with `InvalidCoreIdentity`, so Core that drops a precondition its body
+needs, adds one its callers do not establish, or reads a non-parameter local is
+refused. Target IR carries the call; the precondition stays in the Core the
+artifact's semantic closure digests. [TIR-REQ-068]

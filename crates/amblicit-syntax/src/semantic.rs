@@ -80,7 +80,7 @@ pub fn validate_surface(module: &Module) -> Result<(), Vec<SemanticError>> {
     for decl in &module.decls {
         match decl {
             Decl::Type(decl) => validate_type_expr(&decl.body, decl.span, &mut errors),
-            Decl::Enum(_) => {}
+            Decl::Enum(_) | Decl::Failure(_) => {}
             Decl::Function(function) => {
                 if PRELUDE_NAMES.contains(&function.name.as_str()) {
                     errors.push(error(
@@ -96,6 +96,9 @@ pub fn validate_surface(module: &Module) -> Result<(), Vec<SemanticError>> {
                     validate_type_ref(&param.ty, param.span, &mut errors);
                 }
                 validate_type_ref(&function.returns, function.span, &mut errors);
+                for precondition in &function.preconditions {
+                    validate_expr(precondition, &mut names, &mut errors);
+                }
                 validate_block(&function.body, &mut names, &mut errors);
             }
             Decl::Intent(intent) => {
@@ -133,6 +136,7 @@ fn collect_module_names(module: &Module, errors: &mut Vec<SemanticError>) -> BTr
             Decl::Enum(decl) => record_module_name(&mut names, &decl.name, decl.span, errors),
             Decl::Function(decl) => record_module_name(&mut names, &decl.name, decl.span, errors),
             Decl::Intent(decl) => record_module_name(&mut names, &decl.name, decl.span, errors),
+            Decl::Failure(decl) => record_module_name(&mut names, &decl.name, decl.span, errors),
         }
     }
     names
@@ -182,12 +186,22 @@ const PRELUDE_NAMES: &[&str] = &[
     "hash",
     "count",
     "at",
+    "default",
+    "isSome",
     "isUtf8",
     "len",
     "none",
     "slice",
     "some",
     "true",
+    "unwrap",
+    "checkedAdd",
+    "checkedSub",
+    "checkedMul",
+    "checkedDiv",
+    "checkedRem",
+    "min",
+    "max",
 ];
 
 #[derive(Debug, Clone)]
@@ -538,8 +552,11 @@ fn validate_expr(expr: &Expr, names: &mut NameEnv, errors: &mut Vec<SemanticErro
         | Expr::Str { .. }
         | Expr::Bytes { .. }
         | Expr::Bool { .. }
-        | Expr::Digest { .. } => {}
-        Expr::Field { base, .. } | Expr::Unary { operand: base, .. } => {
+        | Expr::Digest { .. }
+        | Expr::Fail { .. } => {}
+        Expr::Field { base, .. }
+        | Expr::Unary { operand: base, .. }
+        | Expr::Expect { call: base, .. } => {
             validate_expr(base, names, errors);
         }
         Expr::Call {

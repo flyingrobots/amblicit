@@ -1,3 +1,4 @@
+use amblicit_syntax::ProviderResponseLimits;
 use wasmtime::ResourceLimiter;
 
 /// Complete explicit containment policy for one provider invocation.
@@ -26,6 +27,89 @@ pub struct ProviderHostLimits {
     /// Maximum bounded diagnostic bytes retained from the engine.
     pub max_host_diagnostic_bytes: usize,
 }
+
+/// Maximum WIT logical request bytes the application build sends to one
+/// provider invocation.
+const APPLICATION_BUILD_MAX_INPUT_BYTES: u64 = 1024 * 1024;
+
+/// Wasm fuel the application build grants per admitted input byte.
+///
+/// Provider work grows with the request, so the fuel ceiling is sized from
+/// the input cap instead of from today's programs. Measured on Echo's
+/// `echo.dpo@2` lowerer and verifier (issue #326), the highest rate was about
+/// 2,550 fuel per input byte: the lowerer on a 546,592-byte request, the
+/// largest that fit the then 16 MiB memory limit, used 1,393,523,207 fuel. The
+/// verifier's highest rate was about 1,440 per byte. 4,096 leaves at least
+/// 1.6 times headroom over the measured rate at every admitted input size.
+pub const WASM_FUEL_PER_INPUT_BYTE: u64 = 4096;
+
+/// Guest linear-memory bytes the application build grants per admitted
+/// input byte.
+///
+/// Measured on Echo's `echo.dpo@2` components (issue #333), peak guest
+/// memory grows linearly with the request: the lowerer uses about 1 MiB plus
+/// 34 to 35 bytes per input byte (2,097,152 at 33,418 bytes; 25,427,968 at
+/// 711,997 bytes), and the verifier about 15 bytes per input byte. At the
+/// 1 MiB input cap the lowerer needs about 36 MiB. 64 leaves about 1.8 times
+/// headroom.
+const WASM_MEMORY_PER_INPUT_BYTE: usize = 64;
+
+/// The input cap as a host-memory quantity. 1 MiB fits every `usize`.
+const APPLICATION_BUILD_MAX_INPUT_BYTES_USIZE: usize = 1024 * 1024;
+
+// The two spellings of the input cap must agree.
+const _: () =
+    assert!(APPLICATION_BUILD_MAX_INPUT_BYTES_USIZE as u64 == APPLICATION_BUILD_MAX_INPUT_BYTES);
+
+impl ProviderHostLimits {
+    /// The containment policy the application build applies to every
+    /// lowerer and verifier invocation.
+    ///
+    /// `max_wasm_fuel` is `max_input_bytes * WASM_FUEL_PER_INPUT_BYTE`,
+    /// 4,294,967,296. It is one fixed constant because fuel exhaustion is
+    /// part of the build verdict: the same request must succeed or fail with
+    /// `FuelExhausted` on every host.
+    ///
+    /// `max_wasm_memory_bytes` is `max_input_bytes * 64`, 64 MiB, for the
+    /// same reason: provider memory grows with the request, and growth past
+    /// the limit is a deterministic `ResourceLimitExceeded` refusal.
+    pub const APPLICATION_BUILD: Self = Self {
+        max_input_bytes: APPLICATION_BUILD_MAX_INPUT_BYTES,
+        max_output_bytes: 3 * 1024 * 1024,
+        max_diagnostic_bytes: 3 * 1024 * 1024,
+        max_wasm_memory_bytes: APPLICATION_BUILD_MAX_INPUT_BYTES_USIZE * WASM_MEMORY_PER_INPUT_BYTE,
+        max_table_elements: 10_000,
+        max_instances: 100,
+        max_memories: 8,
+        max_tables: 8,
+        max_wasm_fuel: APPLICATION_BUILD_MAX_INPUT_BYTES * WASM_FUEL_PER_INPUT_BYTE,
+        max_hostcall_bytes: 4 * 1024 * 1024,
+        max_host_diagnostic_bytes: 512,
+    };
+}
+
+/// The response limits the application build places in every lowerer and
+/// verifier request.
+///
+/// `max_total_response_bytes` counts every provider-authored byte: output
+/// artifacts, diagnostics, roles and paths. It equals the 1 MiB input cap
+/// (`APPLICATION_BUILD_MAX_INPUT_BYTES`), because the lowerer's package is
+/// sent back to the verifier as input. A package larger than the input cap
+/// could pass lowering and never be verifiable. The cap is within the host's
+/// 3 MiB `max_output_bytes`, which the host requires of every request.
+///
+/// The input cap is the binding limit: the verifier request also carries
+/// Core, Target IR and the other semantic inputs, so its size is about the
+/// lowerer request plus the package (issue #329 measured 80 to 100 extra
+/// bytes). A package that fits this cap can still overflow verifier input.
+/// The application build refuses that case before invoking the verifier.
+/// Raising the input cap is a separate change, together with fuel, which
+/// scales per input byte.
+pub const APPLICATION_BUILD_RESPONSE_LIMITS: ProviderResponseLimits = ProviderResponseLimits {
+    max_output_count: 1,
+    max_diagnostic_count: 8,
+    max_total_response_bytes: APPLICATION_BUILD_MAX_INPUT_BYTES,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DeniedResource {

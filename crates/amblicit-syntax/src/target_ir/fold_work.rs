@@ -2,6 +2,7 @@
 //!
 //! No compiler cost table or artifact-supplied estimate is trusted. Values are
 //! charged in portable 64-byte cells; imported work comes only from sealed facts.
+use super::effect_costs::{Charge, TargetEffectCostFact};
 use super::{
     expression_type_coordinate, is_typed_prelude_operation, resolved_core_type, CoreBlock,
     CoreBound, CoreBudget, CoreExpr, CoreIntent, CoreModule, CoreNode, CorePredicate,
@@ -9,6 +10,10 @@ use super::{
     MAX_CORE_GRAPH_DEPTH, MAX_CORE_TYPE_DEPTH,
 };
 use std::collections::BTreeMap;
+
+mod reachable;
+mod shared_reads;
+pub(crate) use shared_reads::SHARED_READS_CAPABILITY;
 
 #[derive(Clone, Copy, Default)]
 struct Cost {
@@ -75,35 +80,66 @@ fn scope<'a>(items: impl Iterator<Item = &'a LocalRef>) -> Scope<'a> {
     items.map(|local| (local.id.as_str(), local)).collect()
 }
 
-pub(super) fn intent_cost_fits(
+pub(crate) fn intent_cost_fits(
     core: &CoreModule,
     facts: &[TargetPureFunctionFact],
+    effect_costs: &[TargetEffectCostFact],
     intent: &CoreIntent,
 ) -> bool {
     if !core
         .required_core_capabilities
         .iter()
-        .any(|c| c == "core.fold/v1" || c == "core.list/v1")
+        .any(|c| c == "core.fold/v1" || c == "core.list/v1" || c == SHARED_READS_CAPABILITY)
     {
         return true;
     }
+    intent_work(core, facts, effect_costs, intent).is_some_and(|(steps, bytes)| {
+        steps <= intent.core_evaluation_budget.max_steps
+            && bytes <= intent.core_evaluation_budget.max_allocated_bytes
+    })
+}
+
+/// The intent's static (steps, allocated bytes), or `None` when unestablished.
+pub(crate) fn intent_work(
+    core: &CoreModule,
+    facts: &[TargetPureFunctionFact],
+    effect_costs: &[TargetEffectCostFact],
+    intent: &CoreIntent,
+) -> Option<(u64, u64)> {
     let mut meter = Meter {
+        effect_costs,
+        costliest: None,
+        costliest_known: false,
+        shared: core
+            .required_core_capabilities
+            .iter()
+            .any(|c| c == SHARED_READS_CAPABILITY),
         core,
         facts,
         visiting: Vec::new(),
         cached: BTreeMap::new(),
+        reach_env: BTreeMap::new(),
+        reach_cache: BTreeMap::new(),
     };
-    meter.intent(intent).is_some_and(|cost| {
-        cost.steps <= intent.core_evaluation_budget.max_steps
-            && cost.bytes <= intent.core_evaluation_budget.max_allocated_bytes
-    })
+    meter.intent(intent).map(|cost| (cost.steps, cost.bytes))
 }
 
 struct Meter<'a> {
+    /// Provider effect cost templates, by semantic effect coordinate.
+    effect_costs: &'a [TargetEffectCostFact],
+    /// The costliest source helper, computed once when a template needs it.
+    costliest: Option<(u64, u64)>,
+    costliest_known: bool,
+    /// `edict.core-cost/v2`: reads share values; only construction is sized.
+    shared: bool,
     core: &'a CoreModule,
     facts: &'a [TargetPureFunctionFact],
     visiting: Vec<&'a str>,
     cached: BTreeMap<&'a str, Cost>,
+    /// Shared-read schedule: proven list-length bounds of the current frame.
+    reach_env: BTreeMap<String, reachable::Reach>,
+    /// Shared-read schedule: call cost and result bounds by argument bounds.
+    reach_cache: BTreeMap<(&'a str, Vec<reachable::Reach>), (Cost, reachable::Reach)>,
 }
 
 impl<'a> Meter<'a> {
@@ -149,8 +185,9 @@ impl<'a> Meter<'a> {
                         .checked_add(label)?,
                 })
             }
-            CoreType::Option { .. }
-            | CoreType::Map { .. }
+            // A presence cell plus the largest present item; absence is one cell.
+            CoreType::Option { item } => Value::CELL.add(child(&item)?),
+            CoreType::Map { .. }
             | CoreType::CapabilityRef { .. }
             | CoreType::ExternalActionRequest { .. } => None,
         }
@@ -169,6 +206,7 @@ impl<'a> Meter<'a> {
             return None;
         }
         match shape {
+            Shape::Never => Some(Value { cells: 0, bytes: 0 }),
             Shape::Coordinate(ty) => self.value_type(ty, depth),
             Shape::EmptyList => Some(Value::CELL),
             Shape::Record(fields) => fields.iter().try_fold(Value::CELL, |total, (key, item)| {
@@ -189,12 +227,20 @@ impl<'a> Meter<'a> {
             return None;
         }
         match expr {
+            // A terminal failure returns no value. Its evaluation still costs
+            // one step through Value::evaluation; enclosing work stays charged.
+            CoreExpr::Fail { .. } => Some(Value { cells: 0, bytes: 0 }),
             CoreExpr::Const(CoreValue::Null) => Some(Value::CELL),
             CoreExpr::Field { base, field } => self.shape_value(
                 &super::field_expression_shape(self.core, self.facts, base, field, available)?,
                 0,
             ),
             CoreExpr::Record { fields } => {
+                fields.iter().try_fold(Value::CELL, |total, (key, expr)| {
+                    total.add(Self::field(key, self.value(expr, available, depth + 1)?)?)
+                })
+            }
+            CoreExpr::OrderedRecord { fields } => {
                 fields.iter().try_fold(Value::CELL, |total, (key, expr)| {
                     total.add(Self::field(key, self.value(expr, available, depth + 1)?)?)
                 })
@@ -259,12 +305,18 @@ impl<'a> Meter<'a> {
         self.visiting.push(name);
         let available = scope(function.params.iter().chain(&function.body.locals));
         let mut cost = Cost::steps(1);
-        for parameter in &function.params {
-            cost = cost.add(Cost::steps(self.value_type(&parameter.ty, 0)?.cells))?;
+        if self.shared {
+            // Arguments and the result are passed by reference.
+            let params = u64::try_from(function.params.len()).ok()?;
+            cost = cost.add(Cost::steps(params.checked_add(1)?))?;
+        } else {
+            for parameter in &function.params {
+                cost = cost.add(Cost::steps(self.value_type(&parameter.ty, 0)?.cells))?;
+            }
+            cost = cost.add(Cost::steps(
+                self.value_type(&function.return_type, 0)?.cells,
+            ))?;
         }
-        cost = cost.add(Cost::steps(
-            self.value_type(&function.return_type, 0)?.cells,
-        ))?;
         for binding in &function.body.bindings {
             cost = cost.add(self.expression(&binding.value, &available, 0)?)?;
         }
@@ -283,9 +335,13 @@ impl<'a> Meter<'a> {
         if depth > MAX_CORE_GRAPH_DEPTH {
             return None;
         }
-        let own = self.value(expr, available, depth)?.evaluation()?;
+        let own = if self.shared {
+            self.shared_own(expr, available, depth)?
+        } else {
+            self.value(expr, available, depth)?.evaluation()?
+        };
         let children = match expr {
-            CoreExpr::Local { .. } | CoreExpr::Const(_) => Cost::default(),
+            CoreExpr::Local { .. } | CoreExpr::Const(_) | CoreExpr::Fail { .. } => Cost::default(),
             CoreExpr::Field { base, .. } => self.expression(base, available, depth + 1)?,
             CoreExpr::Variant { payload, .. } => match payload {
                 Some(value) => self.expression(value, available, depth + 1)?,
@@ -293,6 +349,11 @@ impl<'a> Meter<'a> {
             },
             CoreExpr::Record { fields } => {
                 fields.values().try_fold(Cost::default(), |sum, expr| {
+                    sum.add(self.expression(expr, available, depth + 1)?)
+                })?
+            }
+            CoreExpr::OrderedRecord { fields } => {
+                fields.iter().try_fold(Cost::default(), |sum, (_, expr)| {
                     sum.add(self.expression(expr, available, depth + 1)?)
                 })?
             }
@@ -305,10 +366,15 @@ impl<'a> Meter<'a> {
                 bound,
                 ..
             } => {
-                let initial = self.expression(initial, available, depth + 1)?;
+                let initial_cost = self.expression(initial, available, depth + 1)?;
                 // A terminal/done flag is ordinary state: all N steps are charged.
-                let repeated = self.function(step)?.add(Cost::steps(1))?.times(*bound)?;
-                initial.add(repeated)?
+                let repeated = if self.shared {
+                    let start = self.reach(initial, available, depth + 1)?;
+                    self.fold_reach(start, step, *bound)?.0
+                } else {
+                    self.function(step)?.add(Cost::steps(1))?.times(*bound)?
+                };
+                initial_cost.add(repeated)?
             }
             CoreExpr::Call { callee, args, .. } => {
                 let arguments = args.iter().try_fold(Cost::default(), |sum, arg| {
@@ -334,6 +400,17 @@ impl<'a> Meter<'a> {
                     let mut inner = available.clone();
                     let mut storage = Cost::default();
                     if let Some(binder) = &arm.binder {
+                        if self.shared {
+                            // The payload binder is one shared reference.
+                            storage = Cost::steps(1);
+                            inner.insert(&binder.id, binder);
+                            selected = selected.maximum(storage.add(self.expression(
+                                &arm.body,
+                                &inner,
+                                depth + 1,
+                            )?)?);
+                            continue;
+                        }
                         // Payload-bound environments copy the surrounding frame.
                         for local in available.values() {
                             storage = storage.add(self.value_type(&local.ty, 0)?.evaluation()?)?;
@@ -350,8 +427,9 @@ impl<'a> Meter<'a> {
                         depth + 1,
                     )?)?);
                 }
+                let dispatch = if self.shared { 1 } else { value.cells };
                 before.add(selected)?.add(Cost::steps(
-                    value.cells.checked_add(u64::try_from(arms.len()).ok()?)?,
+                    dispatch.checked_add(u64::try_from(arms.len()).ok()?)?,
                 ))?
             }
         };
@@ -362,7 +440,7 @@ impl<'a> Meter<'a> {
         &mut self,
         callee: &'a str,
         args: &'a [CoreExpr],
-        expr: &CoreExpr,
+        expr: &'a CoreExpr,
         available: &Scope<'a>,
         depth: usize,
     ) -> Option<Cost> {
@@ -375,32 +453,14 @@ impl<'a> Meter<'a> {
             if matches.len() != 1 {
                 return None;
             }
-            let fact = matches[0];
-            if let Some(rule) = &fact.intrinsic_cost {
-                if args.len() != rule.per_argument_max.len() {
-                    return None;
-                }
-                let steps = args.iter().zip(&rule.per_argument_max).try_fold(
-                    rule.base,
-                    |sum, (arg, coefficient)| {
-                        if *coefficient == 0 {
-                            return Some(sum);
-                        }
-                        let maximum = self.sequence_max(arg, available, 0)?;
-                        sum.checked_add(coefficient.checked_mul(maximum)?)
-                    },
-                )?;
-                return Some(Cost::steps(steps));
+            let template = self.foreign_template(matches[0], args, available)?;
+            if self.shared {
+                return template.add(self.shared_foreign_copies(args, expr, available, depth)?);
             }
-            let CoreBudget {
-                max_steps,
-                max_allocated_bytes,
-                ..
-            } = fact.helper_cost.as_ref()?;
-            return Some(Cost {
-                steps: *max_steps,
-                bytes: *max_allocated_bytes,
-            });
+            return Some(template);
+        }
+        if self.shared && Self::has_shared_rule(callee) {
+            return self.shared_prelude(callee, expr, available, depth);
         }
         if is_typed_prelude_operation(callee) || callee == "core.string.concat" {
             let mut steps = 0_u64;
@@ -416,7 +476,48 @@ impl<'a> Meter<'a> {
             }
             return Some(Cost::steps(steps));
         }
+        if self.shared {
+            let mut arguments = Vec::with_capacity(args.len());
+            for arg in args {
+                arguments.push(self.reach(arg, available, depth + 1)?);
+            }
+            return Some(self.function_reach(callee, arguments)?.0);
+        }
         self.function(callee)
+    }
+
+    /// The declared cost template of one lawpack helper or target intrinsic.
+    fn foreign_template(
+        &self,
+        fact: &TargetPureFunctionFact,
+        args: &[CoreExpr],
+        available: &Scope<'_>,
+    ) -> Option<Cost> {
+        if let Some(rule) = &fact.intrinsic_cost {
+            if args.len() != rule.per_argument_max.len() {
+                return None;
+            }
+            let steps = args.iter().zip(&rule.per_argument_max).try_fold(
+                rule.base,
+                |sum, (arg, coefficient)| {
+                    if *coefficient == 0 {
+                        return Some(sum);
+                    }
+                    let maximum = self.sequence_max(arg, available, 0)?;
+                    sum.checked_add(coefficient.checked_mul(maximum)?)
+                },
+            )?;
+            return Some(Cost::steps(steps));
+        }
+        let CoreBudget {
+            max_steps,
+            max_allocated_bytes,
+            ..
+        } = fact.helper_cost.as_ref()?;
+        Some(Cost {
+            steps: *max_steps,
+            bytes: *max_allocated_bytes,
+        })
     }
 
     fn sequence_max(&self, expr: &CoreExpr, available: &Scope<'_>, depth: usize) -> Option<u64> {
@@ -424,6 +525,9 @@ impl<'a> Meter<'a> {
             return None;
         }
         match expr {
+            // Size charging sees no returned sequence; expression() separately
+            // retains the terminal failure's evaluation step.
+            CoreExpr::Fail { .. } => Some(0),
             CoreExpr::If {
                 then_value,
                 else_value,
@@ -500,7 +604,28 @@ impl<'a> Meter<'a> {
             return None;
         }
         let cost = match node {
-            CoreNode::Let { value, .. } => self.expression(value, available, depth + 1)?,
+            CoreNode::Let { binding, value } => {
+                let cost = self.expression(value, available, depth + 1)?;
+                if self.shared {
+                    let reach = self.reach(value, available, depth + 1)?;
+                    self.reach_env.insert(binding.id.clone(), reach);
+                }
+                cost
+            }
+            CoreNode::Attempt {
+                value, failure_map, ..
+            } => {
+                let cost = self.expression(value, available, depth + 1)?;
+                let mut selected = Cost::default();
+                for reason in failure_map.values() {
+                    let mut arm = Cost::default();
+                    for payload in reason.payload.values() {
+                        arm = arm.add(self.expression(payload, available, depth + 1)?)?;
+                    }
+                    selected = selected.maximum(arm);
+                }
+                cost.add(selected)?
+            }
             CoreNode::Require { predicate, arm } => {
                 let (CoreRequireFailureArm::Terminal { reason }
                 | CoreRequireFailureArm::ContinueObstructed { reason }) = arm;
@@ -514,11 +639,12 @@ impl<'a> Meter<'a> {
                 input,
                 binding,
                 obstruction_map,
-                ..
+                effect,
             } => {
                 let mut cost = self
                     .expression(input, available, depth + 1)?
-                    .add(self.value_type(&binding.ty, 0)?.evaluation()?)?;
+                    .add(self.value_type(&binding.ty, 0)?.evaluation()?)?
+                    .add(self.effect_template(effect, input, &binding.ty, available)?)?;
                 for arm in obstruction_map.values() {
                     // Nullary obstruction annotations are not callable helpers.
                     // Match the existing closed-authority rule only here; a
@@ -571,5 +697,138 @@ impl<'a> Meter<'a> {
             CoreNode::For { .. } | CoreNode::ExternalActionRequest { .. } => return None,
         };
         cost.add(Cost::steps(1))
+    }
+}
+
+impl Meter<'_> {
+    /// The provider template charge of one effect node; nothing without one.
+    fn effect_template(
+        &mut self,
+        effect: &str,
+        input: &CoreExpr,
+        output: &str,
+        available: &Scope<'_>,
+    ) -> Option<Cost> {
+        let Some(fact) = self.effect_costs.iter().find(|fact| fact.effect == effect) else {
+            return Some(Cost::default());
+        };
+        let input = expression_type_coordinate(self.core, self.facts, input, available)?;
+        if !self.costliest_known {
+            self.costliest = self.costliest_helper();
+            self.costliest_known = true;
+        }
+        let costliest = self.costliest;
+        let charge = Charge {
+            core: self.core,
+            input: &input,
+            output,
+            parameters: &fact.parameters,
+            costliest_helper: costliest,
+        };
+        let (steps, bytes) = charge.evaluate(&fact.rule)?;
+        Some(Cost { steps, bytes })
+    }
+
+    /// The largest (steps, bytes) of any one call to a source helper, under
+    /// the module's schedule, or `None` when some helper is unestablished.
+    fn costliest_helper(&mut self) -> Option<(u64, u64)> {
+        let names: Vec<String> = self
+            .core
+            .functions
+            .keys()
+            .map(|name| format!("{}.{name}", self.core.coordinate))
+            .collect();
+        let mut worst = Cost::default();
+        for callee in &names {
+            let name = callee
+                .strip_prefix(self.core.coordinate.as_str())?
+                .strip_prefix('.')?;
+            let (key, function) = self.core.functions.get_key_value(name)?;
+            let cost = if self.shared {
+                let arguments = vec![reachable::Reach::new(); function.params.len()];
+                self.function_reach(key, arguments)?.0
+            } else {
+                self.function(key)?
+            };
+            worst = worst.maximum(cost);
+        }
+        Some((worst.steps, worst.bytes))
+    }
+}
+
+/// The provider template work of an intent's effect nodes alone: each node
+/// once, a branch at its larger arm, a literal-bound loop body per iteration.
+pub(crate) fn effect_template_work(
+    core: &CoreModule,
+    facts: &[TargetPureFunctionFact],
+    effect_costs: &[TargetEffectCostFact],
+    intent: &CoreIntent,
+) -> Option<(u64, u64)> {
+    let mut meter = Meter {
+        effect_costs,
+        costliest: None,
+        costliest_known: false,
+        shared: core
+            .required_core_capabilities
+            .iter()
+            .any(|c| c == SHARED_READS_CAPABILITY),
+        core,
+        facts,
+        visiting: Vec::new(),
+        cached: BTreeMap::new(),
+        reach_env: BTreeMap::new(),
+        reach_cache: BTreeMap::new(),
+    };
+    let available = scope(intent.body.locals.iter());
+    meter
+        .template_block(&intent.body, &available, 0)
+        .map(|cost| (cost.steps, cost.bytes))
+}
+
+impl<'a> Meter<'a> {
+    fn template_block(
+        &mut self,
+        block: &'a CoreBlock,
+        outer: &Scope<'a>,
+        depth: usize,
+    ) -> Option<Cost> {
+        if depth > MAX_CORE_GRAPH_DEPTH {
+            return None;
+        }
+        let mut available = outer.clone();
+        available.extend(scope(block.locals.iter()));
+        let mut total = Cost::default();
+        for node in &block.nodes {
+            let cost = match node {
+                CoreNode::Effect {
+                    effect,
+                    input,
+                    binding,
+                    ..
+                } => self.effect_template(effect, input, &binding.ty, &available)?,
+                CoreNode::Branch {
+                    then_block,
+                    else_block,
+                    ..
+                } => self
+                    .template_block(then_block, &available, depth + 1)?
+                    .maximum(self.template_block(else_block, &available, depth + 1)?),
+                CoreNode::For {
+                    binder,
+                    bound: CoreBound::Literal(bound),
+                    body,
+                    ..
+                } => {
+                    let mut inner = available.clone();
+                    inner.insert(&binder.id, binder);
+                    self.template_block(body, &inner, depth + 1)?
+                        .times(*bound)?
+                }
+                CoreNode::For { .. } => return None,
+                _ => Cost::default(),
+            };
+            total = total.add(cost)?;
+        }
+        Some(total)
     }
 }

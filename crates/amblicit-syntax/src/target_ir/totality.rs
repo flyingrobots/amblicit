@@ -15,6 +15,9 @@ use crate::core_ir::{CoreBlock, MAX_CORE_GRAPH_DEPTH};
 pub(super) struct Scope<'a> {
     module: &'a CoreModule,
     local_bounds: RefCell<BTreeMap<String, (LocalRef, u64)>>,
+    /// Option presence facts of the enclosing statement-branch `then` blocks.
+    /// Only `core.option.unwrap` reads them; they are not general facts.
+    branch_presence: RefCell<Vec<CorePredicate>>,
 }
 
 impl<'a> Scope<'a> {
@@ -22,6 +25,7 @@ impl<'a> Scope<'a> {
         Self {
             module,
             local_bounds: RefCell::new(BTreeMap::new()),
+            branch_presence: RefCell::new(Vec::new()),
         }
     }
 
@@ -84,7 +88,7 @@ fn block_is_total_at_depth(
     // Proven bounds of earlier unsigned bindings extend the evaluation scope.
     block.nodes.iter().all(|node| {
         let total = node_is_total(core, node, constraints, depth);
-        if let CoreNode::Let { binding, value } = node {
+        if let CoreNode::Let { binding, value } | CoreNode::Attempt { binding, value, .. } = node {
             core.record_binding(binding, value, constraints);
         }
         total
@@ -100,6 +104,15 @@ fn node_is_total(
     match node {
         CoreNode::Let { value, .. } => {
             expression_is_total_at_depth(core, value, constraints, depth)
+        }
+        CoreNode::Attempt {
+            value, failure_map, ..
+        } => {
+            expression_is_total_at_depth(core, value, constraints, depth)
+                && failure_map
+                    .values()
+                    .flat_map(|reason| reason.payload.values())
+                    .all(|payload| expression_is_total_at_depth(core, payload, constraints, depth))
         }
         CoreNode::Require { predicate, arm } => {
             let (CoreRequireFailureArm::Terminal { reason }
@@ -145,8 +158,19 @@ fn node_is_total(
             else_block,
             ..
         } => {
+            // A statement branch gives its `then` block Option presence only,
+            // for `unwrap`; it adds no general fact (see the spec fact table).
+            let presence = super::option_operations::then_block_presence(predicate);
+            let pushed = presence.is_some();
+            if let Some(presence) = presence {
+                core.branch_presence.borrow_mut().push(presence);
+            }
+            let then_total = block_is_total_at_depth(core, then_block, constraints, depth + 1);
+            if pushed {
+                core.branch_presence.borrow_mut().pop();
+            }
             predicate_is_total_at_depth(core, predicate, constraints, depth)
-                && block_is_total_at_depth(core, then_block, constraints, depth + 1)
+                && then_total
                 && block_is_total_at_depth(core, else_block, constraints, depth + 1)
         }
     }
@@ -239,7 +263,7 @@ fn expression_is_total_at_depth(
         return false;
     }
     match expression {
-        CoreExpr::Local { .. } | CoreExpr::Const(_) => true,
+        CoreExpr::Local { .. } | CoreExpr::Const(_) | CoreExpr::Fail { .. } => true,
         CoreExpr::Fold { initial, .. } => {
             expression_is_total_at_depth(core, initial, constraints, depth + 1)
         }
@@ -258,6 +282,9 @@ fn expression_is_total_at_depth(
         CoreExpr::Record { fields } => fields
             .values()
             .all(|value| expression_is_total_at_depth(core, value, constraints, depth + 1)),
+        CoreExpr::OrderedRecord { fields } => fields
+            .iter()
+            .all(|(_, value)| expression_is_total_at_depth(core, value, constraints, depth + 1)),
         CoreExpr::List { values } => values
             .iter()
             .all(|value| expression_is_total_at_depth(core, value, constraints, depth + 1)),
@@ -280,9 +307,17 @@ fn expression_is_total_at_depth(
             type_args,
             args,
         } => {
+            // A source-function call is total only where its preconditions,
+            // instantiated with these arguments, follow from the facts here.
             if !args
                 .iter()
                 .all(|arg| expression_is_total_at_depth(core, arg, constraints, depth + 1))
+                || !super::function_preconditions::call_is_established(
+                    core.module(),
+                    callee,
+                    args,
+                    constraints,
+                )
             {
                 return false;
             }
@@ -295,6 +330,12 @@ fn expression_is_total_at_depth(
                         args,
                         constraints,
                     )
+                }
+                _ if super::option_operations::is_operation(callee) => {
+                    let presence = core.branch_presence.borrow();
+                    let mut facts = constraints.to_vec();
+                    facts.extend(presence.iter());
+                    super::option_operations::is_total(callee, args, &facts)
                 }
                 unsigned_addition::OPERATION => {
                     unsigned_addition::is_total(core, type_args, args, constraints)
@@ -319,17 +360,34 @@ fn expression_is_total_at_depth(
 /// the unsigned bindings before it.
 pub(super) fn bindings_are_total<'a>(
     module: &CoreModule,
+    preconditions: &[CorePredicate],
     bindings: impl IntoIterator<Item = (&'a crate::core_ir::LocalRef, &'a CoreExpr)>,
     result: &CoreExpr,
 ) -> bool {
     let core = &Scope::new(module);
+    // The body may assume its own preconditions: every call proves them.
+    let facts = preconditions.iter().collect::<Vec<_>>();
     for (binding, value) in bindings {
-        if !expression_is_total_at_depth(core, value, &[], 0) {
+        if !expression_is_total_at_depth(core, value, &facts, 0) {
             return false;
         }
-        core.record_binding(binding, value, &[]);
+        core.record_binding(binding, value, &facts);
     }
-    expression_is_total_at_depth(core, result, &[], 0)
+    expression_is_total_at_depth(core, result, &facts, 0)
+}
+
+/// Each precondition must itself be total, assuming the ones before it.
+pub(super) fn preconditions_are_total(
+    module: &CoreModule,
+    preconditions: &[CorePredicate],
+) -> bool {
+    let core = &Scope::new(module);
+    let mut earlier = Vec::new();
+    preconditions.iter().all(|precondition| {
+        let total = predicate_is_total_at_depth(core, precondition, &earlier, 0);
+        earlier.push(precondition);
+        total
+    })
 }
 
 #[cfg(test)]

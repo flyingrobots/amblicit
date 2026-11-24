@@ -3,6 +3,9 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+#[path = "provider_contract_pack/ordered_records.rs"]
+mod ordered_records;
+
 use cddl_cat::flatten::flatten_from_str;
 
 use amblicit_provider_schema::{
@@ -36,9 +39,21 @@ use sha2::{Digest, Sha256};
 const COMMON_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-common.cddl");
 const CORE_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-core.cddl");
 const PRE_FOLD_CORE_CDDL: &[u8] = include_bytes!("../../../fixtures/core/pre-fold-core.cddl");
+/// Core and Target IR schema bytes before typed function failures; the
+/// function-preconditions publication embeds these bytes.
+const PRE_TYPED_FAILURE_CORE_CDDL: &[u8] =
+    include_bytes!("../../../fixtures/core/pre-typed-failure-core.cddl");
+const PRE_TYPED_FAILURE_TARGET_IR_CDDL: &[u8] =
+    include_bytes!("../../../fixtures/target-ir/pre-typed-failure-target-ir.cddl");
+/// Core schema bytes before function `preconditions`; the bounded-state-fold
+/// publication embeds these bytes.
+const PRE_PRECONDITION_CORE_CDDL: &[u8] =
+    include_bytes!("../../../fixtures/core/pre-precondition-core.cddl");
 const LAWPACK_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-lawpack.cddl");
 const LAWPACK_ADAPTER_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-lawpack-adapter.cddl");
 const TARGET_PROFILE_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-target-profile.cddl");
+const PRE_CATALOG_V2_TARGET_PROFILE_CDDL: &[u8] =
+    include_bytes!("../../../fixtures/target-profile/pre-catalog-v2-target-profile.cddl");
 const AUTHORITY_FACTS_CDDL: &[u8] = include_bytes!("../../../docs/abi/edict-authority-facts.cddl");
 const RESULT_PROJECTION_CDDL: &[u8] =
     include_bytes!("../../../docs/abi/edict-result-projection.cddl");
@@ -49,6 +64,9 @@ const PRE_STRUCTURED_TARGET_IR_CDDL: &[u8] =
     include_bytes!("../../../fixtures/target-ir/pre-structured-target-ir.cddl");
 const STRUCTURED_TARGET_IR_FIXTURE: &[u8] =
     include_bytes!("../../../fixtures/target-ir/canonical/echo-structured-loop.target-ir.cbor");
+/// Loop and branches calling `echo.dpo@2` intrinsics under v3 (#319).
+const ECHO_DPO_2_STRUCTURED_TARGET_IR_FIXTURE: &[u8] =
+    include_bytes!("../../../fixtures/target-ir/canonical/echo-dpo-2-structured.target-ir.cbor");
 const CORE_FIXTURE: &[u8] =
     include_bytes!("../../../fixtures/core/canonical/bounded-hello.core.cbor");
 const EXTERNAL_REQUEST_CORE_FIXTURE: &[u8] =
@@ -378,6 +396,15 @@ fn structured_target_ir_schema_accepts_nested_order_entries() {
     }
 }
 
+#[test]
+fn structured_target_ir_schema_accepts_the_echo_dpo_2_golden() {
+    let pack = assemble(canonical_target_profile_contract_resources());
+    let value = decode_canonical_cbor(ECHO_DPO_2_STRUCTURED_TARGET_IR_FIXTURE)
+        .expect("canonical echo.dpo@2 v3 golden");
+    pack.validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &value)
+        .expect("v3 schema accepts the reviewed echo.dpo@2 encoder output");
+}
+
 /// Nested loops, a branch inside a loop and a loop inside a branch.
 const NESTED_STRUCTURED_SOURCE: &str = "package a.b@1;\n\
     type Leaf = { id: String<max=16>, };\n\
@@ -636,10 +663,10 @@ fn structured_iterable_schema_refuses_empty_aggregates() {
 #[test]
 fn published_target_ir_binding_constructs_the_production_registry_and_validates_v3() {
     const PUBLISHED_CDDL: &[u8] = include_bytes!(
-        "../../../fixtures/provider-contracts/bounded-state-fold-v1/edict-provider-contracts.cddl"
+        "../../../fixtures/provider-contracts/typed-failures-v1/edict-provider-contracts.cddl"
     );
     const PUBLISHED_MANIFEST: &[u8] =
-        include_bytes!("../../../fixtures/provider-contracts/bounded-state-fold-v1/manifest.json");
+        include_bytes!("../../../fixtures/provider-contracts/typed-failures-v1/manifest.json");
 
     // The in-memory pack is exactly the published publication, so its typed
     // manifest carries the published domain bindings.
@@ -717,11 +744,11 @@ fn published_target_ir_binding_constructs_the_production_registry_and_validates_
 
 #[test]
 fn source_module_publication_is_reproduced_from_frozen_target_ir_schema() {
-    let old = assemble_provider_contract_pack(ProviderContractPackInput {
+    let old = assemble_provider_contract_pack(before_catalog_v2(ProviderContractPackInput {
         core_cddl: PRE_FOLD_CORE_CDDL,
         target_ir_cddl: PRE_STRUCTURED_TARGET_IR_CDDL,
         ..input(canonical_target_profile_contract_resources())
-    })
+    }))
     .unwrap();
     assert_eq!(
         old.cddl_bytes(),
@@ -1248,6 +1275,16 @@ fn input(resources: Vec<TargetProfileContractResource>) -> ProviderContractPackI
     }
 }
 
+/// Publications that predate catalog v2 embed the frozen target-profile schema.
+fn before_catalog_v2(
+    input: ProviderContractPackInput<'static>,
+) -> ProviderContractPackInput<'static> {
+    ProviderContractPackInput {
+        target_profile_cddl: PRE_CATALOG_V2_TARGET_PROFILE_CDDL,
+        ..input
+    }
+}
+
 fn input_with(
     core_cddl: &'static [u8],
     target_ir_cddl: &'static [u8],
@@ -1449,6 +1486,7 @@ fn encoded_target_ir_with_pure_binding() -> CanonicalValue {
             width: "U64".to_owned(),
             value: "1".to_owned(),
         }),
+        failure_arms: std::collections::BTreeMap::new(),
     });
     intent.result = CoreExpr::Local { reference: binding };
     encode_target_ir_value(&artifact)
@@ -1614,7 +1652,7 @@ fn target_profile_manifest() -> CanonicalValue {
 
 fn intrinsics_document() -> CanonicalValue {
     map(vec![
-        ("apiVersion", text("edict.target-profile.intrinsics/v1")),
+        ("apiVersion", text("edict.target-profile.intrinsics/v2")),
         ("intrinsics", map(vec![])),
     ])
 }
@@ -1731,11 +1769,11 @@ fn source_function_contract_preserves_old_modules_and_requires_new_schema_select
         let core = compile_to_core(&parse_module(source).unwrap(), &context).unwrap();
         decode_canonical_cbor(&encode_core_module(&core).unwrap()).unwrap()
     });
-    let old = assemble_provider_contract_pack(input_with(
+    let old = assemble_provider_contract_pack(before_catalog_v2(input_with(
         include_bytes!("../../../fixtures/lang/functions/legacy-core.cddl"),
         PRE_STRUCTURED_TARGET_IR_CDDL,
         canonical_target_profile_contract_resources(),
-    ))
+    )))
     .unwrap();
     let new = assemble(canonical_target_profile_contract_resources());
     assert_ne!(old.raw_sha256(), new.raw_sha256());
@@ -1782,11 +1820,11 @@ fn source_closure_contract_has_its_own_domain_and_closed_typed_wire() {
     let value = representative_source_closure();
     pack.validate_domain(SOURCE_CLOSURE_DIGEST_DOMAIN, &value)
         .expect("source closure publication has a distinct typed domain");
-    let old = assemble_provider_contract_pack(input_with(
+    let old = assemble_provider_contract_pack(before_catalog_v2(input_with(
         PRE_FOLD_CORE_CDDL,
         PRE_STRUCTURED_TARGET_IR_CDDL,
         canonical_target_profile_contract_resources(),
-    ))
+    )))
     .unwrap();
     assert_eq!(old.cddl_bytes(), include_bytes!("../../../fixtures/provider-contracts/source-functions-v1/edict-provider-contracts.cddl"));
     assert_eq!(
@@ -1889,10 +1927,11 @@ fn source_closure_domain_enforces_typed_digest_and_module_count_boundaries() {
 
 #[test]
 fn fold_contract_requires_new_schema_selection() {
-    let old = assemble_provider_contract_pack(ProviderContractPackInput {
+    let old = assemble_provider_contract_pack(before_catalog_v2(ProviderContractPackInput {
         core_cddl: PRE_FOLD_CORE_CDDL,
+        target_ir_cddl: PRE_TYPED_FAILURE_TARGET_IR_CDDL,
         ..input(canonical_target_profile_contract_resources())
-    })
+    }))
     .expect("frozen structured-control pack");
     assert_eq!(old.cddl_bytes(), include_bytes!("../../../fixtures/provider-contracts/structured-control-v1/edict-provider-contracts.cddl"));
     assert_eq!(
@@ -1932,6 +1971,159 @@ fn fold_contract_requires_new_schema_selection() {
     remove_map_field(map_value_mut(map_value_mut(run, "body"), "result"), "step");
     assert_eq!(
         current.validate_domain(CORE_MODULE_DIGEST_DOMAIN, &missing_step),
+        Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+    );
+}
+
+#[test]
+fn typed_failure_contract_requires_new_schema_selection() {
+    let old = assemble_provider_contract_pack(before_catalog_v2(ProviderContractPackInput {
+        core_cddl: PRE_TYPED_FAILURE_CORE_CDDL,
+        target_ir_cddl: PRE_TYPED_FAILURE_TARGET_IR_CDDL,
+        ..input(canonical_target_profile_contract_resources())
+    }))
+    .expect("frozen function-preconditions pack");
+    assert_eq!(
+        old.cddl_bytes(),
+        include_bytes!(
+            "../../../fixtures/provider-contracts/function-preconditions-v1/edict-provider-contracts.cddl"
+        )
+    );
+    assert_eq!(
+        old.manifest_bytes(),
+        include_bytes!(
+            "../../../fixtures/provider-contracts/function-preconditions-v1/manifest.json"
+        )
+    );
+    let source = include_str!("../../../fixtures/lang/functions/pure-typed-failure.amblicit");
+    let budget = CoreBudget {
+        max_steps: 65_536,
+        max_allocated_bytes: 1_048_576,
+        max_output_bytes: 65_536,
+    };
+    let context = CompilerContext::new()
+        .with_operation_profile("text.replaceRange", "continuum.profile.read-only/v1")
+        .with_budget("text.replaceRangeBudget", budget);
+    let core = compile_to_core(&parse_module(source).unwrap(), &context).unwrap();
+    let core_value = decode_canonical_cbor(&encode_core_module(&core).unwrap()).unwrap();
+    let report = lower_to_target_ir(
+        &core,
+        &TargetIrLoweringFacts {
+            target_profile: ResourceRef {
+                coordinate: ECHO_DPO_TARGET_PROFILE.to_owned(),
+                digest: Some(format!("sha256:{}", "1".repeat(64))),
+            },
+            target_ir_domain: "echo.span-ir/v2".to_owned(),
+            operation_profiles: vec!["continuum.profile.read-only/v1".to_owned()],
+            obstruction_coordinates: Vec::new(),
+            effect_lowerings: Vec::new(),
+            effect_signatures: Vec::new(),
+            pure_functions: Vec::new(),
+        },
+    );
+    let artifact = report
+        .artifact
+        .expect("ordered artifact with a failure-mapped binding");
+    assert!(artifact.semantic_closure.is_some());
+    let target_value =
+        decode_canonical_cbor(&encode_target_ir_artifact(&artifact).unwrap()).unwrap();
+    for (domain, value) in [
+        (CORE_MODULE_DIGEST_DOMAIN, &core_value),
+        (TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &target_value),
+    ] {
+        assert_eq!(
+            old.validate_domain(domain, value),
+            Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch),
+            "{domain}"
+        );
+    }
+    let current = assemble(canonical_target_profile_contract_resources());
+    assert_ne!(old.raw_sha256(), current.raw_sha256());
+    current
+        .validate_domain(CORE_MODULE_DIGEST_DOMAIN, &core_value)
+        .expect("new schema accepts failure-bearing Core");
+    current
+        .validate_domain(TARGET_IR_ARTIFACT_DIGEST_DOMAIN, &target_value)
+        .expect("new schema accepts failure arms on ordered pure bindings");
+    let mut unmapped = core_value;
+    let intent = map_value_mut(map_value_mut(&mut unmapped, "intents"), "evaluate");
+    let CanonicalValue::Array(nodes) = map_value_mut(map_value_mut(intent, "body"), "nodes") else {
+        panic!("Core nodes are an array")
+    };
+    remove_map_field(&mut nodes[0], "failureMap");
+    assert_eq!(
+        current.validate_domain(CORE_MODULE_DIGEST_DOMAIN, &unmapped),
+        Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+    );
+}
+
+/// Oracle: `docs/abi/edict-core.cddl` (EDICT-CORE-FN-PRECONDITION-001). The
+/// earlier publication stays byte-identical and refuses the new field.
+#[test]
+fn precondition_contract_requires_new_schema_selection() {
+    let old = assemble_provider_contract_pack(before_catalog_v2(ProviderContractPackInput {
+        core_cddl: PRE_PRECONDITION_CORE_CDDL,
+        target_ir_cddl: PRE_TYPED_FAILURE_TARGET_IR_CDDL,
+        ..input(canonical_target_profile_contract_resources())
+    }))
+    .expect("frozen bounded-state-fold pack");
+    assert_eq!(
+        old.cddl_bytes(),
+        include_bytes!(
+            "../../../fixtures/provider-contracts/bounded-state-fold-v1/edict-provider-contracts.cddl"
+        )
+    );
+    assert_eq!(
+        old.manifest_bytes(),
+        include_bytes!("../../../fixtures/provider-contracts/bounded-state-fold-v1/manifest.json")
+    );
+    let source = include_str!("../../../fixtures/lang/functions/function-precondition.amblicit");
+    let budget = CoreBudget {
+        max_steps: 512,
+        max_allocated_bytes: 8192,
+        max_output_bytes: 4096,
+    };
+    let context = CompilerContext::new()
+        .with_operation_profile("text.replaceRange", "continuum.profile.read-only/v1")
+        .with_budget("text.replaceRangeBudget", budget);
+    let encode = |source: &str| {
+        let core = compile_to_core(&parse_module(source).unwrap(), &context).unwrap();
+        decode_canonical_cbor(&encode_core_module(&core).unwrap()).unwrap()
+    };
+    let baseline = encode(
+        &source
+            .replace(
+                "  where start <= end, end <= len(bytes), start <= len(bytes)\n",
+                "",
+            )
+            .replace("slice(bytes, start, end)", "bytes"),
+    );
+    old.validate_domain(CORE_MODULE_DIGEST_DOMAIN, &baseline)
+        .expect("old publication accepts the precondition-free control");
+    let value = encode(source);
+    assert_eq!(
+        old.validate_domain(CORE_MODULE_DIGEST_DOMAIN, &value),
+        Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
+    );
+    let current = assemble(canonical_target_profile_contract_resources());
+    assert_ne!(old.raw_sha256(), current.raw_sha256());
+    current
+        .validate_domain(CORE_MODULE_DIGEST_DOMAIN, &value)
+        .expect("new schema accepts function preconditions");
+
+    let mut empty = value;
+    let CanonicalValue::Map(fields) = map_value_mut(map_value_mut(&mut empty, "functions"), "cut")
+    else {
+        panic!("function entry is a map")
+    };
+    let preconditions = fields
+        .iter_mut()
+        .find(|(key, _)| *key == CanonicalValue::Text("preconditions".into()))
+        .map(|(_, value)| value)
+        .expect("preconditions field");
+    *preconditions = CanonicalValue::Array(Vec::new());
+    assert_eq!(
+        current.validate_domain(CORE_MODULE_DIGEST_DOMAIN, &empty),
         Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch)
     );
 }

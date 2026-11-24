@@ -76,6 +76,7 @@ pub mod canonical;
 pub mod compiler;
 pub mod contract_bundle;
 pub mod core_ir;
+mod cost_schedule;
 pub mod highlight;
 pub mod lawpack;
 pub mod lawpack_adapter;
@@ -145,8 +146,10 @@ pub use core_ir::{
     CoreModule, CoreNode, CoreObstructionArm, CoreObstructionReason, CorePredicate,
     CorePureBinding, CorePureBlock, CoreRequireFailureArm, CoreType, CoreTypeIntegrityFailure,
     CoreTypeIntegrityFailureKind, CoreValue, InputConstraint, InputConstraintSource, LocalRef,
-    ResourceRef, ValidatedCoreModule, CORE_API_VERSION,
+    ResourceRef, ValidatedCoreModule, CORE_API_VERSION, MAX_FUNCTION_PRECONDITION_CONJUNCTS,
+    MAX_FUNCTION_PRECONDITION_NODES,
 };
+pub use cost_schedule::CoreCostSchedule;
 pub use highlight::{highlight_source, HighlightRole, HighlightToken};
 pub use lawpack::{
     decode_lawpack_bundle, validate_lawpack_dependency_graph, LawpackApertureRequirement,
@@ -233,18 +236,20 @@ pub use result_projection::{
 };
 pub use semantic::{validate_module, validate_surface, SemanticError, SemanticErrorKind};
 pub use target_intrinsics::{
-    admit_target_pure_intrinsics, digest_target_intrinsics_catalog, RequiredPureIntrinsic,
-    TargetPureIntrinsicFact, TargetPureIntrinsicFailure, TargetPureIntrinsicFailureKind,
-    TARGET_INTRINSICS_API_VERSION,
+    admit_target_effect_costs, admit_target_pure_intrinsics, digest_target_intrinsics_catalog,
+    RequiredPureIntrinsic, TargetPureIntrinsicFact, TargetPureIntrinsicFailure,
+    TargetPureIntrinsicFailureKind, TARGET_INTRINSICS_API_VERSION,
+    TARGET_INTRINSICS_EFFECT_COST_API_VERSION,
 };
+pub use target_ir::effect_costs::{TargetEffectCostFact, TargetEffectCostRule};
 pub use target_ir::{
     lower_to_target_ir, TargetEffectLowering, TargetEffectSignatureFact, TargetIrArtifact,
     TargetIrBranchEntry, TargetIrExternalActionRequest, TargetIrForEntry, TargetIrIntent,
     TargetIrLoweringFacts, TargetIrOrderEntry, TargetIrPureBinding, TargetIrRequireFailure,
     TargetIrRequirement, TargetIrSemanticClosure, TargetIrStep, TargetLoweringFailure,
     TargetLoweringFailureKind, TargetLoweringReport, TargetLoweringStatus, TargetPureFunctionFact,
-    ECHO_DPO_TARGET_PROFILE, ECHO_ORDERED_SPAN_IR_DOMAIN, ECHO_SPAN_IR_DOMAIN,
-    ECHO_STRUCTURED_SPAN_IR_DOMAIN, GITWARP_COMMIT_REDUCER_IR_DOMAIN,
+    ECHO_DPO_2_TARGET_PROFILE, ECHO_DPO_TARGET_PROFILE, ECHO_ORDERED_SPAN_IR_DOMAIN,
+    ECHO_SPAN_IR_DOMAIN, ECHO_STRUCTURED_SPAN_IR_DOMAIN, GITWARP_COMMIT_REDUCER_IR_DOMAIN,
     GITWARP_REF_CRDT_TARGET_PROFILE,
 };
 pub use target_profile::{

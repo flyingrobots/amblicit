@@ -1316,6 +1316,12 @@ fn compiler_error_kind_name(kind: CompilerErrorKind) -> &'static str {
         CompilerErrorKind::DuplicateObstructionPayloadField => "DuplicateObstructionPayloadField",
         CompilerErrorKind::ReservedTypeIdentity => "ReservedTypeIdentity",
         CompilerErrorKind::InvalidCoreTypeIntegrity => "InvalidCoreTypeIntegrity",
+        CompilerErrorKind::UnknownFailure => "UnknownFailure",
+        CompilerErrorKind::UndeclaredFailure => "UndeclaredFailure",
+        CompilerErrorKind::UnraisedFailure => "UnraisedFailure",
+        CompilerErrorKind::UnhandledFailure => "UnhandledFailure",
+        CompilerErrorKind::IncompleteFailureMapping => "IncompleteFailureMapping",
+        CompilerErrorKind::UnprovenPrecondition => "UnprovenPrecondition",
     }
 }
 
@@ -1335,17 +1341,26 @@ fn core_review(core: &amblicit_syntax::CoreModule) -> Value {
         "requiredCoreCapabilities": core.required_core_capabilities,
     });
     if !core.functions.is_empty() {
-        review["functions"] = Value::Object(core.functions.iter().map(|(name, function)| (name.clone(), json!({
-            "params": function.params.iter().map(local_ref_review).collect::<Vec<_>>(),
-            "returnType": function.return_type,
-            "body": {
-                "locals": function.body.locals.iter().map(local_ref_review).collect::<Vec<_>>(),
-                "bindings": function.body.bindings.iter().map(|binding| json!({
-                    "kind": "let", "binding": local_ref_review(&binding.binding), "value": core_expr_review(&binding.value)
-                })).collect::<Vec<_>>(),
-                "result": core_expr_review(&function.body.result)
+        review["functions"] = Value::Object(core.functions.iter().map(|(name, function)| {
+            let mut entry = json!({
+                "params": function.params.iter().map(local_ref_review).collect::<Vec<_>>(),
+                "returnType": function.return_type,
+                "body": {
+                    "locals": function.body.locals.iter().map(local_ref_review).collect::<Vec<_>>(),
+                    "bindings": function.body.bindings.iter().map(|binding| json!({
+                        "kind": "let", "binding": local_ref_review(&binding.binding), "value": core_expr_review(&binding.value)
+                    })).collect::<Vec<_>>(),
+                    "result": core_expr_review(&function.body.result)
+                }
+            });
+            if !function.preconditions.is_empty() {
+                entry["preconditions"] = function.preconditions.iter().map(core_predicate_review).collect();
             }
-        }))).collect());
+            if !function.failures.is_empty() {
+                entry["failures"] = json!(function.failures);
+            }
+            (name.clone(), entry)
+        }).collect());
     }
     review
 }
@@ -1450,11 +1465,24 @@ fn target_ir_intent_review(intent: &TargetIrIntent) -> Value {
             Some(json!(intent
                 .pure_bindings
                 .iter()
-                .map(|binding| json!({
-                    "id": binding.id,
-                    "binding": local_ref_review(&binding.binding),
-                    "value": core_expr_review(&binding.value),
-                }))
+                .map(|binding| {
+                    let mut review = json!({
+                        "id": binding.id,
+                        "binding": local_ref_review(&binding.binding),
+                        "value": core_expr_review(&binding.value),
+                    });
+                    if !binding.failure_arms.is_empty() {
+                        review["failureArms"] = json!(binding
+                            .failure_arms
+                            .iter()
+                            .map(|(failure, reason)| (
+                                failure.clone(),
+                                core_obstruction_reason_review(reason),
+                            ))
+                            .collect::<BTreeMap<_, _>>());
+                    }
+                    review
+                })
                 .collect::<Vec<_>>())),
         );
     }
@@ -1646,6 +1674,19 @@ fn core_node_review(node: &CoreNode) -> Value {
             "binding": local_ref_review(binding),
             "value": core_expr_review(value),
         }),
+        CoreNode::Attempt {
+            binding,
+            value,
+            failure_map,
+        } => json!({
+            "kind": "attempt",
+            "binding": local_ref_review(binding),
+            "value": core_expr_review(value),
+            "failureMap": failure_map
+                .iter()
+                .map(|(failure, reason)| (failure.clone(), core_obstruction_reason_review(reason)))
+                .collect::<BTreeMap<_, _>>(),
+        }),
         CoreNode::Require { predicate, arm } => json!({
             "kind": "require",
             "predicate": core_predicate_review(predicate),
@@ -1770,6 +1811,7 @@ fn local_ref_review(reference: &amblicit_syntax::LocalRef) -> Value {
 
 fn core_expr_review(expr: &CoreExpr) -> Value {
     match expr {
+        CoreExpr::Fail { failure } => json!({ "kind": "fail", "failure": failure }),
         CoreExpr::Local { reference } => json!({
             "kind": "local",
             "reference": local_ref_review(reference),
@@ -1809,6 +1851,13 @@ fn core_expr_review(expr: &CoreExpr) -> Value {
                 .iter()
                 .map(|(name, value)| (name.clone(), core_expr_review(value)))
                 .collect::<BTreeMap<_, _>>(),
+        }),
+        CoreExpr::OrderedRecord { fields } => json!({
+            "kind": "orderedRecord",
+            "fields": fields.iter().map(|(name, value)| json!({
+                "name": name,
+                "value": core_expr_review(value),
+            })).collect::<Vec<_>>(),
         }),
         CoreExpr::List { values } => json!({
             "kind": "list",
@@ -2438,6 +2487,7 @@ fn write_application_source_failure(
                         SourceLinkErrorKind::ImportedIntent => "ImportedIntent",
                         SourceLinkErrorKind::NameCollision => "NameCollision",
                         SourceLinkErrorKind::SpanOverflow => "SpanOverflow",
+                        SourceLinkErrorKind::ConflictingTargetImport => "ConflictingTargetImport",
                         SourceLinkErrorKind::DepthExceeded => "DepthExceeded",
                         SourceLinkErrorKind::ReservedTypeIdentity => "ReservedTypeIdentity",
                     };

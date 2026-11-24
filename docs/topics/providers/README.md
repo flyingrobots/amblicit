@@ -114,19 +114,58 @@ Controls whose nested rule graph is opaque through the schema dependency, such
 as `.cbor`, reject with a stable unsupported-control failure rather than being
 accepted without a complete closure proof.
 The checked Rust-neutral artifacts live under
-[`fixtures/provider-contracts/bounded-state-fold-v1/`](../../../fixtures/provider-contracts/bounded-state-fold-v1/):
+[`fixtures/provider-contracts/typed-failures-v1/`](../../../fixtures/provider-contracts/typed-failures-v1/):
 one self-contained Apache-2.0 CDDL file and one deterministic manifest mapping
-logical contracts and provider artifact domains to exact roots. The prior
+logical contracts and provider artifact domains to exact roots. The current
+typed-failure publication is cumulative: it includes the catalog-v2
+`intrinsics-document` root and function-precondition Core schema, then adds
+typed-failure Core and Target IR shapes. The prior
 [function-free v1 publication](../../../fixtures/provider-contracts/v1/),
 [source-function publication](../../../fixtures/provider-contracts/source-functions-v1/),
 [source-module publication](../../../fixtures/provider-contracts/source-modules-v1/),
-and [structured-control publication](../../../fixtures/provider-contracts/structured-control-v1/)
-remain byte-identical for explicitly pinned consumers; tests reassemble them
-from `fixtures/core/pre-fold-core.cddl` (or the earlier function-free Core
-schema) and, where applicable, the frozen pre-v3 Target IR schema in
-`fixtures/target-ir/pre-structured-target-ir.cddl`. The fold-capable publication
-adds the explicit `fold` Core expression; consumers must select its new schema
-digest. Capability, state and cost checks remain separate semantic gates.
+[structured-control publication](../../../fixtures/provider-contracts/structured-control-v1/),
+[bounded-state-fold publication](../../../fixtures/provider-contracts/bounded-state-fold-v1/),
+[function-preconditions publication](../../../fixtures/provider-contracts/function-preconditions-v1/),
+and [pure-intrinsic-catalog publication](../../../fixtures/provider-contracts/pure-intrinsic-catalog-v1/)
+remain byte-identical for explicitly pinned consumers. Tests reassemble them
+from `fixtures/core/pre-typed-failure-core.cddl` and
+the frozen v2 target-profile schema in
+`fixtures/target-profile/pre-catalog-v2-target-profile.cddl` and, where
+applicable, `fixtures/core/pre-precondition-core.cddl`,
+`fixtures/core/pre-fold-core.cddl` (or the earlier function-free Core schema)
+and the frozen Target IR schema appropriate to each publication, including
+`fixtures/target-ir/pre-structured-target-ir.cddl` and
+`fixtures/target-ir/pre-typed-failure-target-ir.cddl`. The frozen
+pure-intrinsic-catalog publication changes the `intrinsics-document` root, bound to the
+`target-profile-intrinsics` contract, to admit
+`edict.target-profile.intrinsics/v2` catalogs: every pure intrinsic, called or
+not, is monomorphic and carries a non-empty `contractVersion` and a `costRule`,
+and the catalog may publish provider-owned `types`. It also carries the
+function-precondition Core schema. It refuses a v1 catalog, and the earlier
+v1-catalog publications refuse a v2 catalog, so a provider whose source programs
+call pure intrinsics must select this publication or the frozen catalog-v2
+publication. The schema fixes catalog shape only; the remaining checks stay
+with `admit_target_pure_intrinsics`. For the whole catalog, admission checks the
+pinned digest, the top-level fields and every `types` definition. Its
+per-contract checks (contract version, field shape, the intrinsic's namespace,
+signature type resolution and cost coefficients) run only on the required
+contracts. So admission can admit facts from a catalog this pack refuses, and
+an uncalled pure intrinsic can break an admission-only rule while passing both
+checks. A provider validates its catalog against the selected pack before
+pinning it. The frozen `pure-intrinsic-catalog-v1` publication has its own
+pre-typed-failure CDDL and manifest bytes; the current typed-failure publication
+retains the same catalog-v2 contract.
+The fold-capable publication adds the explicit `fold` Core expression; the
+precondition publication adds the optional nonempty `preconditions` predicate
+list on a source function. Consumers must select a new schema digest to accept
+either; an earlier pack refuses the field with a schema mismatch. Accepting the
+field in a schema is not support for it: a consumer must implement the
+contract in the language specification's Function Preconditions section or
+refuse. Capability, state and cost checks remain separate semantic gates.
+The typed-failure publication adds a function's optional `failures`, the
+`fail` Core expression and the `attempt` Core node, and optional `failureArms`
+on ordered (v2) and structured (v3) Target IR pure bindings. Consumers must
+select its new schema digest; schema acceptance is not runtime support.
 The structured-control publication adds the `echo.span-ir/v3` variant of the `target-ir-artifact`
 root, with recursive `for` and `branch` order entries discriminated by their
 literal `kind`; it accepts actual v3 encoder output and refuses missing or
@@ -249,7 +288,17 @@ types so neither world can claim the other's evidence roles. Deterministic
 response limits cross the ABI. The component host separately enforces
 WIT-logical input bytes, the request-authorized logical output ceiling, provider
 diagnostic bytes, Wasmtime guest-to-host lifting fuel, linear memory, tables,
-instances, memories, Wasm fuel, and bounded engine diagnostics. Component
+instances, memories, Wasm fuel, and bounded engine diagnostics. The
+application build uses `ProviderHostLimits::APPLICATION_BUILD`, whose fuel
+ceiling is its 1 MiB input cap times 4,096 fuel per input byte
+(4,294,967,296); the derivation is in
+[architecture.md](architecture.md#application-build-fuel). Its requests cap
+each response at the 1 MiB verifier input cap, and a package that would
+overflow verifier input is refused with `ProviderPackageExceedsVerifierInput`
+before verification; see
+[architecture.md](architecture.md#application-build-response-limit). Guest
+memory is capped at the input cap times 64, 64 MiB; see
+[architecture.md](architecture.md#application-build-guest-memory). Component
 outputs carry role-tagged bytes and an optional logical path, but no digest. The
 pure validator checks canonicality and logical-path syntax and computes
 authoritative output identity before the host exposes it. Typed provider refusal

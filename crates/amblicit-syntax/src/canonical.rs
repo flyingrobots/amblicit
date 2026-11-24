@@ -499,6 +499,25 @@ fn target_ir_order_error() -> CanonicalError {
     )
 }
 
+/// A v3 step must name an intrinsic of its artifact's selected profile.
+fn check_target_ir_step_intrinsics(
+    artifact: &TargetIrArtifact,
+    intent: &TargetIrIntent,
+) -> Result<(), CanonicalError> {
+    if crate::target_ir::execution_order::intent_steps_name_selected_intrinsics(
+        &artifact.domain,
+        &artifact.target_profile,
+        intent,
+    ) {
+        Ok(())
+    } else {
+        Err(CanonicalError::new(
+            CanonicalErrorKind::UnsupportedValue,
+            "Target IR step intrinsic is outside its selected target profile",
+        ))
+    }
+}
+
 fn target_ir_closure_required_error() -> CanonicalError {
     CanonicalError::new(
         CanonicalErrorKind::UnsupportedValue,
@@ -593,6 +612,9 @@ fn target_ir_artifact_value(artifact: &TargetIrArtifact) -> Result<CanonicalValu
             "Target IR source Core coordinate is empty",
         ));
     }
+    for intent in artifact.intents.values() {
+        check_target_ir_step_intrinsics(artifact, intent)?;
+    }
     if artifact.semantic_closure.is_none()
         && artifact
             .intents
@@ -657,6 +679,7 @@ pub(crate) fn check_target_ir_intent(
     ) {
         return Err(target_ir_order_error());
     }
+    check_target_ir_step_intrinsics(artifact, intent)?;
     match &artifact.semantic_closure {
         None if target_ir_intent_requires_closure(intent) => {
             return Err(target_ir_closure_required_error());
@@ -917,11 +940,20 @@ fn target_ir_order_value(
 fn target_ir_pure_binding_value(
     binding: &TargetIrPureBinding,
 ) -> Result<CanonicalValue, CanonicalError> {
-    Ok(map([
+    let mut entries = vec![
         ("id", text(&binding.id)),
         ("binding", local_ref_value(&binding.binding)),
         ("value", core_expr_value(&binding.value)?),
-    ]))
+    ];
+    if !binding.failure_arms.is_empty() {
+        entries.push((
+            "failureArms",
+            string_map_results(binding.failure_arms.iter().map(|(failure, reason)| {
+                Ok((failure.as_str(), core_obstruction_reason_value(reason)?))
+            }))?,
+        ));
+    }
+    Ok(map(entries))
 }
 
 fn target_ir_external_action_request_value(
@@ -1080,7 +1112,17 @@ fn core_module_value(module: &CoreModule) -> Result<CanonicalValue, CanonicalErr
 fn core_function_value(
     function: &crate::core_ir::CoreFunction,
 ) -> Result<CanonicalValue, CanonicalError> {
-    Ok(map([
+    // Preconditions keep source order and are omitted when absent, so every
+    // precondition-free function keeps its earlier canonical bytes.
+    let preconditions = if function.preconditions.is_empty() {
+        None
+    } else {
+        Some((
+            "preconditions",
+            array_results(function.preconditions.iter().map(core_predicate_value))?,
+        ))
+    };
+    let mut entries = vec![
         ("params", array(function.params.iter().map(local_ref_value))),
         ("returnType", text(&function.return_type)),
         (
@@ -1103,7 +1145,15 @@ fn core_function_value(
                 ("result", core_expr_value(&function.body.result)?),
             ]),
         ),
-    ]))
+    ];
+    entries.extend(preconditions);
+    if !function.failures.is_empty() {
+        entries.push((
+            "failures",
+            array(function.failures.iter().map(|failure| text(failure))),
+        ));
+    }
+    Ok(map(entries))
 }
 
 fn collect_request_operations<'a>(
@@ -1131,7 +1181,10 @@ fn collect_request_operations<'a>(
                 collect_request_operations(then_block, out, depth + 1)?;
                 collect_request_operations(else_block, out, depth + 1)?;
             }
-            CoreNode::Let { .. } | CoreNode::Require { .. } | CoreNode::Effect { .. } => {}
+            CoreNode::Let { .. }
+            | CoreNode::Attempt { .. }
+            | CoreNode::Require { .. }
+            | CoreNode::Effect { .. } => {}
         }
     }
     Ok(())
@@ -1343,6 +1396,11 @@ fn core_node_value(node: &CoreNode) -> Result<CanonicalValue, CanonicalError> {
             ("binding", local_ref_value(binding)),
             ("value", core_expr_value(value)?),
         ])),
+        CoreNode::Attempt {
+            binding,
+            value,
+            failure_map,
+        } => core_attempt_value(binding, value, failure_map),
         CoreNode::Require { predicate, arm } => Ok(map([
             ("kind", text("require")),
             ("predicate", core_predicate_value(predicate)?),
@@ -1425,6 +1483,26 @@ fn core_node_value(node: &CoreNode) -> Result<CanonicalValue, CanonicalError> {
     }
 }
 
+/// A failure-mapped call: the binding, the call, and one terminal reason per
+/// failure coordinate of the callee.
+fn core_attempt_value(
+    binding: &crate::core_ir::LocalRef,
+    value: &CoreExpr,
+    failure_map: &std::collections::BTreeMap<String, crate::core_ir::CoreObstructionReason>,
+) -> Result<CanonicalValue, CanonicalError> {
+    Ok(map([
+        ("kind", text("attempt")),
+        ("binding", local_ref_value(binding)),
+        ("value", core_expr_value(value)?),
+        (
+            "failureMap",
+            string_map_results(failure_map.iter().map(|(failure, reason)| {
+                Ok((failure.as_str(), core_obstruction_reason_value(reason)?))
+            }))?,
+        ),
+    ]))
+}
+
 fn core_bound_value(bound: &crate::core_ir::CoreBound) -> CanonicalValue {
     match bound {
         crate::core_ir::CoreBound::Literal(value) => {
@@ -1489,6 +1567,7 @@ fn core_obstruction_arm_value(arm: &CoreObstructionArm) -> Result<CanonicalValue
 
 fn core_expr_value(expr: &CoreExpr) -> Result<CanonicalValue, CanonicalError> {
     Ok(match expr {
+        CoreExpr::Fail { failure } => map([("kind", text("fail")), ("failure", text(failure))]),
         CoreExpr::Local { reference } => {
             map([("kind", text("local")), ("ref", local_ref_value(reference))])
         }
@@ -1544,6 +1623,7 @@ fn core_expr_value(expr: &CoreExpr) -> Result<CanonicalValue, CanonicalError> {
                 )?,
             ),
         ]),
+        CoreExpr::OrderedRecord { fields } => ordered_record_expression_value(fields)?,
         CoreExpr::List { values } => map([
             ("kind", text("list")),
             ("values", array_results(values.iter().map(core_expr_value))?),
@@ -1604,6 +1684,23 @@ fn int_text_value(width: &str, value: &str) -> Result<CanonicalValue, CanonicalE
         )
     })?;
     Ok(CanonicalValue::Integer(value))
+}
+
+fn ordered_record_expression_value(
+    fields: &[(String, CoreExpr)],
+) -> Result<CanonicalValue, CanonicalError> {
+    Ok(map([
+        ("kind", text("orderedRecord")),
+        (
+            "fields",
+            array_results(fields.iter().map(|(name, value)| {
+                Ok(map([
+                    ("name", text(name)),
+                    ("value", core_expr_value(value)?),
+                ]))
+            }))?,
+        ),
+    ]))
 }
 
 fn core_predicate_value(predicate: &CorePredicate) -> Result<CanonicalValue, CanonicalError> {

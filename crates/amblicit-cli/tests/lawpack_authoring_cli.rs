@@ -169,6 +169,106 @@ fn public_build_requires_repinning_an_authored_helper_body_change() {
     fs::remove_dir_all(root).expect("remove mutation consumer");
 }
 
+/// A consumer whose intent calls an authored lawpack helper, `workspace.limit()`.
+fn write_helper_consumer(root: &Path) {
+    write_external_consumer(root);
+    let mut document = workspace_snapshot_lawpack_document();
+    document["lawpack"]["exports"]["pureFunctions"] = json!([{
+        "source": "edict",
+        "coordinate": "workspace.snapshot@1.limit",
+        "returnType": "U64",
+        "costTemplate": "workspace.snapshot@1.helperBudget",
+        "determinismClass": "total",
+        "body": {"params": [], "body": {
+            "locals": [], "bindings": [],
+            "result": {"kind": "const", "value": {"kind": "int", "width": "U64", "value": 7}}
+        }}
+    }]);
+    document["lawpack"]["targetAdapters"][0]["budgets"]["workspace.snapshot@1.helperBudget"] =
+        json!({"maxSteps": 1, "maxAllocatedBytes": 0, "maxOutputBytes": 0});
+    let digest = publish_mutation_lawpack(root, &document);
+    let reviewed = fixture_root().join("fixtures/lawpack/workspace-snapshot");
+    let reviewed_digest = fs::read_to_string(reviewed.join("manifest.sha256")).unwrap();
+    let source_path = root.join("src/observe-workspace.amblicit");
+    let source = fs::read_to_string(&source_path)
+        .unwrap()
+        .replace(reviewed_digest.trim(), &digest)
+        .replace(
+            "{\n  request",
+            "{\n  let limit: U64 = workspace.limit();\n  request",
+        )
+        .replace(
+            "maxSettlementBytes input.maxSettlementBytes",
+            "maxSettlementBytes limit",
+        );
+    fs::write(&source_path, source).unwrap();
+}
+
+fn select_cost_schedule(root: &Path, schedule: &Value) {
+    let path = root.join("edict.application.json");
+    let mut application: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    application["coreCostSchedule"] = schedule.clone();
+    fs::write(&path, serde_json::to_vec(&application).unwrap()).unwrap();
+}
+
+fn contains_text(haystack: &[u8], needle: &str) -> bool {
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle.as_bytes())
+}
+
+#[test]
+fn shared_read_build_refuses_unmetered_external_action_requests() {
+    // The shared-read meter has no rule for a pending external-action request,
+    // so it refuses rather than guess the request's size.
+    let root = temp_tree("shared-read-request");
+    write_helper_consumer(&root);
+    select_cost_schedule(&root, &json!("edict.core-cost/v2"));
+    let refused = build_mutation_application(&root);
+    assert_eq!(refused.status.code(), Some(2), "{refused:?}");
+    let records: Vec<Value> = String::from_utf8(refused.stderr)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(records[0]["kind"], "InvalidBound", "{records:?}");
+    assert!(!root.join(".build/application").exists());
+    fs::remove_dir_all(root).expect("remove shared-read consumer");
+}
+
+#[test]
+fn explicit_copying_schedule_is_byte_identical_to_omission() {
+    let root = temp_tree("copying-selection");
+    write_helper_consumer(&root);
+    assert_success(&build_mutation_application(&root), "default build");
+    let omitted = read_compiled_outputs(&root);
+    assert!(!contains_text(&omitted[0], "core.cost.shared-reads/v1"));
+    select_cost_schedule(&root, &json!("edict.core-cost/v1"));
+    assert_success(&build_mutation_application(&root), "explicit copying build");
+    assert_eq!(omitted, read_compiled_outputs(&root));
+    fs::remove_dir_all(root).expect("remove copying consumer");
+}
+
+#[test]
+fn unknown_cost_schedule_is_refused_before_compilation() {
+    let root = temp_tree("unknown-schedule");
+    write_helper_consumer(&root);
+    select_cost_schedule(&root, &json!("edict.core-cost/v3"));
+    let refused = build_mutation_application(&root);
+    assert_eq!(refused.status.code(), Some(2), "{refused:?}");
+    let first: Value = serde_json::from_str(
+        String::from_utf8(refused.stderr)
+            .unwrap()
+            .lines()
+            .next()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(first["kind"], "InvalidApplicationConfig");
+    assert!(!root.join(".build/application").exists());
+    fs::remove_dir_all(root).expect("remove refused consumer");
+}
+
 fn publish_mutation_lawpack(root: &Path, document: &Value) -> String {
     fs::write(
         root.join("edict.lawpack.json"),

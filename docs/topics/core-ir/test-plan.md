@@ -1,5 +1,25 @@
 # Core IR Test Plan
 
+## Checked integer operation identity (#263)
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| COREIR-REQ-041 | implemented | Checked integer operations use generic Core calls `core.integer.checked*` and require `core.option/v1`, because they return `Option<T>`; a missing capability fails Core integrity before encoding. `core.integer.min` and `core.integer.max` need no capability. | issue #263 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COREIR-TP-061 | implemented | Checked capability | COREIR-REQ-041 | Specified: stripping `core.option/v1` from a module with a checked call refuses structured Core integrity with `InvalidDefinition`. | target_rechecks_integer_signatures_and_capability | crates/amblicit-syntax/tests/checked_arithmetic.rs | No Core expression variant or ABI field is added. |
+
+## Option operation identity (#261)
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| COREIR-REQ-040 | implemented | Option operations use typed generic Core calls `core.option.*` and require `core.option/v1`; canonical bytes retain operation, item coordinate, operands and capability. Missing capability refuses before encoding. | issue #261 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COREIR-TP-060 | implemented | Option identity | COREIR-REQ-040 | Specified: repeat compilation preserves bytes; changing the operation or item coordinate moves identity; stripping the capability refuses structured Core integrity with `InvalidDefinition`; the reviewed Core golden for the Option and enum specimen matches. | option_identity_is_repeatable_and_capability_bound, core_goldens_match_executable_encoder | crates/amblicit-syntax/tests/source_options.rs, xtask/src/tests.rs, fixtures/core/canonical/option-spine.core.cbor | Core golden pins the canonical bytes. Mutation-checked: removing the capability check turns the identity test red. |
+
 ## Bounded list operation identity (#289)
 
 | ID | Status | Requirement | Source |
@@ -210,3 +230,18 @@ Out of scope:
 | ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | COREIR-TP-044 | implemented | Fold identity and authority | COREIR-REQ-033 | All fold fields survive encoding; missing capability or invalid helper/state metadata fails InvalidDefinition at the fold result; a zero bound does not hide recursion. | bounded_fold_preserves_initial_state_static_step_and_iteration_bound, fold_core_requires_capability_and_declared_step_state, zero_bound_does_not_hide_recursive_step_authority | crates/amblicit-syntax/tests/bounded_state_fold.rs | Initial value typing is checked by Target separately. |
+
+## Function preconditions (#264)
+
+| ID | Status | Requirement | Source |
+| --- | --- | --- | --- |
+| COREIR-REQ-035 | implemented | `functions.<name>.preconditions` is a source-ordered, hash-significant `[+ precondition-predicate]` of at most 16 conjuncts and 256 Core nodes, omitted when empty so earlier canonical bytes are unchanged; integrity refuses non-parameter locals, same-module function calls, fold and match with InvalidDefinition at `functions.<name>.preconditions[<index>]`. | EDICT-CORE-FN-PRECONDITION-001, issue #264 |
+
+| ID | Status | Category | Requirement | Oracle | Evidence | Fixtures | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COREIR-TP-046 | implemented | Canonical shape and digest | COREIR-REQ-035 | The canonical map orders `body, params, returnType, preconditions` with two entries; a precondition-free function has no key; removing a precondition changes the digest. | core_preconditions_are_hash_significant_and_omitted_when_empty | crates/amblicit-syntax/tests/function_preconditions.rs | |
+| COREIR-TP-047 | implemented | Integrity scope | COREIR-REQ-035 | A forged non-parameter local and a forged self-call in a precondition each fail InvalidDefinition. | core_integrity_refuses_preconditions_outside_the_parameter_scope | crates/amblicit-syntax/tests/function_preconditions.rs | |
+| COREIR-TP-048 | implemented | Reviewed golden | COREIR-REQ-035 | The executable encoder reproduces the reviewed Core bytes and digest for Jedit's reproducer; earlier Core goldens are unchanged. | core_goldens_match_executable_encoder | xtask/src/tests.rs, fixtures/core/canonical/function-precondition.core.cbor, fixtures/core/canonical/function-precondition.core.sha256 | Class-5 change detector; the field-level oracle is COREIR-TP-046. |
+| COREIR-TP-049 | implemented | Conjunct cap | COREIR-REQ-035 | 16 conjuncts (8 listed plus an 8-way `&&`) compile; 17 refuse InvalidBound in the compiler; a forged 17th precondition fails Core integrity with InvalidDefinition. | a_function_holds_at_most_sixteen_precondition_conjuncts | crates/amblicit-syntax/tests/function_preconditions.rs | Bounds call re-proof to 16 fact scans (safety-review round 3, F14). Removing the integrity cap fails exactly this test. |
+| COREIR-TP-050 | implemented | Node cap | COREIR-REQ-035 | A forged `any` of 85 `local != const` comparisons (256 nodes) passes Core integrity, one more node fails InvalidDefinition, and a 100-way source disjunction refuses InvalidBound. | a_function_holds_at_most_256_precondition_nodes | crates/amblicit-syntax/tests/function_preconditions.rs | Bounds obligation building per call (safety-review round 4, F20). Removing the integrity node cap fails exactly this test. |
+| COREIR-TP-051 | implemented | Positional parameters | COREIR-REQ-035 | A precondition-bearing function whose parameter ids are swapped (every reference kept consistent) fails Core integrity with InvalidDefinition at `functions.first.params`, and Target refuses it. | precondition_bearing_parameters_are_named_by_position | crates/amblicit-syntax/tests/function_preconditions.rs | Safety-review round 5 (F22): substitution by `arg.N` name and by position must agree for an independent provider. |
