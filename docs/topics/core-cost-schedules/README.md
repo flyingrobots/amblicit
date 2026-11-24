@@ -102,9 +102,12 @@ to exist.
 
 The catalog's top-level `parameters` map declares each parameter's field path
 into the application's operation configuration (the `targetConfiguration` the
-lawpack pins by digest) and its kind, `uint` or `helper`. Echo declares
-`maxEdgeScans` at `graphReads.maxEdgeScans` (`uint`) and `selector` at
-`graphReads.closureSelector` (`helper`). Amblicit reads the configuration only
+lawpack pins by digest) and its kind, `uint` or `helper`. Echo's catalog at
+echo `44098b15` declares `maxEdgeScans` at `graphReads.maxEdgeScans` (`uint`)
+and `selector` at `graphReads.closureSelector` (`helper`). That commit is on
+Echo's unmerged draft PR #1029, not on Echo's main; Amblicit vendors the
+catalog from it in `fixtures/echo-target-intrinsics-v3/` and must re-vendor it
+when #1029 merges. Amblicit reads the configuration only
 at the declared paths, and only for parameters a selected template uses. An
 undeclared parameter, a missing value, or a value of the wrong kind refuses
 the catalog with `InvalidParameter` (`TargetIntrinsicInvalidParameter` in the
@@ -124,6 +127,18 @@ meter charges each template where the effect node is charged. A branch is
 charged its larger arm and a literal-bound loop body per iteration. A template
 whose path does not resolve, or whose `helper` parameter names no source
 helper in the module, is refused with `InvalidBound`.
+
+A `helper` parameter is a bare function name of the root (application)
+module, the module Echo qualifies a `closureSelector` with. In a multi-module
+source-closure build the linker gives every root-module function a fresh
+linked name; `LinkedSourceClosure::link_effect_costs` rebinds each configured
+helper through the linker's own record of root-module names, and the
+application build calls it before compiling. A name that is not a root-module
+function (a function of an imported module, a qualified name, or no function)
+refuses admission with `InvalidParameter`
+(`TargetIntrinsicInvalidParameter`). The application build reports every effect
+cost refusal under the same specific `TargetIntrinsic*` category as
+pure-intrinsic admission.
 
 ## Effect on the bounded-descent fixture
 

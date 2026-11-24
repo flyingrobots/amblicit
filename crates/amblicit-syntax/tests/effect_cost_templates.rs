@@ -347,7 +347,14 @@ fn a_parameter_value_of_the_wrong_kind_is_refused_at_admission() {
 fn a_parameter_is_read_only_at_its_declared_path() {
     let facts = prepared(None, None).facts;
     let top_level = encode_canonical_cbor(&map(vec![("maxEdgeScans", int(SCANS))])).unwrap();
-    admit(V3, scan_rule(), &top_level, &facts).expect_err("undeclared path is not read");
+    let failures =
+        admit(V3, scan_rule(), &top_level, &facts).expect_err("undeclared path is not read");
+    assert!(
+        failures
+            .iter()
+            .all(|failure| failure.kind == TargetPureIntrinsicFailureKind::InvalidParameter),
+        "{failures:?}"
+    );
 }
 
 /// The program plus `select`, which returns its argument, and `heavy`, which
@@ -479,8 +486,10 @@ fn a_replaced_charge_keeps_the_empty_obstruction_payload() {
     assert_eq!(zero, (37 + 1, 4195 + 64));
 }
 
-/// Echo's published `/v3` catalog, copied byte for byte from echo `44098b15`
+/// Echo's `/v3` catalog, copied byte for byte from echo `44098b15`
 /// (`crates/echo-edict-provider-lowerer/resources/resource.target-intrinsics-3.cbor`).
+/// That commit is on Echo's unmerged draft PR #1029, not on Echo's main; the
+/// fixture must be re-vendored when #1029 merges.
 const ECHO_V3: &[u8] =
     include_bytes!("../../../fixtures/echo-target-intrinsics-v3/resource.target-intrinsics-3.cbor");
 
@@ -524,4 +533,100 @@ fn echo_v3_catalog_passes_both_admissions_in_build_order() {
     )
     .unwrap_or_else(|failures| panic!("effect admission refused: {failures:?}"));
     assert_eq!(costs.len(), lowerings.len());
+}
+
+/// A library whose only function is the costly `heavy`.
+const LIBRARY: &str = "package library.heavy@1; fn heavy(value: U64) -> List<U64, max=8> { return [value, value, value, value, value, value, value, value]; }";
+
+/// The program as a two-module source closure: the root (application) module
+/// declares the cheap `select` and imports the library that declares `heavy`.
+fn linked_root() -> String {
+    let import = format!(
+        "use module library.heavy@1 digest \"{}\" as lib;",
+        amblicit_syntax::source_closure::source_module_digest(LIBRARY).expect("digest")
+    );
+    let (package, rest) = SOURCE.split_once('\n').expect("package line");
+    format!("{package}\n{import}\n{rest}\nfn select(value: U64) -> U64 {{ return value; }}\n")
+}
+
+/// Linked-build minimums with the templates of `rule` configured for
+/// `selector`, the way the application build passes them to a linked closure.
+fn linked_minimums(
+    rule: C,
+    selector: &str,
+    schedule: CoreCostSchedule,
+) -> Result<(u64, u64), Vec<amblicit_syntax::TargetPureIntrinsicFailure>> {
+    let root = linked_root();
+    let closure = amblicit_syntax::source_closure::resolve_source_closure(
+        &root,
+        &[LIBRARY],
+        amblicit_syntax::source_closure::SourceClosureLimits::default(),
+    )
+    .expect("closure");
+    let linked = amblicit_syntax::source_linker::link_source_closure(&closure).expect("links");
+    let base = prepared(None, None);
+    let costs = admit(V3, rule, &configuration(Some(selector)), &base.facts).expect("admitted");
+    let costs = linked.link_effect_costs(&costs)?;
+    let context = base.context.with_target_effect_costs(&costs);
+    let accepts = |steps: u64, bytes: u64| {
+        linked
+            .compile(
+                &context
+                    .clone()
+                    .with_core_cost_schedule(schedule)
+                    .with_budget("hello.smallCreateBudget", budget(steps, bytes)),
+            )
+            .map_err(|failures| {
+                failures
+                    .into_iter()
+                    .map(|failure| failure.error.kind)
+                    .collect::<Vec<_>>()
+            })
+    };
+    if let Err(kinds) = accepts(CEILING, CEILING) {
+        panic!("linked build compiles under a generous budget: {kinds:?}");
+    }
+    Ok((
+        minimum(|v| accepts(v, CEILING).is_ok()),
+        minimum(|v| accepts(CEILING, v).is_ok()),
+    ))
+}
+
+#[test]
+fn a_linked_build_charges_the_root_module_selector_under_shared_reads() {
+    let linked = linked_minimums(selector_rule(), "select", SHARED).expect("select resolves");
+    let costliest = linked_minimums(costliest_rule(), "select", SHARED).expect("resolves");
+    // The single-module build of the same helpers charges the same selector.
+    let single = minimums(
+        &prepared(Some((V3, selector_rule())), Some("select")).context,
+        &with_helpers(),
+        SHARED,
+    );
+    assert_eq!(linked, single);
+    assert!(
+        linked.0 < costliest.0 && linked.1 < costliest.1,
+        "{linked:?} vs {costliest:?}"
+    );
+}
+
+#[test]
+fn a_linked_build_keeps_charging_the_costliest_helper_under_copying() {
+    let copying = CoreCostSchedule::Copying;
+    let select = linked_minimums(selector_rule(), "select", copying).expect("select resolves");
+    let costliest = linked_minimums(costliest_rule(), "select", copying).expect("resolves");
+    assert_eq!(select, costliest);
+}
+
+#[test]
+fn a_linked_selector_outside_the_root_module_is_refused() {
+    for selector in ["heavy", "lib.heavy", "missing"] {
+        let failures = linked_minimums(selector_rule(), selector, SHARED)
+            .expect_err("only root-module functions resolve");
+        assert!(
+            failures
+                .iter()
+                .all(|failure| failure.kind == TargetPureIntrinsicFailureKind::InvalidParameter),
+            "{selector}: {failures:?}"
+        );
+    }
 }

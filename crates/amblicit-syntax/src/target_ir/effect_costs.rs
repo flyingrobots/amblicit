@@ -97,6 +97,21 @@ impl TargetEffectCostFact {
         &self.intrinsic
     }
 
+    /// This fact with every `helper` parameter renamed by `rename`, or `None`
+    /// when `rename` resolves some helper to nothing.
+    pub(crate) fn rename_helpers<'a>(
+        &self,
+        rename: impl Fn(&str) -> Option<&'a str>,
+    ) -> Option<Self> {
+        let mut renamed = self.clone();
+        for value in renamed.parameters.values_mut() {
+            if let ParameterValue::Helper(name) = value {
+                *name = rename(name)?.to_owned();
+            }
+        }
+        Some(renamed)
+    }
+
     /// The source helpers this template's `helper` parameters name.
     pub(crate) fn helpers(&self) -> impl Iterator<Item = &str> {
         self.parameters.values().filter_map(|value| match value {

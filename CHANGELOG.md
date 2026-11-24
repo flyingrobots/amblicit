@@ -19,6 +19,14 @@ versions still track specification maturity rather than a released product.
   adding to it, plus one (1, 64) empty obstruction payload when the step maps
   any arm, as Echo charges. A type path may name fields inside a list item
   (`then`). Pure-intrinsic admission accepts the `/v3` `parameters` key.
+  In a multi-module (linked) build a `helper` value names a function of the
+  root module and follows the linker's rename; any other name refuses with
+  `InvalidParameter`. The application build now reports effect cost
+  refusals with the specific category (for example
+  `TargetIntrinsicInvalidParameter`) instead of
+  `TargetIntrinsicAdmissionFailed`. Echo's `/v3` catalog is vendored as a
+  fixture from echo `44098b15`, on Echo's unmerged draft PR #1029, and must be
+  re-vendored when that PR merges.
   Copying-schedule results and `/v2` catalogs are unchanged (issue #341).
 
 - **Breaking (Rust API):** `ParseErrorKind` gains `NestingTooDeep`; an

@@ -82,12 +82,7 @@ impl ApplicationPureIntrinsics {
             lowerings,
             configuration,
         )
-        .map_err(|errors| {
-            failure(
-                "TargetIntrinsicAdmissionFailed",
-                format!("target effect cost template admission failed: {errors:?}"),
-            )
-        })
+        .map_err(|errors| effect_cost_failure(&errors))
     }
 
     pub(super) fn load_from_provider(
@@ -187,6 +182,22 @@ fn catalog_reference(bytes: &[u8]) -> Result<ResourceRef, ApplicationBuildFailur
         coordinate: coordinate.ok_or_else(invalid)?,
         digest: Some(digest.ok_or_else(invalid)?),
     })
+}
+
+/// Effect cost refusals use the same specific categories as pure-intrinsic
+/// admission: the first failure by (kind, coordinate) names the category.
+pub(super) fn effect_cost_failure(
+    errors: &[amblicit_syntax::TargetPureIntrinsicFailure],
+) -> ApplicationBuildFailure {
+    let kind = errors
+        .first()
+        .map_or("TargetIntrinsicAdmissionFailed", |e| {
+            diagnostic_kind(e.kind)
+        });
+    failure(
+        kind,
+        format!("target effect cost template admission failed: {errors:?}"),
+    )
 }
 
 fn diagnostic_kind(kind: TargetPureIntrinsicFailureKind) -> &'static str {
