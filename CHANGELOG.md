@@ -8,6 +8,15 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Fixed: under the shared-read schedule, each iteration of a literal-bound
+  loop in an intent whose body holds an effect node was charged a copy of
+  its binder's value and the loop body's `Null` result, which warp-core's
+  shared executor never charges and Echo's effect-body judge does not count:
+  (2 steps, 128 bytes) per iteration for a `U64` binder, so a `require` in a
+  loop bounded 3 was (6, 384) above Echo's minimum. An iteration is now
+  charged one step, its binder type's validations and the body's nodes.
+  Pure intents and the copying schedule are unchanged.
+
 - Fixed: under the shared-read schedule, an effect-body `attempt` arm or
   failing `require` whose payload field value is a record literal (for
   example `{ at: { value: n } }`) was refused with "shared-read Core work is

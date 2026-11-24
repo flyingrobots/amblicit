@@ -559,11 +559,15 @@ fn a_loop_multiplies_the_effect_node_step_and_let_validations_by_its_bound() {
     // Per iteration the body's effect gains its node step (1) and the let its
     // validations(Pair) (3); the effect after the loop gains its node step,
     // and the `items` let its validations(List<U64, max=3>) = 3·1 + 1.
+    // Each iteration no longer charges the binder copy or the body result.
     let context = prepared(Some((V3, scan_rule())), None).context;
     let minimum = minimums(&context, &with_loop(), SHARED);
     assert_eq!(
         minimum,
-        (LOOP_ON_MAIN.0 + 3 * (1 + 3) + 1 + 4, LOOP_ON_MAIN.1)
+        (
+            LOOP_ON_MAIN.0 + 3 * (1 + 3) + 1 + 4 - 3 * LOOP_ITERATION_RELEASED.0,
+            LOOP_ON_MAIN.1 - 3 * LOOP_ITERATION_RELEASED.1,
+        )
     );
     let (steps, bytes) = minimum;
     assert!(compile(&context, &with_loop(), SHARED, budget(steps, bytes)).is_ok());
@@ -728,8 +732,8 @@ fn a_loop_multiplies_the_attempt_arm_by_its_bound() {
     assert_eq!(
         looped,
         (
-            ATTEMPT_LOOP_ON_MAIN.0 + 3 * EMPTY_ARM.0,
-            ATTEMPT_LOOP_ON_MAIN.1 + 3 * EMPTY_ARM.1
+            ATTEMPT_LOOP_ON_MAIN.0 + 3 * (EMPTY_ARM.0 - LOOP_ITERATION_RELEASED.0),
+            ATTEMPT_LOOP_ON_MAIN.1 + 3 * (EMPTY_ARM.1 - LOOP_ITERATION_RELEASED.1)
         )
     );
     let (steps, bytes) = looped;
@@ -842,8 +846,8 @@ fn a_loop_multiplies_the_require_payload_by_its_bound() {
     assert_eq!(
         looped,
         (
-            REQUIRE_BEFORE[2].0 + 3 * EMPTY_ARM.0,
-            REQUIRE_BEFORE[2].1 + 3 * EMPTY_ARM.1
+            REQUIRE_BEFORE[2].0 + 3 * (EMPTY_ARM.0 - LOOP_ITERATION_RELEASED.0),
+            REQUIRE_BEFORE[2].1 + 3 * (EMPTY_ARM.1 - LOOP_ITERATION_RELEASED.1)
         )
     );
     let (steps, bytes) = looped;
@@ -1160,4 +1164,110 @@ fn copying_minimums_of_record_payload_programs_are_unchanged() {
     .map(|source| minimums(&context, source, CoreCostSchedule::Copying))
     .collect();
     assert_eq!(measured, NESTED_COPYING_BEFORE);
+}
+
+/// What each iteration of a loop in an effect body was charged under the
+/// shared-read schedule that warp-core's shared executor never charges on
+/// any path: the binder's copy bytes (0, 64) (the item is shared, not
+/// copied) and the loop body's `Null` result (2, 64) (a loop body has no
+/// result to evaluate). Echo's effect-body judge charges neither.
+const LOOP_ITERATION_RELEASED: (u64, u64) = (2, 64 + 64);
+
+/// Echo's loop-scalar witness shape: a `require` with a `{ at: i }` payload
+/// inside a loop bounded 3, before the effect.
+fn with_scalar_require_loop() -> String {
+    with_payload_require_loop("({ at: i })")
+}
+
+/// Two loops bounded 3, the inner one holding the `{ at: j }` require.
+fn with_nested_require_loop() -> String {
+    SOURCE.replace(
+        "  let receipt",
+        "  let n: U64 = 7u64;\n  let items: List<U64, max=3> = [1u64, 2u64, 3u64];\n  for i in items bounded 3 {\n    for j in items bounded 3 {\n      require j <= n else hello.AlreadyExists({ at: j });\n    }\n  }\n  let receipt",
+    )
+}
+
+/// Shared-read minimums on main 615d2e59, before the loop term: the scalar
+/// require loop, the nested require loop.
+const LOOP_REQUIRE_ON_615D2E59: [(u64, u64); 2] = [(1305, 10_244), (1797, 13_340)];
+
+#[test]
+fn a_loop_iteration_in_an_effect_body_is_charged_no_binder_copy_or_body_result() {
+    let context = prepared(Some((V3, scan_rule())), None).context;
+    let scalar = LOOP_REQUIRE_ON_615D2E59[0];
+    assert_exact_minimum(
+        &context,
+        &with_scalar_require_loop(),
+        (
+            scalar.0 - 3 * LOOP_ITERATION_RELEASED.0,
+            scalar.1 - 3 * LOOP_ITERATION_RELEASED.1,
+        ),
+    );
+}
+
+#[test]
+fn nested_loops_in_an_effect_body_release_the_term_for_every_iteration() {
+    // Three outer iterations and nine inner ones.
+    let context = prepared(Some((V3, scan_rule())), None).context;
+    let nested = LOOP_REQUIRE_ON_615D2E59[1];
+    assert_exact_minimum(
+        &context,
+        &with_nested_require_loop(),
+        (
+            nested.0 - 12 * LOOP_ITERATION_RELEASED.0,
+            nested.1 - 12 * LOOP_ITERATION_RELEASED.1,
+        ),
+    );
+}
+
+/// The loop programs' copying minimums, the same before and after: the
+/// scalar require loop and the nested require loop.
+const LOOP_REQUIRE_COPYING: [(u64, u64); 2] = [(1010, 4117), (1019, 4117)];
+
+#[test]
+fn copying_minimums_of_loop_programs_are_unchanged() {
+    let context = prepared(Some((V3, scan_rule())), None).context;
+    let measured: Vec<_> = [with_scalar_require_loop(), with_nested_require_loop()]
+        .iter()
+        .map(|source| minimums(&context, source, CoreCostSchedule::Copying))
+        .collect();
+    assert_eq!(measured, LOOP_REQUIRE_COPYING);
+}
+
+/// A pure intent with a loop bounded 3: no effect, so the effect-body loop
+/// term never applies.
+const PURE_LOOP: &str = r"package rope.example@1;
+failure ClosureTooSmall;
+type Input = { items: List<U64, max=3>, limit: U64, };
+type Output = { value: U64, };
+intent evaluate(input: Input) returns Output profile p.read basis none budget <= p.b {
+  for item in input.items bounded 3 {
+    require item <= input.limit else text.ClosureInsufficient;
+  }
+  return { value: input.limit };
+}
+";
+/// Its shared-read minimum on main 615d2e59.
+const PURE_LOOP_ON_615D2E59: (u64, u64) = (250, 1300);
+
+#[test]
+fn a_pure_v2_intent_loop_is_charged_as_on_main() {
+    let pure = CompilerContext::new()
+        .with_core_cost_schedule(SHARED)
+        .with_operation_profile("p.read", "continuum.profile.read-only/v1")
+        .with_operation_profile("text.replaceRange", "continuum.profile.read-only/v1");
+    let admits = |steps: u64, bytes: u64| {
+        compile_to_core(
+            &parse_module(PURE_LOOP).expect("source"),
+            &pure.clone().with_budget("p.b", budget(steps, bytes)),
+        )
+        .is_ok()
+    };
+    assert_eq!(
+        (
+            minimum(|v| admits(v, CEILING)),
+            minimum(|v| admits(CEILING, v))
+        ),
+        PURE_LOOP_ON_615D2E59
+    );
 }
