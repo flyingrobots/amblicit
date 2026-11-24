@@ -111,7 +111,6 @@ impl TargetEffectCostRule {
         let mut pending = vec![&self.steps, &self.bytes];
         while let Some(expr) = pending.pop() {
             match expr {
-                Expr::Const(_) => {}
                 Expr::Sum(terms) => pending.extend(terms),
                 Expr::Product(left, right) => pending.extend([left.as_ref(), right.as_ref()]),
                 Expr::Measure(Measure::Parameter(name)) => {
@@ -120,7 +119,7 @@ impl TargetEffectCostRule {
                 Expr::Measure(Measure::Helper(name, _)) => {
                     uses.push((name.as_str(), ParameterKind::Helper));
                 }
-                Expr::Measure(_) => {}
+                Expr::Const(_) | Expr::Measure(_) => {}
             }
         }
         uses

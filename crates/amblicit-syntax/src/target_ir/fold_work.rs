@@ -5,8 +5,8 @@
 use super::effect_costs::{Charge, TargetEffectCostFact};
 use super::{
     expression_type_coordinate, is_typed_prelude_operation, resolved_core_type, CoreBlock,
-    CoreBound, CoreBudget, CoreExpr, CoreIntent, CoreModule, CoreNode, CorePredicate,
-    CoreRequireFailureArm, CoreType, CoreValue, LocalRef, TargetPureFunctionFact,
+    CoreBound, CoreBudget, CoreExpr, CoreIntent, CoreModule, CoreNode, CoreObstructionArm,
+    CorePredicate, CoreRequireFailureArm, CoreType, CoreValue, LocalRef, TargetPureFunctionFact,
     MAX_CORE_GRAPH_DEPTH, MAX_CORE_TYPE_DEPTH,
 };
 use std::collections::BTreeMap;
@@ -648,23 +648,17 @@ impl<'a> Meter<'a> {
             } => {
                 let input_cost = self.expression(input, available, depth + 1)?;
                 let template = self.effect_template(effect, input, &binding.ty, available)?;
-                if let (true, Some(template)) = (self.shared, template) {
-                    // Under the shared-read schedule the provider's template
-                    // is the whole charge of the step beyond its input
-                    // expression: it replaces the node step, the result
-                    // binding and each obstruction arm's scratch.
-                    let mut cost = input_cost.add(template)?;
-                    for arm in obstruction_map.values() {
-                        if !is_nullary_annotation(&arm.value) {
-                            cost =
-                                cost.add(self.expression(&arm.value, available, depth + 1)?)?;
-                        }
-                    }
-                    return Some(cost);
+                if self.shared && self.has_effect_template(effect) {
+                    return self.replaced_effect(
+                        input_cost.add(template)?,
+                        obstruction_map,
+                        available,
+                        depth,
+                    );
                 }
                 let mut cost = input_cost
                     .add(self.value_type(&binding.ty, 0)?.evaluation()?)?
-                    .add(template.unwrap_or_default())?;
+                    .add(template)?;
                 for arm in obstruction_map.values() {
                     // Nullary obstruction annotations are not callable helpers.
                     // Match the existing closed-authority rule only here; a
@@ -716,6 +710,28 @@ impl<'a> Meter<'a> {
     }
 }
 
+impl<'a> Meter<'a> {
+    /// Under the shared-read schedule the provider's template is the whole
+    /// charge of an effect step beyond its input expression: it replaces the
+    /// node step, the result binding and each obstruction arm's scratch.
+    /// `charged` is the input expression plus the template.
+    fn replaced_effect(
+        &mut self,
+        charged: Cost,
+        obstruction_map: &'a BTreeMap<String, CoreObstructionArm>,
+        available: &Scope<'a>,
+        depth: usize,
+    ) -> Option<Cost> {
+        let mut cost = charged;
+        for arm in obstruction_map.values() {
+            if !is_nullary_annotation(&arm.value) {
+                cost = cost.add(self.expression(&arm.value, available, depth + 1)?)?;
+            }
+        }
+        Some(cost)
+    }
+}
+
 /// A nullary obstruction annotation: a bare failure name, not a callable helper.
 fn is_nullary_annotation(value: &CoreExpr) -> bool {
     matches!(
@@ -726,18 +742,23 @@ fn is_nullary_annotation(value: &CoreExpr) -> bool {
 }
 
 impl Meter<'_> {
-    /// The provider template charge of one effect node, or `Some(None)` when
-    /// the effect has no template. `None` when the template is unestablished.
+    /// Whether the provider publishes a template for `effect`.
+    fn has_effect_template(&self, effect: &str) -> bool {
+        self.effect_costs.iter().any(|fact| fact.effect == effect)
+    }
+
+    /// The provider template charge of one effect node; nothing without one.
+    /// `None` when the template is unestablished.
     fn effect_template(
         &mut self,
         effect: &str,
         input: &CoreExpr,
         output: &str,
         available: &Scope<'_>,
-    ) -> Option<Option<Cost>> {
+    ) -> Option<Cost> {
         let facts = self.effect_costs;
         let Some(fact) = facts.iter().find(|fact| fact.effect == effect) else {
-            return Some(None);
+            return Some(Cost::default());
         };
         let input = expression_type_coordinate(self.core, self.facts, input, available)?;
         if !self.costliest_known {
@@ -760,7 +781,7 @@ impl Meter<'_> {
             helpers: &helpers,
         };
         let (steps, bytes) = charge.evaluate(&fact.rule)?;
-        Some(Some(Cost { steps, bytes }))
+        Some(Cost { steps, bytes })
     }
 
     /// One call to the source helper `name` under the module's schedule.
@@ -851,9 +872,7 @@ impl<'a> Meter<'a> {
                     input,
                     binding,
                     ..
-                } => self
-                    .effect_template(effect, input, &binding.ty, &available)?
-                    .unwrap_or_default(),
+                } => self.effect_template(effect, input, &binding.ty, &available)?,
                 CoreNode::Branch {
                     then_block,
                     else_block,
