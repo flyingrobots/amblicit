@@ -179,8 +179,37 @@ impl CliFailure {
     }
 }
 
+/// Stack size of the thread that handles the request.
+///
+/// The parser refuses source nesting past `MAX_SOURCE_NESTING_DEPTH`, but it
+/// reaches that limit only after spending stack on every level, several MiB in
+/// a debug build. Platform defaults for the main thread range from 1 MiB
+/// (Windows) to 8 MiB, so the binary runs the request on its own thread, sized
+/// for the limit and for `type_check`'s walk of a tree the parser accepts
+/// (SYNTAX-REQ-018, CLI-REQ-021, CLI-TP-061).
+const REQUEST_THREAD_STACK_BYTES: usize = 64 * 1024 * 1024;
+
 fn main() {
-    std::process::exit(run());
+    let request = std::thread::Builder::new()
+        .name("amblicit-request".to_owned())
+        .stack_size(REQUEST_THREAD_STACK_BYTES)
+        .spawn(run);
+    let exit_code = match request {
+        Ok(request) => match request.join() {
+            Ok(exit_code) => exit_code,
+            Err(payload) => std::panic::resume_unwind(payload),
+        },
+        Err(err) => {
+            write_cli_failure(&CliFailure {
+                command: COMMAND_CHECK,
+                kind: "RequestThread",
+                line: None,
+                message: format!("could not start the request thread: {err}"),
+            });
+            EXIT_CLI_FAILED
+        }
+    };
+    std::process::exit(exit_code);
 }
 
 fn run() -> i32 {

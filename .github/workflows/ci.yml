@@ -74,6 +74,8 @@ jobs:
           cargo +stable test -p amblicit-cli
           windows_lawpack_build_fails_closed_before_document_io
           -- --nocapture
+      - name: Deep source nesting is refused, not aborted (binary started with a 1 MiB main thread)
+        run: cargo +stable test -p amblicit-cli --test deep_nesting_cli
 
   supply-chain:
     name: supply-chain (cargo-deny)
