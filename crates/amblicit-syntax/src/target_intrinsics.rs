@@ -240,13 +240,16 @@ pub fn admit_target_pure_intrinsics(
         .map_err(|_| vec![failure(K::NonCanonicalCatalog, &catalog.coordinate)])?;
     let malformed = || vec![failure(K::MalformedCatalog, &catalog.coordinate)];
     let fields = text_map(&document).ok_or_else(malformed)?;
-    let allowed = ["apiVersion", "intrinsics", "types"];
-    if fields.keys().any(|key| !allowed.contains(key))
-        || !matches!(
-            fields.get("apiVersion").and_then(|value| text(value)),
-            Some(TARGET_INTRINSICS_API_VERSION | TARGET_INTRINSICS_EFFECT_COST_API_VERSION)
-        )
-    {
+    // `/v3` adds the effect-cost `parameters` map, which effect admission
+    // validates; `/v2` keeps its closed key set.
+    let allowed: &[&str] = match fields.get("apiVersion").and_then(|value| text(value)) {
+        Some(TARGET_INTRINSICS_API_VERSION) => &["apiVersion", "intrinsics", "types"],
+        Some(TARGET_INTRINSICS_EFFECT_COST_API_VERSION) => {
+            &["apiVersion", "intrinsics", "parameters", "types"]
+        }
+        _ => return Err(malformed()),
+    };
+    if fields.keys().any(|key| !allowed.contains(key)) {
         return Err(malformed());
     }
     let intrinsics = fields

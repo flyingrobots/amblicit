@@ -9,12 +9,13 @@
 //!   paths the catalog declares; a `helper` parameter names a module helper
 //!   that is priced by its own cost.
 use amblicit_syntax::{
-    admit_target_effect_costs, compile_to_core, decode_lawpack_adapter, decode_lawpack_bundle,
-    digest_target_intrinsics_catalog, encode_canonical_cbor, lower_to_target_ir, parse_module,
-    prepare_lawpack_compilation, CanonicalValue as C, CompilerContext, CompilerErrorKind,
-    CoreBudget, CoreCostSchedule, CoreModule, ResourceRef, TargetEffectCostFact,
-    TargetIrLoweringFacts, TargetLoweringStatus, TargetPureIntrinsicFailureKind,
-    TARGET_INTRINSICS_API_VERSION, TARGET_INTRINSICS_EFFECT_COST_API_VERSION,
+    admit_target_effect_costs, admit_target_pure_intrinsics, compile_to_core,
+    decode_lawpack_adapter, decode_lawpack_bundle, digest_target_intrinsics_catalog,
+    encode_canonical_cbor, lower_to_target_ir, parse_module, prepare_lawpack_compilation,
+    CanonicalValue as C, CompilerContext, CompilerErrorKind, CoreBudget, CoreCostSchedule,
+    CoreModule, ResourceRef, TargetEffectCostFact, TargetIrLoweringFacts, TargetLoweringStatus,
+    TargetPureIntrinsicFailureKind, TARGET_INTRINSICS_API_VERSION,
+    TARGET_INTRINSICS_EFFECT_COST_API_VERSION,
 };
 
 const MANIFEST: &[u8] = include_bytes!("../../../fixtures/lawpack/hello-echo/manifest.cbor");
@@ -417,4 +418,63 @@ fn the_copying_schedule_keeps_charging_the_costliest_helper_for_a_named_selector
         copying,
     );
     assert_eq!(select, costliest);
+}
+
+/// The application build admits pure intrinsics and then effect costs from
+/// one catalog file; a `/v3` catalog that declares parameters must pass both.
+#[test]
+fn a_v3_catalog_with_parameters_passes_both_admissions_in_build_order() {
+    let facts = prepared(None, None).facts;
+    let bytes = catalog(V3, scan_rule());
+    let pin = ResourceRef {
+        coordinate: CATALOG.into(),
+        digest: Some(digest_target_intrinsics_catalog(CATALOG, &bytes).expect("digest")),
+    };
+    admit_target_pure_intrinsics(&facts.target_profile, &pin, &bytes, &[])
+        .expect("pure admission accepts a /v3 parameters map");
+    let costs = admit_target_effect_costs(
+        &facts.target_profile,
+        &pin,
+        &bytes,
+        &facts.effect_lowerings,
+        &configuration(None),
+    )
+    .expect("effect admission");
+    assert_eq!(costs.len(), 1);
+}
+
+#[test]
+fn a_v2_catalog_with_a_parameters_map_is_still_malformed() {
+    let facts = prepared(None, None).facts;
+    let entry = map(vec![("intrinsicClass", text("effect"))]);
+    let bytes = encode_canonical_cbor(&map(vec![
+        ("apiVersion", text(TARGET_INTRINSICS_API_VERSION)),
+        ("intrinsics", map(vec![(INTRINSIC, entry)])),
+        ("parameters", declarations()),
+        ("types", C::Map(Vec::new())),
+    ]))
+    .unwrap();
+    let pin = ResourceRef {
+        coordinate: CATALOG.into(),
+        digest: Some(digest_target_intrinsics_catalog(CATALOG, &bytes).expect("digest")),
+    };
+    let failures = admit_target_pure_intrinsics(&facts.target_profile, &pin, &bytes, &[])
+        .expect_err("v2 refuses unknown keys");
+    assert!(failures
+        .iter()
+        .all(|failure| failure.kind == TargetPureIntrinsicFailureKind::MalformedCatalog));
+}
+
+/// Echo builds one empty obstruction payload, `shape(record {})` = (1, 64),
+/// when an effect step maps any obstruction arm. A template cannot see the
+/// step's arms, so the replaced charge adds it.
+#[test]
+fn a_replaced_charge_keeps_the_empty_obstruction_payload() {
+    // 37 steps and 4195 bytes are the rest of the program with a zero template.
+    let zero = minimums(
+        &prepared(Some((V3, zero_rule())), None).context,
+        SOURCE,
+        SHARED,
+    );
+    assert_eq!(zero, (37 + 1, 4195 + 64));
 }

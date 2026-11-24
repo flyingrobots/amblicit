@@ -85,9 +85,12 @@ intrinsic catalog publishes one (`edict.target-profile.intrinsics/v3`,
 `effectCostRule` on each effect intrinsic). Under the shared-read schedule the
 template replaces the generic charge of that step: the step costs its input
 expression, any callable obstruction arms, and the template, and no result
-binding or annotation scratch. Under the copying schedule the template is
+binding or annotation scratch, except one empty obstruction payload of
+(1 step, 64 bytes) when the step maps any obstruction arm, as Echo charges. Under the copying schedule the template is
 added on top of the generic charge, so copying-schedule results are unchanged
-from the first template release. Templates are closed `u64`
+from the first template release. A type path may step into list items with `item` and then name fields inside
+the item with `then`. The path names one item's type, so its measure is a
+per-item bound; see the grammar in `rationale.md`. Templates are closed `u64`
 expressions over the effect's declared input and output types (`bytesMax`,
 `listMax`, the provider value shape `copy` and `validations`), named
 parameters, the module's costliest source helper, and
@@ -105,7 +108,9 @@ lawpack pins by digest) and its kind, `uint` or `helper`. Echo declares
 at the declared paths, and only for parameters a selected template uses. An
 undeclared parameter, a missing value, or a value of the wrong kind refuses
 the catalog with `InvalidParameter` (`TargetIntrinsicInvalidParameter` in the
-application build).
+application build). Pure-intrinsic admission, which the build runs first on the
+same file, accepts the `parameters` key in a `/v3` catalog only; a `/v2`
+catalog with it is still `MalformedCatalog`.
 A `/v2` catalog publishes no templates and charges effects as before.
 
 `admit_target_effect_costs` admits the templates of the effects a lowering

@@ -170,8 +170,10 @@ parameters = { * tstr => { path: [+ tstr], kind: "uint" / "helper" } }
                                                            ; parameter lives in the operation
                                                            ; configuration
 
-type-expr = { path: { side: "input" / "output", fields: [* tstr], item: uint } }
-                                                           ; record fields, then `item` list-item steps
+type-expr = { path: { side: "input" / "output", fields: [* tstr], item: uint, ? then: [+ tstr] } }
+                                                           ; record fields, then `item` list-item steps,
+                                                           ; then (only when item >= 1) record fields
+                                                           ; inside that item
           / { word: null }                                 ; Word(u64::MAX)
           / { record: { * tstr => type-expr } }            ; a synthesized record, e.g. the
                                                            ; closure selector's candidate
@@ -189,6 +191,8 @@ type-expr = { path: { side: "input" / "output", fields: [* tstr], item: uint } }
 | Variant | max(payload, (1, 64)) + (6, 6·64+15+len(identity)+max label) | max(payload)+3 |
 | Nominal | its representation | its representation |
 
+**Paths.** A path names a type, not a value. It starts at the effect's declared input or output type, steps through each name in `fields` (each must reach a record field), then `item` times into a list's item type, then through each name in `then`. Nominal types are seen through at every step. `then` may appear only when `item` is at least 1 and must not be empty, and a path map with any other key is refused. Because every item of a list has the same type, a measure of a path through an item gives the bound for *one* item, for example `bytesMax(output.nodes[].atomBytes)` = the atom byte limit of every returned node. A total over all items is written as a product with `listMax` of the list. Amblicit did not choose a "sum over all items" meaning: that total is already `product(listMax, …)`, and there is no subtraction or division to get the per-item bound back from a sum. `/v3` paths without `then` parse and evaluate as before.
+
 **Evaluation:**
 - Arithmetic is checked `u64`; overflow refuses.
 - Expression depth is at most 16.
@@ -202,7 +206,7 @@ For each effect node, the source checker and native Target charge:
 - the result binding and obstruction annotations, as today;
 - plus `effectCostRule`.
 
-Amended for the shared-read schedule (#341, second half): there the template replaces the result binding and annotation scratch, so a shared-read template must cover them itself. The copying schedule keeps the additive rule above.
+Amended for the shared-read schedule (#341, second half): there the template replaces the result binding and annotation scratch, so a shared-read template must cover them itself. One charge stays outside the template: when the step maps any obstruction arm, Amblicit adds (1 step, 64 bytes) once. This is Echo's empty obstruction payload, `shape(record {})` (echo `crates/echo-edict-provider-lowerer/src/executable_operation/source_functions/effect_block.rs`, the `obstructionMap` branch of the effect step), and a template cannot see a step's arms. Nullary annotation arms cost nothing more, and callable arms cost their expression. The copying schedule keeps the additive rule above.
 
 Templates cover what Echo charges beyond that: input validations (`validations(input)`), the obstruction-arm scratch, frame records, scans and closure costs. Double charging is conservative. The compiler minimum is therefore at or above Echo's, and Echo admits every package at the compiler minimum.
 

@@ -723,6 +723,14 @@ impl<'a> Meter<'a> {
         depth: usize,
     ) -> Option<Cost> {
         let mut cost = charged;
+        if !obstruction_map.is_empty() {
+            // Echo builds one empty obstruction payload, `shape(record {})`,
+            // when a step maps any arm; a template cannot see the arms.
+            cost = cost.add(Cost {
+                steps: 1,
+                bytes: 64,
+            })?;
+        }
         for arm in obstruction_map.values() {
             if !is_nullary_annotation(&arm.value) {
                 cost = cost.add(self.expression(&arm.value, available, depth + 1)?)?;

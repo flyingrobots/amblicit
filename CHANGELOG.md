@@ -16,8 +16,10 @@ versions still track specification maturity rather than a released product.
   `{ helper: { parameter: name }, of }` measure prices the declared closure
   selector exactly under the shared-read schedule. Under that schedule a
   template now replaces the generic effect charge of its step instead of
-  adding to it. Copying-schedule results and `/v2` catalogs are unchanged
-  (issue #341).
+  adding to it, plus one (1, 64) empty obstruction payload when the step maps
+  any arm, as Echo charges. A type path may name fields inside a list item
+  (`then`). Pure-intrinsic admission accepts the `/v3` `parameters` key.
+  Copying-schedule results and `/v2` catalogs are unchanged (issue #341).
 
 - Charge effect steps by provider-published cost templates. An
   `edict.target-profile.intrinsics/v3` catalog may give each effect intrinsic

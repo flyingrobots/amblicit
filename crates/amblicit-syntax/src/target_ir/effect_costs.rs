@@ -37,6 +37,8 @@ enum TypeExpr {
         side: Side,
         fields: Vec<String>,
         items: u64,
+        /// Record fields inside the item the `items` list steps reach.
+        then: Vec<String>,
     },
     Word,
     Record(BTreeMap<String, TypeExpr>),
@@ -179,27 +181,46 @@ fn type_expr(value: &CanonicalValue, depth: usize) -> Option<TypeExpr> {
             .collect::<Option<BTreeMap<_, _>>>()
             .map(TypeExpr::Record),
         ("path", path) => {
+            let CanonicalValue::Map(entries) = path else {
+                return None;
+            };
+            let then = match field(path, "then") {
+                None => Vec::new(),
+                Some(then) => field_names(then).filter(|then| !then.is_empty())?,
+            };
+            if entries.len() != 3 + usize::from(!then.is_empty()) {
+                return None;
+            }
             let side = match text(field(path, "side")?)? {
                 "input" => Side::Input,
                 "output" => Side::Output,
                 _ => return None,
             };
-            let CanonicalValue::Array(names) = field(path, "fields")? else {
-                return None;
-            };
-            let fields = names
-                .iter()
-                .map(|name| text(name).map(str::to_owned))
-                .collect::<Option<Vec<_>>>()?;
+            let fields = field_names(field(path, "fields")?)?;
             let items = unsigned(field(path, "item")?)?;
+            // `then` after no item step would duplicate a longer `fields`.
+            if items == 0 && !then.is_empty() {
+                return None;
+            }
             Some(TypeExpr::Path {
                 side,
                 fields,
                 items,
+                then,
             })
         }
         _ => None,
     }
+}
+
+fn field_names(value: &CanonicalValue) -> Option<Vec<String>> {
+    let CanonicalValue::Array(names) = value else {
+        return None;
+    };
+    names
+        .iter()
+        .map(|name| text(name).map(str::to_owned))
+        .collect()
 }
 
 fn parameter_name(value: &CanonicalValue) -> Option<String> {
@@ -367,6 +388,7 @@ impl Charge<'_> {
             side,
             fields,
             items,
+            then,
         } = ty
         else {
             return None;
@@ -375,18 +397,23 @@ impl Charge<'_> {
             Side::Input => self.input.to_owned(),
             Side::Output => self.output.to_owned(),
         };
-        for name in fields {
-            let CoreType::Record { fields } = self.structural(&coordinate)?.1 else {
-                return None;
-            };
-            coordinate.clone_from(fields.get(name)?);
-        }
+        let step_fields = |coordinate: &mut String, names: &[String]| -> Option<()> {
+            for name in names {
+                let CoreType::Record { fields } = self.structural(coordinate)?.1 else {
+                    return None;
+                };
+                coordinate.clone_from(fields.get(name)?);
+            }
+            Some(())
+        };
+        step_fields(&mut coordinate, fields)?;
         for _ in 0..*items {
             let CoreType::List { item, .. } = self.structural(&coordinate)?.1 else {
                 return None;
             };
             coordinate = item;
         }
+        step_fields(&mut coordinate, then)?;
         self.structural(&coordinate)
     }
 
@@ -576,6 +603,52 @@ fn keep(value: Rows) -> Rows { return value; }";
         }
         .evaluate(&rule)
         .expect("established charge")
+    }
+
+    /// A path that names `then` fields inside the item `item` list steps reach.
+    fn item_path(fields: &[&str], item: i128, then: &[&str]) -> C {
+        map(vec![(
+            "path",
+            map(vec![
+                ("side", text("input")),
+                ("fields", C::Array(fields.iter().map(|f| text(f)).collect())),
+                ("item", C::Integer(item)),
+                ("then", C::Array(then.iter().map(|f| text(f)).collect())),
+            ]),
+        )])
+    }
+
+    #[test]
+    fn a_path_names_a_field_inside_a_list_item() {
+        // rows[*].a is Bytes<max=10>; rows[*].b is List<U64, max=3>.
+        let bytes_max = map(vec![("bytesMax", item_path(&["rows"], 1, &["a"]))]);
+        let list_max = map(vec![("listMax", item_path(&["rows"], 1, &["b"]))]);
+        assert_eq!(charge(bytes_max, list_max), (10, 3));
+    }
+
+    #[test]
+    fn malformed_paths_are_refused() {
+        let rule = |ty: C| {
+            parse_rule(&map(vec![
+                ("steps", map(vec![("measure", map(vec![("bytesMax", ty)]))])),
+                ("bytes", map(vec![("const", C::Integer(0))])),
+            ]))
+        };
+        assert!(rule(item_path(&["rows"], 1, &["a"])).is_some());
+        // An empty `then` has a shorter canonical spelling and is refused.
+        assert!(rule(item_path(&["rows"], 1, &[])).is_none());
+        // `then` without an item step is the same as a longer `fields`.
+        assert!(rule(item_path(&["rows"], 0, &["a"])).is_none());
+        let extra = map(vec![(
+            "path",
+            map(vec![
+                ("side", text("input")),
+                ("fields", C::Array(vec![text("rows")])),
+                ("item", C::Integer(1)),
+                ("unknown", C::Null),
+            ]),
+        )]);
+        assert!(rule(extra).is_none());
     }
 
     #[test]
