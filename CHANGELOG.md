@@ -12,7 +12,8 @@ versions still track specification maturity rather than a released product.
   fixing the 2026-11-16 RustSec advisories RUSTSEC-2026-0566 through
   RUSTSEC-2026-0573 (patched in 48.0.9) and RUSTSEC-2026-0587 (wasmtime-wasi,
   patched in 48.0.10) without changing enabled features or adding advisory
-  exceptions. The `provider-runtime-dependencies` guard now pins 48.0.10.
+  exceptions. The `provider-runtime-dependencies` guard now pins 48.0.10 and the
+  source-bound provider fixture inventory is regenerated.
 
 - Charge effect steps by provider-published cost templates. An
   `edict.target-profile.intrinsics/v3` catalog may give each effect intrinsic
