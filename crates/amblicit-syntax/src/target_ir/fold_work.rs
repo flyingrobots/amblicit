@@ -627,6 +627,9 @@ impl<'a> Meter<'a> {
                     for payload in reason.payload.values() {
                         arm = arm.add(self.expression(payload, available, depth + 1)?)?;
                     }
+                    if self.shared && self.effect_body {
+                        arm = arm.add(self.obstruction_payload(&reason.payload, available)?)?;
+                    }
                     selected = selected.maximum(arm);
                 }
                 cost.add(selected)?
@@ -637,6 +640,12 @@ impl<'a> Meter<'a> {
                 let mut cost = self.predicate(predicate, available, depth + 1)?;
                 for value in reason.payload.values() {
                     cost = cost.add(self.expression(value, available, depth + 1)?)?;
+                }
+                if self.shared && self.effect_body {
+                    // The failing path builds and encodes the payload, as an
+                    // `attempt` arm does; the passing path adds nothing after
+                    // the predicate, so the failing path is the larger.
+                    cost = cost.add(self.obstruction_payload(&reason.payload, available)?)?;
                 }
                 cost
             }
@@ -735,6 +744,30 @@ impl<'a> Meter<'a> {
         // Echo's effect-body judge validates the bound value against its
         // declared type: `validations(type)` of the provider shape.
         cost.add(Cost::steps(validations(self.core, &binding.ty)?))
+    }
+
+    /// Under the shared-read schedule, what an effect body's failure arm or
+    /// failing `require` adds beyond its payload fields' own work, as warp-core's shared executor
+    /// charges it: the payload record's expression step and shell (one cell,
+    /// plus a keyed cell per field), then encoding the record at its type's
+    /// copying size, Echo's `shape(record)` scratch. An empty payload costs
+    /// (2, 64) + (1, 64).
+    fn obstruction_payload(
+        &self,
+        payload: &'a BTreeMap<String, CoreExpr>,
+        available: &Scope<'a>,
+    ) -> Option<Cost> {
+        let mut shell = Value::CELL;
+        let mut encoded = Value::CELL;
+        for (name, field) in payload {
+            shell = shell.add(Self::field(name, Value { cells: 0, bytes: 0 })?)?;
+            let ty = expression_type_coordinate(self.core, self.facts, field, available)?;
+            encoded = encoded.add(Self::field(name, self.value_type(&ty, 0)?)?)?;
+        }
+        shell.evaluation()?.add(Cost {
+            steps: encoded.cells,
+            bytes: encoded.bytes,
+        })
     }
 
     /// Under the shared-read schedule the provider's template replaces the

@@ -106,9 +106,44 @@ cannot express (text, unit, a map or a reference) therefore leaves a
 shared-read effect program's work unestablished, and the program is refused
 with `InvalidBound` ("shared-read Core work is unestablished") on any target,
 with or without a `/v3` template; Echo has no such values and refuses it too.
-The same `let` in a pure shared-read intent still compiles. In a
-literal-bound loop the effect node step and the `let` validations are charged
-per iteration. Under the copying schedule the template is
+The same `let` in a pure shared-read intent still compiles.
+
+An `attempt` in such an intent is charged what Echo's shared executor charges
+on its costlier path. Success binds the call's result without validating it,
+so it adds nothing. A failure arm builds its payload record and encodes it as
+the obstruction payload:
+
+```text
+attempt = node step (1, 0)
+        + value expression
+        + max over arms of:
+            each payload field's expression
+          + (1 + 1 + n steps, 64 + sum of (64 + name length) bytes)
+                                   the record's expression step and its shell
+          + copying size of the payload record's type
+                                   its encoding, Echo's shape(record) scratch
+```
+
+An empty payload therefore costs (3 steps, 128 bytes). Each field adds one
+keyed cell to the shell, (1 step, 64 + name length bytes), and its encoding,
+the field's type at copying size plus its key: a `U64` field `at` adds
+(1, 66) to the shell and (2, 130) to the encoding, besides its own
+expression. A `require` in such an intent is charged the same way: its
+failing path builds and encodes the payload, and its passing path adds
+nothing after the predicate, so the failing path is the larger:
+
+```text
+require = node step (1, 0)
+        + predicate
+        + each payload field's expression
+        + the payload record's expression step and shell
+        + copying size of the payload record's type
+```
+
+A pure shared-read intent's `attempt` or `require` charges only its payload
+fields' expressions, as before. In a literal-bound loop the effect node step,
+the `let` validations, the `attempt` arm and the `require` payload are
+charged per iteration. Under the copying schedule the template is
 added on top of the generic charge, so copying-schedule results are unchanged
 from the first template release. A type path may step into list items with `item` and then name fields inside
 the item with `then`. The path names one item's type, so its measure is a

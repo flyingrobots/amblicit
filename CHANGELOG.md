@@ -8,6 +8,23 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Under the shared-read schedule, an `attempt` in an intent whose body holds
+  an effect node is charged its failure arm as Echo's shared executor charges
+  it: the payload record's expression step and shell, then its encoding at the
+  record type's copying size. An empty arm adds exactly (3 steps, 128 bytes),
+  measured on Echo's typed-failure program; the success path adds nothing,
+  since the executor binds the result unvalidated. A pure intent's `attempt`
+  and every copying-schedule result are unchanged. The README extends the
+  shared-read effect formula to `attempt` (issue #341).
+- Under the shared-read schedule, a `require` in an intent whose body holds an
+  effect node is charged what Echo's shared executor charges on its failing
+  path: the payload record's expression step and shell, then its encoding, as
+  an `attempt` arm. It was charged its predicate and payload fields only, so
+  its minimum could fall below the runtime. An empty payload adds exactly
+  (3 steps, 128 bytes) and a one-field `U64` payload `at` (6, 324). A pure
+  intent's `require` and every copying-schedule result are unchanged. A test
+  now pins an `attempt` arm with a one-field payload. The README extends the
+  shared-read effect formula to `require` and to payload fields (issue #341).
 - Under the shared-read schedule, align two effect-program terms with Echo's
   runtime charge, which the static minimum must not fall below: an effect step
   whose template replaces the generic charge now keeps its own node step
