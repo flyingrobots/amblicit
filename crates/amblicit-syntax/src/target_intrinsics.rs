@@ -365,6 +365,7 @@ pub fn admit_target_effect_costs(
                 intrinsic: lowering.target_intrinsic.clone(),
                 rule,
                 parameters,
+                input_type: None,
             }),
             Err(kind) => failures.push(failure(kind, coordinate)),
         }

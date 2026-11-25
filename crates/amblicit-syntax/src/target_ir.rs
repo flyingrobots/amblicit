@@ -353,7 +353,7 @@ impl TargetIrLoweringFacts {
                 .iter()
                 .find(|cost| cost.effect == signature.source_coordinate)
             {
-                signature.cost = Some(cost.clone());
+                signature.cost = Some(cost.with_input_type(&signature.input_type));
             }
         }
         self

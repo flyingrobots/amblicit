@@ -882,7 +882,11 @@ impl Meter<'_> {
         let Some(fact) = facts.iter().find(|fact| fact.effect == effect) else {
             return Some(Cost::default());
         };
-        let input = expression_type_coordinate(self.core, self.facts, input, available)?;
+        // The input's own coordinate when it establishes one; otherwise the
+        // effect's declared input type, which the input was checked against
+        // and Echo validates it against before charging the template.
+        let input = expression_type_coordinate(self.core, self.facts, input, available)
+            .or_else(|| fact.input_type.clone())?;
         if !self.costliest_known {
             self.costliest = self.costliest_helper();
             self.costliest_known = true;

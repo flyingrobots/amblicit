@@ -9,12 +9,13 @@
 //!   paths the catalog declares; a `helper` parameter names a module helper
 //!   that is priced by its own cost.
 use amblicit_syntax::{
-    admit_target_effect_costs, admit_target_pure_intrinsics, compile_to_core,
+    admit_target_effect_costs, admit_target_pure_intrinsics, author_lawpack, compile_to_core,
     decode_lawpack_adapter, decode_lawpack_bundle, digest_target_intrinsics_catalog,
     encode_canonical_cbor, lower_to_target_ir, parse_module, prepare_lawpack_compilation,
     CanonicalValue as C, CompilerContext, CompilerErrorKind, CoreBudget, CoreCostSchedule,
-    CoreModule, ResourceRef, TargetEffectCostFact, TargetIrLoweringFacts, TargetLoweringStatus,
-    TargetPureIntrinsicFailureKind, TARGET_EFFECT_COST_MAX_DEPTH, TARGET_INTRINSICS_API_VERSION,
+    CoreModule, LawpackArtifactKind, LawpackAuthoringDefinition, ResourceRef, TargetEffectCostFact,
+    TargetIrLoweringFacts, TargetLoweringStatus, TargetPureIntrinsicFailureKind,
+    TARGET_EFFECT_COST_MAX_DEPTH, TARGET_INTRINSICS_API_VERSION,
     TARGET_INTRINSICS_EFFECT_COST_API_VERSION,
 };
 
@@ -1391,4 +1392,342 @@ fn effect_cost_admission_ignores_an_unused_effect_nested_past_the_limit() {
     ]))
     .expect("canonical catalog");
     assert_eq!(admit_catalog(&bytes), Ok(()));
+}
+
+// Effect inputs written as expressions with no type coordinate of their own
+// (#341, jedit#410). Hello Echo's input is all text, which the provider value
+// shape has no measure for, so these use an authored lawpack whose effect
+// input has a list of records, bytes and an integer.
+
+const LIT_PIN: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+
+/// A lawpack exporting `put`, lowered to [`INTRINSIC`], whose input is
+/// `PutInput = { items: List<Item, max=4>, n: U64, tag: Bytes<max=16> }` and
+/// `Item = { count: U64, id: Bytes<exact=32> }`.
+fn literal_definition() -> LawpackAuthoringDefinition {
+    serde_json::from_value(serde_json::json!({
+        "schema": "edict.lawpack-authoring/v1",
+        "id": "graph.lit",
+        "version": "1",
+        "acceptedCoreAbi": ["edict.core/v1"],
+        "dependencies": [],
+        "exportsCoordinate": "graph.lit.exports/v1",
+        "exports": {
+            "types": [
+                {"coordinate": "graph.lit@1.Done", "definition": "Record<>"},
+                {"coordinate": "graph.lit@1.Item",
+                 "definition": "Record<count:U64,id:Bytes<exact=32>>"},
+                {"coordinate": "graph.lit@1.PutInput",
+                 "definition": "Record<items:List<graph.lit@1.Item,max=4>,n:U64,tag:Bytes<max=16>>"}
+            ],
+            "constants": [],
+            "pureFunctions": [],
+            "effects": [{
+                "coordinate": "graph.lit@1.put",
+                "typeParameters": [],
+                "inputType": "graph.lit@1.PutInput",
+                "outputType": "graph.lit@1.Done",
+                "executionClass": "runtime",
+                "effectKindHint": "create",
+                "footprintObligation": "graph.lit@1.footprint",
+                "costObligation": "graph.lit@1.budget",
+                "effectFailures": {},
+                "guardSupport": true
+            }],
+            "obstructions": [],
+            "operationProfiles": {
+                "graph.lit@1.write": {
+                    "opticTemplate": {
+                        "opticKind": "affectReintegration",
+                        "boundaryKind": "affect",
+                        "supportPolicy": "graph.lit@1.support",
+                        "lossDisposition": "graph.lit@1.lossless",
+                        "basisTemplate": "graph.lit@1.basis",
+                        "apertureRequirement": {
+                            "kind": "abstractFootprintObligation",
+                            "reference": "graph.lit@1.footprint"
+                        }
+                    },
+                    "effectPredicate": "graph.lit@1.effects"
+                }
+            }
+        },
+        "targetAdapters": [{
+            "coordinate": "graph.lit.echo-adapter/v1",
+            "output": "adapter.cbor",
+            "acceptedTargetProfile": {"id": "echo.dpo@1", "digest": LIT_PIN},
+            "acceptedTargetIr": {"id": "echo.span-ir/v2", "digest": LIT_PIN},
+            "operationProfiles": {
+                "graph.lit@1.write": {
+                    "core": "continuum.profile.graph-effects/v1",
+                    "semanticEffects": ["graph.lit@1.put"],
+                    "budgetObligation": "graph.lit@1.budget",
+                    "targetConfiguration": {"local": "echo-config"}
+                }
+            },
+            "effectImplementations": {
+                "graph.lit@1.put": {
+                    "targetIntrinsic": INTRINSIC,
+                    "targetConfiguration": {"local": "echo-config"},
+                    "writeClass": "create",
+                    "footprintObligation": "graph.lit@1.footprint",
+                    "costObligation": "graph.lit@1.budget",
+                    "failureMappings": {}
+                }
+            },
+            "budgets": {
+                "graph.lit@1.budget": {
+                    "maxSteps": 4096,
+                    "maxAllocatedBytes": 65536,
+                    "maxOutputBytes": 64
+                }
+            }
+        }],
+        "verifier": {"class": "declarative", "ruleset": {"local": "rules"}},
+        "compatibility": {"id": "graph.lit.compatibility/v1", "digest": LIT_PIN},
+        "conformanceFixtureCorpus": {"id": "graph.lit.fixtures/v1", "digest": LIT_PIN},
+        "localResources": [{
+            "name": "echo-config",
+            "coordinate": "graph.lit.echo-config/v1",
+            "output": "echo-config.cbor",
+            "value": {"apiVersion": "graph.lit.echo-config/v1"}
+        }, {
+            "name": "rules",
+            "coordinate": "graph.lit.verifier-rules/v1",
+            "output": "verifier-rules.cbor",
+            "value": {"opcodes": {"$edictBytes": "00"}}
+        }]
+    }))
+    .expect("typed authoring definition")
+}
+
+/// The `put` lawpack's compiler context and Target facts with `rule` admitted.
+fn literal_prepared(rule: C, selector: Option<&str>) -> (Prepared, String) {
+    let authored = author_lawpack(&literal_definition(), &[]).expect("author the lawpack");
+    let manifest = authored.artifact(LawpackArtifactKind::Manifest).unwrap();
+    let exports = authored.artifact(LawpackArtifactKind::Exports).unwrap();
+    let adapter = authored.artifact(LawpackArtifactKind::Adapter).unwrap();
+    let bundle = decode_lawpack_bundle(manifest.bytes(), exports.bytes()).expect("bundle");
+    let adapter = decode_lawpack_adapter(&bundle, "echo.dpo@1", adapter.bytes()).expect("adapter");
+    let digest = manifest.digest().to_owned();
+    // Preparation reads only the module's lawpack import.
+    let header = literal_source(&digest, "", "fx.put(bound)");
+    let module = parse_module(&header).expect("source");
+    let preparation = prepare_lawpack_compilation(&module, &bundle, &adapter).expect("facts");
+    let facts = preparation.target_ir_facts().clone();
+    let costs = admit(V3, rule, &configuration(selector), &facts).expect("templates admitted");
+    (
+        Prepared {
+            context: preparation
+                .compiler_context()
+                .clone()
+                .with_target_effect_costs(&costs),
+            facts: facts.with_target_effect_costs(&costs),
+            costs,
+        },
+        digest,
+    )
+}
+
+/// A `put` program: `lets` before the effect, whose input is `input_expr`.
+fn literal_source(digest: &str, lets: &str, call: &str) -> String {
+    format!(
+        "package consumer.lit@1;\n\
+         use lawpack graph.lit@1 digest \"{digest}\" as fx;\n\
+         type Input = {{ id: Bytes<exact=32>, n: U64, tag: Bytes<max=16> }};\n\
+         type Output = {{ id: Bytes<exact=32> }};\n\
+         fn relay(value: fx.PutInput) -> fx.PutInput {{ return value; }}\n\
+         intent write(input: Input) returns Output\n\
+           profile fx.write\n\
+           basis input.id\n\
+           budget <= fx.budget\n\
+         {{\n{lets}  let done: fx.Done = {call};\n  return {{ id: input.id }};\n}}\n"
+    )
+}
+
+/// The effect input as a record literal built from the intent input.
+const PUT_LITERAL: &str =
+    "{ items: [{ count: input.n, id: input.id }], n: input.n, tag: input.tag }";
+
+fn put_compile(
+    context: &CompilerContext,
+    source: &str,
+    budget: CoreBudget,
+) -> Result<CoreModule, Vec<amblicit_syntax::CompilerError>> {
+    compile_to_core(
+        &parse_module(source).expect("source"),
+        &context
+            .clone()
+            .with_core_cost_schedule(SHARED)
+            .with_budget("fx.budget", budget),
+    )
+}
+
+fn put_minimums(context: &CompilerContext, source: &str) -> (u64, u64) {
+    if let Err(errors) = put_compile(context, source, budget(CEILING, CEILING)) {
+        panic!("compiles under a generous budget: {errors:#?}\n{source}");
+    }
+    (
+        minimum(|v| put_compile(context, source, budget(v, CEILING)).is_ok()),
+        minimum(|v| put_compile(context, source, budget(CEILING, v)).is_ok()),
+    )
+}
+
+/// Asserts native Target lowers `source` at its source minimum and refuses one
+/// step or byte below it; returns that minimum.
+fn put_lowers_exactly_at_minimum(prepared: &Prepared, source: &str) -> (u64, u64) {
+    let (steps, bytes) = put_minimums(&prepared.context, source);
+    let core = put_compile(&prepared.context, source, budget(steps, bytes)).expect("minimum");
+    let report = lower_to_target_ir(&core, &prepared.facts);
+    assert_eq!(report.status, TargetLoweringStatus::Lowered, "{report:#?}");
+    for below in [budget(steps - 1, bytes), budget(steps, bytes - 1)] {
+        let mut core = core.clone();
+        core.intents
+            .get_mut("write")
+            .unwrap()
+            .core_evaluation_budget = below;
+        assert_ne!(
+            lower_to_target_ir(&core, &prepared.facts).status,
+            TargetLoweringStatus::Lowered,
+            "{source}"
+        );
+    }
+    (steps, bytes)
+}
+
+fn input_path(fields: &[&str], item: u64, then: &[&str]) -> C {
+    let names = |names: &[&str]| C::Array(names.iter().map(|name| text(name)).collect());
+    let mut entries = vec![
+        ("side", text("input")),
+        ("fields", names(fields)),
+        ("item", int(item)),
+    ];
+    if !then.is_empty() {
+        entries.push(("then", names(then)));
+    }
+    map(vec![("path", map(entries))])
+}
+
+/// Every measure a template can take on the input type: `bytesMax` of a field
+/// path, `listMax`, a `copy` through a list `item` and `then`, and the
+/// input's `validations`.
+fn input_measures_rule() -> C {
+    let copy = |of: &str| {
+        measure(map(vec![
+            ("copy", input_path(&["items"], 1, &["id"])),
+            ("of", text(of)),
+        ]))
+    };
+    let tag = measure(map(vec![("bytesMax", input_path(&["tag"], 0, &[]))]));
+    let items = measure(map(vec![("listMax", input_path(&["items"], 0, &[]))]));
+    let checks = measure(map(vec![("validations", input_path(&[], 0, &[]))]));
+    map(vec![
+        (
+            "steps",
+            map(vec![(
+                "sum",
+                C::Array(vec![copy("steps"), items.clone(), checks]),
+            )]),
+        ),
+        (
+            "bytes",
+            map(vec![("sum", C::Array(vec![copy("bytes"), tag, items]))]),
+        ),
+    ])
+}
+
+/// The input measures' values for `PutInput`, from the provider value shape:
+/// copy(Bytes<exact=32>) = (1, 32 + 64); bytesMax(tag) = 16; listMax(items) =
+/// 4; validations(PutInput) = 1 + (1 + 4·(1 + 1 + 1)) + 1 + 1 = 16.
+const PUT_VALIDATIONS: u64 = 16;
+const INPUT_MEASURES: (u64, u64) = (1 + 4 + PUT_VALIDATIONS, 32 + 64 + 16 + 4);
+
+fn literal_rules() -> [(C, Option<&'static str>); 4] {
+    [
+        (input_measures_rule(), None),
+        (scan_rule(), None),
+        (selector_rule(), Some("relay")),
+        (costliest_rule(), Some("relay")),
+    ]
+}
+
+#[test]
+fn an_effect_input_written_as_a_record_literal_is_costed_by_every_template_measure() {
+    for (rule, selector) in literal_rules() {
+        let (prepared, digest) = literal_prepared(rule, selector);
+        let call = format!("fx.put({PUT_LITERAL})");
+        put_lowers_exactly_at_minimum(&prepared, &literal_source(&digest, "", &call));
+    }
+}
+
+#[test]
+fn the_input_measures_charge_exactly_their_values_on_the_declared_input_type() {
+    let (zero, digest) = literal_prepared(zero_rule(), None);
+    let (measured, _) = literal_prepared(input_measures_rule(), None);
+    let source = literal_source(&digest, "", &format!("fx.put({PUT_LITERAL})"));
+    let base = put_minimums(&zero.context, &source);
+    let charged = put_minimums(&measured.context, &source);
+    assert_eq!((charged.0 - base.0, charged.1 - base.1), INPUT_MEASURES);
+}
+
+#[test]
+fn a_literal_effect_input_costs_the_typed_let_form_minus_exactly_the_lets_own_terms() {
+    // The documented v2 effect step is: the input expression's own cost (here
+    // building the record), plus the template, plus the effect node's step,
+    // plus the empty obstruction payload when arms are mapped (none here).
+    // The typed-`let` form builds the same record in its `let`, whose charge is
+    // the let node's step, the record (the same input expression), and the
+    // effect-body validations of its declared type; the effect's input is then
+    // a local read, one step and no bytes under v2. So the literal form is the
+    // let form minus exactly: one let step, validations(PutInput) = 16 steps,
+    // and the local read's one step. The template (measured on the same
+    // declared type), the input record and the effect step are common to both.
+    const LET_STEP: (u64, u64) = (1, 0);
+    const LET_VALIDATIONS: (u64, u64) = (PUT_VALIDATIONS, 0);
+    const LOCAL_READ: (u64, u64) = (1, 0);
+    for (rule, selector) in literal_rules() {
+        let (prepared, digest) = literal_prepared(rule, selector);
+        let literal = put_lowers_exactly_at_minimum(
+            &prepared,
+            &literal_source(&digest, "", &format!("fx.put({PUT_LITERAL})")),
+        );
+        let bound = put_lowers_exactly_at_minimum(
+            &prepared,
+            &literal_source(
+                &digest,
+                &format!("  let bound: fx.PutInput = {PUT_LITERAL};\n"),
+                "fx.put(bound)",
+            ),
+        );
+        assert_eq!(
+            literal,
+            (
+                bound.0 - LET_STEP.0 - LET_VALIDATIONS.0 - LOCAL_READ.0,
+                bound.1 - LET_STEP.1 - LET_VALIDATIONS.1 - LOCAL_READ.1,
+            ),
+            "literal {literal:?} vs typed let {bound:?}"
+        );
+    }
+}
+
+#[test]
+fn other_effect_input_forms_are_costed_and_lowered_at_their_minimum() {
+    // A helper call has its own coordinate; a conditional of two literals has
+    // none and is measured at the declared input type, as is a conditional
+    // joining a literal with a typed local when the join names no declared
+    // coordinate. (A field of
+    // a record literal holding a list literal is refused earlier, by the
+    // source checker, which gives a list literal no type without one expected.)
+    let lets = format!("  let bound: fx.PutInput = {PUT_LITERAL};\n");
+    let forms = [
+        format!("fx.put(relay({PUT_LITERAL}))"),
+        format!("fx.put(if input.n == 0u64 then {PUT_LITERAL} else {PUT_LITERAL})"),
+        format!("fx.put(if input.n == 0u64 then {PUT_LITERAL} else bound)"),
+    ];
+    for (rule, selector) in literal_rules() {
+        let (prepared, digest) = literal_prepared(rule, selector);
+        for call in &forms {
+            put_lowers_exactly_at_minimum(&prepared, &literal_source(&digest, &lets, call));
+        }
+    }
 }
