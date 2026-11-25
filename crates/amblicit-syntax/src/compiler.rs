@@ -682,7 +682,14 @@ pub fn resolve_module(
                         .map(crate::TargetPureFunctionFact::from_target_pure_intrinsic),
                 )
                 .collect(),
-            effect_costs: context.effect_costs.clone(),
+            effect_costs: context
+                .effect_costs
+                .iter()
+                .map(|cost| match context.effect_signatures.get(&cost.effect) {
+                    Some(signature) => cost.with_input_type(&signature.input_type),
+                    None => cost.clone(),
+                })
+                .collect(),
         },
     )
 }

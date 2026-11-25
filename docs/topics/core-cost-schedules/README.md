@@ -186,6 +186,21 @@ source helper a `helper` parameter names. Under the shared-read schedule
 the costliest helper, as `costliestHelper` does, once the named helper is known
 to exist.
 
+The `input` side of a type path names the type of the effect's input
+expression when that expression establishes one (a typed local, a helper
+call's return type, a field of a typed value). An input written as a record
+literal, or a conditional of two literals, establishes none; its side is then
+the effect's declared input type from the authenticated lawpack signature,
+which the input is checked against and Echo validates the value against
+before the template runs. So a literal input costs exactly what the same
+literal bound by a typed `let` of the declared type costs, minus the `let`'s
+own terms: its node step (1, 0), its effect-body `validations` of the type,
+and the effect's local read (1, 0). Before this, such a program was refused
+with "shared-read Core work is unestablished" whenever its effect had a
+template (#341, jedit#410). A field projection of a record literal that holds
+a list literal is still refused, by the source checker, which gives a list
+literal no type without an expected one.
+
 The catalog's top-level `parameters` map declares each parameter's field path
 into the application's operation configuration (the `targetConfiguration` the
 lawpack pins by digest) and its kind, `uint` or `helper`. Echo's catalog at

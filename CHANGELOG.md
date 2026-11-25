@@ -8,6 +8,19 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Fixed: under the shared-read schedule with a `/v3` intrinsics catalog, an
+  effect with a provider cost template whose input was written as a record
+  literal (or a conditional of literals) could not be costed: the build
+  refused it with "shared-read Core work is unestablished", because the
+  template's `input` side had no type coordinate for the literal. The side is
+  now the effect's declared input type from its authenticated signature, used
+  only when the input expression establishes no coordinate of its own, so
+  every program that compiled before is charged exactly as before (copying
+  output, `/v1` and `/v2` catalogs, and the frozen provider contract packs are
+  unchanged). A literal input costs the typed-`let` form minus the `let`'s
+  node step, its type validations and the local read. Jedit's rope
+  ReplaceRange (jedit#410), whose seven effect inputs are record literals,
+  now costs as authored. Refs #341.
 - Fixed: the `effect-cost-catalog-v1` provider contract pack published by
   #351 could not be loaded by the provider artifact-schema registry. Its
   `/v3` cost rules were recursive (`sum` and `product` inside

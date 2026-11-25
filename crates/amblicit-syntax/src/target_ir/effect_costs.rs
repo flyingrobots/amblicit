@@ -98,6 +98,12 @@ pub struct TargetEffectCostFact {
     pub(crate) rule: TargetEffectCostRule,
     /// The parameters the rule uses, read from the operation configuration.
     pub(crate) parameters: BTreeMap<String, ParameterValue>,
+    /// The effect's declared input type from its authenticated signature,
+    /// attached where the signature is known. A rule's `input` side measures
+    /// it when the input expression establishes no coordinate of its own
+    /// (a record literal, for one): the input is checked against this type,
+    /// and Echo validates the value against it before the template runs.
+    pub(crate) input_type: Option<String>,
 }
 
 impl TargetEffectCostFact {
@@ -126,6 +132,14 @@ impl TargetEffectCostFact {
             }
         }
         Some(renamed)
+    }
+
+    /// This fact with the effect's declared input type attached.
+    pub(crate) fn with_input_type(&self, input_type: &str) -> Self {
+        Self {
+            input_type: Some(input_type.to_owned()),
+            ..self.clone()
+        }
     }
 
     /// The source helpers this template's `helper` parameters name.
