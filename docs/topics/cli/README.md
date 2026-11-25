@@ -126,12 +126,22 @@ admits all declared contracts, even if the source does not call them. Provider
 authors use `digest_target_intrinsics_catalog(catalog_coordinate, canonical_bytes)`
 to compute the pin: the canonical digest domain is the catalog coordinate. The
 profile encodes the reference as `{id, digest: ["sha256", <32 bytes>]}`.
-The declaration requires 1..=64 non-empty
-coordinate/version pairs; the catalog has the existing 1 MiB artifact limit.
+The declaration takes 0..=64 non-empty
+coordinate/version pairs; `required` may be omitted or empty, which loads the
+catalog only for its effect cost templates and grants no pure intrinsic fact.
+The catalog has the existing 1 MiB artifact limit.
 Duplicate requirements, invalid catalogs, wrong versions and substituted bytes
 fail before output publication. A declared v1 catalog is refused; it is never
 silently treated as absent. Omitting the declaration loads no catalog and grants
 no intrinsic facts. [CLI-REQ-020]
+
+Under the shared-read schedule (`edict.core-cost/v2`) a build whose lawpack
+lowers any effect must declare the catalog: each effect is charged the cost
+template of the catalog the profile pins, and the compiler never searches the
+provider package for it. Without the declaration the build is refused with
+`TargetIntrinsicCatalogUndeclared`, which names the pinned catalog, instead of
+charging the generic effect step a `/v3` target would refuse. For example,
+`"pureIntrinsics": {"catalog": "generated/resources/resource.target-intrinsics-3.cbor"}`.
 
 The source must import that exact pinned profile with `use target`. The admitted
 facts enter both compilation and native Target IR validation, which independently

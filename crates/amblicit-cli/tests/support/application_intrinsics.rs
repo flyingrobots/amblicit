@@ -247,7 +247,6 @@ fn public_application_refuses_invalid_intrinsic_requirements_without_publication
         ("version", "TargetIntrinsicVersionMismatch"),
         ("missing", "TargetIntrinsicMissingIntrinsic"),
         ("duplicate", "TargetIntrinsicDuplicateRequirement"),
-        ("empty", "InvalidApplicationConfig"),
         ("too-many", "InvalidApplicationConfig"),
         ("escape", "InvalidApplicationConfig"),
         ("self-pin", "InvalidApplicationConfig"),
@@ -263,7 +262,6 @@ fn public_application_refuses_invalid_intrinsic_requirements_without_publication
                     declaration["required"] =
                         json!([declaration["required"][0], declaration["required"][0]]);
                 }
-                "empty" => declaration["required"] = json!([]),
                 "too-many" => {
                     declaration["required"] = json!(vec![declaration["required"][0].clone(); 65]);
                 }
@@ -421,6 +419,26 @@ fn public_application_omission_grants_no_intrinsic_facts() {
     });
     fs::remove_file(root.join("provider/intrinsics.cbor")).expect("no catalog to load");
     refusal(&root, &config, "UnresolvedFunction");
+}
+
+#[test]
+fn public_application_catalog_without_requirements_grants_no_intrinsic_facts() {
+    // A catalog declared only for its effect cost templates (#341) admits no
+    // pure contract, so the source's call stays unresolved.
+    for required in [Some(json!([])), None] {
+        let root = temp_tree("catalog-only-intrinsics");
+        let config = fixture(&root);
+        edit_config(&config, |v| {
+            let declaration = v["target"]["pureIntrinsics"]
+                .as_object_mut()
+                .expect("declaration");
+            match &required {
+                Some(required) => declaration.insert("required".into(), required.clone()),
+                None => declaration.remove("required"),
+            };
+        });
+        refusal(&root, &config, "UnresolvedFunction");
+    }
 }
 
 #[test]

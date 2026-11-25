@@ -316,6 +316,14 @@ pub(crate) fn build_application(config_path: &Path) -> Result<(), ApplicationBui
                 format!("source and lawpack closure do not corroborate: {failures:?}"),
             )
         })?;
+    if config.core_cost_schedule == ApplicationCostSchedule::SharedReads
+        && config.target.pure_intrinsics.is_none()
+        && !preparation.target_ir_facts().effect_lowerings.is_empty()
+    {
+        return Err(target_intrinsics::undeclared_catalog_failure(
+            &target_profile,
+        ));
+    }
     let intrinsics = config
         .target
         .pure_intrinsics
