@@ -4,6 +4,7 @@ use std::path::Path;
 use amblicit_provider_schema::{assemble_provider_contract_pack, ProviderContractPackInput};
 use amblicit_syntax::canonical_target_profile_contract_resources;
 
+use crate::effect_cost_cddl::splice_effect_cost_levels;
 use crate::goldens::{check_golden_file_with_command, write_golden_file};
 
 const COMMON_CDDL: &str = "docs/abi/edict-common.cddl";
@@ -34,7 +35,7 @@ pub(crate) fn provider_contract_pack(
     let core_cddl = read(root, CORE_CDDL)?;
     let lawpack_cddl = read(root, LAWPACK_CDDL)?;
     let lawpack_adapter_cddl = read(root, LAWPACK_ADAPTER_CDDL)?;
-    let target_profile_cddl = read(root, TARGET_PROFILE_CDDL)?;
+    let target_profile_cddl = generated_target_profile_cddl(root, mode)?;
     let authority_facts_cddl = read(root, AUTHORITY_FACTS_CDDL)?;
     let result_projection_cddl = read(root, RESULT_PROJECTION_CDDL)?;
     let target_ir_cddl = read(root, TARGET_IR_CDDL)?;
@@ -85,6 +86,30 @@ pub(crate) fn provider_contract_pack(
         }
     );
     Ok(())
+}
+
+/// The target-profile ABI source with its generated effect-cost block checked
+/// (`Check`) or rewritten (`Write`).
+fn generated_target_profile_cddl(
+    root: &Path,
+    mode: ProviderContractPackMode,
+) -> Result<Vec<u8>, String> {
+    let committed = read(root, TARGET_PROFILE_CDDL)?;
+    let committed_text = String::from_utf8(committed)
+        .map_err(|error| format!("{TARGET_PROFILE_CDDL} is not UTF-8: {error}"))?;
+    let generated = splice_effect_cost_levels(&committed_text)?.into_bytes();
+    match mode {
+        ProviderContractPackMode::Check => check_golden_file_with_command(
+            root,
+            TARGET_PROFILE_CDDL,
+            &generated,
+            "cargo xtask provider-contract-pack --write",
+        )?,
+        ProviderContractPackMode::Write => {
+            write_golden_file(&root.join(TARGET_PROFILE_CDDL), &generated)?;
+        }
+    }
+    Ok(generated)
 }
 
 fn read(root: &Path, relative: &str) -> Result<Vec<u8>, String> {

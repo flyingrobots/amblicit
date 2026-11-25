@@ -6,9 +6,13 @@
 //! admit and refuse wherever CDDL can state the rule; published pack bytes are
 //! the checked-in fixtures.
 
+use std::collections::BTreeSet;
+use std::sync::{Arc, OnceLock};
+
 use amblicit_provider_schema::{
-    assemble_provider_contract_pack, ProviderContractInstanceValidationErrorKind,
-    ProviderContractPack, ProviderContractPackInput,
+    assemble_provider_contract_pack, ProviderArtifactSchemaRegistry,
+    ProviderContractInstanceValidationErrorKind, ProviderContractPack, ProviderContractPackInput,
+    ProviderSchemaRegistryFailure, ResolvedProviderSchemaArtifact,
 };
 use amblicit_syntax::{
     admit_target_pure_intrinsics, canonical_target_profile_contract_resources, compile_to_core,
@@ -16,6 +20,12 @@ use amblicit_syntax::{
     encode_core_module, parse_module, CanonicalValue as V, CompilerContext, CompilerErrorKind,
     CoreBudget, CoreExpr, CoreNode, RequiredPureIntrinsic, ResourceRef, TargetPureIntrinsicFact,
     TargetPureIntrinsicFailureKind, CORE_MODULE_DIGEST_DOMAIN,
+};
+use amblicit_syntax::{
+    bind_target_provider_manifest, ProviderArtifactKind, ProviderArtifactRef,
+    ProviderArtifactSchemaValidationErrorKind, ProviderArtifactSchemaValidator,
+    ProviderArtifactSource, ProviderSchemaBinding, ProviderSchemaFormat, TargetProviderManifest,
+    TARGET_EFFECT_COST_MAX_DEPTH, TARGET_PROVIDER_ABI, TARGET_PROVIDER_MANIFEST_API_VERSION,
 };
 
 const CATALOG_CONTRACT: &str = "target-profile-intrinsics";
@@ -688,13 +698,12 @@ fn effect_rule_mut(catalog: &mut V) -> &mut V {
 }
 
 /// Oracle: amblicit#341 "Final effect cost-template format"; Echo's catalog
-/// passes the compiler's admission (`effect_cost_templates.rs`).
+/// passes the compiler's admission (`effect_cost_templates.rs`). Regression:
+/// the pack published by #351 passed direct CDDL validation but failed to load
+/// in the registry (`SchemaCompileFailed`) once a provider bound its catalog.
 #[test]
 fn current_pack_admits_echo_v3_catalog() {
-    assert_eq!(
-        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &echo_v3_catalog()),
-        Ok(())
-    );
+    assert!(current_pack_admits(&echo_v3_catalog()));
 }
 
 /// The frozen typed-failures publication keeps refusing a v3 catalog.
@@ -709,18 +718,12 @@ fn typed_failures_publication_refuses_a_v3_catalog() {
 /// A v2 catalog is admitted unchanged by the current pack.
 #[test]
 fn current_pack_still_admits_a_v2_catalog() {
-    assert_eq!(
-        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &catalog_v2()),
-        Ok(())
-    );
+    assert!(current_pack_admits(&catalog_v2()));
 }
 
 #[test]
 fn current_pack_admits_a_minimal_v3_catalog() {
-    assert_eq!(
-        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &catalog_v3()),
-        Ok(())
-    );
+    assert!(current_pack_admits(&catalog_v3()));
 }
 
 /// Catalog v3 requires a template on every effect intrinsic.
@@ -731,10 +734,7 @@ fn current_pack_refuses_a_v3_effect_without_a_template() {
         field_mut(field_mut(&mut catalog, "intrinsics"), "echo.dpo@1.replace"),
         "effectCostRule",
     );
-    assert_eq!(
-        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &catalog),
-        Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch)
-    );
+    assert!(!current_pack_admits(&catalog));
 }
 
 /// Malformed templates: a one-term sum, an unknown measure, a missing half,
@@ -765,15 +765,10 @@ fn current_pack_refuses_malformed_v3_templates() {
             ("bytes", map(vec![("const", V::Integer(0))])),
         ]),
     ];
-    let pack = catalog_v2_pack();
     for (index, rule) in malformed.into_iter().enumerate() {
         let mut catalog = catalog_v3();
         *effect_rule_mut(&mut catalog) = rule;
-        assert_eq!(
-            pack.validate_contract(CATALOG_CONTRACT, &catalog),
-            Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch),
-            "malformed template {index}"
-        );
+        assert!(!current_pack_admits(&catalog), "malformed template {index}");
     }
 }
 
@@ -791,10 +786,7 @@ fn current_pack_refuses_a_malformed_v3_parameter() {
             map(vec![("path", texts(&[])), ("kind", text("uint"))]),
         )]),
     ));
-    assert_eq!(
-        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &catalog),
-        Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch)
-    );
+    assert!(!current_pack_admits(&catalog));
 }
 
 /// `/v3`-only keys do not make a `/v2` catalog valid.
@@ -802,10 +794,7 @@ fn current_pack_refuses_a_malformed_v3_parameter() {
 fn current_pack_refuses_a_v2_catalog_with_a_template() {
     let mut catalog = catalog_v3();
     *field_mut(&mut catalog, "apiVersion") = text("edict.target-profile.intrinsics/v2");
-    assert_eq!(
-        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &catalog),
-        Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch)
-    );
+    assert!(!current_pack_admits(&catalog));
 }
 
 #[test]
@@ -815,10 +804,7 @@ fn current_pack_refuses_a_v2_catalog_with_parameters() {
         panic!("catalog is a map")
     };
     fields.push((text("parameters"), V::Map(Vec::new())));
-    assert_eq!(
-        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &catalog),
-        Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch)
-    );
+    assert!(!current_pack_admits(&catalog));
 }
 
 /// A v3 catalog declaring `count` well-formed parameters.
@@ -846,18 +832,12 @@ fn catalog_v3_with_parameters(count: usize) -> V {
 /// `crates/amblicit-syntax/src/target_ir/effect_parameters.rs`.
 #[test]
 fn current_pack_admits_v3_parameters_at_the_decoder_limit() {
-    assert_eq!(
-        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &catalog_v3_with_parameters(64)),
-        Ok(())
-    );
+    assert!(current_pack_admits(&catalog_v3_with_parameters(64)));
 }
 
 #[test]
 fn current_pack_refuses_v3_parameters_above_the_decoder_limit() {
-    assert_eq!(
-        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &catalog_v3_with_parameters(65)),
-        Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch)
-    );
+    assert!(!current_pack_admits(&catalog_v3_with_parameters(65)));
 }
 
 /// Oracle: the decoder refuses `then` after no item step (`effect_costs.rs`).
@@ -885,8 +865,251 @@ fn current_pack_refuses_then_after_no_item_step() {
         ),
         ("bytes", map(vec![("const", V::Integer(0))])),
     ]);
+    assert!(!current_pack_admits(&catalog));
+}
+
+// --- The current pack through the provider artifact-schema registry ---------
+//
+// A provider package vendors the pack CDDL as one artifact schema and binds
+// its roots to domains; the compiler loads that package through
+// `ProviderArtifactSchemaRegistry::from_manifest`, whose safety audit is
+// stricter than validating against the CDDL directly. Every assertion about
+// what the current pack admits therefore also runs through the registry.
+
+const PACK_SCHEMA_ROLE: &str = "schema.provider-contracts";
+const V3_CATALOG_DOMAIN: &str = "runtime.dpo.intrinsics/v3";
+
+fn sha256_review(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    format!("sha256:{:x}", Sha256::digest(bytes))
+}
+
+fn review_resource(coordinate: &str, digest: String) -> ResourceRef {
+    ResourceRef {
+        coordinate: coordinate.to_owned(),
+        digest: Some(digest),
+    }
+}
+
+/// A provider manifest that carries `schema` under one role and binds each
+/// `(domain, root)` pair to it, loaded through the compiler's registry path.
+fn registry_binding(
+    schema: &[u8],
+    bindings: &[(String, String)],
+) -> Result<ProviderArtifactSchemaRegistry, ProviderSchemaRegistryFailure> {
+    let manifest = TargetProviderManifest {
+        api_version: TARGET_PROVIDER_MANIFEST_API_VERSION.to_owned(),
+        provider_abi: TARGET_PROVIDER_ABI.to_owned(),
+        provider: review_resource("runtime.provider@1", format!("sha256:{}", "3".repeat(64))),
+        artifacts: vec![ProviderArtifactRef {
+            role: PACK_SCHEMA_ROLE.to_owned(),
+            artifact_kind: ProviderArtifactKind::ArtifactSchema,
+            resource: review_resource("runtime.provider-artifacts.cddl@1", sha256_review(schema)),
+            source: ProviderArtifactSource::Generated {
+                semantic_source: review_resource(
+                    "runtime.semantic-source@1",
+                    format!("sha256:{}", "1".repeat(64)),
+                ),
+                generator: review_resource(
+                    "runtime.provider-generator@1",
+                    format!("sha256:{}", "2".repeat(64)),
+                ),
+            },
+        }],
+        schema_bindings: bindings
+            .iter()
+            .map(|(domain, root)| ProviderSchemaBinding {
+                domain: domain.clone(),
+                schema_role: PACK_SCHEMA_ROLE.to_owned(),
+                format: ProviderSchemaFormat::SelfContainedCddlV1,
+                root_rule: root.clone(),
+            })
+            .collect(),
+    };
+    let validated = bind_target_provider_manifest(&manifest).expect("manifest validates");
+    ProviderArtifactSchemaRegistry::from_manifest(
+        &validated,
+        [ResolvedProviderSchemaArtifact {
+            role: PACK_SCHEMA_ROLE.to_owned(),
+            bytes: Arc::from(schema),
+        }],
+        bindings.iter().map(|(domain, _)| domain.as_str()),
+    )
+}
+
+/// The current pack's catalog root bound to a `/v3` intrinsics domain, as Echo
+/// binds `echo.dpo.intrinsics/v3`. Built once: construction audits the schema.
+fn current_catalog_registry() -> &'static ProviderArtifactSchemaRegistry {
+    static REGISTRY: OnceLock<ProviderArtifactSchemaRegistry> = OnceLock::new();
+    REGISTRY.get_or_init(|| {
+        registry_binding(
+            CURRENT_PACK_CDDL,
+            &[(
+                V3_CATALOG_DOMAIN.to_owned(),
+                "intrinsics-document".to_owned(),
+            )],
+        )
+        .unwrap_or_else(|failure| {
+            panic!("the current pack's catalog root must load in the registry: {failure}")
+        })
+    })
+}
+
+/// The published current pack, as a provider package vendors it.
+const CURRENT_PACK_CDDL: &[u8] = include_bytes!(
+    "../../../fixtures/provider-contracts/effect-cost-catalog-v1/edict-provider-contracts.cddl"
+);
+
+/// What the current pack decides for `catalog`. Direct CDDL validation and
+/// the registry must agree, and a refusal from either must be a schema
+/// mismatch, not an unknown contract or an unsupported domain.
+fn current_pack_admits(catalog: &V) -> bool {
+    let direct = catalog_v2_pack().validate_contract(CATALOG_CONTRACT, catalog);
+    let registry = current_catalog_registry().validate_canonical_value(V3_CATALOG_DOMAIN, catalog);
+    match (direct, registry) {
+        (Ok(()), Ok(())) => true,
+        (
+            Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch),
+            Err(ProviderArtifactSchemaValidationErrorKind::SchemaMismatch),
+        ) => false,
+        (direct, registry) => {
+            panic!("direct CDDL ({direct:?}) and the registry ({registry:?}) disagree or refuse for the wrong reason")
+        }
+    }
+}
+
+/// Every root the current pack publishes, contract or domain, loads in the
+/// registry. Oracle: the pack manifest lists the roots a provider may bind.
+#[test]
+fn registry_loads_every_root_of_the_current_pack() {
+    let pack = catalog_v2_pack();
     assert_eq!(
-        catalog_v2_pack().validate_contract(CATALOG_CONTRACT, &catalog),
-        Err(ProviderContractInstanceValidationErrorKind::SchemaMismatch)
+        pack.cddl_bytes(),
+        CURRENT_PACK_CDDL,
+        "the committed current pack is stale; run cargo xtask provider-contract-pack --write"
     );
+    let roots: BTreeSet<&str> = pack
+        .manifest()
+        .contracts
+        .iter()
+        .map(|binding| binding.root_rule.as_str())
+        .chain(
+            pack.manifest()
+                .domains
+                .iter()
+                .map(|binding| binding.root_rule.as_str()),
+        )
+        .collect();
+    assert_eq!(roots.len(), 12, "witness count of published roots");
+    let refused: Vec<String> = roots
+        .iter()
+        .filter_map(|root| {
+            registry_binding(
+                CURRENT_PACK_CDDL,
+                &[(format!("runtime.pack-root.{root}/v1"), (*root).to_owned())],
+            )
+            .err()
+            .map(|failure| format!("{root}: {failure}"))
+        })
+        .collect();
+    assert_eq!(refused, Vec::<String>::new());
+}
+
+/// `n` nested products whose first factor nests; the innermost expression,
+/// `leaf`, sits at level `n` (steps is level 0).
+fn nested_expression(n: usize, leaf: V) -> V {
+    (0..n).fold(leaf, |inner, _| {
+        map(vec![(
+            "product",
+            V::Array(vec![inner, map(vec![("const", V::Integer(1))])]),
+        )])
+    })
+}
+
+/// A `bytesMax` measure (level 1) whose type, at level 2, nests records until
+/// a `word` at level `n`.
+fn nested_type_measure(n: usize) -> V {
+    let ty = (2..n).fold(map(vec![("word", V::Null)]), |inner, _| {
+        map(vec![("record", map(vec![("f", inner)]))])
+    });
+    map(vec![("measure", map(vec![("bytesMax", ty)]))])
+}
+
+fn catalog_v3_with_steps(steps: V) -> V {
+    let mut catalog = catalog_v3();
+    *effect_rule_mut(&mut catalog) = map(vec![
+        ("steps", steps),
+        ("bytes", map(vec![("const", V::Integer(0))])),
+    ]);
+    catalog
+}
+
+/// Oracle: the published depth, `TARGET_EFFECT_COST_MAX_DEPTH`
+/// (`docs/abi/edict-target-profile.cddl`). Effect-cost admission enforces the
+/// same levels (`effect_cost_admission_reads_nesting_exactly_to_the_published_depth`).
+#[test]
+fn current_pack_admits_cost_nesting_exactly_to_the_published_depth() {
+    let depth = TARGET_EFFECT_COST_MAX_DEPTH;
+    let constant = map(vec![("const", V::Integer(1))]);
+    let parameter = map(vec![("measure", map(vec![("parameter", text("p"))]))]);
+    let cases = [
+        (
+            "expression at the limit",
+            nested_expression(depth, constant.clone()),
+            true,
+        ),
+        (
+            "expression past the limit",
+            nested_expression(depth + 1, constant),
+            false,
+        ),
+        (
+            "parameter measure at the limit",
+            nested_expression(depth - 1, parameter.clone()),
+            true,
+        ),
+        (
+            "parameter measure past the limit",
+            nested_expression(depth, parameter),
+            false,
+        ),
+        ("type at the limit", nested_type_measure(depth), true),
+        ("type past the limit", nested_type_measure(depth + 1), false),
+    ];
+    for (name, steps, admitted) in cases {
+        assert_eq!(
+            current_pack_admits(&catalog_v3_with_steps(steps)),
+            admitted,
+            "{name}"
+        );
+    }
+}
+
+/// The schema applies the depth limit to every rule in the catalog, including
+/// an effect no program uses; the compiler admits the same catalog because it
+/// reads only used effects' rules
+/// (`effect_cost_admission_ignores_an_unused_effect_nested_past_the_limit`).
+#[test]
+fn current_pack_refuses_an_unused_effect_nested_past_the_limit() {
+    let mut catalog = catalog_v3();
+    let V::Map(intrinsics) = field_mut(&mut catalog, "intrinsics") else {
+        panic!("intrinsics is a map")
+    };
+    let mut unused = intrinsics
+        .iter()
+        .find(|(key, _)| *key == text("echo.dpo@1.replace"))
+        .map(|(_, entry)| entry.clone())
+        .expect("effect entry");
+    *field_mut(&mut unused, "effectCostRule") = map(vec![
+        (
+            "steps",
+            nested_expression(
+                TARGET_EFFECT_COST_MAX_DEPTH + 1,
+                map(vec![("const", V::Integer(1))]),
+            ),
+        ),
+        ("bytes", map(vec![("const", V::Integer(0))])),
+    ]);
+    intrinsics.push((text("echo.dpo@1.unused-effect"), unused));
+    assert!(!current_pack_admits(&catalog));
 }

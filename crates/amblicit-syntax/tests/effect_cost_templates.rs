@@ -14,7 +14,7 @@ use amblicit_syntax::{
     encode_canonical_cbor, lower_to_target_ir, parse_module, prepare_lawpack_compilation,
     CanonicalValue as C, CompilerContext, CompilerErrorKind, CoreBudget, CoreCostSchedule,
     CoreModule, ResourceRef, TargetEffectCostFact, TargetIrLoweringFacts, TargetLoweringStatus,
-    TargetPureIntrinsicFailureKind, TARGET_INTRINSICS_API_VERSION,
+    TargetPureIntrinsicFailureKind, TARGET_EFFECT_COST_MAX_DEPTH, TARGET_INTRINSICS_API_VERSION,
     TARGET_INTRINSICS_EFFECT_COST_API_VERSION,
 };
 
@@ -1270,4 +1270,125 @@ fn a_pure_v2_intent_loop_is_charged_as_on_main() {
         ),
         PURE_LOOP_ON_615D2E59
     );
+}
+
+/// `n` nested products whose first factor nests; `leaf` sits at level `n`.
+fn nested_expression(n: usize, leaf: C) -> C {
+    (0..n).fold(leaf, |inner, _| {
+        map(vec![("product", C::Array(vec![inner, constant(1)]))])
+    })
+}
+
+/// `n` levels: a `bytesMax` measure (level 1) whose type, at level 2, nests
+/// records until a `word` at level `n`.
+fn nested_type_measure(n: usize) -> C {
+    let ty = (2..n).fold(map(vec![("word", C::Null)]), |inner, _| {
+        map(vec![("record", map(vec![("f", inner)]))])
+    });
+    measure(map(vec![("bytesMax", ty)]))
+}
+
+/// Effect-cost admission of `bytes`, a `/v3` catalog for the lawpack's effect.
+fn admit_catalog(bytes: &[u8]) -> Result<(), Vec<TargetPureIntrinsicFailureKind>> {
+    let facts = prepared(None, None).facts;
+    let pin = ResourceRef {
+        coordinate: CATALOG.into(),
+        digest: Some(digest_target_intrinsics_catalog(CATALOG, bytes).expect("digest")),
+    };
+    admit_target_effect_costs(
+        &facts.target_profile,
+        &pin,
+        bytes,
+        &facts.effect_lowerings,
+        &configuration(None),
+    )
+    .map(|_| ())
+    .map_err(|failures| failures.into_iter().map(|failure| failure.kind).collect())
+}
+
+/// Admission of a `/v3` catalog whose used effect's steps are `steps`.
+fn admit_steps(steps: C) -> Result<(), Vec<TargetPureIntrinsicFailureKind>> {
+    admit_catalog(&catalog(
+        V3,
+        map(vec![("steps", steps), ("bytes", constant(0))]),
+    ))
+}
+
+/// Oracle: the published depth limit (`docs/abi/edict-target-profile.cddl`),
+/// which the catalog schema applies at the same levels
+/// (`current_pack_admits_cost_nesting_exactly_to_the_published_depth`).
+#[test]
+fn effect_cost_admission_reads_nesting_exactly_to_the_published_depth() {
+    let depth = TARGET_EFFECT_COST_MAX_DEPTH;
+    let cases = [
+        (
+            "expression at the limit",
+            nested_expression(depth, constant(1)),
+            true,
+        ),
+        (
+            "expression past the limit",
+            nested_expression(depth + 1, constant(1)),
+            false,
+        ),
+        (
+            "parameter measure at the limit",
+            nested_expression(depth - 1, scans()),
+            true,
+        ),
+        (
+            "parameter measure past the limit",
+            nested_expression(depth, scans()),
+            false,
+        ),
+        ("type at the limit", nested_type_measure(depth), true),
+        ("type past the limit", nested_type_measure(depth + 1), false),
+    ];
+    for (name, steps, admitted) in cases {
+        let expected = if admitted {
+            Ok(())
+        } else {
+            Err(vec![TargetPureIntrinsicFailureKind::InvalidCostRule])
+        };
+        assert_eq!(admit_steps(steps), expected, "{name}");
+    }
+}
+
+/// The compiler reads only the rules of effects the program uses, so a rule
+/// nested past the limit on an unused effect is admitted here. The catalog
+/// schema applies the limit to every rule and refuses the same catalog
+/// (`current_pack_refuses_an_unused_effect_nested_past_the_limit`).
+#[test]
+fn effect_cost_admission_ignores_an_unused_effect_nested_past_the_limit() {
+    let used = map(vec![
+        ("intrinsicClass", text("effect")),
+        ("effectCostRule", zero_rule()),
+    ]);
+    let unused = map(vec![
+        ("intrinsicClass", text("effect")),
+        (
+            "effectCostRule",
+            map(vec![
+                (
+                    "steps",
+                    nested_expression(TARGET_EFFECT_COST_MAX_DEPTH + 1, constant(1)),
+                ),
+                ("bytes", constant(0)),
+            ]),
+        ),
+    ]);
+    let bytes = encode_canonical_cbor(&map(vec![
+        ("apiVersion", text(V3)),
+        (
+            "intrinsics",
+            map(vec![
+                (INTRINSIC, used),
+                ("echo.dpo@1.unused-effect", unused),
+            ]),
+        ),
+        ("types", C::Map(Vec::new())),
+        ("parameters", declarations()),
+    ]))
+    .expect("canonical catalog");
+    assert_eq!(admit_catalog(&bytes), Ok(()));
 }

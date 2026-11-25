@@ -241,7 +241,10 @@ pub use target_intrinsics::{
     TargetPureIntrinsicFailureKind, TARGET_INTRINSICS_API_VERSION,
     TARGET_INTRINSICS_EFFECT_COST_API_VERSION,
 };
-pub use target_ir::effect_costs::{TargetEffectCostFact, TargetEffectCostRule};
+pub use target_ir::effect_costs::{
+    TargetEffectCostFact, TargetEffectCostRule, TARGET_EFFECT_COST_MAX_DEPTH,
+    TARGET_EFFECT_COST_MAX_SUM_TERMS,
+};
 pub use target_ir::{
     lower_to_target_ir, TargetEffectLowering, TargetEffectSignatureFact, TargetIrArtifact,
     TargetIrBranchEntry, TargetIrExternalActionRequest, TargetIrForEntry, TargetIrIntent,

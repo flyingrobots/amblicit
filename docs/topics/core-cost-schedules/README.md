@@ -95,6 +95,13 @@ effect step = input expression
             + each callable obstruction arm's expression
 ```
 
+A template nests at most to level 10 (`steps` and `bytes` are level 0; each
+nested expression, measure, type or record field is one level deeper).
+Effect-cost admission and the published catalog schema use the same limit. The
+schema applies it to every rule in the catalog; admission applies it to every
+rule it reads, which are those of the effects the program uses. See the
+[pack README](../../../fixtures/provider-contracts/effect-cost-catalog-v1/README.md).
+
 The node step and the empty obstruction payload stay outside the template, as
 in Echo's effect-body judge, which charges every node of an effect body one
 step. In an intent whose body holds an effect node, each `let` is also charged

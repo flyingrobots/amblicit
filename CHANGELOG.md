@@ -8,6 +8,31 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Fixed: the `effect-cost-catalog-v1` provider contract pack published by
+  #351 could not be loaded by the provider artifact-schema registry. Its
+  `/v3` cost rules were recursive (`sum` and `product` inside
+  `effect-cost-expr`, `record` inside `effect-cost-type`), and a provider
+  package that bound its `intrinsics-document` root failed with
+  `SchemaCompileFailed`, so no `/v3` catalog could be used. The rules are now
+  generated level by level (`cargo xtask provider-contract-pack --write`) to
+  a depth limit of level 10 (`TARGET_EFFECT_COST_MAX_DEPTH`), because
+  registry construction work roughly doubles per level. Effect-cost
+  admission now enforces the same limit: it read expressions and types to
+  level 16 and a type-free measure to 17, and now refuses anything deeper
+  than level 10, measures included (`/v3` is unreleased). The schema applies
+  the limit to every rule in the catalog; the compiler applies it to every
+  rule it reads, which are those of the effects the program uses. Echo's catalog nests to level 6. The current pair was regenerated in place, as the
+  pack README directs for the current pair; it was never loadable, so no
+  consumer could depend on its bytes. Schema raw SHA-256
+  `66f28b74bfa236a534455c36cc12e4dce106e1a3346880638f73b827ffa57a82` →
+  `ca33e99928edf8e0eaebdd3032ca1782c07eb84fd9e733a138711d7fcb4e53b8`;
+  `manifest.json` SHA-256
+  `7eadeaba705879a09f826bf6cbdadb0f8a25d4c3b05e2f720c040bb4013196fa` →
+  `6837fbf0b3fdc5ece9be31b5b4e1c4cb6017fa8dc002789c394691091c4ade96`.
+  Every frozen pack is unchanged. Tests now bind every root of the current
+  pack through the registry and run every `/v3` admission case through both
+  direct CDDL validation and the registry.
+
 - Publish the `effect-cost-catalog-v1` provider contract pack. Its
   `intrinsics-document` root admits `edict.target-profile.intrinsics/v3`
   catalogs: every effect intrinsic carries a required `effectCostRule`, and an
