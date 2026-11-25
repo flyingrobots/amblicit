@@ -110,8 +110,10 @@ effect-cost-parameter = {
 ; (`TARGET_EFFECT_COST_MAX_DEPTH`), for expressions, measures and types alike.
 ; The rules below are written out level by level to that depth, because the
 ; provider artifact-schema registry refuses these rules when they are
-; recursive. Effect-cost admission (the decoder) enforces the same limit, so
-; schema and compiler refuse the same catalogs. Evaluation refuses overflow.
+; recursive. Effect-cost admission (the decoder) uses the same limit. The
+; schema applies it to every rule in the catalog; the compiler applies it to
+; every rule it reads, which are those of the effects the program uses.
+; Evaluation refuses overflow.
 ; The schema requires `effectCostRule` on every effect intrinsic of a v3
 ; catalog, while the compiler reads it only for the effects a program uses.
 effect-cost-rule = {

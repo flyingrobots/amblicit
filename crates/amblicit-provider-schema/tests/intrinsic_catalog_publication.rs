@@ -1084,3 +1084,32 @@ fn current_pack_admits_cost_nesting_exactly_to_the_published_depth() {
         );
     }
 }
+
+/// The schema applies the depth limit to every rule in the catalog, including
+/// an effect no program uses; the compiler admits the same catalog because it
+/// reads only used effects' rules
+/// (`effect_cost_admission_ignores_an_unused_effect_nested_past_the_limit`).
+#[test]
+fn current_pack_refuses_an_unused_effect_nested_past_the_limit() {
+    let mut catalog = catalog_v3();
+    let V::Map(intrinsics) = field_mut(&mut catalog, "intrinsics") else {
+        panic!("intrinsics is a map")
+    };
+    let mut unused = intrinsics
+        .iter()
+        .find(|(key, _)| *key == text("echo.dpo@1.replace"))
+        .map(|(_, entry)| entry.clone())
+        .expect("effect entry");
+    *field_mut(&mut unused, "effectCostRule") = map(vec![
+        (
+            "steps",
+            nested_expression(
+                TARGET_EFFECT_COST_MAX_DEPTH + 1,
+                map(vec![("const", V::Integer(1))]),
+            ),
+        ),
+        ("bytes", map(vec![("const", V::Integer(0))])),
+    ]);
+    intrinsics.push((text("echo.dpo@1.unused-effect"), unused));
+    assert!(!current_pack_admits(&catalog));
+}

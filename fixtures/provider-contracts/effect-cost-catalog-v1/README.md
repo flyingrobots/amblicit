@@ -28,8 +28,10 @@ must sit at level 10 or shallower (`TARGET_EFFECT_COST_MAX_DEPTH`). The provider
 artifact-schema registry refuses recursive choices it cannot dispatch to one
 arm per value, as these cost rules were, so the schema writes them out level by
 level to level 10. Effect-cost admission (`admit_target_effect_costs`)
-enforces the same limit from the same constant, so a catalog nested deeper is
-refused by both the schema and the compiler. Echo's `/v3` catalog nests to
+uses the same limit from the same constant. The schema applies it to every rule
+in the catalog; the compiler applies it to every rule it reads, which are
+those of the effects the program uses, so an over-deep rule on an unused
+effect is refused only by the schema. Echo's `/v3` catalog nests to
 level 6.
 
 Why 10 and not 16: the registry's construction work roughly doubles with each

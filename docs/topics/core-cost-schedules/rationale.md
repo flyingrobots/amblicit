@@ -195,7 +195,7 @@ type-expr = { path: { side: "input" / "output", fields: [* tstr], item: uint, ? 
 
 **Evaluation:**
 - Arithmetic is checked `u64`; overflow refuses.
-- Expression depth is at most 16.
+- Expressions, measures and types nest at most to level 10 (`TARGET_EFFECT_COST_MAX_DEPTH`); `steps` and `bytes` are level 0.
 - Every path is validated against the effect's declared input and output types when the catalog is admitted.
 - `costliestHelper` is Amblicit's own static cost of the module's costliest source helper under the selected schedule. Echo's conformance test must show that Echo's helper cost is at most that, so Amblicit stays at or above Echo.
 
