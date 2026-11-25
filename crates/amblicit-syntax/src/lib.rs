@@ -243,7 +243,7 @@ pub use target_intrinsics::{
 };
 pub use target_ir::effect_costs::{
     TargetEffectCostFact, TargetEffectCostRule, TARGET_EFFECT_COST_MAX_DEPTH,
-    TARGET_EFFECT_COST_MAX_SUM_TERMS, TARGET_EFFECT_COST_SCHEMA_MAX_DEPTH,
+    TARGET_EFFECT_COST_MAX_SUM_TERMS,
 };
 pub use target_ir::{
     lower_to_target_ir, TargetEffectLowering, TargetEffectSignatureFact, TargetIrArtifact,

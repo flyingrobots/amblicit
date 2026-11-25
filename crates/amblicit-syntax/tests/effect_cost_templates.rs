@@ -14,7 +14,7 @@ use amblicit_syntax::{
     encode_canonical_cbor, lower_to_target_ir, parse_module, prepare_lawpack_compilation,
     CanonicalValue as C, CompilerContext, CompilerErrorKind, CoreBudget, CoreCostSchedule,
     CoreModule, ResourceRef, TargetEffectCostFact, TargetIrLoweringFacts, TargetLoweringStatus,
-    TargetPureIntrinsicFailureKind, TARGET_INTRINSICS_API_VERSION,
+    TargetPureIntrinsicFailureKind, TARGET_EFFECT_COST_MAX_DEPTH, TARGET_INTRINSICS_API_VERSION,
     TARGET_INTRINSICS_EFFECT_COST_API_VERSION,
 };
 
@@ -1270,4 +1270,62 @@ fn a_pure_v2_intent_loop_is_charged_as_on_main() {
         ),
         PURE_LOOP_ON_615D2E59
     );
+}
+
+/// `n` nested products whose first factor nests; `leaf` sits at level `n`.
+fn nested_expression(n: usize, leaf: C) -> C {
+    (0..n).fold(leaf, |inner, _| {
+        map(vec![("product", C::Array(vec![inner, constant(1)]))])
+    })
+}
+
+/// Whether effect-cost admission accepts a `/v3` catalog whose steps are `steps`.
+fn admits_steps(steps: C) -> bool {
+    let facts = prepared(None, None).facts;
+    let bytes = catalog(V3, map(vec![("steps", steps), ("bytes", constant(0))]));
+    let pin = ResourceRef {
+        coordinate: CATALOG.into(),
+        digest: Some(digest_target_intrinsics_catalog(CATALOG, &bytes).expect("digest")),
+    };
+    admit_target_effect_costs(
+        &facts.target_profile,
+        &pin,
+        &bytes,
+        &facts.effect_lowerings,
+        &configuration(None),
+    )
+    .is_ok()
+}
+
+/// Oracle: the published depth limit (`docs/abi/edict-target-profile.cddl`),
+/// which the catalog schema enforces at the same levels
+/// (`current_pack_admits_cost_nesting_exactly_to_the_published_depth`).
+#[test]
+fn effect_cost_admission_reads_nesting_exactly_to_the_published_depth() {
+    let depth = TARGET_EFFECT_COST_MAX_DEPTH;
+    let cases = [
+        (
+            "expression at the limit",
+            nested_expression(depth, constant(1)),
+            true,
+        ),
+        (
+            "expression past the limit",
+            nested_expression(depth + 1, constant(1)),
+            false,
+        ),
+        (
+            "parameter measure at the limit",
+            nested_expression(depth - 1, scans()),
+            true,
+        ),
+        (
+            "parameter measure past the limit",
+            nested_expression(depth, scans()),
+            false,
+        ),
+    ];
+    for (name, steps, admitted) in cases {
+        assert_eq!(admits_steps(steps), admitted, "{name}");
+    }
 }

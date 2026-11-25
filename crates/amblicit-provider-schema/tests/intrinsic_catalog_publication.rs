@@ -25,8 +25,7 @@ use amblicit_syntax::{
     bind_target_provider_manifest, ProviderArtifactKind, ProviderArtifactRef,
     ProviderArtifactSchemaValidationErrorKind, ProviderArtifactSchemaValidator,
     ProviderArtifactSource, ProviderSchemaBinding, ProviderSchemaFormat, TargetProviderManifest,
-    TARGET_EFFECT_COST_MAX_DEPTH, TARGET_EFFECT_COST_SCHEMA_MAX_DEPTH, TARGET_PROVIDER_ABI,
-    TARGET_PROVIDER_MANIFEST_API_VERSION,
+    TARGET_EFFECT_COST_MAX_DEPTH, TARGET_PROVIDER_ABI, TARGET_PROVIDER_MANIFEST_API_VERSION,
 };
 
 const CATALOG_CONTRACT: &str = "target-profile-intrinsics";
@@ -1045,16 +1044,12 @@ fn catalog_v3_with_steps(steps: V) -> V {
     catalog
 }
 
-/// Oracle: the published schema depth, `TARGET_EFFECT_COST_SCHEMA_MAX_DEPTH`
-/// (`docs/abi/edict-target-profile.cddl`). The decoder reads deeper
-/// (`TARGET_EFFECT_COST_MAX_DEPTH`); the schema is the tighter side.
+/// Oracle: the published depth, `TARGET_EFFECT_COST_MAX_DEPTH`
+/// (`docs/abi/edict-target-profile.cddl`). Effect-cost admission enforces the
+/// same levels (`effect_cost_admission_reads_nesting_exactly_to_the_published_depth`).
 #[test]
 fn current_pack_admits_cost_nesting_exactly_to_the_published_depth() {
-    let depth = TARGET_EFFECT_COST_SCHEMA_MAX_DEPTH;
-    assert!(
-        depth < TARGET_EFFECT_COST_MAX_DEPTH,
-        "the schema is the tighter side"
-    );
+    let depth = TARGET_EFFECT_COST_MAX_DEPTH;
     let constant = map(vec![("const", V::Integer(1))]);
     let parameter = map(vec![("measure", map(vec![("parameter", text("p"))]))]);
     let cases = [

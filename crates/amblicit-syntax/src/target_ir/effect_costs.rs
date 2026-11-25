@@ -15,28 +15,24 @@ use super::{resolved_core_type, CoreModule, CoreType};
 use crate::canonical::CanonicalValue;
 use std::collections::BTreeMap;
 
-/// Deepest level the decoder reads in an `effectCostRule`. Expressions,
-/// measures and types share one level counter: the rule's `steps` and `bytes`
-/// expressions are level 0, and each nested expression, measure, type or
-/// record field is one level deeper. The limit guards expressions and types;
-/// a measure is not checked itself, so a measure without a type (`parameter`,
-/// `helper`, `costliestHelper`) under a level-16 expression is read at level
-/// 17. The published schema has no such exception (see
-/// `TARGET_EFFECT_COST_SCHEMA_MAX_DEPTH`).
-pub const TARGET_EFFECT_COST_MAX_DEPTH: usize = 16;
-/// Deepest level the published catalog schema admits, on the same level
-/// counter. `cargo xtask provider-contract-pack` writes the schema's cost
-/// rules out level by level to this depth, because the provider
-/// artifact-schema registry refuses recursive cost rules. It is tighter than
-/// the decoder: the registry's construction work doubles with each level
-/// (12 to 21 ms in a release build at 10, about 750 ms at 16), so a catalog nested
-/// deeper than this is refused when its provider package loads.
-pub const TARGET_EFFECT_COST_SCHEMA_MAX_DEPTH: usize = 10;
-const _: () = assert!(TARGET_EFFECT_COST_SCHEMA_MAX_DEPTH <= TARGET_EFFECT_COST_MAX_DEPTH);
+/// Deepest level an `effectCostRule` may nest, for both the decoder and the
+/// published catalog schema. Expressions, measures and types share one level
+/// counter: the rule's `steps` and `bytes` expressions are level 0, and each
+/// nested expression, measure, type or record field is one level deeper.
+/// Every expression, measure and type must sit at this level or above; a
+/// deeper one is refused. `cargo xtask provider-contract-pack` writes the
+/// schema's cost rules out level by level to this depth, because the provider
+/// artifact-schema registry refuses recursive cost rules, and the registry's
+/// construction work roughly doubles with each level.
+pub const TARGET_EFFECT_COST_MAX_DEPTH: usize = 10;
 /// Most terms a `sum` may carry; the published schema states the same bound.
 pub const TARGET_EFFECT_COST_MAX_SUM_TERMS: usize = 16;
 const MAX_EXPRESSION_DEPTH: usize = TARGET_EFFECT_COST_MAX_DEPTH;
 const MAX_SUM_TERMS: usize = TARGET_EFFECT_COST_MAX_SUM_TERMS;
+/// Bound on nominal-alias steps and signature-type depth while a charge is
+/// evaluated against Core types. Independent of catalog nesting, and unchanged
+/// from before the catalog depth limit was lowered.
+const EVALUATION_DEPTH: usize = 16;
 
 /// Which half of a copy cost a measure reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -265,6 +261,9 @@ fn parameter_name(value: &CanonicalValue) -> Option<String> {
 }
 
 fn measure(value: &CanonicalValue, depth: usize) -> Option<Measure> {
+    if depth > MAX_EXPRESSION_DEPTH {
+        return None;
+    }
     // `{ copy: type-expr, of: half }` and `{ helper: { parameter: name },
     // of: half }` are the two-key measures.
     if let Some(of) = field(value, "of") {
@@ -472,7 +471,7 @@ impl Charge<'_> {
     /// it (a variant's identity).
     fn structural(&self, coordinate: &str) -> Option<(String, CoreType)> {
         let mut name = coordinate.to_owned();
-        for _ in 0..=MAX_EXPRESSION_DEPTH {
+        for _ in 0..=EVALUATION_DEPTH {
             match resolved_core_type(self.core, &name)? {
                 CoreType::Nominal { representation, .. } => name = representation,
                 other => return Some((name, other)),
@@ -482,7 +481,7 @@ impl Charge<'_> {
     }
 
     fn shape_of(&self, ty: &TypeExpr, depth: usize) -> Option<Shape> {
-        if depth > MAX_EXPRESSION_DEPTH {
+        if depth > EVALUATION_DEPTH {
             return None;
         }
         match ty {
@@ -511,7 +510,7 @@ impl Charge<'_> {
     }
 
     fn shape(&self, name: &str, core: &CoreType, depth: usize) -> Option<Shape> {
-        if depth > 4 * MAX_EXPRESSION_DEPTH {
+        if depth > 4 * EVALUATION_DEPTH {
             return None;
         }
         let child = |coordinate: &str| -> Option<Shape> {
@@ -788,16 +787,21 @@ fn keep(value: Rows) -> Rows { return value; }";
 
     /// Oracle: the level rule in `docs/abi/edict-target-profile.cddl`: steps
     /// is level 0, each nested expression, measure, type or record field one
-    /// deeper, and the decoder reads at most `TARGET_EFFECT_COST_MAX_DEPTH`.
+    /// deeper, at most `TARGET_EFFECT_COST_MAX_DEPTH`, measures included.
     #[test]
-    fn decoder_reads_nesting_to_level_16_and_no_deeper() {
+    fn decoder_reads_nesting_to_the_published_depth_and_no_deeper() {
         let depth = super::TARGET_EFFECT_COST_MAX_DEPTH;
         let constant = map(vec![("const", C::Integer(1))]);
         let parameter = map(vec![("measure", map(vec![("parameter", text("p"))]))]);
         assert!(parse_rule(&rule_with_steps(nested_expression(depth, constant.clone()))).is_some());
         assert!(parse_rule(&rule_with_steps(nested_expression(depth + 1, constant))).is_none());
-        // A measure one level below the deepest expression needs no type.
-        assert!(parse_rule(&rule_with_steps(nested_expression(depth, parameter))).is_some());
+        // A measure counts as a level, with or without a type.
+        assert!(parse_rule(&rule_with_steps(nested_expression(
+            depth - 1,
+            parameter.clone()
+        )))
+        .is_some());
+        assert!(parse_rule(&rule_with_steps(nested_expression(depth, parameter))).is_none());
         assert!(parse_rule(&rule_with_steps(nested_type_measure(depth))).is_some());
         assert!(parse_rule(&rule_with_steps(nested_type_measure(depth + 1))).is_none());
     }

@@ -806,15 +806,14 @@ effect-cost-parameter = {
 
 ; Closed u64 expressions. Expressions, measures and types share one nesting
 ; level: `steps` and `bytes` are level 0 and each nested expression, measure,
-; type or record field is one level deeper. Published depth limit: level 10
-; (`TARGET_EFFECT_COST_SCHEMA_MAX_DEPTH`). The rules below are written out
-; level by level to that depth, because the provider artifact-schema registry
-; refuses these rules when they are recursive. The decoder reads to level 16,
-; so the schema is the tighter side: a catalog nested deeper than level 10 is
-; refused when its provider package loads, although the decoder would accept
-; it. Evaluation refuses overflow. The schema requires `effectCostRule` on
-; every effect intrinsic of a v3 catalog, while the compiler reads it only for
-; the effects a program uses.
+; type or record field is one level deeper. Depth limit: level 10
+; (`TARGET_EFFECT_COST_MAX_DEPTH`), for expressions, measures and types alike.
+; The rules below are written out level by level to that depth, because the
+; provider artifact-schema registry refuses these rules when they are
+; recursive. Effect-cost admission (the decoder) enforces the same limit, so
+; schema and compiler refuse the same catalogs. Evaluation refuses overflow.
+; The schema requires `effectCostRule` on every effect intrinsic of a v3
+; catalog, while the compiler reads it only for the effects a program uses.
 effect-cost-rule = {
   steps: effect-cost-expr-0,
   bytes: effect-cost-expr-0,

@@ -5,12 +5,13 @@
 //! choices it cannot dispatch to one arm per value, because `cddl-cat`
 //! validates natively, outside Wasmtime fuel. Cost expressions and types
 //! nest, so the schema writes the nesting out level by level, one rule family
-//! per level, to exactly the decoder's depth limit. No rule refers to itself
+//! per level, to `TARGET_EFFECT_COST_MAX_DEPTH`, the limit the decoder
+//! enforces. No rule refers to itself
 //! or to a shallower level, so the rule graph is acyclic.
 
 use std::fmt::Write as _;
 
-use amblicit_syntax::{TARGET_EFFECT_COST_MAX_SUM_TERMS, TARGET_EFFECT_COST_SCHEMA_MAX_DEPTH};
+use amblicit_syntax::{TARGET_EFFECT_COST_MAX_DEPTH, TARGET_EFFECT_COST_MAX_SUM_TERMS};
 
 pub(crate) const BEGIN_MARKER: &str =
     "; BEGIN GENERATED effect-cost levels (cargo xtask provider-contract-pack --write)\n";
@@ -18,7 +19,7 @@ pub(crate) const END_MARKER: &str = "; END GENERATED effect-cost levels\n";
 
 /// The generated block, markers included.
 pub(crate) fn effect_cost_levels_cddl() -> String {
-    let depth = TARGET_EFFECT_COST_SCHEMA_MAX_DEPTH;
+    let depth = TARGET_EFFECT_COST_MAX_DEPTH;
     let mut out = String::from(BEGIN_MARKER);
     let _ = write!(
         out,

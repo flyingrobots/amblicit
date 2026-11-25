@@ -95,12 +95,10 @@ effect step = input expression
             + each callable obstruction arm's expression
 ```
 
-A template nests at most to level 10 in the published catalog schema
-(`steps` and `bytes` are level 0; each nested expression, measure, type or
-record field is one level deeper). The decoder reads expressions and types to level 16
-(a type-free measure under a level-16 expression to 17), but a
-provider package whose catalog nests deeper than 10 is refused when it loads;
-see the
+A template nests at most to level 10 (`steps` and `bytes` are level 0; each
+nested expression, measure, type or record field is one level deeper).
+Effect-cost admission and the published catalog schema enforce the same limit,
+so a deeper catalog is refused by both; see the
 [pack README](../../../fixtures/provider-contracts/effect-cost-catalog-v1/README.md).
 
 The node step and the empty obstruction payload stay outside the template, as

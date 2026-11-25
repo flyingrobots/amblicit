@@ -15,18 +15,19 @@ versions still track specification maturity rather than a released product.
   package that bound its `intrinsics-document` root failed with
   `SchemaCompileFailed`, so no `/v3` catalog could be used. The rules are now
   generated level by level (`cargo xtask provider-contract-pack --write`) to
-  a published depth limit of level 10 (`TARGET_EFFECT_COST_SCHEMA_MAX_DEPTH`),
-  tighter than the decoder's 16 because registry construction work doubles
-  per level (12 to 21 ms in a release build at 10, about 750 ms at 16). A catalog nested
-  deeper than level 10 is refused when its provider package loads; Echo's
-  catalog nests to level 6. The current pair was regenerated in place, as the
+  a depth limit of level 10 (`TARGET_EFFECT_COST_MAX_DEPTH`), because
+  registry construction work roughly doubles per level. Effect-cost
+  admission now enforces the same limit: it read expressions and types to
+  level 16 and a type-free measure to 17, and now refuses anything deeper
+  than level 10, measures included, so schema and compiler refuse the same
+  catalogs (`/v3` is unreleased). Echo's catalog nests to level 6. The current pair was regenerated in place, as the
   pack README directs for the current pair; it was never loadable, so no
   consumer could depend on its bytes. Schema raw SHA-256
   `66f28b74bfa236a534455c36cc12e4dce106e1a3346880638f73b827ffa57a82` →
-  `446b5cb4c43def4973fe11845588ee385b30de2a9b98618767976350682bee54`;
+  `0cedc2a22f6c34b31c2245942f3bd698fb8b071dd5c4f129958d677370740eed`;
   `manifest.json` SHA-256
   `7eadeaba705879a09f826bf6cbdadb0f8a25d4c3b05e2f720c040bb4013196fa` →
-  `4d4e18dd70cfa5abae960f8c4260eb030e2180e40dc4de45828030d1a76ee054`.
+  `8e245b0b91123ac3b497f0119d85bd593b4f616d1f992887ac6cb268be00b6b9`.
   Every frozen pack is unchanged. Tests now bind every root of the current
   pack through the registry and run every `/v3` admission case through both
   direct CDDL validation and the registry.
