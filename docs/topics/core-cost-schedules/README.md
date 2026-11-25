@@ -219,7 +219,15 @@ A `/v2` catalog publishes no templates and charges effects as before.
 
 `admit_target_effect_costs` admits the templates of the effects a lowering
 selects from the same pinned catalog as the pure intrinsics; the application
-build does this whenever `target.pureIntrinsics` names a catalog. The
+build does this whenever `target.pureIntrinsics` names a catalog, with or
+without pure requirements (`required` may be omitted or empty). The catalog's
+location comes only from that declaration: the profile pins the catalog's
+identity and digest, and the compiler does not search the provider package.
+So under the shared-read schedule a build whose lawpack lowers any effect and
+that declares no catalog is refused with `TargetIntrinsicCatalogUndeclared`;
+it is never charged the generic effect step in place of the pinned templates.
+The copying schedule keeps its behaviour: without a declaration it charges no
+templates. The
 templates reach the compiler with `CompilerContext::with_target_effect_costs`
 and native Target with `TargetIrLoweringFacts::with_target_effect_costs`.
 Under the copying schedule the source checker re-checks each intent with its

@@ -23,8 +23,9 @@ use std::path::Path;
 use std::process::{Command, Output, Stdio};
 
 use amblicit_syntax::{
-    decode_canonical_cbor, digest_canonical_artifact, encode_canonical_cbor, CanonicalValue,
-    TARGET_PROFILE_API_VERSION, TARGET_PROVIDER_ABI, TARGET_PROVIDER_MANIFEST_API_VERSION,
+    decode_canonical_cbor, digest_canonical_artifact, digest_target_intrinsics_catalog,
+    encode_canonical_cbor, CanonicalValue, TARGET_PROFILE_API_VERSION, TARGET_PROVIDER_ABI,
+    TARGET_PROVIDER_MANIFEST_API_VERSION,
 };
 use limits::Limits;
 use serde_json::{json, Value};
@@ -38,12 +39,81 @@ const LIMITS: Limits = Limits {
     value_scalars: 64,
     replacement_bytes: 256,
 };
+/// Echo's `/v3` catalog (`fixtures/echo-target-intrinsics-v3`), the base of
+/// the catalog the retargeted profile pins.
+const ECHO_V3_CATALOG: &[u8] =
+    include_bytes!("../../../fixtures/echo-target-intrinsics-v3/resource.target-intrinsics-3.cbor");
+const CATALOG_COORDINATE: &str = "echo.dpo.intrinsics/v3";
+const CATALOG_PATH: &str = "generated/resources/resource.target-intrinsics-3.cbor";
+/// The effect intrinsic the causal cell lowers to.
+const CELL_EFFECT: &str = "echo.dpo@2.anchored-node-attachment-create-if-absent";
 /// Declared operation steps: above the shared-read minimum, below the copying one.
 const OPERATION_STEPS: u64 = 400_000;
 /// Declared operation allocation, likewise between the two minimums.
 const OPERATION_BYTES: u64 = 4_000_000;
 
-fn echo_dpo_2_profile() -> (Vec<u8>, String) {
+/// How the application declares the catalog its profile pins.
+#[derive(Clone, Copy)]
+enum CatalogDeclaration {
+    /// No `target.pureIntrinsics`.
+    Undeclared,
+    /// `target.pureIntrinsics` with the catalog location and no requirement.
+    CatalogOnly,
+    /// The catalog location and one pure intrinsic the program never calls,
+    /// the form Echo's `effect_v2_admission` example uses.
+    WithUncalledRequirement,
+}
+
+/// Echo's `/v3` catalog plus a template for the causal cell's effect, whose
+/// steps are `effect_steps`, and its canonical bytes and digest.
+fn catalog(effect_steps: u64) -> (Vec<u8>, Vec<u8>) {
+    let mut document = decode_canonical_cbor(ECHO_V3_CATALOG).expect("vendored catalog");
+    let CanonicalValue::Map(fields) = &mut document else {
+        panic!("catalog map")
+    };
+    let (_, CanonicalValue::Map(intrinsics)) = fields
+        .iter_mut()
+        .find(|(key, _)| key == &CanonicalValue::Text("intrinsics".into()))
+        .expect("intrinsics")
+    else {
+        panic!("intrinsics map")
+    };
+    let (_, create) = intrinsics
+        .iter()
+        .find(|(key, _)| key == &CanonicalValue::Text("echo.dpo@2.create-node".into()))
+        .expect("create-node entry")
+        .clone();
+    let mut entry = create;
+    let CanonicalValue::Map(entry_fields) = &mut entry else {
+        panic!("entry map")
+    };
+    let constant = |value: u64| {
+        CanonicalValue::Map(vec![(
+            CanonicalValue::Text("const".into()),
+            CanonicalValue::Integer(i128::from(value)),
+        )])
+    };
+    for (key, value) in entry_fields.iter_mut() {
+        if key == &CanonicalValue::Text("effectCostRule".into()) {
+            *value = CanonicalValue::Map(vec![
+                (CanonicalValue::Text("bytes".into()), constant(1)),
+                (CanonicalValue::Text("steps".into()), constant(effect_steps)),
+            ]);
+        }
+    }
+    intrinsics.push((CanonicalValue::Text(CELL_EFFECT.into()), entry));
+    let bytes = encode_canonical_cbor(&document).expect("encode catalog");
+    let rendered =
+        digest_target_intrinsics_catalog(CATALOG_COORDINATE, &bytes).expect("canonical catalog");
+    let hex = rendered.strip_prefix("sha256:").expect("sha256 digest");
+    let digest = (0..hex.len())
+        .step_by(2)
+        .map(|at| u8::from_str_radix(&hex[at..at + 2], 16).expect("hex digest"))
+        .collect();
+    (bytes, digest)
+}
+
+fn echo_dpo_2_profile(catalog_digest: &[u8]) -> (Vec<u8>, String) {
     fn retarget(value: &mut CanonicalValue) {
         match value {
             CanonicalValue::Text(text) => *text = text.replace("echo.dpo@1", ECHO_DPO_2),
@@ -54,6 +124,26 @@ fn echo_dpo_2_profile() -> (Vec<u8>, String) {
     }
     let mut profile = decode_canonical_cbor(ECHO_DPO_1_PROFILE).expect("fixture profile");
     retarget(&mut profile);
+    let CanonicalValue::Map(fields) = &mut profile else {
+        panic!("profile map")
+    };
+    let reference = fields
+        .iter_mut()
+        .find(|(key, _)| key == &CanonicalValue::Text("intrinsics".into()))
+        .expect("profile intrinsics reference");
+    reference.1 = CanonicalValue::Map(vec![
+        (
+            CanonicalValue::Text("id".into()),
+            CanonicalValue::Text(CATALOG_COORDINATE.into()),
+        ),
+        (
+            CanonicalValue::Text("digest".into()),
+            CanonicalValue::Array(vec![
+                CanonicalValue::Text("sha256".into()),
+                CanonicalValue::Bytes(catalog_digest.to_vec()),
+            ]),
+        ),
+    ]);
     let bytes = encode_canonical_cbor(&profile).expect("encode echo.dpo@2 profile");
     let digest = digest_canonical_artifact(TARGET_PROFILE_API_VERSION, &bytes)
         .expect("canonical profile")
@@ -111,8 +201,16 @@ intent create";
     with_fold
 }
 
-fn write_application(root: &Path, schedule: Option<&str>) {
-    let (profile_bytes, profile_digest) = echo_dpo_2_profile();
+fn write_application(
+    root: &Path,
+    schedule: Option<&str>,
+    declaration: CatalogDeclaration,
+    effect_steps: u64,
+) {
+    let (catalog_bytes, catalog_digest) = catalog(effect_steps);
+    let (profile_bytes, profile_digest) = echo_dpo_2_profile(&catalog_digest);
+    fs::create_dir_all(root.join("provider/generated/resources")).expect("catalog directory");
+    fs::write(root.join("provider").join(CATALOG_PATH), catalog_bytes).expect("write catalog");
     fs::create_dir_all(root.join("src")).expect("source directory");
     fs::create_dir_all(root.join("provider/generated/primary")).expect("provider directory");
     fs::write(
@@ -166,6 +264,19 @@ fn write_application(root: &Path, schedule: Option<&str>) {
     if let Some(schedule) = schedule {
         application["coreCostSchedule"] = json!(schedule);
     }
+    match declaration {
+        CatalogDeclaration::Undeclared => {}
+        CatalogDeclaration::CatalogOnly => {
+            application["target"]["pureIntrinsics"] = json!({"catalog": CATALOG_PATH});
+        }
+        CatalogDeclaration::WithUncalledRequirement => {
+            application["target"]["pureIntrinsics"] = json!({
+                "catalog": CATALOG_PATH,
+                "required": [{"coordinate": "echo.dpo@2.slotEdgeId",
+                              "contractVersion": "echo.content-address/v1"}]
+            });
+        }
+    }
     fs::write(
         root.join("edict.application.json"),
         serde_json::to_vec_pretty(&application).expect("encode application"),
@@ -192,12 +303,24 @@ fn run_public_build(root: &Path, key: &str, document: &str) -> Output {
 
 /// Diagnostic kinds of one application build under `schedule`.
 fn first_failure(schedule: Option<&str>) -> Vec<String> {
+    failures(schedule, CatalogDeclaration::CatalogOnly, 1)
+        .into_iter()
+        .map(|(kind, _)| kind)
+        .collect()
+}
+
+/// Diagnostic (kind, message) pairs of one failed application build.
+fn failures(
+    schedule: Option<&str>,
+    declaration: CatalogDeclaration,
+    effect_steps: u64,
+) -> Vec<(String, String)> {
     let directory = tempfile::Builder::new()
         .prefix("amblicit-cost-schedule-")
         .tempdir()
         .expect("owned temp directory");
     let root = directory.path();
-    write_application(root, schedule);
+    write_application(root, schedule, declaration, effect_steps);
     let built = run_public_build(root, "application", "edict.application.json");
     assert_eq!(built.status.code(), Some(2), "{built:?}");
     assert!(!root.join(".build/application").exists());
@@ -206,8 +329,69 @@ fn first_failure(schedule: Option<&str>) -> Vec<String> {
         .lines()
         .map(|line| serde_json::from_str::<Value>(line).expect("JSONL record"))
         .filter(|record| record["schema"] == "edict.cli.diagnostic/v1")
-        .map(|record| record["kind"].as_str().unwrap_or_default().to_owned())
+        .map(|record| {
+            (
+                record["kind"].as_str().unwrap_or_default().to_owned(),
+                record["message"].as_str().unwrap_or_default().to_owned(),
+            )
+        })
         .collect()
+}
+
+/// A template this large exceeds the declared budget on its own.
+const OVER_BUDGET_TEMPLATE_STEPS: u64 = OPERATION_STEPS + 1;
+
+#[test]
+fn shared_read_build_charges_the_pinned_catalog_template_without_pure_requirements() {
+    // Oracle: the template alone exceeds the budget, so a build that applies
+    // it is refused at compilation; the generic charge passes compilation.
+    let kinds = failures(
+        Some("edict.core-cost/v2"),
+        CatalogDeclaration::CatalogOnly,
+        OVER_BUDGET_TEMPLATE_STEPS,
+    );
+    assert!(
+        kinds.iter().any(|(kind, _)| kind == "InvalidBound"),
+        "{kinds:?}"
+    );
+}
+
+#[test]
+fn shared_read_build_refuses_an_undeclared_pinned_catalog_instead_of_the_generic_charge() {
+    let kinds = failures(
+        Some("edict.core-cost/v2"),
+        CatalogDeclaration::Undeclared,
+        OVER_BUDGET_TEMPLATE_STEPS,
+    );
+    assert_eq!(kinds.len(), 1, "{kinds:?}");
+    assert_eq!(kinds[0].0, "TargetIntrinsicCatalogUndeclared", "{kinds:?}");
+    assert!(
+        kinds[0].1.contains("target.pureIntrinsics.catalog"),
+        "{kinds:?}"
+    );
+    assert!(kinds[0].1.contains(CATALOG_COORDINATE), "{kinds:?}");
+}
+
+#[test]
+fn an_uncalled_pure_requirement_does_not_change_the_effect_charge() {
+    // Echo's example names an uncalled intrinsic to reach the templates; the
+    // catalog-only form must report the identical refusal and minimum.
+    let schedule = Some("edict.core-cost/v2");
+    let catalog_only = failures(
+        schedule,
+        CatalogDeclaration::CatalogOnly,
+        OVER_BUDGET_TEMPLATE_STEPS,
+    );
+    let with_requirement = failures(
+        schedule,
+        CatalogDeclaration::WithUncalledRequirement,
+        OVER_BUDGET_TEMPLATE_STEPS,
+    );
+    assert!(
+        catalog_only.iter().any(|(kind, _)| kind == "InvalidBound"),
+        "{catalog_only:?}"
+    );
+    assert_eq!(catalog_only, with_requirement);
 }
 
 #[test]

@@ -21,6 +21,9 @@ const MAX_REQUIRED_INTRINSICS: usize = 64;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct ApplicationPureIntrinsics {
     catalog: PathBuf,
+    /// Pure contracts to admit; may be empty when the application declares
+    /// the catalog only for its effect cost templates (#341).
+    #[serde(default)]
     required: Vec<Requirement>,
 }
 
@@ -34,8 +37,7 @@ struct Requirement {
 impl ApplicationPureIntrinsics {
     pub(super) fn validate(&self) -> Result<(), ApplicationBuildFailure> {
         validate_application_path("target.pureIntrinsics.catalog", &self.catalog)?;
-        if self.required.is_empty()
-            || self.required.len() > MAX_REQUIRED_INTRINSICS
+        if self.required.len() > MAX_REQUIRED_INTRINSICS
             || self
                 .required
                 .iter()
@@ -43,7 +45,7 @@ impl ApplicationPureIntrinsics {
         {
             return Err(failure(
                 "InvalidApplicationConfig",
-                "target.pureIntrinsics requires 1..=64 non-empty coordinate/contractVersion pairs",
+                "target.pureIntrinsics.required allows at most 64 non-empty coordinate/contractVersion pairs",
             ));
         }
         Ok(())
@@ -130,6 +132,28 @@ impl ApplicationPureIntrinsics {
             )
         })
     }
+}
+
+/// Under the shared-read schedule every effect is charged its pinned catalog's
+/// cost template, so a build that lowers effects must say where that catalog
+/// is: the compiler never searches a provider package. Refuse instead of
+/// charging the generic effect step, which a `/v3` target would not admit.
+pub(super) fn undeclared_catalog_failure(
+    profile: &ProviderBoundArtifact,
+) -> ApplicationBuildFailure {
+    let catalog = match catalog_reference(&profile.artifact.bytes) {
+        Ok(catalog) => catalog,
+        Err(refused) => return refused,
+    };
+    failure(
+        "TargetIntrinsicCatalogUndeclared",
+        format!(
+            "the shared-read schedule charges each effect the cost template of the intrinsics \
+             catalog `{}` that target profile `{}` pins; declare its provider-relative location \
+             as target.pureIntrinsics.catalog (`required` may be empty)",
+            catalog.coordinate, profile.reference.coordinate
+        ),
+    )
 }
 
 fn catalog_reference(bytes: &[u8]) -> Result<ResourceRef, ApplicationBuildFailure> {

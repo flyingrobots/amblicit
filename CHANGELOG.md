@@ -8,6 +8,20 @@ versions still track specification maturity rather than a released product.
 
 ## [Unreleased]
 
+- Fixed: under the shared-read schedule, a build that did not list the
+  target profile's catalog under `target.pureIntrinsics` was charged the
+  generic effect step instead of the catalog's effect cost templates, with no
+  diagnostic, and that list had to name at least one pure intrinsic, so an
+  effect-only program could reach the templates only by requiring an
+  intrinsic it never called. `target.pureIntrinsics.required` may now be
+  omitted or empty (the catalog then grants no pure fact), and a shared-read
+  build whose lawpack lowers an effect without declaring the catalog is
+  refused with `TargetIntrinsicCatalogUndeclared`, naming the pinned catalog.
+  A declaration with an uncalled requirement gives the same minimum as the
+  catalog-only form. Copying-schedule output, `/v1` and `/v2` catalogs, Core
+  and Target IR goldens and the provider contract packs are unchanged.
+  Closes #341.
+
 - Fixed: under the shared-read schedule with a `/v3` intrinsics catalog, an
   effect with a provider cost template whose input was written as a record
   literal (or a conditional of literals) could not be costed: the build
